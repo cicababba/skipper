@@ -65,14 +65,30 @@ function resolveClaude(): ClaudeCmd {
   if (process.platform !== "win32") {
     return (resolvedClaude = { file: "claude", argsPrefix: [] });
   }
-  let candidates: string[] = [];
+  const candidates: string[] = [];
+  // Known install locations checked DIRECTLY first — a running app's PATH is
+  // stale after a fresh install (Windows only updates NEW processes), so
+  // `where claude` alone misses a just-installed claude. Native installer
+  // (claude.ai/install.cmd) → %USERPROFILE%\.local\bin\claude.exe; npm -g →
+  // %APPDATA%\npm\claude.cmd. Prefer the native .exe (spawns directly).
+  const home = process.env.USERPROFILE || process.env.HOME || "";
+  const appdata = process.env.APPDATA || "";
+  const local = process.env.LOCALAPPDATA || "";
+  const known = [
+    home && join(home, ".local", "bin", "claude.exe"),
+    local && join(local, "Programs", "claude", "claude.exe"),
+    appdata && join(appdata, "npm", "claude.cmd"),
+    appdata && join(appdata, "npm", "claude.exe"),
+  ].filter(Boolean) as string[];
+  for (const k of known) if (existsSync(k)) candidates.push(k);
   try {
-    candidates = execSync("where claude", { encoding: "utf-8", windowsHide: true })
+    execSync("where claude", { encoding: "utf-8", windowsHide: true })
       .split(/\r?\n/)
       .map((c) => c.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .forEach((c) => candidates.push(c));
   } catch {
-    /* nothing on PATH — fall through to the last resort */
+    /* nothing on PATH — the known locations above may still have matched */
   }
   const exe = candidates.find((c) => c.toLowerCase().endsWith(".exe"));
   if (exe) return (resolvedClaude = { file: exe, argsPrefix: [] });

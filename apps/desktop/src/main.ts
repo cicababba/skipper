@@ -76,6 +76,45 @@ function fixMacPath(): void {
 }
 fixMacPath();
 
+// Windows counterpart. A running process keeps the PATH it started with, but a
+// fresh CLI install (npm global, or the native `claude.ai/install.cmd` → it
+// drops claude.exe in %USERPROFILE%\.local\bin and updates the *registry* PATH)
+// only reaches NEW processes — so restarting the app often still can't find
+// `claude`. Read the live user + system PATH from the registry and merge it in,
+// plus the well-known install dirs, so spawns see the current PATH without a
+// reboot.
+function expandWinEnv(s: string): string {
+  return s.replace(/%([^%]+)%/g, (_m, name) => process.env[name] ?? `%${name}%`);
+}
+function fixWinPath(): void {
+  if (process.platform !== "win32") return;
+  const merged = new Set((process.env.PATH || "").split(";").filter(Boolean));
+  for (const q of [
+    'reg query "HKCU\\Environment" /v Path',
+    'reg query "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" /v Path',
+  ]) {
+    try {
+      const out = execSync(q, { encoding: "utf8", timeout: 3000, windowsHide: true });
+      const m = out.match(/\bPath\s+REG(?:_EXPAND)?_SZ\s+(.+)/i);
+      if (m) expandWinEnv(m[1].trim()).split(";").map((p) => p.trim()).filter(Boolean).forEach((p) => merged.add(p));
+    } catch {
+      /* registry not readable — the well-known dirs below still cover the common case */
+    }
+  }
+  const home = process.env.USERPROFILE || "";
+  const appdata = process.env.APPDATA || "";
+  const local = process.env.LOCALAPPDATA || "";
+  for (const d of [
+    home && join(home, ".local", "bin"), // native installer (claude.ai/install.cmd)
+    appdata && join(appdata, "npm"), // npm -g
+    local && join(local, "Programs", "claude"), // some native-install layouts
+  ]) {
+    if (d) merged.add(d);
+  }
+  process.env.PATH = Array.from(merged).join(";");
+}
+fixWinPath();
+
 const isDev = !!process.env.NESTBRAIN_DEV;
 const DEV_URL = "http://localhost:3000";
 
