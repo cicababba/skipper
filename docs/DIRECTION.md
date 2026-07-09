@@ -287,6 +287,7 @@ Due regole per non ricadere nel vecchio prodotto:
 | 15 | **Coda di coding con WIP limit configurabile, default 1 per repo** | Controllo costi e conflitti. Priorità: rientri > pin > confidence > età. I rientri contano nel limite ma saltano la coda. |
 | 16 | **Confidence "cheap" (groundedness, convergenza, critic) già in v1** | Non dipendono dalla memoria, disponibili dal giorno zero — è ciò che distingue v1 da un wrapper. |
 | 17 | **Pricing early access: $29 one-time "founder"** (binari firmati, updates inclusi) | Playbook NestBrain già rodato (Polar merchant of record + upload CI + repo releases privato), zero infra licenze. Benefit license-key di Polar attivo dal giorno 1 per riconoscere i founder quando arriverà il modello definitivo. Il modello a regime (subscription con perpetual fallback? free/paid sul confine dell'aggregazione?) si decide con calma entro la v3. |
+| 18 | **Confine open-core ridisegnato: git + terminale = core pubblico** (issue #1) | Il loop git (worktree, diff, stage, commit, push) e il terminale (finestra sull'agente + intervento manuale) sono il cuore del prodotto — non possono stare dietro il modulo Dev privato. Il git backend è riscritto nel tree pubblico (`apps/desktop/src/git.ts`); il terminale segue in un issue dedicato. Restano gated: Projects, team, metriche, multi-agent parallelism. |
 
 ---
 
