@@ -18,14 +18,12 @@ export default function AskPage() {
   const [question, setQuestion] = useState("");
   const [history, setHistory] = useState<QAEntry[]>([]);
   const [loading, setLoading] = useState(false);
-  const [project, setProject] = useState<string | null>(null);
-
   // Persist the user's last project pick across page reloads — they're
   // usually scoping to one thing for a few queries in a row.
-  useEffect(() => {
-    const saved = localStorage.getItem("nestbrain-ask-project");
-    if (saved) setProject(saved);
-  }, []);
+  const [project, setProject] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : localStorage.getItem("nestbrain-ask-project"),
+  );
+
   useEffect(() => {
     if (project) localStorage.setItem("nestbrain-ask-project", project);
     else localStorage.removeItem("nestbrain-ask-project");

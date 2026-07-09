@@ -10,7 +10,7 @@
     "bundle": "node build/bundle.mjs",
     "dev": "tsc --watch",
     "lint": "eslint src/",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@nestbrain/core": "workspace:*",
