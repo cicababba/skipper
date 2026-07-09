@@ -6,7 +6,7 @@
 
 ## Project Overview (legacy NestBrain — being retired via #2)
 
-NestBrain ingests raw documents (URLs, PDFs, GitHub repos, arXiv papers, YouTube transcripts, RSS feeds) and uses an LLM to compile them into an interconnected wiki of Markdown files. The wiki is Obsidian-compatible and queryable through hybrid search + LLM-grounded Q&A. The desktop app wraps all of this in a workspace UI: VS Code-style file tree, CodeMirror editor, integrated xterm.js terminal, session-aware Claude Code skills. The 1.16.x line remains sold and maintained during the pivot: the release pipeline must keep working.
+NestBrain ingests raw documents (URLs, PDFs, GitHub repos, arXiv papers, YouTube transcripts, RSS feeds) and uses an LLM to compile them into an interconnected wiki of Markdown files. The wiki is Obsidian-compatible and queryable through hybrid search + LLM-grounded Q&A. The desktop app wraps all of this in a workspace UI: VS Code-style file tree, CodeMirror editor, integrated xterm.js terminal, session-aware Claude Code skills. NestBrain 1.16.x remains sold and maintained **from its own upstream repo** — this repo's release pipeline is intentionally **disarmed** (zero Actions secrets, publishes nothing) until the distribution cutover (#17). Don't add release secrets here before that cutover is intentional.
 
 ## Repo Layout (pnpm monorepo)
 
