@@ -39,7 +39,7 @@ nestbrain/
 ├── nestbrain.yaml              # Default workspace config (provider, embeddings, search, server)
 ├── pnpm-workspace.yaml
 ├── turbo.json
-└── package.json                # version: 1.14.3
+└── package.json                # version source of truth (kept aligned with apps/desktop/package.json)
 ```
 
 ## Tech Stack
@@ -93,6 +93,10 @@ nestbrain search "query"           # Hybrid semantic + keyword
 nestbrain lint                     # LLM health check
 nestbrain serve                    # Start the web UI standalone
 ```
+
+## Git Workflow
+
+Gitflow: `main` is release-only (**every push to `main` fires `.github/workflows/release.yml`** — full signed build + publish to Polar/update feed), `develop` is the integration branch, work happens on `feature/issue-<N>-<slug>` branches. Conventions for branches, commit messages, issue/PR titles, and labels live in [`.claude/rules/conventions.md`](.claude/rules/conventions.md) — the skills in `.claude/skills/` (`/create-issue`, `/start-issue`, `/plan-issue`, `/commit`, `/pr`, `/merge-pr`, `/release`) implement the day-to-day flow and are the preferred way to run it. No project board: issue state is derived from git/GitHub (branch = in progress, PR = in review, closed = done).
 
 ## Coding Conventions
 
