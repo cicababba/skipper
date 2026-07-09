@@ -1,12 +1,12 @@
-# NestBrain
+# Skipper (pivoting from NestBrain)
 
-LLM-powered personal knowledge base packaged as a native desktop workspace. Raw sources go in, a structured Markdown wiki comes out — compiled, linked, and maintained entirely by AI. Ships as an Electron app with an embedded Next.js UI, a real PTY terminal, and deep Claude Code integration.
+**This codebase is pivoting.** It was born as NestBrain (LLM-powered personal knowledge base, sold at [nestbrain.app](https://nestbrain.app)); it is becoming a **cross-platform issue inbox + orchestration layer on top of coding agents**: assigned issues arrive with an eager plan and a verifiable confidence score, coding runs in isolated worktrees behind a human gate, PRs are shepherded to merge. Vision, decisions, and phasing live in [`docs/DIRECTION.md`](docs/DIRECTION.md) (authoritative, in Italian). Work is mapped on GitHub: epic #3 (v1 loop) with sub-issues #4–#15, plus #1 (open-core boundary) and #2 (demolition of the old product surface).
 
-Published binaries are sold at [nestbrain.app](https://nestbrain.app) ($29 one-time, signed + notarized). The source in this repo is **GPL-3.0** and fully buildable.
+"Skipper" is the repo codename — the product name is undecided, so **all naming still says nestbrain** (package scopes, IPC channels, appId, CLI, env vars). Don't rename opportunistically; the coordinated rename is tracked in issue #16.
 
-## Project Overview
+## Project Overview (legacy NestBrain — being retired via #2)
 
-NestBrain ingests raw documents (URLs, PDFs, GitHub repos, arXiv papers, YouTube transcripts, RSS feeds) and uses an LLM to compile them into an interconnected wiki of Markdown files. The wiki is Obsidian-compatible and queryable through hybrid search + LLM-grounded Q&A. The desktop app wraps all of this in a workspace UI: VS Code-style file tree, CodeMirror editor, integrated xterm.js terminal, session-aware Claude Code skills.
+NestBrain ingests raw documents (URLs, PDFs, GitHub repos, arXiv papers, YouTube transcripts, RSS feeds) and uses an LLM to compile them into an interconnected wiki of Markdown files. The wiki is Obsidian-compatible and queryable through hybrid search + LLM-grounded Q&A. The desktop app wraps all of this in a workspace UI: VS Code-style file tree, CodeMirror editor, integrated xterm.js terminal, session-aware Claude Code skills. The 1.16.x line remains sold and maintained during the pivot: the release pipeline must keep working.
 
 ## Repo Layout (pnpm monorepo)
 
@@ -110,7 +110,7 @@ Gitflow: `main` is release-only (**every push to `main` fires `.github/workflows
 - Default to no comments. Add one only when the *why* is non-obvious — a real example is the `node-pty` lazy-load block in `apps/desktop/src/main.ts`.
 - Do not log to stdout from `packages/core` — pass a `ProgressCallback` (see `CompileOptions`) so the caller decides how to surface progress.
 
-## Wiki File Format
+## Wiki File Format (legacy NestBrain — retired with #2)
 
 Every generated wiki article must follow this structure:
 
@@ -134,7 +134,7 @@ Body…
 - [[Another Article]]
 ```
 
-## LLM Agent Guidelines
+## LLM Agent Guidelines (legacy NestBrain — retired with #2)
 
 - The wiki is the LLM's domain. Generate and maintain wiki content programmatically — never hand-edit files in a user's `Library/Knowledge/`.
 - Always be incremental: the compiler's `tracker.ts` records source hashes; honour it. Don't reprocess unchanged sources.
