@@ -286,6 +286,7 @@ Due regole per non ricadere nel vecchio prodotto:
 | 14 | **Pausa intake con rito di rientro** | Ferma l'ammissione di nuove issue, non il lavoro in volo. Alla ripresa, niente burst di planning senza consenso. |
 | 15 | **Coda di coding con WIP limit configurabile, default 1 per repo** | Controllo costi e conflitti. Priorità: rientri > pin > confidence > età. I rientri contano nel limite ma saltano la coda. |
 | 16 | **Confidence "cheap" (groundedness, convergenza, critic) già in v1** | Non dipendono dalla memoria, disponibili dal giorno zero — è ciò che distingue v1 da un wrapper. |
+| 17 | **Pricing early access: $29 one-time "founder"** (binari firmati, updates inclusi) | Playbook NestBrain già rodato (Polar merchant of record + upload CI + repo releases privato), zero infra licenze. Benefit license-key di Polar attivo dal giorno 1 per riconoscere i founder quando arriverà il modello definitivo. Il modello a regime (subscription con perpetual fallback? free/paid sul confine dell'aggregazione?) si decide con calma entro la v3. |
 
 ---
 
@@ -344,7 +345,14 @@ giudizio si può mostrare fin da v1.
 
 - **Nome** del prodotto (candidati: Foreman, Warden, Docket, Triage, Sift, Loomer).
 - **Come si impone la licenza** (chiavi firmate verificate in locale vs micro-funzione
-  serverless — comunque *non* un backend pieno).
+  serverless — comunque *non* un backend pieno). Le chiavi Polar del tier founder
+  sono il punto di partenza.
+- **Modello di pricing a regime** (da ripensare entro la v3, quando nasce il moat):
+  subscription con perpetual fallback stile JetBrains/Obsidian vs one-time con major
+  upgrade; dove passa il confine free/paid (candidato: loop GitHub single-agent
+  gratis, aggregazione multi-piattaforma + parallelismo + team a pagamento — nota:
+  implica adapter v3 nei moduli privati, si lega alla decisione sul confine
+  open-core). Niente pricing a consumo: i token sono dell'utente.
 - **Webhook vs polling** per il monitoraggio PR (si parte in polling).
 - **Soglie di confidence**: cosa conta come "alta" (salta il gate) — fisso,
   configurabile, o adattivo sulla storia dell'utente.
