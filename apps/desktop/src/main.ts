@@ -31,6 +31,7 @@ import { SyncManager } from "./sync";
 import { TeamManager } from "./team";
 import { modulesFromLicense } from "./modules";
 import { loadDevModule, type DevModuleApi } from "./dev-module";
+import { registerGitHandlers } from "./git";
 
 // Set once the lazy updater bundle loads; lets team connect/disconnect refresh
 // the update credentials + "via" label immediately.
@@ -587,8 +588,8 @@ function runNestbrainCli(args: string[]): void {
 }
 
 // ====== Dev module (Enterprise add-on) ======
-// Terminal, git and Projects backends live in the private nestbrain-modules
-// repo (open-core). Public source builds have no impl → knowledge core only.
+// Terminal and Projects backends live in the private nestbrain-modules repo
+// (open-core). Public source builds have no impl → those surfaces stay off.
 const devModule: DevModuleApi | null = loadDevModule({
   ipcMain,
   dialog,
@@ -597,6 +598,11 @@ const devModule: DevModuleApi | null = loadDevModule({
   runNestbrainCli,
   hookCliCommand,
 });
+
+// Git is product core (issue #1) — registered unconditionally, in the public
+// tree. Must run AFTER loadDevModule: overlaid builds still ship a git
+// backend, and the overlay keeps winning until the private repo drops it.
+registerGitHandlers(ipcMain);
 
 // === Directory listing (for file tree) ===
 interface FsEntry {

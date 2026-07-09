@@ -26,7 +26,16 @@
   "pnpm": {
     "overrides": {
       "onnxruntime-common": "1.24.3"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild",
+      "node-pty",
+      "onnxruntime-node",
+      "protobufjs",
+      "sharp",
+      "unrs-resolver"
+    ]
   },
   "devDependencies": {
     "@types/node": "^20.19.39",

@@ -34,11 +34,14 @@ export function createProvider(config: {
 }): LLMProviderInterface {
   switch (config.provider) {
     case "claude-cli":
-      // Lazy import to avoid circular deps
+      // Lazy require to avoid circular deps (dynamic import would force the API async)
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       return new (require("./claude-cli").ClaudeCLIProvider)(config.model, config.maxTurns);
     case "openai":
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       return new (require("./openai").OpenAIProvider)(config.model, config.apiKey);
     case "ollama":
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       return new (require("./ollama").OllamaProvider)(config.model);
     default:
       throw new Error(`Unknown provider: ${config.provider}`);

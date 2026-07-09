@@ -119,6 +119,8 @@ export function EditorView() {
   // Load the file
   useEffect(() => {
     if (!filePath) {
+      // Sync guard-branch setState; fine for this legacy surface (retired via #2)
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ kind: "error", code: "noPath" });
       return;
     }

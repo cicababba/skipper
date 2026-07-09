@@ -54,14 +54,6 @@ export default function IngestPage() {
   const router = useRouter();
   const { compile, status: compileStatus } = useCompile();
 
-  useEffect(() => {
-    loadSources();
-    loadAutoCompileSetting();
-    return () => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    };
-  }, []);
-
   async function loadAutoCompileSetting() {
     try {
       const res = await fetch("/api/settings");
@@ -89,6 +81,16 @@ export default function IngestPage() {
       // ignore
     }
   }
+
+  // Below the function declarations: the react-hooks lint rejects calling
+  // them from an effect placed above.
+  useEffect(() => {
+    loadSources();
+    loadAutoCompileSetting();
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   async function handleIngest(e: React.FormEvent) {
     e.preventDefault();

@@ -1,11 +1,19 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
-// Open-core stub — the real git-status cache ships with the Dev module
-// (private nestbrain-modules repo) and replaces this file in official
-// builds. The pure marker helpers stay real so the file tree compiles and
-// simply renders no markers (empty repos map).
+// Live git-status cache (public core — issue #1). The file tree registers
+// every repo top it renders; we poll their status and expose it as a map so
+// rows get per-file markers and the branch chip lights up. Backend is the
+// public git engine in apps/desktop/src/git.ts.
 
 export interface GitFileStatus {
   index: string; // 1 char
@@ -17,6 +25,7 @@ export interface GitRepoStatus {
   ahead: number;
   behind: number;
   files: Record<string, GitFileStatus>;
+  hasUpstream?: boolean;
 }
 
 interface GitStatusState {
@@ -31,8 +40,47 @@ const GitStatusContext = createContext<GitStatusState>({
   refresh: () => {},
 });
 
+const POLL_MS = 10_000;
+
 export function GitStatusProvider({ children }: { children: ReactNode }) {
-  return <>{children}</>;
+  const [repos, setRepos] = useState<Record<string, GitRepoStatus | null>>({});
+  const tracked = useRef<Set<string>>(new Set());
+
+  const fetchOne = useCallback((repoPath: string) => {
+    if (typeof window === "undefined" || !window.nestbrain?.git) return;
+    void window.nestbrain.git.status(repoPath).then((status) => {
+      setRepos((prev) => ({ ...prev, [repoPath]: status }));
+    });
+  }, []);
+
+  const registerRepo = useCallback(
+    (repoPath: string) => {
+      if (tracked.current.has(repoPath)) return;
+      tracked.current.add(repoPath);
+      fetchOne(repoPath);
+    },
+    [fetchOne],
+  );
+
+  const refresh = useCallback(() => {
+    for (const repoPath of tracked.current) fetchOne(repoPath);
+  }, [fetchOne]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.nestbrain?.git) return;
+    const interval = setInterval(refresh, POLL_MS);
+    window.addEventListener("focus", refresh);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [refresh]);
+
+  return (
+    <GitStatusContext.Provider value={{ repos, registerRepo, refresh }}>
+      {children}
+    </GitStatusContext.Provider>
+  );
 }
 
 export function useGitStatus() {
