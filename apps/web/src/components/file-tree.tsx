@@ -1106,7 +1106,8 @@ function TreeNode({
             {name}
           </span>
         </button>
-        {isRepoTop && devModule && (
+        {/* Terminal is public core (#18) — repo terminal shortcut is not module-gated */}
+        {isRepoTop && (
           <button
             onClick={(e) => {
               e.stopPropagation();
