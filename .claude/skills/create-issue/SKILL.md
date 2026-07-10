@@ -31,12 +31,11 @@ From the description, infer:
 **Scope inference signals**:
 - Mentions of `apps/desktop`, "Electron", "main process", "preload", "IPC", "tray", "PTY", "node-pty", "packaging", "installer", "auth flow", "keychain" → `desktop`
 - Mentions of `apps/web`, "UI", "component", "editor", "CodeMirror", "xterm", "file tree", "Next.js", "React", "Tailwind" → `web`
-- Mentions of `packages/core`, "compiler", "ingest", "LLM provider", "Q&A", "search", "vectorstore", "embeddings pipeline" → `core`
+- Mentions of `packages/core`, "LLM provider", "vectorstore", "embeddings", "knowledge atoms" → `core`
 - Mentions of `packages/cli`, "nestbrain command", "commander", CLI flags/output → `cli`
-- Mentions of `packages/db`, "Chroma", "chromadb" → `db`
 - Mentions of `packages/shared`, shared types, constants, OAuth client constants → `shared`
 - Mentions of `packages/sync`, "Drive sync", "watcher", "manifest", "chokidar" → `sync`
-- Mentions of CI/CD, GitHub Actions, `release.yml`, docker, build scripts, electron-builder config, repo tooling → `infra`
+- Mentions of CI/CD, GitHub Actions, `release.yml`, build scripts, electron-builder config, repo tooling → `infra`
 - An umbrella issue meant to be broken into per-package sub-issues → `epic`
 
 If the work genuinely spans 2+ scopes and splitting feels artificial → comma-list, e.g. `core,shared`. Default to splitting when feasible.
