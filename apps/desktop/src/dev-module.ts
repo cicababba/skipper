@@ -1,6 +1,6 @@
 import type { BrowserWindow, Dialog, IpcMain } from "electron";
 
-// Open-core seam for the Dev module (terminal + Projects backends).
+// Open-core seam for the Dev module (Projects backend).
 //
 // The implementation lives in the PRIVATE nestbrain-modules repo and is
 // copied into ./dev-impl/ only for official builds (CI overlay) or local dev
@@ -9,9 +9,10 @@ import type { BrowserWindow, Dialog, IpcMain } from "electron";
 // knowledge core: no impl → no IPC backends → `builtInModules()` reports
 // none and the renderer never shows the Dev surfaces.
 //
-// Git is NOT behind this seam anymore (issue #1): the git backend is product
-// core and lives in ./git.ts. Overlaid builds may still carry the module's
-// git handlers — registerGitHandlers defers to them channel-by-channel.
+// Git (#1) and terminal (#18) are NOT behind this seam anymore: they are
+// product core and live in ./git.ts and ./terminal.ts. Overlaid builds may
+// still carry the module's handlers — the public engines defer to them
+// channel-by-channel.
 
 export interface DevModuleDeps {
   ipcMain: IpcMain;

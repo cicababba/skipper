@@ -32,6 +32,7 @@ import { TeamManager } from "./team";
 import { modulesFromLicense } from "./modules";
 import { loadDevModule, type DevModuleApi } from "./dev-module";
 import { registerGitHandlers } from "./git";
+import { registerTerminalHandlers, type TerminalApi } from "./terminal";
 
 // Set once the lazy updater bundle loads; lets team connect/disconnect refresh
 // the update credentials + "via" label immediately.
@@ -117,7 +118,8 @@ function fixWinPath(): void {
 fixWinPath();
 
 const isDev = !!process.env.NESTBRAIN_DEV;
-const DEV_URL = "http://localhost:3000";
+// Overridable for when :3000 is taken by something else on the dev machine.
+const DEV_URL = process.env.NESTBRAIN_DEV_URL || "http://localhost:3000";
 
 // Must be set before app is ready so the menu bar shows "NestBrain" not "Electron"
 app.setName("NestBrain");
@@ -588,8 +590,8 @@ function runNestbrainCli(args: string[]): void {
 }
 
 // ====== Dev module (Enterprise add-on) ======
-// Terminal and Projects backends live in the private nestbrain-modules repo
-// (open-core). Public source builds have no impl → those surfaces stay off.
+// The Projects backend lives in the private nestbrain-modules repo
+// (open-core). Public source builds have no impl → that surface stays off.
 const devModule: DevModuleApi | null = loadDevModule({
   ipcMain,
   dialog,
@@ -599,10 +601,21 @@ const devModule: DevModuleApi | null = loadDevModule({
   hookCliCommand,
 });
 
-// Git is product core (issue #1) — registered unconditionally, in the public
-// tree. Must run AFTER loadDevModule: overlaid builds still ship a git
-// backend, and the overlay keeps winning until the private repo drops it.
+// Git and terminal are product core (#1, #18) — registered unconditionally,
+// in the public tree. Must run AFTER loadDevModule: overlaid builds still
+// ship their backends, and the overlay keeps winning until the private repo
+// drops them.
 registerGitHandlers(ipcMain);
+const publicTerminal: TerminalApi = registerTerminalHandlers({
+  ipcMain,
+  getMainWindow: () => mainWindow,
+});
+
+// Both backends may hold live pty children during the transition; kill both.
+function killAllPtySessions(): void {
+  devModule?.killAllPtySessions();
+  publicTerminal.killAllPtySessions();
+}
 
 // === Directory listing (for file tree) ===
 interface FsEntry {
@@ -1111,7 +1124,7 @@ ipcMain.handle(
     // handles, open file handles, env vars). In dev the Next server is
     // external (next dev), so we skip the kill+restart dance — the user
     // will need to restart `pnpm --filter @nestbrain/web dev` manually.
-    devModule?.killAllPtySessions();
+    killAllPtySessions();
     stopNestBrainWatcher();
     if (!isDev) await killNextServer();
 
@@ -1624,7 +1637,7 @@ app.whenReady().then(async () => {
           // (conhost children) and the Next utilityProcess (a second
           // NestBrain.exe that blocks the NSIS file replacement on Windows).
           await disposeWatchersForQuit();
-          devModule?.killAllPtySessions();
+          killAllPtySessions();
           await killNextServer();
         },
         getUpdateCredentials,
@@ -1672,7 +1685,7 @@ app.on("before-quit", () => {
   killNextServer();
   // Live node-pty children (integrated terminals) keep the process alive past
   // app.quit() — the classic "window gone, app still in the dock" zombie.
-  devModule?.killAllPtySessions();
+  killAllPtySessions();
   armQuitFailsafe();
 });
 
