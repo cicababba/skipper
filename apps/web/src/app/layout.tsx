@@ -4,7 +4,6 @@ import { Sidebar } from "@/components/sidebar";
 import { TerminalPanel } from "@/components/terminal-panel";
 import { StatusBar } from "@/components/status-bar";
 import { Topbar } from "@/components/topbar";
-import { CompileProvider } from "@/lib/compile-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import { TerminalProvider } from "@/lib/terminal-context";
 import { AuthProvider } from "@/lib/auth-context";
@@ -48,7 +47,6 @@ export default function RootLayout({
          <AppLangProvider>
          <ModulesProvider>
           <AuthProvider>
-            <CompileProvider>
               <TerminalProvider>
                 <GitStatusProvider>
                  <EditorTabsProvider>
@@ -68,7 +66,6 @@ export default function RootLayout({
                  </EditorTabsProvider>
                 </GitStatusProvider>
               </TerminalProvider>
-            </CompileProvider>
           </AuthProvider>
          </ModulesProvider>
          </AppLangProvider>

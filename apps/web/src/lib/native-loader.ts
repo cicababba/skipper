@@ -8,13 +8,8 @@
 // Required for:
 //   - @huggingface/transformers: .mjs entry has an ESM↔CJS interop issue
 //     with onnxruntime-common; .cjs entry works via require().
-//   - pdf-parse: pdfjs-dist's ESM entry crashes on missing DOMMatrix globals;
-//     .cjs entry works via require().
 import { createRequire } from "node:module";
-import {
-  registerTransformersLoader,
-  registerPdfParseLoader,
-} from "@nestbrain/core";
+import { registerTransformersLoader } from "@nestbrain/core";
 
 const nodeRequire = createRequire(import.meta.url);
 
@@ -38,17 +33,10 @@ const loadTransformers: () => any = () => {
   return t;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const loadPdfParse: () => any = new Function(
-  "req",
-  "return function(){return req('pdf' + '-parse');}",
-)(nodeRequire);
-
 let registered = false;
 
 export function ensureNativeLoadersRegistered(): void {
   if (registered) return;
   registered = true;
   registerTransformersLoader(loadTransformers);
-  registerPdfParseLoader(loadPdfParse);
 }

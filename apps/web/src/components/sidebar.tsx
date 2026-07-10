@@ -4,12 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  BookOpen,
-  Search,
-  MessageCircle,
-  Download,
-  Network,
-  Activity,
   Lightbulb,
   Settings,
   Sun,
@@ -19,7 +13,6 @@ import {
   Boxes,
   Trash2,
 } from "lucide-react";
-import { CompileIndicator } from "./compile-indicator";
 import { FileTree } from "./file-tree";
 import { NewProjectModal } from "./new-project-modal";
 import { BranchIndicator } from "./branch-indicator";
@@ -30,13 +23,7 @@ import { useTerminal } from "@/lib/terminal-context";
 import { moduleSettings } from "@/lib/module-settings";
 
 const navItems = [
-  { href: "/wiki", icon: BookOpen, key: "wiki" as const },
-  { href: "/mindmap", icon: Network, key: "mindMap" as const },
-  { href: "/search", icon: Search, key: "search" as const },
-  { href: "/ask", icon: MessageCircle, key: "ask" as const },
-  { href: "/ingest", icon: Download, key: "ingest" as const },
   { href: "/knowledge", icon: Lightbulb, key: "knowledge" as const },
-  { href: "/health", icon: Activity, key: "health" as const },
   { href: "/settings", icon: Settings, key: "settings" as const },
 ];
 
@@ -154,15 +141,9 @@ export function Sidebar() {
     document.addEventListener("mouseup", onMouseUp);
   }, [width]);
 
-  const { theme, toggle } = useTheme();
-
-  // Poll knowledge counts so the sidebar shows two badges:
-  // - blue (accent): atoms awaiting review
-  // - green: accepted atoms waiting for the next compile
-  // Both hide when zero. The endpoint reads two small dirs + a JSON file, so
-  // a 10s cadence is cheap.
+  // Poll knowledge counts so the sidebar shows a badge with the atoms
+  // awaiting review (hidden when zero).
   const [pendingCount, setPendingCount] = useState(0);
-  const [acceptedUncompiled, setAcceptedUncompiled] = useState(0);
   useEffect(() => {
     let cancelled = false;
     const fetchCounts = async () => {
@@ -172,7 +153,6 @@ export function Sidebar() {
         const data = await res.json();
         if (cancelled) return;
         setPendingCount(data.pending ?? 0);
-        setAcceptedUncompiled(data.acceptedUncompiled ?? 0);
       } catch {
         /* ignore — endpoint may not be wired yet */
       }
@@ -218,9 +198,6 @@ export function Sidebar() {
           />
         )}
 
-        {/* Compile indicator */}
-        <CompileIndicator />
-
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-0.5 overflow-auto">
           {[
@@ -261,14 +238,6 @@ export function Sidebar() {
                     title={`${pendingCount} atom${pendingCount === 1 ? "" : "s"} awaiting review`}
                   >
                     {pendingCount}
-                  </span>
-                )}
-                {isKnowledge && acceptedUncompiled > 0 && (
-                  <span
-                    className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300"
-                    title={`${acceptedUncompiled} accepted atom${acceptedUncompiled === 1 ? "" : "s"} waiting for next compile`}
-                  >
-                    {acceptedUncompiled}
                   </span>
                 )}
               </Link>

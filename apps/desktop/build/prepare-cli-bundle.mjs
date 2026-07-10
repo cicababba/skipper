@@ -3,7 +3,7 @@
 // the desktop app. We place the actual bundle INSIDE the Next.js standalone
 // (next to apps/web/server.js) because that tree already has every runtime
 // dep we externalized (@huggingface/transformers, onnxruntime-node,
-// pdf-parse, pdfjs-dist) symlink-dereferenced. The shell/bat wrappers in
+// symlink-dereferenced. The shell/bat wrappers in
 // apps/desktop/build/cli/ resolve to it via a relative path that survives
 // the .app moving around the filesystem.
 

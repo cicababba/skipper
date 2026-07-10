@@ -14,4 +14,3 @@ export {
 export type { QueuePaths, PendingEntry } from "./queue";
 export { installHook, uninstallHook, getHookStatus } from "./hook";
 export type { InstallHookOptions, HookStatus } from "./hook";
-export { countAcceptedUncompiled } from "./compile-status";

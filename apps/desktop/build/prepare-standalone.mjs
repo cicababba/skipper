@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // After `next build` with output: standalone, Next.js traces imports and
 // copies only the files it detected. For native-binding packages (e.g.
-// onnxruntime-node, pdfjs-dist, sharp, pdf-parse) this misses sibling assets
+// onnxruntime-node, sharp) this misses sibling assets
 // like .dylib, .so, worker files, etc. We fix two things:
 //
 // 1) Create top-level symlinks in standalone/node_modules/<pkg> → real pnpm
@@ -47,8 +47,6 @@ if (!existsSync(STANDALONE_ROOT)) {
 
 // Top-level packages we want resolvable by Node require from standalone
 const TOP_LEVEL_PACKAGES = [
-  "pdf-parse",
-  "pdfjs-dist",
   "@huggingface/transformers",
   "onnxruntime-node",
   "onnxruntime-common",
@@ -66,10 +64,8 @@ if (existsSync(STANDALONE_STORE)) {
     if (
       entry.startsWith("onnxruntime-node@") ||
       entry.startsWith("onnxruntime-web@") ||
-      entry.startsWith("pdfjs-dist@") ||
       entry.startsWith("sharp@") ||
-      entry.startsWith("@img+sharp-") ||
-      entry.startsWith("pdf-parse@")
+      entry.startsWith("@img+sharp-")
     ) {
       // Determine the actual package name inside .pnpm/<entry>/node_modules/
       const nmDir = join(STANDALONE_STORE, entry, "node_modules");
@@ -276,7 +272,6 @@ for (const pkg of TOP_LEVEL_PACKAGES) {
 const EXTRA_STORE_PREFIXES = [
   "@img+sharp-",
   "@img+sharp-libvips-",
-  "@napi-rs+canvas-",  // platform-specific .node binary for pdf-parse's canvas polyfill
 ];
 if (existsSync(REAL_STORE)) {
   for (const entry of readdirSync(REAL_STORE)) {
@@ -387,18 +382,6 @@ const PRUNE_PATHS = [
   "@huggingface/transformers/src",
   "@huggingface/transformers/types",
   "@huggingface/transformers/README.md",
-
-  // pdfjs-dist: pdf-parse uses `pdfjs-dist/legacy/build/pdf.mjs`, so the
-  // legacy/ tree must stay. Drop the modern build, the viewer UI, and types.
-  "pdfjs-dist/build",
-  "pdfjs-dist/web",
-  "pdfjs-dist/types",
-
-  // pdf-parse: main is `dist/pdf-parse/cjs/index.cjs`. We access pdf-parse
-  // via `require('pdf-parse')` from native-loader, so only cjs/ is needed.
-  // Drop the esm/ and web/ variants.
-  "pdf-parse/dist/pdf-parse/esm",
-  "pdf-parse/dist/pdf-parse/web",
 ];
 
 let prunedBytes = 0;

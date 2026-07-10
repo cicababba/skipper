@@ -6,7 +6,6 @@ import {
   ChevronRight,
   Folder,
   FolderOpen,
-  FileText,
   Plus,
   FilePlus,
   FolderPlus,
