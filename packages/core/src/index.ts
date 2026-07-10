@@ -34,6 +34,17 @@ export {
   getHookStatus,
 } from "./knowledge";
 
+// GitHub adapter
+export { pollGitHubAccount, GitHubApiError, GitHubAuthError, emptyGitHubCursor } from "./github";
+export type {
+  GitHubTokenProvider,
+  GitHubEndpointCursor,
+  GitHubAccountCursor,
+  GitHubRateLimit,
+  GitHubPollOptions,
+  GitHubPollResult,
+} from "./github";
+
 // Runtime loader that must be registered by the consumer app.
 // The app uses createRequire + /* turbopackIgnore */ to load the package
 // without Turbopack touching it (Turbopack's bundled externals break on
