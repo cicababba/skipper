@@ -11,6 +11,7 @@
     "dereference-workspace-deps": "node build/dereference-workspace-deps.mjs",
     "build:ts": "pnpm ensure-oauth-config && pnpm ensure-update-config && tsc -p tsconfig.json && pnpm bundle-updater",
     "build": "pnpm build:ts",
+    "test": "vitest run --passWithNoTests",
     "dev": "pnpm build:ts && NESTBRAIN_DEV=1 electron .",
     "start": "electron .",
     "package": "pnpm dereference-workspace-deps && electron-builder",

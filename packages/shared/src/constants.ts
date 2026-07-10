@@ -32,3 +32,21 @@ export const GOOGLE_OAUTH_ENDPOINTS = {
   // Identity-only: sign-in proves the email for the supporter entitlement.
   scopes: ["openid", "email", "profile"],
 } as const;
+
+// ============================================================
+// GitHub OAuth (GitHub App, user-to-server flow)
+// ============================================================
+//
+// GitHub Apps don't support PKCE and don't take a `scope` param (permissions
+// live on the App itself). Callback URLs must match exactly, so the loopback
+// server binds one of the fixed ports below — all of them must be registered
+// on the GitHub App as http://127.0.0.1:<port>/callback.
+
+export const GITHUB_OAUTH_ENDPOINTS = {
+  authEndpoint: "https://github.com/login/oauth/authorize",
+  tokenEndpoint: "https://github.com/login/oauth/access_token",
+  userEndpoint: "https://api.github.com/user",
+  emailsEndpoint: "https://api.github.com/user/emails",
+  grantEndpointBase: "https://api.github.com/applications",
+  redirectPorts: [8127, 8128, 8129],
+} as const;

@@ -1,28 +1,26 @@
 // Make sure `apps/desktop/src/auth/oauth-config.ts` exists with the right
-// credentials before the TS compiler runs.
+// credentials (one CLIENT_ID/SECRET pair per provider) before the TS
+// compiler runs.
 //
-// Four modes, in priority order:
+// Sources, merged per provider in priority order:
 //
 //   1. Env vars NESTBRAIN_GOOGLE_CLIENT_ID + NESTBRAIN_GOOGLE_CLIENT_SECRET
-//      are set → write a fresh oauth-config.ts with those values. This is
-//      the CI / release-build path: GitHub Actions exports the secrets
-//      before `pnpm desktop:build` runs, and the resulting DMG/exe carries
-//      Mike's real OAuth client.
+//      and/or NESTBRAIN_GITHUB_CLIENT_ID + NESTBRAIN_GITHUB_CLIENT_SECRET.
+//      This is the CI / release-build path: GitHub Actions exports the
+//      secrets before `pnpm desktop:build` runs.
 //
-//   2. `apps/desktop/.env.local` exists and defines those vars → load them
-//      and treat as mode 1. This is the local-dev path that lets Mike (or a
-//      fork user) test the full sync flow without hand-editing TS sources or
-//      exporting env vars on every shell. The .env.local file is gitignored.
+//   2. `apps/desktop/.env.local` defining the same vars — the local-dev path
+//      that avoids hand-editing TS sources. The file is gitignored.
 //
-//   3. oauth-config.ts already exists on disk → leave it alone. The user
-//      hand-edited it with their own credentials and we mustn't clobber it.
+//   3. Values already present in oauth-config.ts on disk. A legacy file with
+//      the old OAUTH_CLIENT_ID/OAUTH_CLIENT_SECRET consts is recognized and
+//      its values are carried over as the Google pair (the file gets
+//      rewritten in the new four-const shape or the build would not compile).
 //
-//   4. None of the above → copy oauth-config.example.ts to oauth-config.ts so
-//      the TS compile doesn't blow up. The resulting build runs, but sign-in
-//      fails at runtime with a Google "invalid_client" until real credentials
-//      are wired in.
+//   4. Placeholders from oauth-config.example.ts. A provider left on its
+//      placeholder shows as "unconfigured" at runtime; the others still work.
 
-import { existsSync, copyFileSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,21 +29,12 @@ const example = join(__dirname, "../src/auth/oauth-config.example.ts");
 const target = join(__dirname, "../src/auth/oauth-config.ts");
 const envLocal = join(__dirname, "../.env.local");
 
-let idFromEnv = process.env.NESTBRAIN_GOOGLE_CLIENT_ID;
-let secretFromEnv = process.env.NESTBRAIN_GOOGLE_CLIENT_SECRET;
-
-// Fall back to apps/desktop/.env.local — minimal KEY=VALUE parser, no quoting
-// rules beyond stripping optional surrounding single/double quotes. We don't
-// pull in dotenv because this script runs on a fresh `pnpm install` before
-// dev deps are guaranteed to be present.
-if ((!idFromEnv || !secretFromEnv) && existsSync(envLocal)) {
-  const fileVars = parseEnvFile(readFileSync(envLocal, "utf-8"));
-  idFromEnv = idFromEnv || fileVars.NESTBRAIN_GOOGLE_CLIENT_ID;
-  secretFromEnv = secretFromEnv || fileVars.NESTBRAIN_GOOGLE_CLIENT_SECRET;
-  if (idFromEnv && secretFromEnv) {
-    console.log("[oauth] loaded credentials from apps/desktop/.env.local");
-  }
-}
+const PLACEHOLDERS = {
+  GOOGLE_OAUTH_CLIENT_ID: "YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+  GOOGLE_OAUTH_CLIENT_SECRET: "GOCSPX-YOUR_SECRET_HERE",
+  GITHUB_OAUTH_CLIENT_ID: "YOUR_GITHUB_APP_CLIENT_ID",
+  GITHUB_OAUTH_CLIENT_SECRET: "YOUR_GITHUB_APP_CLIENT_SECRET",
+};
 
 function parseEnvFile(text) {
   const out = {};
@@ -67,27 +56,41 @@ function parseEnvFile(text) {
   return out;
 }
 
-if (idFromEnv && secretFromEnv) {
-  // Defensive escaping for the (extremely unlikely) case the env var contains
-  // a quote or backslash. Lets the script be safe even if someone pastes a
-  // weird value into the GitHub secret.
-  const escape = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  const contents = [
-    "// Google OAuth client credentials — written by build/ensure-oauth-config.mjs.",
-    "// Source of truth in CI: NESTBRAIN_GOOGLE_CLIENT_ID / NESTBRAIN_GOOGLE_CLIENT_SECRET",
-    "// env vars (set from GitHub Actions secrets). DO NOT commit this file.",
-    "",
-    `export const OAUTH_CLIENT_ID = "${escape(idFromEnv)}";`,
-    `export const OAUTH_CLIENT_SECRET = "${escape(secretFromEnv)}";`,
-    "",
-  ].join("\n");
-  writeFileSync(target, contents, "utf-8");
-  console.log("[oauth] wrote oauth-config.ts from env vars (NESTBRAIN_GOOGLE_CLIENT_ID / *_SECRET).");
-  process.exit(0);
+// Minimal KEY=VALUE parser instead of dotenv: this script runs on a fresh
+// `pnpm install` before dev deps are guaranteed to be present.
+const fileVars = existsSync(envLocal) ? parseEnvFile(readFileSync(envLocal, "utf-8")) : {};
+const envVar = (name) => process.env[name] || fileVars[name];
+
+// A pair only counts when both halves are present.
+function envPair(provider) {
+  const id = envVar(`NESTBRAIN_${provider}_CLIENT_ID`);
+  const secret = envVar(`NESTBRAIN_${provider}_CLIENT_SECRET`);
+  return id && secret ? { id, secret } : null;
 }
 
-if (existsSync(target)) {
-  // Local dev path — file is already set up, leave it alone.
+// Values already on disk — new four-const shape, or the legacy two-const
+// Google-only shape (OAUTH_CLIENT_ID / OAUTH_CLIENT_SECRET).
+function existingPair(source, idConst, secretConst, legacyIdConst, legacySecretConst) {
+  const grab = (name) => source.match(new RegExp(`export const ${name} = "((?:[^"\\\\]|\\\\.)*)";`))?.[1];
+  const id = grab(idConst) ?? (legacyIdConst ? grab(legacyIdConst) : undefined);
+  const secret = grab(secretConst) ?? (legacySecretConst ? grab(legacySecretConst) : undefined);
+  return id && secret ? { id, secret } : null;
+}
+
+const existing = existsSync(target) ? readFileSync(target, "utf-8") : "";
+const hasNewShape = existing.includes("GITHUB_OAUTH_CLIENT_ID");
+
+const google =
+  envPair("GOOGLE") ??
+  existingPair(existing, "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "OAUTH_CLIENT_ID", "OAUTH_CLIENT_SECRET") ??
+  { id: PLACEHOLDERS.GOOGLE_OAUTH_CLIENT_ID, secret: PLACEHOLDERS.GOOGLE_OAUTH_CLIENT_SECRET };
+const github =
+  envPair("GITHUB") ??
+  existingPair(existing, "GITHUB_OAUTH_CLIENT_ID", "GITHUB_OAUTH_CLIENT_SECRET") ??
+  { id: PLACEHOLDERS.GITHUB_OAUTH_CLIENT_ID, secret: PLACEHOLDERS.GITHUB_OAUTH_CLIENT_SECRET };
+
+// Nothing to change: file already in the new shape and no env override.
+if (hasNewShape && !envPair("GOOGLE") && !envPair("GITHUB")) {
   process.exit(0);
 }
 
@@ -95,7 +98,27 @@ if (!existsSync(example)) {
   console.error(`[oauth] expected template at ${example} — aborting.`);
   process.exit(1);
 }
-copyFileSync(example, target);
-console.log(
-  `[oauth] created ${target} from template. Sign-in will fail at runtime until you provide real credentials (edit the file or set NESTBRAIN_GOOGLE_CLIENT_ID + NESTBRAIN_GOOGLE_CLIENT_SECRET).`,
-);
+
+// Defensive escaping for the (extremely unlikely) case a value contains a
+// quote or backslash — keeps the script safe even for weird pasted secrets.
+const escape = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+const contents = [
+  "// OAuth client credentials — written by build/ensure-oauth-config.mjs.",
+  "// Sources: NESTBRAIN_GOOGLE_CLIENT_ID / NESTBRAIN_GITHUB_CLIENT_ID (+ *_SECRET)",
+  "// env vars or apps/desktop/.env.local, else values carried over from the",
+  "// previous oauth-config.ts, else placeholders. DO NOT commit this file.",
+  "",
+  `export const GOOGLE_OAUTH_CLIENT_ID = "${escape(google.id)}";`,
+  `export const GOOGLE_OAUTH_CLIENT_SECRET = "${escape(google.secret)}";`,
+  "",
+  `export const GITHUB_OAUTH_CLIENT_ID = "${escape(github.id)}";`,
+  `export const GITHUB_OAUTH_CLIENT_SECRET = "${escape(github.secret)}";`,
+  "",
+].join("\n");
+writeFileSync(target, contents, "utf-8");
+
+const describe = (pair, name) =>
+  pair.id.startsWith("YOUR_") || pair.secret.startsWith("YOUR_") || pair.secret.startsWith("GOCSPX-YOUR")
+    ? `${name}: placeholder (sign-in unconfigured)`
+    : `${name}: configured`;
+console.log(`[oauth] wrote oauth-config.ts — ${describe(google, "google")}, ${describe(github, "github")}.`);

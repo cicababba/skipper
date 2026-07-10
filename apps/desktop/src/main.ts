@@ -9,6 +9,7 @@ import {
   UtilityProcess,
   powerMonitor,
   powerSaveBlocker,
+  safeStorage,
 } from "electron";
 import { createServer } from "node:net";
 import { join, dirname, resolve, sep, basename } from "node:path";
@@ -27,6 +28,7 @@ import {
 } from "node:fs";
 import { execFileSync, execSync, spawn } from "node:child_process";
 import { AuthManager } from "./auth";
+import type { AuthState } from "@nestbrain/shared";
 import { enabledModules } from "./modules";
 import { loadDevModule, type DevModuleApi } from "./dev-module";
 import { registerGitHandlers } from "./git";
@@ -121,6 +123,14 @@ const DEV_URL = process.env.NESTBRAIN_DEV_URL || "http://localhost:3000";
 
 // Must be set before app is ready so the menu bar shows "NestBrain" not "Electron"
 app.setName("NestBrain");
+
+// Dev-only: Linux boxes without a Secret Service (e.g. WSL) have no
+// safeStorage backend, so token persistence is refused and every restart
+// logs the account out. The "basic" store is weak obfuscation — acceptable
+// for dev credentials, never enabled in packaged builds.
+if (isDev && process.platform === "linux") {
+  app.commandLine.appendSwitch("password-store", "basic");
+}
 
 // Black-window-after-unfocus fix, part 1 (must run before app is ready).
 // When the window is occluded/unfocused for a while, Chromium backgrounds the
@@ -458,6 +468,17 @@ function createWindow(): void {
     shell.openExternal(url);
     return { action: "deny" };
   });
+
+  // Windows/Linux run without an application menu, so no devtools
+  // accelerator exists — wire one up in dev builds.
+  if (isDev) {
+    mainWindow.webContents.on("before-input-event", (_e, input) => {
+      const ctrlShiftI = input.control && input.shift && input.key.toLowerCase() === "i";
+      if (input.type === "keyDown" && (input.key === "F12" || ctrlShiftI)) {
+        mainWindow?.webContents.toggleDevTools();
+      }
+    });
+  }
 
   // Auto-recover instead of leaving a black window the user must force-restart:
   // a renderer crash / OOM, or an unresponsive page, reloads in place.
@@ -1171,24 +1192,26 @@ ipcMain.handle(
   },
 );
 
-// === Auth (Google OAuth) ===
-ipcMain.handle("nestbrain:auth:getState", () => {
-  return authManager?.getState() ?? { status: "signed-out" };
+// === Auth (multi-provider OAuth) ===
+ipcMain.handle("nestbrain:auth:getState", (): AuthState => {
+  return authManager?.getState() ?? { accounts: [], active: {}, flows: {} };
 });
 
-ipcMain.handle("nestbrain:auth:signIn", async () => {
-  if (!authManager) throw new Error("Auth not initialized");
-  await authManager.signIn();
-});
+for (const provider of ["google", "github"] as const) {
+  ipcMain.handle(`nestbrain:auth:${provider}:signIn`, async () => {
+    if (!authManager) throw new Error("Auth not initialized");
+    await authManager.signIn(provider);
+  });
 
-ipcMain.handle("nestbrain:auth:signOut", async () => {
-  if (!authManager) throw new Error("Auth not initialized");
-  await authManager.signOut();
-});
+  ipcMain.handle(`nestbrain:auth:${provider}:signOut`, async (_e, accountId?: string) => {
+    if (!authManager) throw new Error("Auth not initialized");
+    await authManager.signOut(provider, accountId);
+  });
 
-ipcMain.handle("nestbrain:auth:cancelSignIn", () => {
-  authManager?.cancelSignIn();
-});
+  ipcMain.handle(`nestbrain:auth:${provider}:cancelSignIn`, () => {
+    authManager?.cancelSignIn(provider);
+  });
+}
 
 // ====== Modules (add-ons) ======
 // Enabled = built into this binary. License-based entitlement will return
@@ -1464,6 +1487,12 @@ app.whenReady().then(async () => {
   // Auth manager: load any persisted session and start broadcasting state
   // changes to the renderer. safeStorage requires app.ready, so this must
   // happen here and not at module scope.
+  // Dev-only companion to the password-store=basic switch above: Electron
+  // reports the basic_text backend as unavailable unless plain-text use is
+  // opted into explicitly.
+  if (isDev && process.platform === "linux") {
+    safeStorage.setUsePlainTextEncryption(true);
+  }
   authManager = new AuthManager();
   authManager.onChange((state) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
