@@ -8,7 +8,6 @@ import { CompileProvider } from "@/lib/compile-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import { TerminalProvider } from "@/lib/terminal-context";
 import { AuthProvider } from "@/lib/auth-context";
-import { SyncProvider } from "@/lib/sync-context";
 import { GitStatusProvider } from "@/lib/git-status-context";
 import { EditorTabsProvider } from "@/lib/editor-tabs-context";
 import { OnboardingGate } from "@/lib/onboarding-gate";
@@ -49,7 +48,6 @@ export default function RootLayout({
          <AppLangProvider>
          <ModulesProvider>
           <AuthProvider>
-           <SyncProvider>
             <CompileProvider>
               <TerminalProvider>
                 <GitStatusProvider>
@@ -71,7 +69,6 @@ export default function RootLayout({
                 </GitStatusProvider>
               </TerminalProvider>
             </CompileProvider>
-           </SyncProvider>
           </AuthProvider>
          </ModulesProvider>
          </AppLangProvider>

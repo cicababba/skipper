@@ -27,7 +27,6 @@ import {
 } from "node:fs";
 import { execFileSync, execSync, spawn } from "node:child_process";
 import { AuthManager } from "./auth";
-import { SyncManager } from "./sync";
 import { enabledModules } from "./modules";
 import { loadDevModule, type DevModuleApi } from "./dev-module";
 import { registerGitHandlers } from "./git";
@@ -159,7 +158,6 @@ let serverUrl: string | null = null;
 let currentPort: number | null = null;
 let lastServerOutput = "";
 let authManager: AuthManager | null = null;
-let syncManager: SyncManager | null = null;
 
 // Core workspace dirs — created for every install. Projects/ belongs to the
 // Dev module (created lazily when the module is entitled) and isn't
@@ -1192,37 +1190,6 @@ ipcMain.handle("nestbrain:auth:cancelSignIn", () => {
   authManager?.cancelSignIn();
 });
 
-// === Sync ===
-ipcMain.handle("nestbrain:sync:getState", () => {
-  return syncManager?.getState() ?? null;
-});
-
-ipcMain.handle("nestbrain:sync:setPreferences", async (_e, prefs) => {
-  if (!syncManager) throw new Error("Sync not initialized");
-  await syncManager.setPreferences(prefs);
-});
-
-ipcMain.handle("nestbrain:sync:syncNow", async () => {
-  if (!syncManager) throw new Error("Sync not initialized");
-  await syncManager.syncNow();
-});
-
-ipcMain.handle("nestbrain:sync:cancel", () => {
-  syncManager?.cancel();
-});
-
-ipcMain.handle("nestbrain:sync:softDelete", async (_e, relPath: string) => {
-  if (!syncManager) throw new Error("Sync not initialized");
-  if (typeof relPath !== "string" || relPath === "") throw new Error("Invalid path");
-  await syncManager.softDelete(relPath);
-});
-
-ipcMain.handle("nestbrain:sync:hardDelete", async (_e, relPath: string) => {
-  if (!syncManager) throw new Error("Sync not initialized");
-  if (typeof relPath !== "string" || relPath === "") throw new Error("Invalid path");
-  await syncManager.hardDelete(relPath);
-});
-
 // ====== Modules (add-ons) ======
 // Enabled = built into this binary. License-based entitlement will return
 // with the pivot's licensing model (Polar keys); until then the build is
@@ -1509,23 +1476,6 @@ app.whenReady().then(async () => {
   });
   await authManager.init();
 
-  // Sync manager depends on auth + a workspace path. It subscribes to auth
-  // changes internally and recomputes its status (signed-in + enabled = idle;
-  // anything else = disabled).
-  syncManager = new SyncManager({
-    authManager,
-    getWorkspacePath: () => {
-      const b = readBootstrap();
-      return b.nestBrainPath ?? null;
-    },
-  });
-  syncManager.onChange((state) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("nestbrain:sync:stateChanged", state);
-    }
-  });
-  await syncManager.init();
-
   try {
     if (!isDev) {
       serverUrl = await startNextServer();
@@ -1548,10 +1498,10 @@ app.whenReady().then(async () => {
         () => mainWindow,
         async () => {
           // Everything that could hold the install hostage dies BEFORE
-          // quitAndInstall: drive watchers (deferred-quit dance), pty shells
-          // (conhost children) and the Next utilityProcess (a second
-          // NestBrain.exe that blocks the NSIS file replacement on Windows).
-          await disposeWatchersForQuit();
+          // quitAndInstall: pty shells (conhost children) and the Next
+          // utilityProcess (a second NestBrain.exe that blocks the NSIS
+          // file replacement on Windows).
+          shuttingDown = true;
           killAllPtySessions();
           await killNextServer();
         },
@@ -1643,45 +1593,6 @@ function armQuitFailsafe(): void {
   }, 2500);
 }
 
-// The sync manager owns chokidar watchers whose macOS fsevents backend
-// must be closed BEFORE Node tears down, or it fires into a freed N-API
-// threadsafe function and aborts (SIGABRT) on quit. Defer the quit once while we
-// await their disposal. Cross-platform safe (a no-op cost on Windows/Linux).
-let watchersDisposed = false;
-
-/**
- * Close the chokidar watchers before the process exits (fsevents aborts if
- * torn down after Node starts dying — see 1.7.5). Bounded by a short timeout: a
- * hung chokidar close() must never leave the app alive-but-windowless in the
- * dock. Idempotent so the updater can run it ahead of quitAndInstall.
- */
-async function disposeWatchersForQuit(killOnTimeout = false): Promise<void> {
-  if (watchersDisposed) return;
-  shuttingDown = true;
-  const clean = await Promise.race([
-    Promise.allSettled([syncManager?.dispose()]).then(() => true),
-    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1500)),
-  ]);
-  watchersDisposed = true;
-  if (!clean && killOnTimeout) {
-    // A wedged fsevents handle abort()s during native teardown no matter how
-    // we exit "gracefully" — the user would see a crash report for a plain
-    // quit. Skip teardown entirely. The updater path passes false here: it
-    // must reach quitAndInstall (which stages the installer) first, and the
-    // armQuitFailsafe SIGKILL covers it afterwards.
-    console.warn("[quit] watcher close timed out — SIGKILL to avoid the fsevents abort");
-    process.kill(process.pid, "SIGKILL");
-  }
-}
-
-app.on("will-quit", (event) => {
-  if (watchersDisposed) return;
-  // Deferring the quit breaks Squirrel's quitAndInstall flow, so the updater
-  // path disposes BEFORE quitting (see updater.cjs prepareQuit); this handler
-  // only covers ordinary quits (Cmd+Q, menu).
-  event.preventDefault();
-  void disposeWatchersForQuit(true).finally(() => app.quit());
-});
 
 // If the GPU process dies (the usual cause of a black window after sleep/
 // occlusion), reload the renderer to rebuild its compositor surface rather than

@@ -26,7 +26,6 @@ import {
   Folders,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { useSync } from "@/lib/sync-context";
 import { useT } from "@/lib/app-i18n";
 
 type Step =
@@ -34,13 +33,12 @@ type Step =
   | "explain"
   | "directory"
   | "settings"
-  | "sync"
   | "firstIngest"
   | "compileGuide"
   | "celebrate";
 
-const MODAL_STEPS: Step[] = ["welcome", "explain", "directory", "settings", "sync", "celebrate"];
-const PROGRESS_STEPS: Step[] = ["welcome", "explain", "directory", "settings", "sync"];
+const MODAL_STEPS: Step[] = ["welcome", "explain", "directory", "settings", "celebrate"];
+const PROGRESS_STEPS: Step[] = ["welcome", "explain", "directory", "settings"];
 
 interface OpenAIModel {
   id: string;
@@ -208,7 +206,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
           llm: { provider, claudeModel, openaiApiKey, openaiModel },
         }),
       });
-      next("sync");
+      next("firstIngest");
     } catch {
       /* ignore */
     }
@@ -588,12 +586,6 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
           </div>
         )}
 
-        {step === "sync" && (
-          <SyncStep
-            onContinue={() => next("firstIngest")}
-          />
-        )}
-
         {step === "celebrate" && (
           <div className="text-center space-y-8 animate-fade-in">
             {/* Burst animation */}
@@ -625,232 +617,6 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-// Onboarding step that introduces Sync and offers Google sign-in.
-// Login is optional here — the user can always sign in later from Settings —
-// but we make clear that Sync is gated on being signed in.
-function SyncStep({ onContinue }: { onContinue: () => void }) {
-  const { t } = useT();
-  const to = t.wiki.onboarding;
-  const { state, signIn, signOut, cancelSignIn } = useAuth();
-  const { state: sync, setPreferences } = useSync();
-  const enabled = sync.prefs.enabled;
-  const includeProjects = sync.prefs.includeProjects;
-  // When the user lands here freshly signed in, default enabled = true so the
-  // first cycle kicks off automatically once they hit Continue. They can flip
-  // it off here or later from Settings.
-  useEffect(() => {
-    if (state.status === "signed-in" && !sync.prefs.enabled) {
-      setPreferences({ enabled: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.status]);
-
-  return (
-    <div className="space-y-7 animate-fade-in">
-      <div className="text-center space-y-3">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-sky-400 to-accent shadow-xl shadow-accent/30">
-          <Cloud size={28} className="text-white" />
-        </div>
-        <h2 className="text-3xl font-bold tracking-tight">
-          {to.syncTitle}
-        </h2>
-        <p className="text-muted/80 max-w-md mx-auto text-sm leading-relaxed">
-          {to.syncDesc}{" "}
-          <span className="text-foreground/70">
-            {to.syncOptional}
-          </span>
-        </p>
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          {
-            icon: Laptop,
-            title: to.syncDeviceTitle,
-            desc: to.syncDeviceDesc,
-          },
-          {
-            icon: Shield,
-            title: to.syncUnionTitle,
-            desc: to.syncUnionDesc,
-          },
-          {
-            icon: Folders,
-            title: to.syncProjectsTitle,
-            desc: to.syncProjectsDesc,
-          },
-        ].map(({ icon: Icon, title, desc }) => (
-          <div
-            key={title}
-            className="p-4 rounded-2xl bg-card border border-border"
-          >
-            <Icon size={18} className="text-accent mb-2" />
-            <p className="text-xs font-semibold mb-1">{title}</p>
-            <p className="text-[10px] text-muted/60 leading-relaxed">{desc}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="p-5 rounded-2xl bg-card border border-border">
-        {state.status === "signed-out" && (
-          <div className="flex flex-col items-center gap-3 py-2">
-            <button
-              onClick={signIn}
-              className="inline-flex items-center gap-2.5 h-10 px-5 rounded-xl border border-border bg-background hover:bg-card-hover text-sm font-medium transition-colors"
-            >
-              <GoogleMark />
-              {to.signInGoogle}
-            </button>
-            <p className="text-[11px] text-muted/50 text-center max-w-sm leading-relaxed">
-              {to.drivePrivacy1}{" "}
-              <code className="text-accent/70 bg-accent/5 px-1 rounded">NestBrain-Sync</code>{" "}
-              {to.drivePrivacy2}
-            </p>
-          </div>
-        )}
-
-        {state.status === "signing-in" && (
-          <div className="flex items-center justify-center gap-3 py-4 text-sm text-muted">
-            <Loader2 size={14} className="animate-spin" />
-            <span>{to.waitingSignIn}</span>
-            <button
-              onClick={cancelSignIn}
-              className="ml-2 text-xs text-muted/70 hover:text-foreground underline-offset-2 hover:underline"
-            >
-              {to.cancel}
-            </button>
-          </div>
-        )}
-
-        {state.status === "error" && (
-          <div className="flex items-center gap-3 py-3 text-sm">
-            <span className="text-red-400 flex-1">{to.signInFailed(state.error)}</span>
-            <button
-              onClick={signIn}
-              className="text-xs text-foreground underline-offset-2 hover:underline"
-            >
-              {to.retry}
-            </button>
-          </div>
-        )}
-
-        {state.status === "signed-in" && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <SyncAvatar user={state.user} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">
-                  {to.signedInAs(state.user.name ?? state.user.email)}
-                </p>
-                {state.user.name && (
-                  <p className="text-[11px] text-muted/60 truncate">
-                    {state.user.email}
-                  </p>
-                )}
-              </div>
-              <button
-                onClick={signOut}
-                className="text-[11px] text-muted/60 hover:text-foreground underline-offset-2 hover:underline"
-              >
-                {to.useAnother}
-              </button>
-            </div>
-
-            <div className="pt-4 border-t border-border space-y-4">
-              <SyncToggle
-                label={to.enableSyncLabel}
-                description={to.enableSyncDesc}
-                checked={enabled}
-                onChange={(v) => setPreferences({ enabled: v })}
-              />
-              <SyncToggle
-                label={to.includeProjectsLabel}
-                description={to.includeProjectsDesc}
-                checked={includeProjects}
-                onChange={(v) => setPreferences({ includeProjects: v })}
-              />
-              <p className="text-[10px] text-muted/50 leading-relaxed">
-                {to.flipAnytime}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="flex justify-between items-center">
-        <button
-          onClick={() => onContinue()}
-          className="text-sm text-muted/60 hover:text-muted transition-colors"
-        >
-          {state.status === "signed-in" ? to.setupLater : to.skipForNow}
-        </button>
-        <button
-          onClick={onContinue}
-          className="inline-flex items-center gap-2 px-7 py-3.5 bg-accent text-background font-semibold rounded-2xl hover:bg-accent-hover transition-all hover:scale-105 shadow-xl shadow-accent/20"
-        >
-          {to.continue}
-          <ArrowRight size={18} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function SyncToggle({
-  label,
-  description,
-  checked,
-  onChange,
-}: {
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium">{label}</p>
-        <p className="text-[11px] text-muted/60 leading-relaxed mt-0.5">{description}</p>
-      </div>
-      <button
-        onClick={() => onChange(!checked)}
-        className={`relative w-10 h-[22px] rounded-full transition-colors shrink-0 ${
-          checked ? "bg-accent" : "bg-border"
-        }`}
-      >
-        <span
-          className={`absolute top-[3px] h-4 w-4 rounded-full bg-white transition-transform ${
-            checked ? "left-[22px]" : "left-[3px]"
-          }`}
-        />
-      </button>
-    </div>
-  );
-}
-
-function SyncAvatar({ user }: { user: { email: string; name?: string; picture?: string } }) {
-  const [imgFailed, setImgFailed] = useState(false);
-  if (user.picture && !imgFailed) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element -- external avatar URL
-      <img
-        src={user.picture}
-        alt=""
-        onError={() => setImgFailed(true)}
-        className="h-9 w-9 rounded-full"
-        referrerPolicy="no-referrer"
-      />
-    );
-  }
-  const initials = (user.name ?? user.email).slice(0, 2).toUpperCase();
-  return (
-    <div className="h-9 w-9 rounded-full bg-accent/20 text-accent flex items-center justify-center text-sm font-medium">
-      {initials}
     </div>
   );
 }

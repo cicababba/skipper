@@ -54,9 +54,6 @@ export const GOOGLE_OAUTH_ENDPOINTS = {
   tokenEndpoint: "https://oauth2.googleapis.com/token",
   revokeEndpoint: "https://oauth2.googleapis.com/revoke",
   userinfoEndpoint: "https://openidconnect.googleapis.com/v1/userinfo",
-  // drive.file = access only to files the app creates (no access to the rest of the user's Drive)
-  scopes: ["openid", "email", "profile", "https://www.googleapis.com/auth/drive.file"],
+  // Identity-only: sign-in proves the email for the supporter entitlement.
+  scopes: ["openid", "email", "profile"],
 } as const;
-
-// Name of the folder NestBrain creates inside the user's Drive to hold the synced vault.
-export const SYNC_DRIVE_FOLDER_NAME = "NestBrain-Sync";

@@ -1,6 +1,6 @@
 export {};
 
-import type { AuthState, SyncPreferences, SyncState } from "@nestbrain/shared";
+import type { AuthState } from "@nestbrain/shared";
 
 interface FsEntry {
   name: string;
@@ -92,15 +92,6 @@ declare global {
         signOut: () => Promise<void>;
         cancelSignIn: () => Promise<void>;
         onStateChanged: (callback: (state: AuthState) => void) => () => void;
-      };
-      sync: {
-        getState: () => Promise<SyncState | null>;
-        setPreferences: (prefs: Partial<SyncPreferences>) => Promise<void>;
-        syncNow: () => Promise<void>;
-        cancel: () => Promise<void>;
-        softDelete: (relPath: string) => Promise<void>;
-        hardDelete: (relPath: string) => Promise<void>;
-        onStateChanged: (callback: (state: SyncState) => void) => () => void;
       };
       modules: {
         get: () => Promise<string[]>;

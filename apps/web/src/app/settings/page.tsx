@@ -16,7 +16,7 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
-import { SyncAccountSection } from "@/components/sync-account-section";
+import { AccountSection } from "@/components/account-section";
 import { CliInstallSection } from "@/components/cli-install-section";
 import { UpdatesSection } from "@/components/updates-section";
 import { LanguageSection } from "@/components/language-section";
@@ -188,7 +188,7 @@ export default function SettingsPage() {
 
         <LanguageSection />
 
-        <SyncAccountSection />
+        <AccountSection />
 
         <UpdatesSection />
 
