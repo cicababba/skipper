@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { AuthState } from "@nestbrain/shared";
+import type { AuthProviderId, AuthState } from "@nestbrain/shared";
 
 interface GitOpResult {
   ok: boolean;
@@ -94,14 +94,16 @@ contextBridge.exposeInMainWorld("nestbrain", {
     },
   },
 
-  // Auth (Google OAuth)
+  // Auth (multi-provider OAuth)
   auth: {
     getState: (): Promise<AuthState> =>
       ipcRenderer.invoke("nestbrain:auth:getState"),
-    signIn: (): Promise<void> => ipcRenderer.invoke("nestbrain:auth:signIn"),
-    signOut: (): Promise<void> => ipcRenderer.invoke("nestbrain:auth:signOut"),
-    cancelSignIn: (): Promise<void> =>
-      ipcRenderer.invoke("nestbrain:auth:cancelSignIn"),
+    signIn: (provider: AuthProviderId): Promise<void> =>
+      ipcRenderer.invoke(`nestbrain:auth:${provider}:signIn`),
+    signOut: (provider: AuthProviderId, accountId?: string): Promise<void> =>
+      ipcRenderer.invoke(`nestbrain:auth:${provider}:signOut`, accountId),
+    cancelSignIn: (provider: AuthProviderId): Promise<void> =>
+      ipcRenderer.invoke(`nestbrain:auth:${provider}:cancelSignIn`),
     onStateChanged: (callback: (state: AuthState) => void) => {
       const handler = (_e: unknown, state: AuthState) => callback(state);
       ipcRenderer.on("nestbrain:auth:stateChanged", handler);

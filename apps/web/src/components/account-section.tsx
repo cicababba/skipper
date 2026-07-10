@@ -82,13 +82,13 @@ export function AccountSection() {
 
         {auth.status === "signed-in" && (
           <div className="flex items-center gap-3">
-            <Avatar user={auth.user} />
+            <Avatar account={auth.account} />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">
-                {auth.user.name ?? auth.user.email}
+                {auth.account.name ?? auth.account.email}
               </p>
-              {auth.user.name && (
-                <p className="text-[11px] text-muted/60 truncate">{auth.user.email}</p>
+              {auth.account.name && auth.account.email && (
+                <p className="text-[11px] text-muted/60 truncate">{auth.account.email}</p>
               )}
             </div>
             <button
@@ -105,13 +105,13 @@ export function AccountSection() {
   );
 }
 
-function Avatar({ user }: { user: { email: string; name?: string; picture?: string } }) {
+function Avatar({ account }: { account: { email?: string; name?: string; avatarUrl?: string } }) {
   const [imgFailed, setImgFailed] = useState(false);
-  if (user.picture && !imgFailed) {
+  if (account.avatarUrl && !imgFailed) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- external avatar URL
       <img
-        src={user.picture}
+        src={account.avatarUrl}
         alt=""
         onError={() => setImgFailed(true)}
         className="h-9 w-9 rounded-full"
@@ -119,7 +119,7 @@ function Avatar({ user }: { user: { email: string; name?: string; picture?: stri
       />
     );
   }
-  const initials = (user.name ?? user.email).slice(0, 2).toUpperCase();
+  const initials = (account.name ?? account.email ?? "?").slice(0, 2).toUpperCase();
   return (
     <div className="h-9 w-9 rounded-full bg-accent/20 text-accent flex items-center justify-center text-sm font-medium">
       {initials}

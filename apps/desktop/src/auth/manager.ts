@@ -1,55 +1,61 @@
-// AuthManager — single source of truth for the user's auth state in the
-// main process. Owns the OAuth flow, persisted session, in-memory state,
-// and broadcasts state changes to subscribers (typically the renderer).
+// AuthManager — single source of truth for connected accounts in the main
+// process. Owns the OAuth flows, the persisted multi-account store, in-memory
+// state, and broadcasts state changes to subscribers (typically the renderer).
 
-import type { AuthState } from "@nestbrain/shared";
-import {
-  runOAuthFlow,
-  refreshAccessToken,
-  revokeToken,
-  OAuthError,
-  type OAuthTokens,
-} from "./google-oauth";
-import {
-  loadSession,
-  saveSession,
-  clearSession,
-  isEncryptionAvailable,
-  type StoredSession,
-} from "./token-store";
-import { OAUTH_CLIENT_ID } from "./oauth-config";
+import type { AuthProviderId, AuthState } from "@nestbrain/shared";
+import { OAuthError, applyRefreshedTokens, type ProviderConfig } from "./provider";
+import { runOAuthFlow, refreshTokens } from "./oauth-flow";
+import { PROVIDERS } from "./providers";
+import { accountKey, emptyStore, type AuthStoreFile } from "./store-format";
+import { loadStore, saveStore, clearStore, isEncryptionAvailable } from "./token-store";
 
 // Source builds get placeholder OAuth credentials (ensure-oauth-config.mjs):
-// sign-in would only fail at Google with invalid_client, so surface a clear
-// "unconfigured" state and the UI shows a disabled control instead.
-const OAUTH_CONFIGURED = !!OAUTH_CLIENT_ID && !OAUTH_CLIENT_ID.startsWith("YOUR_");
+// sign-in would only fail at the provider with invalid_client, so surface a
+// clear per-provider "unconfigured" state and the UI shows a disabled control.
+function isConfigured(config: ProviderConfig): boolean {
+  return !!config.clientId && !config.clientId.startsWith("YOUR_");
+}
 
 // Refresh the access token this many ms before it actually expires.
 const REFRESH_LEAD_MS = 5 * 60 * 1000; // 5 minutes
 
+const PROVIDER_IDS = Object.keys(PROVIDERS) as AuthProviderId[];
+
 type Listener = (state: AuthState) => void;
 
 export class AuthManager {
-  private state: AuthState = OAUTH_CONFIGURED ? { status: "signed-out" } : { status: "unconfigured" };
-  private session: StoredSession | null = null;
+  private store: AuthStoreFile = emptyStore();
+  private flows: AuthState["flows"] = {};
   private listeners = new Set<Listener>();
-  private signInAbort: AbortController | null = null;
+  private signInAborts = new Map<AuthProviderId, AbortController>();
 
-  /** Load any previously persisted session. Call once on app startup. */
+  constructor() {
+    for (const id of PROVIDER_IDS) {
+      if (!isConfigured(PROVIDERS[id])) {
+        this.flows[id] = { status: "unconfigured" };
+      }
+    }
+  }
+
+  /** Load any previously persisted accounts. Call once on app startup. */
   async init(): Promise<void> {
-    if (!OAUTH_CONFIGURED) return; // stay "unconfigured"
+    if (PROVIDER_IDS.every((id) => this.flows[id]?.status === "unconfigured")) return;
     if (!isEncryptionAvailable()) {
       console.warn("[auth] safeStorage unavailable on this platform");
     }
-    const session = await loadSession();
-    if (session) {
-      this.session = session;
-      this.setState({ status: "signed-in", user: session.user });
+    const store = await loadStore();
+    if (store) {
+      this.store = store;
+      this.emit();
     }
   }
 
   getState(): AuthState {
-    return this.state;
+    return {
+      accounts: Object.values(this.store.accounts).map((a) => a.account),
+      active: { ...this.store.active },
+      flows: { ...this.flows },
+    };
   }
 
   onChange(cb: Listener): () => void {
@@ -58,80 +64,99 @@ export class AuthManager {
   }
 
   /** Cancel any in-flight sign-in (e.g. user closed the browser tab). */
-  cancelSignIn(): void {
-    this.signInAbort?.abort();
-    this.signInAbort = null;
+  cancelSignIn(provider: AuthProviderId): void {
+    this.signInAborts.get(provider)?.abort();
+    this.signInAborts.delete(provider);
   }
 
-  async signIn(): Promise<void> {
-    if (!OAUTH_CONFIGURED) return; // source build — nothing to sign in to
-    if (this.state.status === "signing-in") {
+  async signIn(provider: AuthProviderId): Promise<void> {
+    const config = PROVIDERS[provider];
+    if (!isConfigured(config)) return; // source build — nothing to sign in to
+    if (this.flows[provider]?.status === "signing-in") {
       // Already running — ignore double-clicks.
       return;
     }
-    this.setState({ status: "signing-in" });
-    this.signInAbort = new AbortController();
+    this.setFlow(provider, { status: "signing-in" });
+    const abort = new AbortController();
+    this.signInAborts.set(provider, abort);
     try {
-      const { tokens, user } = await runOAuthFlow(this.signInAbort.signal);
-      const session: StoredSession = { tokens, user, signedInAt: Date.now() };
-      await saveSession(session);
-      this.session = session;
-      this.setState({ status: "signed-in", user });
+      const { tokens, account } = await runOAuthFlow(config, abort.signal);
+      const key = accountKey(provider, account.id);
+      this.store.accounts[key] = { account, tokens, signedInAt: Date.now() };
+      this.store.active[provider] = account.id;
+      await saveStore(this.store);
+      this.setFlow(provider, { status: "idle" });
     } catch (err) {
       const message = err instanceof OAuthError ? err.message : String(err);
-      console.error("[auth] sign-in failed:", err);
-      this.setState({ status: "error", error: message });
-      // Settle back to signed-out so the UI can offer a retry.
+      console.error(`[auth] ${provider} sign-in failed:`, err);
+      this.setFlow(provider, { status: "error", error: message });
+      // Settle back to idle so the UI can offer a retry.
       setTimeout(() => {
-        if (this.state.status === "error") this.setState({ status: "signed-out" });
+        if (this.flows[provider]?.status === "error") this.setFlow(provider, { status: "idle" });
       }, 4000);
     } finally {
-      this.signInAbort = null;
+      this.signInAborts.delete(provider);
     }
   }
 
-  async signOut(): Promise<void> {
-    const refresh = this.session?.tokens.refreshToken;
-    this.session = null;
-    await clearSession();
-    if (refresh) {
-      // Best-effort: revoke at Google so the refresh_token can't be reused.
-      void revokeToken(refresh);
+  async signOut(provider: AuthProviderId, accountId?: string): Promise<void> {
+    const id = accountId ?? this.store.active[provider];
+    if (!id) return;
+    const key = accountKey(provider, id);
+    const stored = this.store.accounts[key];
+    delete this.store.accounts[key];
+    if (this.store.active[provider] === id) {
+      const remaining = Object.values(this.store.accounts).find((a) => a.account.provider === provider);
+      if (remaining) this.store.active[provider] = remaining.account.id;
+      else delete this.store.active[provider];
     }
-    this.setState({ status: "signed-out" });
+    await this.persist();
+    if (stored) {
+      // Best-effort: revoke at the provider so the tokens can't be reused.
+      void PROVIDERS[provider].revoke?.(stored.tokens);
+    }
+    this.emit();
+  }
+
+  async setActiveAccount(provider: AuthProviderId, accountId: string): Promise<void> {
+    if (!this.store.accounts[accountKey(provider, accountId)]) return;
+    this.store.active[provider] = accountId;
+    await this.persist();
+    this.emit();
   }
 
   /**
-   * Return a valid access token, refreshing if necessary. Used by the sync
-   * engine. Returns null if there's no session.
+   * Return a valid access token for an account (default: the provider's
+   * active one), refreshing if necessary. Returns null if no such account.
    *
-   * `forceRefresh` makes us go to Google even if the cached token still
-   * looks valid — used when Drive itself reports 401 (e.g. the user
-   * revoked access).
+   * `forceRefresh` skips the cached-token fast path — used when the provider
+   * API itself reports 401 (e.g. the user revoked access).
    */
-  async getAccessToken(forceRefresh = false): Promise<string | null> {
-    if (!this.session) return null;
-    const { tokens } = this.session;
-    if (!forceRefresh && tokens.expiresAt - REFRESH_LEAD_MS > Date.now()) {
-      return tokens.accessToken;
+  async getAccessToken(
+    provider: AuthProviderId,
+    accountId?: string,
+    forceRefresh = false,
+  ): Promise<string | null> {
+    const id = accountId ?? this.store.active[provider];
+    if (!id) return null;
+    const key = accountKey(provider, id);
+    const stored = this.store.accounts[key];
+    if (!stored) return null;
+    if (!forceRefresh && stored.tokens.expiresAt - REFRESH_LEAD_MS > Date.now()) {
+      return stored.tokens.accessToken;
     }
+    const config = PROVIDERS[provider];
     try {
-      const refreshed = await refreshAccessToken(tokens.refreshToken);
-      const next: OAuthTokens = {
-        ...tokens,
-        accessToken: refreshed.accessToken,
-        expiresAt: refreshed.expiresAt,
-        scope: refreshed.scope,
-        tokenType: refreshed.tokenType,
-        idToken: refreshed.idToken ?? tokens.idToken,
-      };
-      this.session = { ...this.session, tokens: next };
-      await saveSession(this.session);
+      const refreshed = await refreshTokens(config, stored.tokens.refreshToken);
+      const next = applyRefreshedTokens(stored.tokens, refreshed, config.rotatesRefreshToken);
+      this.store.accounts[key] = { ...stored, tokens: next };
+      // Persist immediately: losing a rotated refresh token kills the grant.
+      await saveStore(this.store);
       return next.accessToken;
     } catch (err) {
-      console.error("[auth] refresh failed, signing out:", err);
-      // Refresh token revoked / expired — force the user back to sign-in.
-      await this.signOut();
+      console.error(`[auth] ${provider} refresh failed, dropping account:`, err);
+      // Refresh token revoked / expired — the account must re-authenticate.
+      await this.signOut(provider, id);
       return null;
     }
   }
@@ -142,18 +167,33 @@ export class AuthManager {
    * reuse the refresh path to get a current one.
    */
   async getIdToken(): Promise<string | null> {
-    if (!this.session) return null;
-    if (this.session.tokens.expiresAt - REFRESH_LEAD_MS > Date.now()) {
-      return this.session.tokens.idToken ?? null;
+    const id = this.store.active.google;
+    if (!id) return null;
+    const stored = this.store.accounts[accountKey("google", id)];
+    if (!stored) return null;
+    if (stored.tokens.expiresAt - REFRESH_LEAD_MS > Date.now()) {
+      return stored.tokens.idToken ?? null;
     }
-    await this.getAccessToken(true);
-    return this.session?.tokens.idToken ?? null;
+    await this.getAccessToken("google", id, true);
+    return this.store.accounts[accountKey("google", id)]?.tokens.idToken ?? null;
   }
 
-  private setState(next: AuthState): void {
-    this.state = next;
+  private async persist(): Promise<void> {
+    const hasAccounts = Object.keys(this.store.accounts).length > 0;
+    if (hasAccounts) await saveStore(this.store);
+    else await clearStore();
+  }
+
+  private setFlow(provider: AuthProviderId, flow: NonNullable<AuthState["flows"][AuthProviderId]>): void {
+    if (flow.status === "idle") delete this.flows[provider];
+    else this.flows[provider] = flow;
+    this.emit();
+  }
+
+  private emit(): void {
+    const state = this.getState();
     for (const cb of this.listeners) {
-      try { cb(next); } catch (err) { console.error("[auth] listener threw:", err); }
+      try { cb(state); } catch (err) { console.error("[auth] listener threw:", err); }
     }
   }
 }

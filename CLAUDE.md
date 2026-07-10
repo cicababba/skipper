@@ -15,7 +15,7 @@ nestbrain/
 │   │   ├── src/main.ts         # Electron main: PATH fix, IPC, embedded server
 │   │   ├── src/git.ts          # Git backend (public core, #1)
 │   │   ├── src/terminal.ts     # PTY session manager (public core, #18)
-│   │   ├── src/auth/           # Google OAuth desktop flow (PKCE, loopback)
+│   │   ├── src/auth/           # Multi-provider OAuth desktop flow (Google PKCE, GitHub App; loopback)
 │   │   ├── src/modules.ts      # Module registry (build = entitlement)
 │   │   ├── src/dev-module.ts   # Open-core seam: guarded require of src/dev-impl/ (gitignored,
 │   │   │                       #   lives in the PRIVATE nestbrain-modules repo; CI overlays it,
@@ -50,7 +50,7 @@ nestbrain/
 - **CLI**: `commander`
 - **LLM providers** (`packages/core/src/llm/`): `claude-cli` (default — spawns the user's `claude` CLI), `openai`, `ollama`
 - **Embeddings**: `@huggingface/transformers` running ONNX locally (`Xenova/all-MiniLM-L6-v2`), in `packages/core/src/vectorstore`
-- **Auth**: Google OAuth 2.0 Desktop flow (PKCE, loopback redirect), identity-only scopes — it proves the email for the supporter update entitlement. Refresh token in OS keychain via Electron `safeStorage`. Code in `apps/desktop/src/auth/`.
+- **Auth**: multi-provider multi-account OAuth desktop flow (loopback redirect) behind a `ProviderConfig` registry in `apps/desktop/src/auth/`. Google: PKCE, identity-only scopes — proves the email for the supporter update entitlement (`getIdToken`, Google-only path). GitHub: GitHub App user-to-server flow, fixed loopback ports 8127–8129, expiring tokens with refresh rotation — feeds the orchestrator (#5+). Accounts + tokens live in one `auth.enc` (v2 multi-account format, legacy single-session migrated on load) encrypted via Electron `safeStorage`.
 - **Testing**: Vitest (configured at root, very thin coverage today)
 - **Lint/format**: ESLint 9 + Prettier 3
 

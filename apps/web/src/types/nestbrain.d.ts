@@ -1,6 +1,6 @@
 export {};
 
-import type { AuthState } from "@nestbrain/shared";
+import type { AuthProviderId, AuthState } from "@nestbrain/shared";
 
 interface FsEntry {
   name: string;
@@ -88,9 +88,9 @@ declare global {
       };
       auth: {
         getState: () => Promise<AuthState>;
-        signIn: () => Promise<void>;
-        signOut: () => Promise<void>;
-        cancelSignIn: () => Promise<void>;
+        signIn: (provider: AuthProviderId) => Promise<void>;
+        signOut: (provider: AuthProviderId, accountId?: string) => Promise<void>;
+        cancelSignIn: (provider: AuthProviderId) => Promise<void>;
         onStateChanged: (callback: (state: AuthState) => void) => () => void;
       };
       modules: {

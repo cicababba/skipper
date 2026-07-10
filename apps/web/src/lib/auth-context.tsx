@@ -8,10 +8,14 @@ import {
   useMemo,
   useState,
 } from "react";
-import type { AuthState } from "@nestbrain/shared";
+import { deriveProviderView } from "@nestbrain/shared";
+import type { AuthState, ProviderAuthView } from "@nestbrain/shared";
 
 interface AuthContextValue {
-  state: AuthState;
+  /** Google view — what the current account UI renders. */
+  state: ProviderAuthView;
+  /** Full multi-provider state, for provider-aware UI. */
+  authState: AuthState;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   cancelSignIn: () => Promise<void>;
@@ -19,10 +23,10 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const DEFAULT_STATE: AuthState = { status: "signed-out" };
+const DEFAULT_STATE: AuthState = { accounts: [], active: {}, flows: {} };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<AuthState>(DEFAULT_STATE);
+  const [authState, setAuthState] = useState<AuthState>(DEFAULT_STATE);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.nestbrain) return;
@@ -30,32 +34,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     auth.getState()
-      .then((s) => { if (!cancelled) setState(s); })
+      .then((s) => { if (!cancelled) setAuthState(s); })
       .catch(() => { /* keep default */ });
 
-    const off = auth.onStateChanged((s) => setState(s));
+    const off = auth.onStateChanged((s) => setAuthState(s));
 
     return () => { cancelled = true; off(); };
   }, []);
 
   const signIn = useCallback(async () => {
     if (!window.nestbrain) return;
-    await window.nestbrain.auth.signIn();
+    await window.nestbrain.auth.signIn("google");
   }, []);
 
   const signOut = useCallback(async () => {
     if (!window.nestbrain) return;
-    await window.nestbrain.auth.signOut();
+    await window.nestbrain.auth.signOut("google");
   }, []);
 
   const cancelSignIn = useCallback(async () => {
     if (!window.nestbrain) return;
-    await window.nestbrain.auth.cancelSignIn();
+    await window.nestbrain.auth.cancelSignIn("google");
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ state, signIn, signOut, cancelSignIn }),
-    [state, signIn, signOut, cancelSignIn],
+    () => ({
+      state: deriveProviderView(authState, "google"),
+      authState,
+      signIn,
+      signOut,
+      cancelSignIn,
+    }),
+    [authState, signIn, signOut, cancelSignIn],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

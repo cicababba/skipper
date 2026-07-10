@@ -74,6 +74,13 @@ pnpm --filter @nestbrain/desktop start
 
 Gitflow: `main` is release-only, `develop` is the integration branch. Conventions for branches, commits, and issue/PR titles live in [`.claude/rules/conventions.md`](.claude/rules/conventions.md).
 
+### OAuth credentials (optional)
+
+Sign-in works out of the box only in official builds. Source builds run with placeholder credentials — each provider shows as "unconfigured" until you supply your own client in `apps/desktop/src/auth/oauth-config.ts` (gitignored; see [`oauth-config.example.ts`](apps/desktop/src/auth/oauth-config.example.ts) for setup steps) or via env vars / `apps/desktop/.env.local`:
+
+- **Google** (identity for the supporter entitlement): `NESTBRAIN_GOOGLE_CLIENT_ID` + `NESTBRAIN_GOOGLE_CLIENT_SECRET` — an OAuth "Desktop app" client from Google Cloud Console.
+- **GitHub** (issue/PR orchestration): `NESTBRAIN_GITHUB_CLIENT_ID` + `NESTBRAIN_GITHUB_CLIENT_SECRET` — a GitHub App with "Expire user authorization tokens" enabled, callback URLs `http://127.0.0.1:8127/callback`, `:8128`, `:8129`, and permissions Issues (read), Pull requests (read & write), Metadata (read), Email addresses (read).
+
 ## Author
 
 Created by **Mike Gazzaruso** ([NextEpochs](https://github.com/mikegazzaruso)).

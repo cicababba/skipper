@@ -96,22 +96,22 @@ function AccountWidget() {
   }
 
   // signed-in
-  const { user } = state;
+  const { account } = state;
   return (
     <div ref={menuRef} className="relative" style={noDrag}>
       <button
         onClick={() => setMenuOpen((v) => !v)}
         className="flex items-center gap-2 h-7 pl-1 pr-2 rounded-md hover:bg-card transition-colors text-xs"
       >
-        <Avatar user={user} />
-        <span className="text-muted/90 max-w-[180px] truncate">{user.email}</span>
+        <Avatar account={account} />
+        <span className="text-muted/90 max-w-[180px] truncate">{account.email ?? account.name}</span>
       </button>
       {menuOpen && (
         <div className="absolute right-0 top-9 w-60 rounded-lg border border-border bg-card shadow-lg overflow-hidden z-50">
           <div className="px-3 py-2.5 border-b border-border">
-            <div className="text-xs font-medium truncate">{user.name ?? user.email}</div>
-            {user.name && (
-              <div className="text-[11px] text-muted/70 truncate">{user.email}</div>
+            <div className="text-xs font-medium truncate">{account.name ?? account.email}</div>
+            {account.name && account.email && (
+              <div className="text-[11px] text-muted/70 truncate">{account.email}</div>
             )}
           </div>
           <Link
@@ -135,13 +135,13 @@ function AccountWidget() {
   );
 }
 
-function Avatar({ user }: { user: { email: string; name?: string; picture?: string } }) {
+function Avatar({ account }: { account: { email?: string; name?: string; avatarUrl?: string } }) {
   const [imgFailed, setImgFailed] = useState(false);
-  if (user.picture && !imgFailed) {
+  if (account.avatarUrl && !imgFailed) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- external avatar; not worth wiring next/image
       <img
-        src={user.picture}
+        src={account.avatarUrl}
         alt=""
         onError={() => setImgFailed(true)}
         className="h-5 w-5 rounded-full"
@@ -149,7 +149,7 @@ function Avatar({ user }: { user: { email: string; name?: string; picture?: stri
       />
     );
   }
-  const initials = (user.name ?? user.email).slice(0, 2).toUpperCase();
+  const initials = (account.name ?? account.email ?? "?").slice(0, 2).toUpperCase();
   return (
     <div className="h-5 w-5 rounded-full bg-accent/20 text-accent flex items-center justify-center text-[10px] font-medium">
       {initials}
