@@ -8,10 +8,9 @@
 //   ▼     ▼
 // accepted  rejected
 //
-// "accepted" lives under .nestbrain/raw/projects/<project>/ so the existing
-// compiler picks it up on the next `nestbrain compile` without any new
-// source-type plumbing. "rejected" is kept (not deleted) so the user can
-// re-pickup if they change their mind.
+// "accepted" lives under .nestbrain/raw/projects/<project>/ — the curated
+// per-project archive the solutions memory builds on. "rejected" is kept
+// (not deleted) so the user can re-pickup if they change their mind.
 
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";

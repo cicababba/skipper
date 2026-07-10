@@ -1,6 +1,6 @@
 export {};
 
-import type { AuthState, SyncPreferences, SyncState } from "@nestbrain/shared";
+import type { AuthState } from "@nestbrain/shared";
 
 interface FsEntry {
   name: string;
@@ -26,29 +26,7 @@ declare global {
     available?: string;
     percent?: number;
     error?: string;
-    via?: "account" | "enterprise" | "build";
-  }
-
-  interface TeamMember {
-    id: string;
-    email: string;
-    name: string;
-    role: string;
-    created_at?: string;
-  }
-
-  interface TeamState {
-    status: "disconnected" | "connecting" | "connected" | "error";
-    serverUrl?: string;
-    user?: { email: string; name: string; role: string };
-    license?: { org: string; seats: number; exp: number | null; dev: boolean };
-    workspaceId?: string;
-    workspaces?: { id: string; name: string; isGlobal?: boolean; role?: "writer" | "reader" }[];
-    includeProjects?: boolean;
-    syncing: boolean;
-    lastSync?: number;
-    lastResult?: { uploaded: number; downloaded: number; conflicts: number };
-    error?: string;
+    via?: "account" | "build";
   }
 
   interface Window {
@@ -114,29 +92,6 @@ declare global {
         signOut: () => Promise<void>;
         cancelSignIn: () => Promise<void>;
         onStateChanged: (callback: (state: AuthState) => void) => () => void;
-      };
-      sync: {
-        getState: () => Promise<SyncState | null>;
-        setPreferences: (prefs: Partial<SyncPreferences>) => Promise<void>;
-        syncNow: () => Promise<void>;
-        cancel: () => Promise<void>;
-        softDelete: (relPath: string) => Promise<void>;
-        hardDelete: (relPath: string) => Promise<void>;
-        onStateChanged: (callback: (state: SyncState) => void) => () => void;
-      };
-      team: {
-        getState: () => Promise<TeamState>;
-        connect: (serverUrl: string, email: string, password: string) => Promise<void>;
-        setup: (serverUrl: string, token: string, email: string, password: string, name?: string) => Promise<void>;
-        disconnect: () => Promise<void>;
-        listMembers: () => Promise<TeamMember[]>;
-        addMember: (m: { email: string; name: string; password: string; role: string }) => Promise<unknown>;
-        removeMember: (id: string) => Promise<unknown>;
-        selectWorkspace: (id: string) => Promise<void>;
-        syncNow: () => Promise<{ uploaded: number; downloaded: number; conflicts: number } | undefined>;
-        setIncludeProjects: (v: boolean) => Promise<void>;
-        switch: (serverUrl: string, email: string, password: string) => Promise<void>;
-        onStateChanged: (callback: (state: TeamState) => void) => () => void;
       };
       modules: {
         get: () => Promise<string[]>;

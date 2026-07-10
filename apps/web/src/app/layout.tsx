@@ -4,18 +4,15 @@ import { Sidebar } from "@/components/sidebar";
 import { TerminalPanel } from "@/components/terminal-panel";
 import { StatusBar } from "@/components/status-bar";
 import { Topbar } from "@/components/topbar";
-import { CompileProvider } from "@/lib/compile-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import { TerminalProvider } from "@/lib/terminal-context";
 import { AuthProvider } from "@/lib/auth-context";
-import { SyncProvider } from "@/lib/sync-context";
 import { GitStatusProvider } from "@/lib/git-status-context";
 import { EditorTabsProvider } from "@/lib/editor-tabs-context";
 import { OnboardingGate } from "@/lib/onboarding-gate";
 import { ModulesProvider } from "@/lib/modules-context";
 import { AppLangProvider } from "@/lib/app-i18n";
 import { UpdateToast } from "@/components/update-toast";
-import { TeamWelcome } from "@/components/team-welcome";
 import { AboutModal } from "@/components/about-modal";
 import "./globals.css";
 
@@ -50,8 +47,6 @@ export default function RootLayout({
          <AppLangProvider>
          <ModulesProvider>
           <AuthProvider>
-           <SyncProvider>
-            <CompileProvider>
               <TerminalProvider>
                 <GitStatusProvider>
                  <EditorTabsProvider>
@@ -66,14 +61,11 @@ export default function RootLayout({
                       <StatusBar />
                     </div>
                     <UpdateToast />
-                    <TeamWelcome />
                     <AboutModal />
                   </OnboardingGate>
                  </EditorTabsProvider>
                 </GitStatusProvider>
               </TerminalProvider>
-            </CompileProvider>
-           </SyncProvider>
           </AuthProvider>
          </ModulesProvider>
          </AppLangProvider>

@@ -12,7 +12,6 @@ import {
   X,
 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
-import { useCompile } from "@/lib/compile-context";
 import { useT } from "@/lib/app-i18n";
 
 interface SourceRef {
@@ -58,8 +57,6 @@ export default function KnowledgePage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<EditDraft | null>(null);
   const [minScore, setMinScore] = useState(0);
-  const [autoCompile, setAutoCompile] = useState(false);
-  const { compile, status: compileStatus } = useCompile();
   const { t } = useT();
   const tr = t.knowledge.review;
 
@@ -81,20 +78,6 @@ export default function KnowledgePage() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  // Read the user's autoCompile preference once on mount — same pattern as
-  // the ingest page. If on, accept will kick off the compile right after.
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/settings");
-        const data = await res.json();
-        setAutoCompile(Boolean(data.autoCompile));
-      } catch {
-        /* ignore */
-      }
-    })();
-  }, []);
 
   const visible = useMemo(
     () => entries.filter((e) => e.atom.score >= minScore),
@@ -154,11 +137,6 @@ export default function KnowledgePage() {
       if (!res.ok) throw new Error(data.error ?? tr.actionFailed(action));
       // Optimistic: drop the entry locally so the user sees the queue shrink.
       setEntries((prev) => prev.filter((e) => e.filePath !== entry.filePath));
-      // Same UX as the ingest page: if the user opted in, accepted atoms
-      // fold into the wiki immediately instead of waiting for a manual click.
-      if (action === "accept" && autoCompile && compileStatus !== "compiling") {
-        void compile();
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

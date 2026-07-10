@@ -46,7 +46,7 @@ export function AboutModal() {
             <button
               onClick={() => setOpen(false)}
               className="absolute top-3.5 right-3.5 p-1.5 rounded-lg text-muted/50 hover:text-foreground hover:bg-card transition-colors"
-              aria-label={t.team.about.close}
+              aria-label={t.modules.about.close}
             >
               <X size={15} />
             </button>
@@ -58,7 +58,7 @@ export function AboutModal() {
             <h2 className="text-2xl font-bold tracking-tight mb-1">
               <span className="text-accent">Nest</span>Brain
             </h2>
-            <p className="text-[13px] text-muted mb-3">{t.team.about.tagline}</p>
+            <p className="text-[13px] text-muted mb-3">{t.modules.about.tagline}</p>
 
             <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-[11px] font-mono text-muted mb-6">
               v{version}
@@ -83,8 +83,8 @@ export function AboutModal() {
 
             <div className="pt-4 border-t border-border/60">
               <p className="text-[11px] text-muted/60 leading-relaxed">
-                {t.team.about.createdBy}
-                <br />{t.team.about.rights}
+                {t.modules.about.createdBy}
+                <br />{t.modules.about.rights}
               </p>
             </div>
           </div>

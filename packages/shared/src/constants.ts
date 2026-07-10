@@ -2,41 +2,16 @@
 // NestBrain — Constants
 // ============================================================
 
-export const DEFAULT_CONFIG = {
-  wiki: {
-    name: "My Knowledge Base",
-    path: "./data/wiki",
-    rawPath: "./data/raw",
-  },
-  llm: {
-    provider: "claude-cli" as const,
-    model: "sonnet",
-    maxTurns: 5,
-  },
-  embeddings: {
-    model: "Xenova/all-MiniLM-L6-v2",
-    chunkSize: 512,
-    chunkOverlap: 50,
-  },
-  search: {
-    semanticTopK: 10,
-    fulltextEnabled: true,
-  },
-  server: {
-    port: 3000,
-    host: "localhost",
-  },
+export const DEFAULT_LLM_CONFIG = {
+  provider: "claude-cli" as const,
+  model: "sonnet",
+  maxTurns: 5,
 } as const;
 
-export const WIKI_DIRS = {
-  sources: "sources",
-  concepts: "concepts",
-  outputs: "outputs",
-} as const;
-
-export const INDEX_FILES = {
-  master: "_index.md",
-  concepts: "_concepts.md",
+export const EMBEDDINGS_CONFIG = {
+  model: "Xenova/all-MiniLM-L6-v2",
+  chunkSize: 512,
+  chunkOverlap: 50,
 } as const;
 
 // ============================================================
@@ -54,9 +29,6 @@ export const GOOGLE_OAUTH_ENDPOINTS = {
   tokenEndpoint: "https://oauth2.googleapis.com/token",
   revokeEndpoint: "https://oauth2.googleapis.com/revoke",
   userinfoEndpoint: "https://openidconnect.googleapis.com/v1/userinfo",
-  // drive.file = access only to files the app creates (no access to the rest of the user's Drive)
-  scopes: ["openid", "email", "profile", "https://www.googleapis.com/auth/drive.file"],
+  // Identity-only: sign-in proves the email for the supporter entitlement.
+  scopes: ["openid", "email", "profile"],
 } as const;
-
-// Name of the folder NestBrain creates inside the user's Drive to hold the synced vault.
-export const SYNC_DRIVE_FOLDER_NAME = "NestBrain-Sync";

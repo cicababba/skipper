@@ -1,21 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_CONFIG, WIKI_DIRS, INDEX_FILES } from "../src/constants";
+import { DEFAULT_LLM_CONFIG, EMBEDDINGS_CONFIG } from "../src/constants";
 
 describe("constants", () => {
-  it("DEFAULT_CONFIG has required fields", () => {
-    expect(DEFAULT_CONFIG.wiki.path).toBe("./data/wiki");
-    expect(DEFAULT_CONFIG.llm.provider).toBe("claude-cli");
-    expect(DEFAULT_CONFIG.server.port).toBe(3000);
+  it("DEFAULT_LLM_CONFIG has required fields", () => {
+    expect(DEFAULT_LLM_CONFIG.provider).toBe("claude-cli");
+    expect(DEFAULT_LLM_CONFIG.model).toBe("sonnet");
   });
 
-  it("WIKI_DIRS has expected directories", () => {
-    expect(WIKI_DIRS.sources).toBe("sources");
-    expect(WIKI_DIRS.concepts).toBe("concepts");
-    expect(WIKI_DIRS.outputs).toBe("outputs");
-  });
-
-  it("INDEX_FILES has expected filenames", () => {
-    expect(INDEX_FILES.master).toBe("_index.md");
-    expect(INDEX_FILES.concepts).toBe("_concepts.md");
+  it("EMBEDDINGS_CONFIG pins the local model", () => {
+    expect(EMBEDDINGS_CONFIG.model).toBe("Xenova/all-MiniLM-L6-v2");
   });
 });

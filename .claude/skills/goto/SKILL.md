@@ -40,13 +40,13 @@ reveal_dir "$ROOT"       # with -o: open the repo folder in the file manager (he
 
 `-r` reuses the current window (never spawn a second window on the same repo). In `--dry` mode, print `$ROOT` instead of running anything.
 
-**B. Locate a target** — args name a feature, file, symbol, or area ("where is the PTY spawn", "open the sync engine", "compiler tracker").
+**B. Locate a target** — args name a feature, file, symbol, or area ("where is the PTY spawn", "open the git backend", "knowledge queue").
 
 1. Map the request to a package using the monorepo layout (see CLAUDE.md):
    - `desktop` (Electron main, preload, IPC, auth, sync wiring, packaging) → `apps/desktop/`
    - `web` (UI, components, editor, terminal UI) → `apps/web/`
-   - `core` (compiler, ingest, llm, qa, search, lint, vectorstore) → `packages/core/`
-   - `cli` → `packages/cli/` · `db` → `packages/db/` · `shared` → `packages/shared/` · `sync` → `packages/sync/`
+   - `core` (llm, vectorstore, knowledge) → `packages/core/`
+   - `cli` → `packages/cli/` · `shared` → `packages/shared/` · `sync` → `packages/sync/`
    - workspace template → `skeleton/` · CI/build → `.github/` + `apps/desktop/build/`
 2. Find the file(s) with Glob/Grep, scoped to the likely package(s). Prefer the definition/implementation over test files and barrels unless the user asked for those.
 3. Identify the most relevant line (the symbol definition, route handler, component, etc.).

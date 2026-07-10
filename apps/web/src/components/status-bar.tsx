@@ -3,7 +3,6 @@
 import { Terminal as TerminalIcon, ChevronUp, ChevronDown } from "lucide-react";
 import { useTerminal } from "@/lib/terminal-context";
 import { useT } from "@/lib/app-i18n";
-import { SyncIndicator } from "./sync-indicator";
 
 export function StatusBar() {
   const { t } = useT();
@@ -13,7 +12,6 @@ export function StatusBar() {
   // Terminal is public core (#18) — no module gate.
   return (
     <div className="h-6 shrink-0 border-t border-border bg-sidebar flex items-center justify-end px-2 text-[11px] text-muted/70">
-      <SyncIndicator />
       <button
         onClick={toggleOrOpen}
         className={`flex items-center gap-1.5 px-2.5 h-full hover:bg-card transition-colors ${

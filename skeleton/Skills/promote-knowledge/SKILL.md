@@ -34,7 +34,7 @@ From the user's words plus recent conversation:
 
 ### 3. Resolve CLI invocation
 
-Same fallback chain as `nestbrain-ask`:
+Fallback chain:
 
 1. `command -v nestbrain` → use `nestbrain`
 2. macOS: `/Applications/NestBrain.app/Contents/Resources/web/apps/web/nestbrain.bundle.cjs` → use `node "<path>"`

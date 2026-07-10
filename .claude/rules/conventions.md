@@ -24,12 +24,11 @@ Format: `<scope>:<type>: <descriptive title>`
   |-------|------|
   | `desktop` | `apps/desktop` — Electron shell, main/preload, IPC, packaging hooks |
   | `web` | `apps/web` — Next.js UI, components, editor, terminal UI |
-  | `core` | `packages/core` — compiler, ingest, llm, qa, search, lint, vectorstore |
+  | `core` | `packages/core` — llm, vectorstore, knowledge |
   | `cli` | `packages/cli` — the `nestbrain` CLI |
-  | `db` | `packages/db` — Chroma client + embeddings wrapper |
   | `shared` | `packages/shared` — shared types and constants |
-  | `sync` | `packages/sync` — Drive sync engine |
-  | `infra` | CI/CD, workflows, build scripts, docker, repo tooling |
+  | `sync` | `packages/sync` — SyncBackend contract + manifest seams |
+  | `infra` | CI/CD, workflows, build scripts, repo tooling |
   | `epic` | Umbrella issue meant to be broken into sub-issues |
 
 - **Type** (single value): `feat`, `fix`, `refactor`, `test`, `docs`, `chore`

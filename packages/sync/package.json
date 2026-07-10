@@ -10,8 +10,5 @@
     "lint": "eslint src/",
     "test": "vitest run --passWithNoTests"
   },
-  "dependencies": {
-    "@nestbrain/shared": "workspace:*",
-    "chokidar": "^3.6.0"
-  }
+  "dependencies": {}
 }

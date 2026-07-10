@@ -9,7 +9,7 @@
 //   2. Copy the Client ID (ends with `.apps.googleusercontent.com`) and the
 //      Client secret (starts with `GOCSPX-`) into the constants below.
 //   3. On the OAuth consent screen, add the scopes used by NestBrain:
-//        openid, email, profile, .../auth/drive.file
+//        openid, email, profile
 //      and (while in Testing mode) add your Google account as a test user.
 //
 // For OAuth client type "Desktop app", Google considers the secret

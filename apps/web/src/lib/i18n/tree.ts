@@ -14,13 +14,9 @@ const en = {
     createFailed: "Failed to create",
     renameFailed: "Rename failed",
     deleteFailed: "Delete failed",
-    moveToTrashFailed: "Move-to-trash failed",
-    hardDeleteFailed: "Hard delete failed",
     open: "Open",
     rename: "Rename",
     delete: "Delete",
-    moveToTrash: "Move to .trash/",
-    deleteAllDevices: "Delete on all devices…",
     fileWord: "file",
     folderWord: "folder",
     deleteConfirm: (kind: string, name: string) => `Delete ${kind} "${name}"?`,
@@ -28,17 +24,7 @@ const en = {
       "This item is in .trash/ — deleting will remove it permanently from this device.",
     deleteFolderNote: "All its contents will be permanently removed.",
     cannotUndo: "This action cannot be undone.",
-    hardDeleteTitle: "Delete on all devices?",
-    hardDeleteBody1:
-      "will be permanently removed from your Google Drive. Other devices signed in to NestBrain with this account will move their local copy to",
-    hardDeleteBody2:
-      "on their next sync — but the file will no longer be recoverable from Drive. This cannot be undone.",
-    typeDeleteToConfirm: "Type DELETE to confirm",
     cancel: "Cancel",
-    deleting: "Deleting…",
-    deleteForever: "Delete forever",
-    hardDeleteFolderUnsupported:
-      "Folder hard-delete isn't supported yet — delete files individually.",
     fileRowTitle: "Double-click to open · Right-click for options",
     empty: "empty",
   },
@@ -57,9 +43,6 @@ const en = {
       `Open terminal here · focus branch indicator on ${name}`,
   },
   topbar: {
-    teamManaged:
-      "Google Drive sync is managed by your Team Server while connected",
-    teamActive: "Team Server active",
     syncUnavailableTitle:
       "Drive sync requires the official build from nestbrain.app — or wire your own Google OAuth client (see README).",
     syncUnavailable: "Sync — not available in the free build",
@@ -113,13 +96,9 @@ const it: typeof en = {
     createFailed: "Creazione non riuscita",
     renameFailed: "Rinomina non riuscita",
     deleteFailed: "Eliminazione non riuscita",
-    moveToTrashFailed: "Spostamento in .trash/ non riuscito",
-    hardDeleteFailed: "Eliminazione definitiva non riuscita",
     open: "Apri",
     rename: "Rinomina",
     delete: "Elimina",
-    moveToTrash: "Sposta in .trash/",
-    deleteAllDevices: "Elimina su tutti i dispositivi…",
     fileWord: "il file",
     folderWord: "la cartella",
     deleteConfirm: (kind: string, name: string) =>
@@ -128,17 +107,7 @@ const it: typeof en = {
       "Questo elemento è in .trash/ — l'eliminazione lo rimuoverà definitivamente da questo dispositivo.",
     deleteFolderNote: "Tutto il suo contenuto verrà rimosso definitivamente.",
     cannotUndo: "Questa azione non può essere annullata.",
-    hardDeleteTitle: "Eliminare su tutti i dispositivi?",
-    hardDeleteBody1:
-      "verrà rimosso definitivamente dal tuo Google Drive. Gli altri dispositivi collegati a NestBrain con questo account sposteranno la loro copia locale in",
-    hardDeleteBody2:
-      "alla prossima sincronizzazione — ma il file non sarà più recuperabile da Drive. Questa azione non può essere annullata.",
-    typeDeleteToConfirm: "Digita DELETE per confermare",
     cancel: "Annulla",
-    deleting: "Eliminazione…",
-    deleteForever: "Elimina per sempre",
-    hardDeleteFolderUnsupported:
-      "L'eliminazione definitiva delle cartelle non è ancora supportata — elimina i file singolarmente.",
     fileRowTitle: "Doppio clic per aprire · Clic destro per le opzioni",
     empty: "vuota",
   },
@@ -157,9 +126,6 @@ const it: typeof en = {
       `Apri un terminale qui · indicatore branch su ${name}`,
   },
   topbar: {
-    teamManaged:
-      "La sincronizzazione Google Drive è gestita dal tuo Team Server finché sei connesso",
-    teamActive: "Team Server attivo",
     syncUnavailableTitle:
       "La sincronizzazione Drive richiede la build ufficiale da nestbrain.app — oppure configura il tuo client Google OAuth (vedi README).",
     syncUnavailable: "Sync — non disponibile nella build gratuita",
@@ -213,13 +179,9 @@ const fr: typeof en = {
     createFailed: "Échec de la création",
     renameFailed: "Échec du renommage",
     deleteFailed: "Échec de la suppression",
-    moveToTrashFailed: "Échec du déplacement vers .trash/",
-    hardDeleteFailed: "Échec de la suppression définitive",
     open: "Ouvrir",
     rename: "Renommer",
     delete: "Supprimer",
-    moveToTrash: "Déplacer vers .trash/",
-    deleteAllDevices: "Supprimer sur tous les appareils…",
     fileWord: "le fichier",
     folderWord: "le dossier",
     deleteConfirm: (kind: string, name: string) =>
@@ -228,17 +190,7 @@ const fr: typeof en = {
       "Cet élément est dans .trash/ — la suppression le retirera définitivement de cet appareil.",
     deleteFolderNote: "Tout son contenu sera définitivement supprimé.",
     cannotUndo: "Cette action est irréversible.",
-    hardDeleteTitle: "Supprimer sur tous les appareils ?",
-    hardDeleteBody1:
-      "sera définitivement supprimé de votre Google Drive. Les autres appareils connectés à NestBrain avec ce compte déplaceront leur copie locale vers",
-    hardDeleteBody2:
-      "lors de leur prochaine synchronisation — mais le fichier ne sera plus récupérable depuis Drive. Cette action est irréversible.",
-    typeDeleteToConfirm: "Tapez DELETE pour confirmer",
     cancel: "Annuler",
-    deleting: "Suppression…",
-    deleteForever: "Supprimer définitivement",
-    hardDeleteFolderUnsupported:
-      "La suppression définitive des dossiers n'est pas encore prise en charge — supprimez les fichiers un par un.",
     fileRowTitle: "Double-clic pour ouvrir · Clic droit pour les options",
     empty: "vide",
   },
@@ -257,9 +209,6 @@ const fr: typeof en = {
       `Ouvrir un terminal ici · indicateur de branch sur ${name}`,
   },
   topbar: {
-    teamManaged:
-      "La synchronisation Google Drive est gérée par votre Team Server tant que vous êtes connecté",
-    teamActive: "Team Server actif",
     syncUnavailableTitle:
       "La synchronisation Drive nécessite la build officielle de nestbrain.app — ou configurez votre propre client Google OAuth (voir README).",
     syncUnavailable: "Sync — indisponible dans la version gratuite",
@@ -314,13 +263,9 @@ const es: typeof en = {
     createFailed: "No se pudo crear",
     renameFailed: "No se pudo renombrar",
     deleteFailed: "No se pudo eliminar",
-    moveToTrashFailed: "No se pudo mover a .trash/",
-    hardDeleteFailed: "No se pudo eliminar definitivamente",
     open: "Abrir",
     rename: "Renombrar",
     delete: "Eliminar",
-    moveToTrash: "Mover a .trash/",
-    deleteAllDevices: "Eliminar en todos los dispositivos…",
     fileWord: "el archivo",
     folderWord: "la carpeta",
     deleteConfirm: (kind: string, name: string) =>
@@ -329,17 +274,7 @@ const es: typeof en = {
       "Este elemento está en .trash/ — al eliminarlo se quitará permanentemente de este dispositivo.",
     deleteFolderNote: "Todo su contenido se eliminará permanentemente.",
     cannotUndo: "Esta acción no se puede deshacer.",
-    hardDeleteTitle: "¿Eliminar en todos los dispositivos?",
-    hardDeleteBody1:
-      "se eliminará permanentemente de tu Google Drive. Los demás dispositivos conectados a NestBrain con esta cuenta moverán su copia local a",
-    hardDeleteBody2:
-      "en su próxima sincronización — pero el archivo ya no se podrá recuperar desde Drive. Esta acción no se puede deshacer.",
-    typeDeleteToConfirm: "Escribe DELETE para confirmar",
     cancel: "Cancelar",
-    deleting: "Eliminando…",
-    deleteForever: "Eliminar para siempre",
-    hardDeleteFolderUnsupported:
-      "La eliminación definitiva de carpetas aún no está disponible — elimina los archivos uno a uno.",
     fileRowTitle: "Doble clic para abrir · Clic derecho para opciones",
     empty: "vacía",
   },
@@ -358,9 +293,6 @@ const es: typeof en = {
       `Abrir una terminal aquí · indicador de branch en ${name}`,
   },
   topbar: {
-    teamManaged:
-      "La sincronización de Google Drive la gestiona tu Team Server mientras estás conectado",
-    teamActive: "Team Server activo",
     syncUnavailableTitle:
       "La sincronización con Drive requiere la build oficial de nestbrain.app — o configura tu propio cliente Google OAuth (ver README).",
     syncUnavailable: "Sync — no disponible en la versión gratuita",

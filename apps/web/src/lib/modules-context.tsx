@@ -2,11 +2,9 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 
-// Enterprise add-on modules enabled for this seat (e.g. "dev", "anatomize").
-// Enabled = compiled into the binary AND licensed via the org's Team Server.
-// Refreshed on team state changes so a central module purchase lights up the
-// UI without a restart. Outside Electron (plain `nestbrain serve`) the bridge
-// is absent → no modules, core-only UI.
+// Add-on modules active in this build (e.g. "dev", "anatomize").
+// Enabled = compiled into the binary. Outside Electron the bridge is absent
+// → no modules, core-only UI.
 
 interface ModulesState {
   has: (id: string) => boolean;
@@ -27,23 +25,19 @@ export function ModulesProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     let alive = true;
-    const refresh = () =>
-      mn.modules
-        .get()
-        .then((m) => {
-          if (alive) {
-            setModules(m);
-            setLoaded(true);
-          }
-        })
-        .catch(() => {
-          if (alive) setLoaded(true);
-        });
-    refresh();
-    const off = mn.team?.onStateChanged?.(() => refresh());
+    mn.modules
+      .get()
+      .then((m) => {
+        if (alive) {
+          setModules(m);
+          setLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (alive) setLoaded(true);
+      });
     return () => {
       alive = false;
-      off?.();
     };
   }, []);
 
