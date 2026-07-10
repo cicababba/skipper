@@ -85,16 +85,12 @@ const en = {
     checkFailed: (error: string) => `Couldn't check: ${error}`,
     upToDate: (version: string) => `You're on ${version} — up to date`,
     viaAccount: "· via your account",
-    viaEnterprise: "· via your Team Server",
     restartNow: "Restart now",
     checkNow: "Check now",
   },
 
   syncAccount: {
     title: "Sync & Account",
-    teamActiveBold: "Google Drive Sync is disabled while Team Server is active.",
-    teamActiveRest:
-      "Your knowledge syncs through the Team Server instead. Disconnect Team Server to use Drive sync again.",
     freeTitle: "Sync is not available in the free build",
     freeDescBefore: "Multi-device sync comes pre-configured in the official builds from",
     freeDescMid: ". Building from source? You can wire your own Google OAuth client — see",
@@ -244,16 +240,12 @@ const it: typeof en = {
     checkFailed: (error) => `Verifica non riuscita: ${error}`,
     upToDate: (version) => `Stai usando ${version} — aggiornato`,
     viaAccount: "· tramite il tuo account",
-    viaEnterprise: "· tramite il tuo Team Server",
     restartNow: "Riavvia ora",
     checkNow: "Controlla ora",
   },
 
   syncAccount: {
     title: "Sincronizzazione e Account",
-    teamActiveBold: "Google Drive Sync è disabilitato mentre Team Server è attivo.",
-    teamActiveRest:
-      "La tua knowledge si sincronizza tramite il Team Server. Disconnetti il Team Server per usare di nuovo la sincronizzazione Drive.",
     freeTitle: "La sincronizzazione non è disponibile nella build gratuita",
     freeDescBefore: "La sincronizzazione multi-dispositivo è preconfigurata nelle build ufficiali di",
     freeDescMid: ". Compili da sorgente? Puoi collegare il tuo client Google OAuth — vedi",
@@ -403,16 +395,12 @@ const fr: typeof en = {
     checkFailed: (error) => `Vérification impossible : ${error}`,
     upToDate: (version) => `Vous êtes sur ${version} — à jour`,
     viaAccount: "· via votre compte",
-    viaEnterprise: "· via votre Team Server",
     restartNow: "Redémarrer maintenant",
     checkNow: "Vérifier maintenant",
   },
 
   syncAccount: {
     title: "Synchronisation et compte",
-    teamActiveBold: "Google Drive Sync est désactivé tant que Team Server est actif.",
-    teamActiveRest:
-      "Vos connaissances se synchronisent via le Team Server. Déconnectez le Team Server pour réutiliser la synchronisation Drive.",
     freeTitle: "La synchronisation n'est pas disponible dans la version gratuite",
     freeDescBefore: "La synchronisation multi-appareils est préconfigurée dans les builds officiels de",
     freeDescMid: ". Vous compilez depuis les sources ? Vous pouvez brancher votre propre client Google OAuth — voir",
@@ -562,16 +550,12 @@ const es: typeof en = {
     checkFailed: (error) => `No se pudo comprobar: ${error}`,
     upToDate: (version) => `Estás en ${version} — actualizado`,
     viaAccount: "· a través de tu cuenta",
-    viaEnterprise: "· a través de tu Team Server",
     restartNow: "Reiniciar ahora",
     checkNow: "Comprobar ahora",
   },
 
   syncAccount: {
     title: "Sincronización y cuenta",
-    teamActiveBold: "Google Drive Sync está desactivado mientras Team Server esté activo.",
-    teamActiveRest:
-      "Tu conocimiento se sincroniza a través del Team Server. Desconecta el Team Server para volver a usar la sincronización con Drive.",
     freeTitle: "La sincronización no está disponible en la versión gratuita",
     freeDescBefore: "La sincronización multidispositivo viene preconfigurada en las builds oficiales de",
     freeDescMid: ". ¿Compilas desde el código fuente? Puedes conectar tu propio cliente de Google OAuth — consulta",

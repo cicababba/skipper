@@ -8,11 +8,9 @@ import {
   RefreshCw,
   AlertCircle,
   CheckCircle2,
-  ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useSync } from "@/lib/sync-context";
-import { useTeamConnected } from "@/lib/use-team-connected";
 import { useT, type AppDict } from "@/lib/app-i18n";
 
 // Settings → Sync & Account section.
@@ -21,7 +19,6 @@ export function SyncAccountSection() {
   const { t } = useT();
   const { state: auth, signIn, signOut, cancelSignIn } = useAuth();
   const { state: sync, setPreferences, syncNow, available: syncAvailable } = useSync();
-  const teamConnected = useTeamConnected();
 
   return (
     <section className="mb-10">
@@ -31,15 +28,7 @@ export function SyncAccountSection() {
       </h2>
 
       <div className="p-5 rounded-xl bg-card border border-border space-y-4">
-        {teamConnected && (
-          <div className="flex items-start gap-2 text-[11px] text-violet-300 bg-violet-500/10 border border-violet-500/25 rounded-lg px-3 py-2 leading-relaxed">
-            <ShieldCheck size={13} className="shrink-0 mt-0.5" />
-            <span>
-              <b>{t.settings.syncAccount.teamActiveBold}</b> {t.settings.syncAccount.teamActiveRest}
-            </span>
-          </div>
-        )}
-        <div className={`space-y-5 ${teamConnected ? "opacity-50 pointer-events-none select-none" : ""}`} aria-disabled={teamConnected}>
+        <div className="space-y-5">
         {auth.status === "unconfigured" && (
           <div className="flex items-start gap-4">
             <div className="flex-1 min-w-0">

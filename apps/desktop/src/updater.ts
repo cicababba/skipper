@@ -20,15 +20,13 @@ export interface UpdateState {
   percent?: number;
   error?: string;
   /** Strongest entitlement attached to the last check. */
-  via?: "account" | "enterprise" | "build";
+  via?: "account" | "build";
 }
 
 /** Per-plan proof attached to feed requests (phase 2 entitlement). */
 export interface UpdateCredentials {
   /** Supporter entitlement token (minted from the in-app Google sign-in). */
   entitlement?: string | null;
-  /** Enterprise org license token (from the connected Team Server). */
-  license?: string | null;
 }
 
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
@@ -90,9 +88,9 @@ export function initUpdater(
   });
   autoUpdater.requestHeaders = { "x-update-key": UPDATE_CHANNEL_KEY };
 
-  // Refresh the per-plan proofs before every check (phase 2): supporter
-  // entitlement (from the in-app Google sign-in) and/or the Enterprise org
-  // license. The build key always rides along as the transition fallback.
+  // Refresh the per-plan proof before every check (phase 2): the supporter
+  // entitlement (from the in-app Google sign-in). The build key always rides
+  // along as the transition fallback.
   async function checkWithCredentials(): Promise<void> {
     const headers: Record<string, string> = { "x-update-key": UPDATE_CHANNEL_KEY };
     let via: UpdateState["via"] = "build";
@@ -101,12 +99,6 @@ export function initUpdater(
       if (creds.entitlement) {
         headers["x-entitlement"] = creds.entitlement;
         via = "account";
-      }
-      // A connected Team Server wins the label: that's the identity the user
-      // actually operates under (both proofs are still sent).
-      if (creds.license) {
-        headers["x-license"] = creds.license;
-        via = "enterprise";
       }
     } catch {
       /* fall back to the build key alone */
@@ -178,9 +170,8 @@ export function initUpdater(
 }
 
 // Re-evaluate credentials (and the "via" label) outside the periodic timer —
-// e.g. on Team Server connect/disconnect, so the Updates section doesn't keep
-// saying "via your Team Server" after a logout. Debounced: state changes come
-// in bursts during connect/sync.
+// e.g. on sign-in/sign-out, so the Updates section doesn't keep a stale
+// label. Debounced: state changes come in bursts.
 let recheck: (() => void) | null = null;
 let recheckTimer: ReturnType<typeof setTimeout> | null = null;
 export function recheckUpdates(): void {

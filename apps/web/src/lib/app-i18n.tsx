@@ -6,7 +6,7 @@ import { settings } from "./i18n/settings";
 import { knowledge } from "./i18n/knowledge";
 import { searchask } from "./i18n/searchask";
 import { wiki } from "./i18n/wiki";
-import { team } from "./i18n/team";
+import { modules } from "./i18n/modules";
 import { tree } from "./i18n/tree";
 import { dev } from "./i18n/dev";
 import { anatomize } from "./i18n/anatomize";
@@ -32,7 +32,7 @@ function buildDict(lang: AppLang) {
     knowledge: knowledge[lang],
     searchask: searchask[lang],
     wiki: wiki[lang],
-    team: team[lang],
+    modules: modules[lang],
     tree: tree[lang],
     dev: dev[lang],
     anatomize: anatomize[lang],

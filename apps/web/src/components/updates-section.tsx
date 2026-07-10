@@ -50,7 +50,6 @@ export function UpdatesSection() {
             <>
               <CheckCircle2 size={13} className="text-green-500/70" /> {t.settings.updates.upToDate(state.current ?? "")}
               {state.via === "account" && <span className="text-muted/40">{t.settings.updates.viaAccount}</span>}
-              {state.via === "enterprise" && <span className="text-muted/40">{t.settings.updates.viaEnterprise}</span>}
             </>
           )}
         </div>

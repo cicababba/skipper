@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import { SyncAccountSection } from "@/components/sync-account-section";
 import { CliInstallSection } from "@/components/cli-install-section";
-import { TeamSection } from "@/components/team-section";
 import { UpdatesSection } from "@/components/updates-section";
 import { LanguageSection } from "@/components/language-section";
 import { useT } from "@/lib/app-i18n";
@@ -190,8 +189,6 @@ export default function SettingsPage() {
         <LanguageSection />
 
         <SyncAccountSection />
-
-        <TeamSection />
 
         <UpdatesSection />
 

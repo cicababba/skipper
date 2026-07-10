@@ -2,9 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { LogOut, Settings as SettingsIcon, Loader2, ShieldCheck } from "lucide-react";
+import { LogOut, Settings as SettingsIcon, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { useTeamConnected } from "@/lib/use-team-connected";
 import { useT } from "@/lib/app-i18n";
 
 // Slim top bar that sits above the main content area. The whole strip is a
@@ -23,7 +22,6 @@ export function Topbar() {
 function AccountWidget() {
   const { t } = useT();
   const { state, signIn, signOut, cancelSignIn } = useAuth();
-  const teamConnected = useTeamConnected();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -39,21 +37,6 @@ function AccountWidget() {
   }, [menuOpen]);
 
   const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
-
-  // Team Server owns sync while connected → Google sign-in is inert. Show a
-  // non-interactive status pill instead of the sign-in / account controls.
-  if (teamConnected) {
-    return (
-      <div
-        style={noDrag}
-        title={t.tree.topbar.teamManaged}
-        className="flex items-center gap-1.5 h-7 px-3 rounded-md bg-violet-500/10 border border-violet-500/30 text-xs font-medium text-violet-300 cursor-default select-none"
-      >
-        <ShieldCheck size={13} />
-        {t.tree.topbar.teamActive}
-      </div>
-    );
-  }
 
   if (state.status === "unconfigured") {
     // Source build: sync sign-in would only fail at Google. Disabled + honest.

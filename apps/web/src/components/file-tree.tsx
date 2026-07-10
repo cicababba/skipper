@@ -28,7 +28,6 @@ import {
 import { useSync } from "@/lib/sync-context";
 import { useT } from "@/lib/app-i18n";
 import { useModules } from "@/lib/modules-context";
-import { useTeamConnected } from "@/lib/use-team-connected";
 import { FileIcon } from "./file-icon";
 import { useGitStatus, pickMarker, markerClass } from "@/lib/git-status-context";
 import { useTerminal } from "@/lib/terminal-context";
@@ -946,7 +945,6 @@ function TreeNode({
   const { t } = useT();
   const { has: hasModule } = useModules();
   const devModule = hasModule("dev");
-  const teamConnected = useTeamConnected();
   const isOpen = expanded.has(path);
   const isSelected = selectedPath === path;
   const isRenaming = renamingPath === path;
@@ -1126,7 +1124,6 @@ function TreeNode({
             .filter((entry) => {
               if (!isRoot || !entry.isDirectory) return true;
               if (entry.name === "Projects" && !devModule) return false;
-              if (entry.name === "Team" && !teamConnected) return false;
               return true;
             })
             .map((entry) => (

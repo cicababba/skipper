@@ -28,14 +28,13 @@ import {
 import { execFileSync, execSync, spawn } from "node:child_process";
 import { AuthManager } from "./auth";
 import { SyncManager } from "./sync";
-import { TeamManager } from "./team";
-import { modulesFromLicense } from "./modules";
+import { enabledModules } from "./modules";
 import { loadDevModule, type DevModuleApi } from "./dev-module";
 import { registerGitHandlers } from "./git";
 import { registerTerminalHandlers, type TerminalApi } from "./terminal";
 
-// Set once the lazy updater bundle loads; lets team connect/disconnect refresh
-// the update credentials + "via" label immediately.
+// Set once the lazy updater bundle loads; lets auth changes refresh the
+// update credentials + "via" label immediately.
 let updaterRecheck: (() => void) | null = null;
 
 // On macOS, packaged Electron apps don't inherit the user's shell PATH —
@@ -161,13 +160,11 @@ let currentPort: number | null = null;
 let lastServerOutput = "";
 let authManager: AuthManager | null = null;
 let syncManager: SyncManager | null = null;
-let teamManager: TeamManager | null = null;
 
 // Core workspace dirs — created for every install. Projects/ belongs to the
-// Dev module (created lazily when the module is entitled) and Team/ to the
-// Team Server (created on connect); neither is scaffolded for source/$29
-// installs. Both stay in the protected list so they can't be deleted/renamed
-// from the file tree once they exist.
+// Dev module (created lazily when the module is entitled) and isn't
+// scaffolded for source installs. It stays in the protected list so it can't
+// be deleted/renamed from the file tree once it exists.
 const CORE_SUBDIRS = [
   "Business",
   "Context",
@@ -175,7 +172,7 @@ const CORE_SUBDIRS = [
   "Library",
   "Skills",
 ];
-const NESTBRAIN_SUBDIRS = [...CORE_SUBDIRS, "Projects", "Team"];
+const NESTBRAIN_SUBDIRS = [...CORE_SUBDIRS, "Projects"];
 
 interface Bootstrap {
   nestBrainPath?: string;
@@ -835,8 +832,8 @@ function trashDir(): string | null {
   return b.nestBrainPath ? join(b.nestBrainPath, ".trash") : null;
 }
 
-/** Workspace-relative path a trashed file restores to. Team-sync layout is
- *  `.trash/team-<ts>/<path>`; the Drive engine's is `.trash/<path>`. */
+/** Workspace-relative path a trashed file restores to. Legacy team-sync
+ *  layout was `.trash/team-<ts>/<path>`; the flat layout is `.trash/<path>`. */
 function trashOriginalRel(relUnderTrash: string): string {
   const parts = relUnderTrash.split(sep);
   return parts[0]?.startsWith("team-") ? parts.slice(1).join(sep) : relUnderTrash;
@@ -1016,8 +1013,8 @@ function shouldIgnoreFsChange(filename: string | null): boolean {
   // Noise files
   const base = f.split("/").pop() || "";
   if (base === ".DS_Store" || base === "Thumbs.db") return true;
-  // The local vector index is rewritten on every (team) compile/index — large
-  // and irrelevant to the tree; ignoring it kills a big source of churn.
+  // The local vector index is rewritten on every reindex — large and
+  // irrelevant to the tree; ignoring it kills a big source of churn.
   if (base === "vector-index.json") return true;
   if (
     base.endsWith(".swp") ||
@@ -1226,18 +1223,12 @@ ipcMain.handle("nestbrain:sync:hardDelete", async (_e, relPath: string) => {
   await syncManager.hardDelete(relPath);
 });
 
-// ====== Team Knowledge (Enterprise) ======
-
-ipcMain.handle("nestbrain:team:getState", () => {
-  return teamManager?.getState() ?? { status: "disconnected", syncing: false };
-});
-
-// ====== Modules (Enterprise add-ons) ======
-// Enabled = built into this binary AND licensed via `module:<id>` features in
-// the org license the Team Server hands to signed-in members.
+// ====== Modules (add-ons) ======
+// Enabled = built into this binary. License-based entitlement will return
+// with the pivot's licensing model (Polar keys); until then the build is
+// the entitlement.
 ipcMain.handle("nestbrain:modules:get", async (): Promise<string[]> => {
-  const token = (await teamManager?.getOrgLicense().catch(() => null)) ?? null;
-  const mods = modulesFromLicense(token);
+  const mods = enabledModules();
   // Module dirs are created lazily, on entitlement: Projects/ exists only
   // where the Dev module does.
   if (mods.includes("dev")) {
@@ -1246,52 +1237,7 @@ ipcMain.handle("nestbrain:modules:get", async (): Promise<string[]> => {
       try { mkdirSync(join(b.nestBrainPath, "Projects"), { recursive: true }); } catch { /* ignore */ }
     }
   }
-  if (mods.includes("anatomize")) {
-    void teamManager?.syncAnatomizeProfiles();
-  }
   return mods;
-});
-ipcMain.handle("nestbrain:team:connect", async (_e, serverUrl: string, email: string, password: string) => {
-  if (!teamManager) throw new Error("Team not initialized");
-  await teamManager.connect(serverUrl, email, password);
-});
-ipcMain.handle("nestbrain:team:setup", async (_e, serverUrl: string, token: string, email: string, password: string, name?: string) => {
-  if (!teamManager) throw new Error("Team not initialized");
-  await teamManager.setup(serverUrl, token, email, password, name);
-});
-ipcMain.handle("nestbrain:team:disconnect", async () => {
-  if (!teamManager) return;
-  await teamManager.disconnect();
-});
-ipcMain.handle("nestbrain:team:listMembers", async () => {
-  if (!teamManager) throw new Error("Team not initialized");
-  return teamManager.listMembers();
-});
-ipcMain.handle("nestbrain:team:addMember", async (_e, m: { email: string; name: string; password: string; role: string }) => {
-  if (!teamManager) throw new Error("Team not initialized");
-  return teamManager.addMember(m);
-});
-ipcMain.handle("nestbrain:team:removeMember", async (_e, id: string) => {
-  if (!teamManager) throw new Error("Team not initialized");
-  return teamManager.removeMember(id);
-});
-ipcMain.handle("nestbrain:team:selectWorkspace", async (_e, id: string) => {
-  if (!teamManager) throw new Error("Team not initialized");
-  await teamManager.selectWorkspace(id);
-});
-ipcMain.handle("nestbrain:team:syncNow", async () => {
-  if (!teamManager) throw new Error("Team not initialized");
-  return teamManager.syncNow();
-});
-
-ipcMain.handle("nestbrain:team:setIncludeProjects", async (_e, v: boolean) => {
-  if (!teamManager) throw new Error("Team not initialized");
-  await teamManager.setIncludeProjects(!!v);
-});
-
-ipcMain.handle("nestbrain:team:switch", async (_e, serverUrl: string, email: string, password: string) => {
-  if (!teamManager) throw new Error("Team not initialized");
-  await teamManager.switchServer(serverUrl, email, password);
 });
 
 // ====== CLI on PATH (macOS / Windows) ======
@@ -1481,7 +1427,7 @@ ipcMain.handle("nestbrain:cli:uninstall", async () => {
 // --- Update entitlement (phase 2) -----------------------------------------
 // Supporter ($29): the in-app Google sign-in proves the email; the licensing
 // service confirms the Polar purchase and mints a 30-day signed entitlement we
-// cache on disk. Enterprise: forward the org license from the Team Server.
+// cache on disk.
 const LICENSING_BASE = "https://license.nestbrain.app";
 const ENTITLEMENT_FILE = () => join(app.getPath("userData"), "update-entitlement.json");
 
@@ -1511,12 +1457,8 @@ async function getSupporterEntitlement(): Promise<string | null> {
   }
 }
 
-async function getUpdateCredentials(): Promise<{ entitlement?: string | null; license?: string | null }> {
-  const [entitlement, license] = await Promise.all([
-    getSupporterEntitlement(),
-    teamManager?.getOrgLicense() ?? Promise.resolve(null),
-  ]);
-  return { entitlement, license };
+async function getUpdateCredentials(): Promise<{ entitlement?: string | null }> {
+  return { entitlement: await getSupporterEntitlement() };
 }
 
 app.whenReady().then(async () => {
@@ -1560,6 +1502,10 @@ app.whenReady().then(async () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("nestbrain:auth:stateChanged", state);
     }
+    // Sign-in/out changes the supporter entitlement → refresh the update
+    // credentials and the "via" label instead of waiting for the next
+    // periodic check.
+    updaterRecheck?.();
   });
   await authManager.init();
 
@@ -1579,37 +1525,6 @@ app.whenReady().then(async () => {
     }
   });
   await syncManager.init();
-
-  // Team Knowledge (Enterprise) — independent of Google auth; restores a
-  // persisted session (token in keychain) and syncs Library/Knowledge against
-  // a self-hosted Team Server.
-  teamManager = new TeamManager({
-    getWorkspacePath: () => {
-      const b = readBootstrap();
-      return b.nestBrainPath ?? null;
-    },
-    getServerUrl: () => serverUrl,
-  });
-  let teamWasConnected = false;
-  teamManager.onChange((state) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("nestbrain:team:stateChanged", state);
-    }
-    // Connect/disconnect changes the update entitlement → refresh the
-    // credentials and the "via" label instead of waiting for the next
-    // periodic check.
-    updaterRecheck?.();
-    // Entering Team Server mode → turn OFF Google Drive sync (knowledge AND
-    // projects). The Team Server owns Library/Knowledge; two engines on the same
-    // tree would conflict. On disconnect we leave Drive off — the user re-enables
-    // it deliberately.
-    const nowConnected = state.status === "connected";
-    if (nowConnected && !teamWasConnected) {
-      void syncManager?.setPreferences({ enabled: false, includeProjects: false });
-    }
-    teamWasConnected = nowConnected;
-  });
-  await teamManager.init();
 
   try {
     if (!isDev) {
@@ -1728,7 +1643,7 @@ function armQuitFailsafe(): void {
   }, 2500);
 }
 
-// The sync + team managers own chokidar watchers whose macOS fsevents backend
+// The sync manager owns chokidar watchers whose macOS fsevents backend
 // must be closed BEFORE Node tears down, or it fires into a freed N-API
 // threadsafe function and aborts (SIGABRT) on quit. Defer the quit once while we
 // await their disposal. Cross-platform safe (a no-op cost on Windows/Linux).
@@ -1744,7 +1659,7 @@ async function disposeWatchersForQuit(killOnTimeout = false): Promise<void> {
   if (watchersDisposed) return;
   shuttingDown = true;
   const clean = await Promise.race([
-    Promise.allSettled([syncManager?.dispose(), teamManager?.dispose()]).then(() => true),
+    Promise.allSettled([syncManager?.dispose()]).then(() => true),
     new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1500)),
   ]);
   watchersDisposed = true;

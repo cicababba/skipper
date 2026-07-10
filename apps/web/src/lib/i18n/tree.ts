@@ -57,9 +57,6 @@ const en = {
       `Open terminal here · focus branch indicator on ${name}`,
   },
   topbar: {
-    teamManaged:
-      "Google Drive sync is managed by your Team Server while connected",
-    teamActive: "Team Server active",
     syncUnavailableTitle:
       "Drive sync requires the official build from nestbrain.app — or wire your own Google OAuth client (see README).",
     syncUnavailable: "Sync — not available in the free build",
@@ -157,9 +154,6 @@ const it: typeof en = {
       `Apri un terminale qui · indicatore branch su ${name}`,
   },
   topbar: {
-    teamManaged:
-      "La sincronizzazione Google Drive è gestita dal tuo Team Server finché sei connesso",
-    teamActive: "Team Server attivo",
     syncUnavailableTitle:
       "La sincronizzazione Drive richiede la build ufficiale da nestbrain.app — oppure configura il tuo client Google OAuth (vedi README).",
     syncUnavailable: "Sync — non disponibile nella build gratuita",
@@ -257,9 +251,6 @@ const fr: typeof en = {
       `Ouvrir un terminal ici · indicateur de branch sur ${name}`,
   },
   topbar: {
-    teamManaged:
-      "La synchronisation Google Drive est gérée par votre Team Server tant que vous êtes connecté",
-    teamActive: "Team Server actif",
     syncUnavailableTitle:
       "La synchronisation Drive nécessite la build officielle de nestbrain.app — ou configurez votre propre client Google OAuth (voir README).",
     syncUnavailable: "Sync — indisponible dans la version gratuite",
@@ -358,9 +349,6 @@ const es: typeof en = {
       `Abrir una terminal aquí · indicador de branch en ${name}`,
   },
   topbar: {
-    teamManaged:
-      "La sincronización de Google Drive la gestiona tu Team Server mientras estás conectado",
-    teamActive: "Team Server activo",
     syncUnavailableTitle:
       "La sincronización con Drive requiere la build oficial de nestbrain.app — o configura tu propio cliente Google OAuth (ver README).",
     syncUnavailable: "Sync — no disponible en la versión gratuita",

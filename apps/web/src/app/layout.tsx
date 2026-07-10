@@ -15,7 +15,6 @@ import { OnboardingGate } from "@/lib/onboarding-gate";
 import { ModulesProvider } from "@/lib/modules-context";
 import { AppLangProvider } from "@/lib/app-i18n";
 import { UpdateToast } from "@/components/update-toast";
-import { TeamWelcome } from "@/components/team-welcome";
 import { AboutModal } from "@/components/about-modal";
 import "./globals.css";
 
@@ -66,7 +65,6 @@ export default function RootLayout({
                       <StatusBar />
                     </div>
                     <UpdateToast />
-                    <TeamWelcome />
                     <AboutModal />
                   </OnboardingGate>
                  </EditorTabsProvider>

@@ -128,30 +128,6 @@ contextBridge.exposeInMainWorld("nestbrain", {
     },
   },
 
-  team: {
-    getState: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:team:getState"),
-    connect: (serverUrl: string, email: string, password: string): Promise<void> =>
-      ipcRenderer.invoke("nestbrain:team:connect", serverUrl, email, password),
-    setup: (serverUrl: string, token: string, email: string, password: string, name?: string): Promise<void> =>
-      ipcRenderer.invoke("nestbrain:team:setup", serverUrl, token, email, password, name),
-    disconnect: (): Promise<void> => ipcRenderer.invoke("nestbrain:team:disconnect"),
-    listMembers: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:team:listMembers"),
-    addMember: (m: { email: string; name: string; password: string; role: string }): Promise<unknown> =>
-      ipcRenderer.invoke("nestbrain:team:addMember", m),
-    removeMember: (id: string): Promise<unknown> => ipcRenderer.invoke("nestbrain:team:removeMember", id),
-    selectWorkspace: (id: string): Promise<void> => ipcRenderer.invoke("nestbrain:team:selectWorkspace", id),
-    syncNow: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:team:syncNow"),
-    setIncludeProjects: (v: boolean): Promise<void> =>
-      ipcRenderer.invoke("nestbrain:team:setIncludeProjects", v),
-    switch: (serverUrl: string, email: string, password: string): Promise<void> =>
-      ipcRenderer.invoke("nestbrain:team:switch", serverUrl, email, password),
-    onStateChanged: (callback: (state: unknown) => void) => {
-      const handler = (_e: unknown, state: unknown) => callback(state);
-      ipcRenderer.on("nestbrain:team:stateChanged", handler);
-      return () => ipcRenderer.off("nestbrain:team:stateChanged", handler);
-    },
-  },
-
   modules: {
     get: (): Promise<string[]> => ipcRenderer.invoke("nestbrain:modules:get"),
   },

@@ -370,7 +370,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                     {parentPath}/NestBrain
                   </p>
                   <div className="mt-3 flex flex-wrap gap-1.5">
-                    {["Business", "Context", "Daily", "Library", "Projects", "Skills", "Team"].map(
+                    {["Business", "Context", "Daily", "Library", "Projects", "Skills"].map(
                       (d) => (
                         <span
                           key={d}

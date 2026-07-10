@@ -742,17 +742,6 @@ export default function MindMapPage() {
     }
   }, []);
 
-  // Auto-refresh the graph after a Team sync brings new articles in.
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.nestbrain?.team) return;
-    let lastSync = 0;
-    const off = window.nestbrain.team.onStateChanged((s) => {
-      const t = (s as { lastSync?: number })?.lastSync ?? 0;
-      if (t && t !== lastSync) { lastSync = t; loadGraph(); }
-    });
-    return () => off?.();
-  }, [loadGraph]);
-
   // Find a concept and reveal it: expand its macro cluster, select it, and
   // centre the view on it. Solves "I synced/have X but can't find it".
   function locate(q: string) {
