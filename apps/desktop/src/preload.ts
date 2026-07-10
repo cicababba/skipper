@@ -115,6 +115,17 @@ contextBridge.exposeInMainWorld("nestbrain", {
     get: (): Promise<string[]> => ipcRenderer.invoke("nestbrain:modules:get"),
   },
 
+  // Inbox (issue #5 wiring; renderer UI arrives with #12, hence `unknown`)
+  inbox: {
+    getState: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:inbox:getState"),
+    refresh: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:inbox:refresh"),
+    onStateChanged: (callback: (state: unknown) => void) => {
+      const handler = (_e: unknown, state: unknown) => callback(state);
+      ipcRenderer.on("nestbrain:inbox:stateChanged", handler);
+      return () => ipcRenderer.off("nestbrain:inbox:stateChanged", handler);
+    },
+  },
+
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke("nestbrain:openExternal", url),
   onShowAbout: (callback: () => void) => {
     const handler = () => callback();

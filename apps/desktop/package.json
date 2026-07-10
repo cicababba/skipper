@@ -8,8 +8,9 @@
     "ensure-oauth-config": "node build/ensure-oauth-config.mjs",
     "ensure-update-config": "node build/ensure-update-config.mjs",
     "bundle-updater": "node build/bundle-updater.mjs",
+    "bundle-inbox": "node build/bundle-inbox.mjs",
     "dereference-workspace-deps": "node build/dereference-workspace-deps.mjs",
-    "build:ts": "pnpm ensure-oauth-config && pnpm ensure-update-config && tsc -p tsconfig.json && pnpm bundle-updater",
+    "build:ts": "pnpm ensure-oauth-config && pnpm ensure-update-config && tsc -p tsconfig.json && pnpm bundle-updater && pnpm bundle-inbox",
     "build": "pnpm build:ts",
     "test": "vitest run --passWithNoTests",
     "dev": "pnpm build:ts && NESTBRAIN_DEV=1 electron .",
@@ -20,6 +21,7 @@
   },
   "dependencies": {
     "@nestbrain/shared": "workspace:*",
+    "@nestbrain/core": "workspace:*",
     "@nestbrain/sync": "workspace:*",
     "node-pty": "^1.0.0"
   },

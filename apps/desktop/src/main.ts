@@ -37,6 +37,7 @@ import { registerTerminalHandlers, type TerminalApi } from "./terminal";
 // Set once the lazy updater bundle loads; lets auth changes refresh the
 // update credentials + "via" label immediately.
 let updaterRecheck: (() => void) | null = null;
+let inboxPoke: (() => void) | null = null;
 
 // On macOS, packaged Electron apps don't inherit the user's shell PATH —
 // they get a minimal PATH like /usr/bin:/bin which doesn't include common
@@ -1502,6 +1503,8 @@ app.whenReady().then(async () => {
     // credentials and the "via" label instead of waiting for the next
     // periodic check.
     updaterRecheck?.();
+    // Accounts changed → repoll the inbox (debounced).
+    inboxPoke?.();
   });
   await authManager.init();
 
@@ -1539,6 +1542,21 @@ app.whenReady().then(async () => {
       updaterRecheck = recheckUpdates;
     } catch (e) {
       console.warn("[updates] updater bundle unavailable:", e instanceof Error ? e.message : e);
+    }
+    // Inbox poller (issue #5). Bundled like the updater because it pulls in
+    // the ESM @nestbrain/core; a broken bundle must never block startup.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { initInboxPoller, pokeInboxPoller } = require("./inbox-poller.cjs") as typeof import("./inbox-poller");
+      initInboxPoller(() => mainWindow, {
+        getAccounts: () => authManager?.getState().accounts.filter((a) => a.provider === "github") ?? [],
+        getToken: (accountId, force) =>
+          authManager?.getAccessToken("github", accountId, force) ?? Promise.resolve(null),
+        cursorFilePath: join(app.getPath("userData"), "inbox-cursors.json"),
+      });
+      inboxPoke = pokeInboxPoller;
+    } catch (e) {
+      console.warn("[inbox] poller bundle unavailable:", e instanceof Error ? e.message : e);
     }
     // Start watching NestBrain for file-tree auto-refresh if we already
     // have a bootstrap from a previous run. Fresh installs start it from

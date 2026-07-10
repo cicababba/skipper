@@ -42,6 +42,8 @@ export const GOOGLE_OAUTH_ENDPOINTS = {
 // server binds one of the fixed ports below — all of them must be registered
 // on the GitHub App as http://127.0.0.1:<port>/callback.
 
+export const GITHUB_API_BASE_URL = "https://api.github.com";
+
 export const GITHUB_OAUTH_ENDPOINTS = {
   authEndpoint: "https://github.com/login/oauth/authorize",
   tokenEndpoint: "https://github.com/login/oauth/access_token",

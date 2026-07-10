@@ -41,6 +41,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@nestbrain/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@nestbrain/shared':
         specifier: workspace:*
         version: link:../../packages/shared
