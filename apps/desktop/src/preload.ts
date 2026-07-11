@@ -115,14 +115,18 @@ contextBridge.exposeInMainWorld("nestbrain", {
     get: (): Promise<string[]> => ipcRenderer.invoke("nestbrain:modules:get"),
   },
 
-  // Inbox (issue #5 wiring; renderer UI arrives with #12, hence `unknown`)
-  inbox: {
-    getState: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:inbox:getState"),
-    refresh: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:inbox:refresh"),
+  // Orchestrator (issue #6 wiring; renderer UI arrives with #12, hence `unknown`)
+  orchestrator: {
+    getState: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:orchestrator:getState"),
+    refresh: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:orchestrator:refresh"),
+    requestTransition: (itemId: string, to: string, reason?: string): Promise<unknown> =>
+      ipcRenderer.invoke("nestbrain:orchestrator:requestTransition", itemId, to, reason),
+    setIntakePaused: (paused: boolean): Promise<unknown> =>
+      ipcRenderer.invoke("nestbrain:orchestrator:setIntakePaused", paused),
     onStateChanged: (callback: (state: unknown) => void) => {
       const handler = (_e: unknown, state: unknown) => callback(state);
-      ipcRenderer.on("nestbrain:inbox:stateChanged", handler);
-      return () => ipcRenderer.off("nestbrain:inbox:stateChanged", handler);
+      ipcRenderer.on("nestbrain:orchestrator:stateChanged", handler);
+      return () => ipcRenderer.off("nestbrain:orchestrator:stateChanged", handler);
     },
   },
 
