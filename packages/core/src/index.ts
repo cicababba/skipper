@@ -1,5 +1,5 @@
 export type { LLMProviderInterface, LLMResponse } from "./llm";
-export { createProvider } from "./llm";
+export { createProvider, ClaudeCLIProvider } from "./llm";
 export { PROMPTS } from "./llm";
 export { OLLAMA_DEFAULT_HOST, ollamaHost } from "./llm";
 
@@ -44,6 +44,10 @@ export type {
   GitHubPollOptions,
   GitHubPollResult,
 } from "./github";
+
+// Planner (issue #7)
+export { generatePlan, PlanGenerationError, IssuePlanSchema, planJsonSchema } from "./planner";
+export type { GeneratePlanOptions, PlanIssueInput } from "./planner";
 
 // Orchestrator (issue #6)
 export {

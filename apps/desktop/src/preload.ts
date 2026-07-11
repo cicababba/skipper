@@ -123,6 +123,18 @@ contextBridge.exposeInMainWorld("nestbrain", {
       ipcRenderer.invoke("nestbrain:orchestrator:requestTransition", itemId, to, reason),
     setIntakePaused: (paused: boolean): Promise<unknown> =>
       ipcRenderer.invoke("nestbrain:orchestrator:setIntakePaused", paused),
+    linkRepo: (owner: string, name: string, localPath: string): Promise<unknown> =>
+      ipcRenderer.invoke("nestbrain:orchestrator:linkRepo", owner, name, localPath),
+    cloneRepo: (
+      owner: string,
+      name: string,
+      destParent: string,
+      accountId?: string,
+    ): Promise<unknown> =>
+      ipcRenderer.invoke("nestbrain:orchestrator:cloneRepo", owner, name, destParent, accountId),
+    listRepos: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:orchestrator:listRepos"),
+    getPlan: (itemId: string): Promise<unknown> =>
+      ipcRenderer.invoke("nestbrain:orchestrator:getPlan", itemId),
     onStateChanged: (callback: (state: unknown) => void) => {
       const handler = (_e: unknown, state: unknown) => callback(state);
       ipcRenderer.on("nestbrain:orchestrator:stateChanged", handler);

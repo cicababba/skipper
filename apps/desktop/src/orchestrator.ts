@@ -15,10 +15,21 @@ import type {
   Issue,
   LifecycleState,
   PullRequest,
+  RepoRef,
   TrackedItem,
   TransitionActor,
 } from "@nestbrain/shared";
 import { loadCursors, saveCursors, type InboxCursorFile } from "./inbox-cursor-store";
+import {
+  cloneGitHubRepo,
+  loadRepoLinks,
+  repoKey,
+  saveRepoLinks,
+  validateRepoOrigin,
+  type RepoLinksFile,
+} from "./repo-links";
+import { readStoredPlan } from "./plan-store";
+import { initPlanner, pokePlanner } from "./planner";
 
 // Orchestrator loop (issue #6): absorbs the issue-#5 inbox poller. Keeps
 // per-account snapshots of assigned issues + authored PRs fresh via the core
@@ -49,6 +60,8 @@ export interface OrchestratorDeps {
   getToken: (accountId: string, forceRefresh?: boolean) => Promise<string | null>;
   cursorFilePath: string;
   manifestFilePath: string;
+  repoLinksFilePath: string;
+  plansDir: string;
 }
 
 const FIRST_POLL_DELAY_MS = 10_000;
@@ -62,6 +75,7 @@ let deps: OrchestratorDeps | null = null;
 let getWindow: () => BrowserWindow | null = () => null;
 let cursors: InboxCursorFile | null = null;
 let manifest: OrchestratorManifest | null = null;
+let repoLinks: RepoLinksFile | null = null;
 let polling = false;
 // item maps survive delta polls; state arrays are derived snapshots
 const items = new Map<string, Map<string, Issue | PullRequest>>();
@@ -101,6 +115,48 @@ async function ensureManifest(): Promise<OrchestratorManifest> {
     manifest = await loadOrCreateOrchestratorManifest(deps.manifestFilePath);
   }
   return manifest;
+}
+
+async function ensureRepoLinks(): Promise<RepoLinksFile> {
+  if (!repoLinks) {
+    if (!deps) throw new Error("orchestrator not initialized");
+    repoLinks = await loadRepoLinks(deps.repoLinksFilePath);
+  }
+  return repoLinks;
+}
+
+function repoPathFor(repo: RepoRef): string | undefined {
+  return repoLinks?.repos[repoKey(repo.owner, repo.name)]?.localPath;
+}
+
+/** Token for cloning: explicit account, else the account that sees the repo, else the first one. */
+async function tokenForRepo(
+  owner: string,
+  name: string,
+  accountId?: string,
+): Promise<string | null> {
+  if (!deps) return null;
+  if (accountId) return deps.getToken(accountId);
+  const key = repoKey(owner, name);
+  for (const [acctId, map] of items) {
+    for (const item of map.values()) {
+      if (repoKey(item.repo.owner, item.repo.name) === key) return deps.getToken(acctId);
+    }
+  }
+  const first = deps.getAccounts()[0];
+  return first ? deps.getToken(first.id) : null;
+}
+
+function admissionPolicy(m: OrchestratorManifest): {
+  intakePaused: boolean;
+  shouldAdmit: (issue: Issue) => boolean;
+} {
+  return {
+    intakePaused: m.settings.intakePaused,
+    // Only linked repos enter the lifecycle (linked = followed); unlinked
+    // issues stay in the raw inbox arrays until the user links the repo.
+    shouldAdmit: (issue) => Boolean(repoPathFor(issue.repo)),
+  };
 }
 
 function byUpdatedAtDesc(a: { updatedAt: string }, b: { updatedAt: string }): number {
@@ -151,11 +207,12 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
     }
 
     const m = await ensureManifest();
+    await ensureRepoLinks();
     const outcome = reconcile(
       m,
       accountId,
       { mode: result.mode, issues: result.issues, pullRequests: result.pullRequests },
-      { intakePaused: m.settings.intakePaused },
+      admissionPolicy(m),
     );
     for (const conflict of outcome.conflicts) {
       console.warn(`[orchestrator] conflict on ${conflict.itemId}: ${conflict.detail}`);
@@ -225,7 +282,43 @@ async function pollNow(ignoreBackoff = false): Promise<void> {
     polling = false;
     status = "idle";
     broadcast();
+    pokePlanner();
   }
+}
+
+/**
+ * Re-runs reconcile from the cached per-account item maps — used after a repo
+ * link/clone so already-seen issues admit retroactively without waiting for
+ * the next delta poll (which would not re-send unchanged items). Delta mode:
+ * the absence walk must never fire on a partial cache.
+ */
+async function reconcileFromCache(): Promise<void> {
+  if (!deps) return;
+  const m = await ensureManifest();
+  await ensureRepoLinks();
+  let changed = false;
+  for (const accountId of items.keys()) {
+    const { issues, pullRequests } = deriveArrays(accountId);
+    const outcome = reconcile(m, accountId, { mode: "delta", issues, pullRequests }, admissionPolicy(m));
+    if (outcome.admitted.length > 0 || outcome.transitions.length > 0) changed = true;
+  }
+  if (changed) {
+    await saveOrchestratorManifest(deps.manifestFilePath, m);
+  }
+  broadcast();
+  pokePlanner();
+}
+
+/** Sets plan.ref and the plan-gate transition in a single manifest write. */
+async function completePlan(itemId: string, ref: string): Promise<void> {
+  if (!deps) throw new Error("orchestrator not initialized");
+  const m = await ensureManifest();
+  const item = m.items[itemId];
+  if (!item) throw new Error(`unknown item ${itemId}`);
+  const withRef = { ...item, plan: { ...item.plan, ref } };
+  m.items[itemId] = applyTransition(withRef, "plan-gate", "planner", "plan generated");
+  await saveOrchestratorManifest(deps.manifestFilePath, m);
+  broadcast();
 }
 
 /**
@@ -247,6 +340,7 @@ export async function requestTransition(
   m.items[itemId] = next;
   await saveOrchestratorManifest(deps.manifestFilePath, m);
   broadcast();
+  if (actor !== "planner") pokePlanner();
   return next;
 }
 
@@ -301,6 +395,76 @@ export function initOrchestrator(
   ipcMain.handle("nestbrain:orchestrator:setIntakePaused", async (_e, paused: boolean) => {
     await setIntakePaused(Boolean(paused));
     return snapshot();
+  });
+  ipcMain.handle(
+    "nestbrain:orchestrator:linkRepo",
+    async (_e, owner: string, name: string, localPath: string) => {
+      try {
+        await validateRepoOrigin(localPath, owner, name);
+        const links = await ensureRepoLinks();
+        links.repos[repoKey(owner, name)] = { localPath, linkedAt: new Date().toISOString() };
+        await saveRepoLinks(deps!.repoLinksFilePath, links);
+        await reconcileFromCache();
+        return { ok: true as const, localPath };
+      } catch (err) {
+        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
+  ipcMain.handle(
+    "nestbrain:orchestrator:cloneRepo",
+    async (_e, owner: string, name: string, destParent: string, accountId?: string) => {
+      try {
+        const token = await tokenForRepo(owner, name, accountId);
+        if (!token) throw new Error("no GitHub account token available");
+        const localPath = await cloneGitHubRepo(owner, name, destParent, token);
+        const links = await ensureRepoLinks();
+        links.repos[repoKey(owner, name)] = { localPath, linkedAt: new Date().toISOString() };
+        await saveRepoLinks(deps!.repoLinksFilePath, links);
+        await reconcileFromCache();
+        return { ok: true as const, localPath };
+      } catch (err) {
+        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
+  ipcMain.handle("nestbrain:orchestrator:listRepos", async () => {
+    const links = await ensureRepoLinks();
+    const seen = new Map<string, RepoRef>();
+    for (const map of items.values()) {
+      for (const item of map.values()) {
+        seen.set(repoKey(item.repo.owner, item.repo.name), item.repo);
+      }
+    }
+    const linked = Object.entries(links.repos).map(([key, link]) => ({
+      key,
+      localPath: link.localPath,
+      linkedAt: link.linkedAt,
+      linked: true as const,
+    }));
+    const unlinked = [...seen.entries()]
+      .filter(([key]) => !links.repos[key])
+      .map(([key, repo]) => ({ key, repo, linked: false as const }));
+    return { linked, unlinked };
+  });
+  ipcMain.handle("nestbrain:orchestrator:getPlan", async (_e, itemId: string) => {
+    const m = await ensureManifest();
+    const ref = m.items[itemId]?.plan?.ref;
+    if (!ref) return null;
+    return readStoredPlan(deps!.plansDir, ref);
+  });
+
+  initPlanner({
+    listItems: () => Object.values(manifest?.items ?? {}),
+    getItem: (itemId) => manifest?.items[itemId],
+    getIssue: (item) => {
+      const cached = items.get(item.accountId)?.get(item.id);
+      return cached?.kind === "issue" ? cached : undefined;
+    },
+    getRepoPath: repoPathFor,
+    requestTransition,
+    completePlan,
+    plansDir: orchestratorDeps.plansDir,
   });
 
   setTimeout(

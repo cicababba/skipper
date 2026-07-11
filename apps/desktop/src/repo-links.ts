@@ -1,0 +1,173 @@
+// Per-repo link between a GitHub owner/name and a local clone, persisted as
+// plain JSON in userData. Pure Node module (no electron import) so it stays
+// unit-testable; callers inject the file path.
+
+import { execFile } from "node:child_process";
+import { mkdtemp, mkdir, readFile, rename, rm, writeFile, stat } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
+
+export interface RepoLink {
+  localPath: string;
+  linkedAt: string; // ISO 8601
+}
+
+export interface RepoLinksFile {
+  version: 1;
+  /** repoKey(owner, name) → link */
+  repos: Record<string, RepoLink>;
+}
+
+/** GitHub owner/name are case-insensitive — normalize once. */
+export function repoKey(owner: string, name: string): string {
+  return `${owner.toLowerCase()}/${name.toLowerCase()}`;
+}
+
+function freshLinksFile(): RepoLinksFile {
+  return { version: 1, repos: {} };
+}
+
+export async function loadRepoLinks(filePath: string): Promise<RepoLinksFile> {
+  try {
+    const raw = await readFile(filePath, "utf-8");
+    const parsed = JSON.parse(raw) as RepoLinksFile;
+    if (parsed.version === 1 && typeof parsed.repos === "object" && parsed.repos !== null) {
+      return parsed;
+    }
+    return freshLinksFile();
+  } catch {
+    return freshLinksFile();
+  }
+}
+
+// Serialized saves so concurrent link/clone calls never race the write+rename.
+const saveQueue = new Map<string, Promise<void>>();
+
+export async function saveRepoLinks(filePath: string, links: RepoLinksFile): Promise<void> {
+  const bytes = JSON.stringify(links, null, 2);
+  const prev = saveQueue.get(filePath) ?? Promise.resolve();
+  const next = prev
+    .catch(() => {
+      /* swallow previous error so this save still runs */
+    })
+    .then(() => writeAtomic(filePath, bytes));
+  saveQueue.set(filePath, next);
+  try {
+    await next;
+  } finally {
+    if (saveQueue.get(filePath) === next) saveQueue.delete(filePath);
+  }
+}
+
+async function writeAtomic(path: string, contents: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const tmp = `${path}.tmp`;
+  await writeFile(tmp, contents, "utf-8");
+  await rename(tmp, path);
+}
+
+interface RunResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+function run(
+  file: string,
+  args: string[],
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeout?: number } = {},
+): Promise<RunResult> {
+  return new Promise((res) => {
+    execFile(
+      file,
+      args,
+      {
+        cwd: opts.cwd,
+        timeout: opts.timeout ?? 60_000,
+        maxBuffer: 16 * 1024 * 1024,
+        env: { ...(opts.env ?? process.env), GIT_TERMINAL_PROMPT: "0" },
+      },
+      (error, stdout, stderr) => {
+        const code = error
+          ? (((error as NodeJS.ErrnoException & { code?: unknown }).code as number | undefined) ?? 1)
+          : 0;
+        res({ code: typeof code === "number" ? code : 1, stdout, stderr });
+      },
+    );
+  });
+}
+
+// Covers https://github.com/o/r(.git), git@github.com:o/r.git and
+// ssh://git@github.com/o/r(.git), with or without a trailing slash.
+const ORIGIN_RE = /github\.com[/:]([^/]+)\/(.+?)(?:\.git)?\/?$/i;
+
+/** Throws unless localPath is a git repo whose origin points at owner/name. */
+export async function validateRepoOrigin(
+  localPath: string,
+  owner: string,
+  name: string,
+): Promise<void> {
+  const info = await stat(localPath).catch(() => null);
+  if (!info?.isDirectory()) throw new Error(`not a directory: ${localPath}`);
+  const r = await run("git", ["-C", localPath, "remote", "get-url", "origin"]);
+  if (r.code !== 0) {
+    throw new Error(`not a git repository with an origin remote: ${r.stderr.trim() || localPath}`);
+  }
+  const match = ORIGIN_RE.exec(r.stdout.trim());
+  if (
+    !match ||
+    match[1].toLowerCase() !== owner.toLowerCase() ||
+    match[2].toLowerCase() !== name.toLowerCase()
+  ) {
+    throw new Error(
+      `origin remote "${r.stdout.trim()}" does not match github.com/${owner}/${name}`,
+    );
+  }
+}
+
+/**
+ * Full clone (no shallow — worktrees need history, #9) authenticated via a
+ * throwaway GIT_ASKPASS script: the token rides an env var of the child
+ * process only, never argv, never .git/config, and the script dies in
+ * finally. The plain https URL means nothing needs scrubbing afterwards.
+ */
+export async function cloneGitHubRepo(
+  owner: string,
+  name: string,
+  destParent: string,
+  token: string,
+): Promise<string> {
+  const dest = join(destParent, name);
+  if (await stat(dest).catch(() => null)) {
+    throw new Error(`destination already exists: ${dest}`);
+  }
+  await mkdir(destParent, { recursive: true });
+
+  const askDir = await mkdtemp(join(tmpdir(), "nb-askpass-"));
+  const isWin = process.platform === "win32";
+  const script = join(askDir, isWin ? "askpass.bat" : "askpass.sh");
+  const body = isWin
+    ? '@echo off\r\necho %~1| findstr /b /c:"Username" >nul\r\nif errorlevel 1 (echo %NB_GIT_TOKEN%) else (echo x-access-token)\r\n'
+    : '#!/bin/sh\ncase "$1" in\n  Username*) echo x-access-token ;;\n  *) printf %s "$NB_GIT_TOKEN" ;;\nesac\n';
+  await writeFile(script, body, { mode: 0o700 });
+
+  try {
+    const r = await run(
+      "git",
+      ["clone", `https://github.com/${owner}/${name}.git`, dest],
+      {
+        env: { ...process.env, GIT_ASKPASS: script, NB_GIT_TOKEN: token },
+        timeout: 600_000,
+      },
+    );
+    if (r.code !== 0) {
+      await rm(dest, { recursive: true, force: true });
+      throw new Error(`git clone failed: ${r.stderr.trim() || `exit ${r.code}`}`);
+    }
+  } finally {
+    await rm(askDir, { recursive: true, force: true });
+  }
+
+  await validateRepoOrigin(dest, owner, name);
+  return dest;
+}

@@ -85,6 +85,18 @@ describe("reconcile — issues", () => {
     expect(m.parked).toEqual({});
   });
 
+  it("admits a previously skipped issue once shouldAdmit flips (repo linked)", () => {
+    const m = manifest();
+    let linked = false;
+    const policy = { intakePaused: false, shouldAdmit: () => linked };
+    reconcile(m, ACCOUNT, poll({ issues: [issue(1)] }), policy);
+    expect(m.items).toEqual({});
+    linked = true;
+    const outcome = reconcile(m, ACCOUNT, poll({ issues: [issue(1)] }), policy);
+    expect(outcome.admitted).toEqual(["github:1"]);
+    expect(m.items["github:1"].state).toBe("triage");
+  });
+
   it("parks unknown open issues while intake is paused", () => {
     const m = manifest();
     const outcome = reconcile(m, ACCOUNT, poll({ issues: [issue(1)] }), { intakePaused: true });
