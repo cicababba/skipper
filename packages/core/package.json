@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^4.0.1",
-    "@nestbrain/shared": "workspace:*"
+    "@nestbrain/shared": "workspace:*",
+    "zod": "^4.3.6"
   }
 }

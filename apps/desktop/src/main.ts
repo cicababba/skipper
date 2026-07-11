@@ -1554,6 +1554,8 @@ app.whenReady().then(async () => {
           authManager?.getAccessToken("github", accountId, force) ?? Promise.resolve(null),
         cursorFilePath: join(app.getPath("userData"), "inbox-cursors.json"),
         manifestFilePath: join(app.getPath("userData"), "orchestrator-manifest.json"),
+        repoLinksFilePath: join(app.getPath("userData"), "repo-links.json"),
+        plansDir: join(app.getPath("userData"), "plans"),
       });
       orchestratorPoke = pokeOrchestrator;
     } catch (e) {
