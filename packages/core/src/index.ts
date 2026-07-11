@@ -45,6 +45,25 @@ export type {
   GitHubPollResult,
 } from "./github";
 
+// Orchestrator (issue #6)
+export {
+  TRANSITIONS,
+  TERMINAL_STATES,
+  canTransition,
+  admitItem,
+  applyTransition,
+  IllegalTransitionError,
+  loadOrCreateOrchestratorManifest,
+  saveOrchestratorManifest,
+  reconcile,
+} from "./orchestrator";
+export type {
+  OrchestratorManifest,
+  AdmissionPolicy,
+  ReconcileOutcome,
+  ReconcilePoll,
+} from "./orchestrator";
+
 // Runtime loader that must be registered by the consumer app.
 // The app uses createRequire + /* turbopackIgnore */ to load the package
 // without Turbopack touching it (Turbopack's bundled externals break on
