@@ -223,7 +223,12 @@ interno ma non serve esporlo.
   default sicuro è 1.
 - Le issue approvate senza slot stanno **IN CODA**, ordinata per: (1) **rientri**
   (PR con modifiche richieste — finire ciò che è in volo batte iniziare cose
-  nuove), (2) **pin manuale**, (3) **confidence**, poi **età**.
+  nuove), (2) **pin manuale**, (3) **priorità del repo**, (4) **confidence**, poi
+  **età**.
+- **Priorità per repo.** Quando il WIP limit è conteso tra più repo, una priorità
+  per-repo (alta/normale/bassa, default normale — in Settings accanto a follow
+  list e auto-plan) decide quale coda prende lo slot libero. Il pin manuale resta
+  l'override per-issue.
 - I rientri **contano nel limite** (occupano un agente vero) ma saltano la coda.
 
 **Pausa intake.** Un toggle globale ferma l'*ammissione* di nuove issue in inbox;
