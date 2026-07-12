@@ -30,7 +30,12 @@ interface RunResult {
   stderr: string;
 }
 
-function runGit(cwd: string, args: string[], timeout = 60_000): Promise<RunResult> {
+export function runGit(
+  cwd: string,
+  args: string[],
+  timeout = 60_000,
+  env?: NodeJS.ProcessEnv,
+): Promise<RunResult> {
   return new Promise((res) => {
     execFile(
       "git",
@@ -41,7 +46,7 @@ function runGit(cwd: string, args: string[], timeout = 60_000): Promise<RunResul
         maxBuffer: 16 * 1024 * 1024,
         // Never let git block the main process on an interactive prompt —
         // fail fast and surface stderr to the renderer instead.
-        env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" },
+        env: { ...(env ?? process.env), GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" },
       },
       (error, stdout, stderr) => {
         const code = error ? ((error as NodeJS.ErrnoException & { code?: unknown }).code as number | undefined) ?? 1 : 0;

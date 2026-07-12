@@ -11,14 +11,19 @@ import { parseJsonReply } from "./json";
 // target once: a native claude.exe spawns directly; an npm shim is bypassed
 // by running its cli.js under our own runtime (ELECTRON_RUN_AS_NODE inside
 // the packaged app, plain node otherwise).
-interface ClaudeCmd {
+export interface ClaudeCmd {
   file: string;
   argsPrefix: string[];
   env?: NodeJS.ProcessEnv;
 }
 let resolvedClaude: ClaudeCmd | null = null;
 
-function resolveClaude(): ClaudeCmd {
+/** Reset the memoized resolution — claude may get installed mid-session. */
+export function invalidateResolvedClaude(): void {
+  resolvedClaude = null;
+}
+
+export function resolveClaude(): ClaudeCmd {
   if (resolvedClaude) return resolvedClaude;
   if (process.platform !== "win32") {
     return (resolvedClaude = { file: "claude", argsPrefix: [] });

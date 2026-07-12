@@ -142,6 +142,18 @@ contextBridge.exposeInMainWorld("nestbrain", {
     },
   },
 
+  // Coding runner (issue #9): per-item progress stream + replay buffer.
+  coding: {
+    getEvents: (itemId: string): Promise<unknown[]> =>
+      ipcRenderer.invoke("nestbrain:coding:getEvents", itemId),
+    onEvent: (itemId: string, callback: (envelope: unknown) => void) => {
+      const channel = `nestbrain:coding:event:${itemId}`;
+      const handler = (_e: unknown, envelope: unknown) => callback(envelope);
+      ipcRenderer.on(channel, handler);
+      return () => ipcRenderer.off(channel, handler);
+    },
+  },
+
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke("nestbrain:openExternal", url),
   onShowAbout: (callback: () => void) => {
     const handler = () => callback();

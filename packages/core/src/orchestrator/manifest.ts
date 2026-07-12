@@ -8,6 +8,10 @@ export interface OrchestratorSettings {
   plannerModel: string;
   /** Gate thresholds + convergence sample count (#8). Hand-editable; UI with #13. */
   confidence: { high: number; low: number; extraPlanRuns: number };
+  /** Model handed to the coding agent (#9). */
+  coderModel: string;
+  /** Max agent turns per coding run (#9). */
+  coderMaxTurns: number;
 }
 
 export interface OrchestratorManifest {
@@ -23,6 +27,8 @@ export const DEFAULT_ORCHESTRATOR_SETTINGS: OrchestratorSettings = {
   intakePaused: false,
   plannerModel: "opus",
   confidence: { high: 0.85, low: 0.4, extraPlanRuns: 2 },
+  coderModel: "opus",
+  coderMaxTurns: 60,
 };
 
 function freshManifest(): OrchestratorManifest {
@@ -49,9 +55,11 @@ export async function loadOrCreateOrchestratorManifest(
       typeof parsed.parked === "object" &&
       parsed.parked !== null
     ) {
-      // Additive settings (#8): fill defaults into pre-#8 manifests.
+      // Additive settings (#8, #9): fill defaults into older manifests.
       parsed.settings.plannerModel ??= DEFAULT_ORCHESTRATOR_SETTINGS.plannerModel;
       parsed.settings.confidence ??= structuredClone(DEFAULT_ORCHESTRATOR_SETTINGS.confidence);
+      parsed.settings.coderModel ??= DEFAULT_ORCHESTRATOR_SETTINGS.coderModel;
+      parsed.settings.coderMaxTurns ??= DEFAULT_ORCHESTRATOR_SETTINGS.coderMaxTurns;
       return parsed;
     }
     return freshManifest();
