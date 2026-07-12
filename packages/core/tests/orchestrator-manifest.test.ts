@@ -6,6 +6,7 @@ import {
   loadOrCreateOrchestratorManifest,
   saveOrchestratorManifest,
   admitItem,
+  DEFAULT_ORCHESTRATOR_SETTINGS,
   type OrchestratorManifest,
 } from "../src/orchestrator";
 import type { Issue } from "@nestbrain/shared";
@@ -45,10 +46,26 @@ describe("orchestrator manifest", () => {
     const manifest = await loadOrCreateOrchestratorManifest(filePath);
     expect(manifest).toEqual({
       version: 1,
-      settings: { intakePaused: false },
+      settings: {
+        intakePaused: false,
+        plannerModel: "opus",
+        confidence: { high: 0.85, low: 0.4, extraPlanRuns: 2 },
+      },
       items: {},
       parked: {},
     });
+  });
+
+  it("fills #8 settings defaults into a pre-#8 manifest", async () => {
+    await writeFile(
+      filePath,
+      JSON.stringify({ version: 1, settings: { intakePaused: true }, items: {}, parked: {} }),
+      "utf-8",
+    );
+    const manifest = await loadOrCreateOrchestratorManifest(filePath);
+    expect(manifest.settings.intakePaused).toBe(true);
+    expect(manifest.settings.plannerModel).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.plannerModel);
+    expect(manifest.settings.confidence).toEqual(DEFAULT_ORCHESTRATOR_SETTINGS.confidence);
   });
 
   it("round-trips items, settings and parked entries", async () => {
@@ -80,7 +97,7 @@ describe("orchestrator manifest", () => {
   it("serializes concurrent saves — last write wins and the file stays valid", async () => {
     const base: OrchestratorManifest = {
       version: 1,
-      settings: { intakePaused: false },
+      settings: structuredClone(DEFAULT_ORCHESTRATOR_SETTINGS),
       items: {},
       parked: {},
     };

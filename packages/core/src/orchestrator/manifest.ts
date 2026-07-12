@@ -2,17 +2,36 @@ import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { TrackedItem } from "@nestbrain/shared";
 
+export interface OrchestratorSettings {
+  intakePaused: boolean;
+  /** Model handed to the planner's LLM provider (also scores confidence, #8). */
+  plannerModel: string;
+  /** Gate thresholds + convergence sample count (#8). Hand-editable; UI with #13. */
+  confidence: { high: number; low: number; extraPlanRuns: number };
+}
+
 export interface OrchestratorManifest {
   version: 1;
-  settings: { intakePaused: boolean };
+  settings: OrchestratorSettings;
   /** itemId → tracked issue. */
   items: Record<string, TrackedItem>;
   /** Issues seen while intake was paused; #15's resume rite consumes this. */
   parked: Record<string, { firstSeenAt: string }>;
 }
 
+export const DEFAULT_ORCHESTRATOR_SETTINGS: OrchestratorSettings = {
+  intakePaused: false,
+  plannerModel: "opus",
+  confidence: { high: 0.85, low: 0.4, extraPlanRuns: 2 },
+};
+
 function freshManifest(): OrchestratorManifest {
-  return { version: 1, settings: { intakePaused: false }, items: {}, parked: {} };
+  return {
+    version: 1,
+    settings: structuredClone(DEFAULT_ORCHESTRATOR_SETTINGS),
+    items: {},
+    parked: {},
+  };
 }
 
 export async function loadOrCreateOrchestratorManifest(
@@ -30,6 +49,9 @@ export async function loadOrCreateOrchestratorManifest(
       typeof parsed.parked === "object" &&
       parsed.parked !== null
     ) {
+      // Additive settings (#8): fill defaults into pre-#8 manifests.
+      parsed.settings.plannerModel ??= DEFAULT_ORCHESTRATOR_SETTINGS.plannerModel;
+      parsed.settings.confidence ??= structuredClone(DEFAULT_ORCHESTRATOR_SETTINGS.confidence);
       return parsed;
     }
     return freshManifest();

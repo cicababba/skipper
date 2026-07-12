@@ -92,7 +92,7 @@ describe("plan store", () => {
   it("round-trips a stored plan", async () => {
     const plansDir = join(dir, "plans");
     const stored: StoredPlan = {
-      version: 1,
+      version: 2,
       itemId: "github:1",
       repo: { owner: "o", name: "r" },
       issueNumber: 1,
@@ -112,5 +112,12 @@ describe("plan store", () => {
     await writeStoredPlan(plansDir, ref, stored);
     expect(await readStoredPlan(plansDir, ref)).toEqual(stored);
     expect(await readStoredPlan(plansDir, "missing.json")).toBeNull();
+  });
+
+  it("still reads a pre-#8 v1 plan", async () => {
+    const plansDir = join(dir, "plans");
+    const v1 = { version: 1, itemId: "github:2", plan: { summary: "old" } };
+    await writeStoredPlan(plansDir, "v1.json", v1 as unknown as StoredPlan);
+    expect(await readStoredPlan(plansDir, "v1.json")).toEqual(v1);
   });
 });

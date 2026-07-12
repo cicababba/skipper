@@ -1,12 +1,16 @@
 import {
+  computeConfidence,
   generatePlan,
   ClaudeCLIProvider,
   type LLMProviderInterface,
+  type OrchestratorSettings,
 } from "@nestbrain/core";
 import type {
+  ConfidenceReport,
   Issue,
   LifecycleState,
   RepoRef,
+  StoredPlan,
   TrackedItem,
   TransitionActor,
 } from "@nestbrain/shared";
@@ -14,7 +18,8 @@ import { planFileName, writeStoredPlan } from "./plan-store";
 
 // Eager planner loop (issue #7): watches the orchestrator manifest for triage
 // items whose repo is linked, moves them to planning, runs the core plan
-// generator in the repo checkout, and lands them on plan-gate. Background,
+// generator in the repo checkout, scores confidence (#8), and lands them on
+// the confidence-gated target (queued / plan-gate / needs-input). Background,
 // bounded concurrency, cooperative cancellation (re-checks state before
 // applying results).
 
@@ -30,16 +35,19 @@ export interface PlannerDeps {
     actor: TransitionActor,
     reason?: string,
   ) => Promise<TrackedItem>;
-  /** Sets plan.ref + transition to plan-gate in one manifest write. */
-  completePlan: (itemId: string, ref: string) => Promise<void>;
+  /** Sets plan.ref + the confidence-gated transition in one manifest write (#8). */
+  completePlan: (itemId: string, ref: string, confidence?: ConfidenceReport) => Promise<void>;
+  /** Live orchestrator settings — planner model + confidence knobs. */
+  getSettings: () => OrchestratorSettings;
   plansDir: string;
 }
 
 const PLANNING_CONCURRENCY = 2;
-const PLANNER_MODEL = "sonnet";
 
 let deps: PlannerDeps | null = null;
 let llm: LLMProviderInterface | null = null;
+let llmModel: string | null = null;
+let llmInjected = false;
 const queue: string[] = [];
 const queued = new Set<string>();
 const inFlight = new Set<string>();
@@ -48,7 +56,19 @@ let scanScheduled = false;
 
 export function initPlanner(plannerDeps: PlannerDeps, provider?: LLMProviderInterface): void {
   deps = plannerDeps;
-  llm = provider ?? new ClaudeCLIProvider(PLANNER_MODEL);
+  llmInjected = provider !== undefined;
+  llm = provider ?? null;
+  llmModel = null;
+}
+
+/** Injected provider (tests) wins; otherwise a CLI provider cached per model. */
+function resolveProvider(model: string): { llm: LLMProviderInterface; model: string } {
+  if (llmInjected && llm) return { llm, model };
+  if (!llm || llmModel !== model) {
+    llm = new ClaudeCLIProvider(model);
+    llmModel = model;
+  }
+  return { llm, model };
 }
 
 /** Coalesced re-scan — fired after polls and transitions. */
@@ -97,7 +117,7 @@ function pump(): void {
 }
 
 async function run(itemId: string): Promise<void> {
-  if (!deps || !llm || inFlight.has(itemId)) return;
+  if (!deps || inFlight.has(itemId)) return;
   inFlight.add(itemId);
   active++;
   try {
@@ -108,31 +128,50 @@ async function run(itemId: string): Promise<void> {
       await deps.requestTransition(itemId, "needs-input", "planner", "repo not linked");
       return;
     }
+    const settings = deps.getSettings();
+    const { llm: provider, model } = resolveProvider(settings.plannerModel);
     const cached = deps.getIssue(item);
-    const plan = await generatePlan({
-      issue: {
-        number: item.number,
-        title: item.title,
-        url: item.url,
-        labels: cached?.labels ?? [],
-        body: cached?.body,
-      },
-      repoPath,
-      llm,
-    });
+    const issue = {
+      number: item.number,
+      title: item.title,
+      url: item.url,
+      labels: cached?.labels ?? [],
+      body: cached?.body,
+    };
+    const plan = await generatePlan({ issue, repoPath, llm: provider });
     const ref = planFileName(itemId);
-    await writeStoredPlan(deps.plansDir, ref, {
-      version: 1,
+    const stored: StoredPlan = {
+      version: 2,
       itemId,
       repo: item.repo,
       issueNumber: item.number,
       generatedAt: new Date().toISOString(),
-      model: PLANNER_MODEL,
+      model,
       plan,
-    });
+    };
+    // Persist before the expensive scoring so the plan survives a crash mid-score.
+    await writeStoredPlan(deps.plansDir, ref, stored);
     // Cooperative cancel: the item may have been closed/moved mid-generation.
+    if (deps.getItem(itemId)?.state !== "planning") return;
+    // Scoring failure is never fatal (#8): no report → conservative plan-gate.
+    let report: ConfidenceReport | undefined;
+    try {
+      report = await computeConfidence({
+        plan,
+        issue,
+        repoPath,
+        llm: provider,
+        extraPlanRuns: settings.confidence.extraPlanRuns,
+      });
+      if (Object.keys(report.signals).length === 0) report = undefined;
+    } catch {
+      report = undefined;
+    }
+    if (report) {
+      await writeStoredPlan(deps.plansDir, ref, { ...stored, confidence: report });
+    }
     if (deps.getItem(itemId)?.state === "planning") {
-      await deps.completePlan(itemId, ref);
+      await deps.completePlan(itemId, ref, report);
     }
   } catch (err) {
     if (deps.getItem(itemId)?.state === "planning") {
