@@ -67,6 +67,18 @@ export {
 } from "./confidence";
 export type { CriticInput, ComputeConfidenceOptions, GateTarget } from "./confidence";
 
+// Coder (issue #9)
+export {
+  runCodingAgent,
+  CodingAbortError,
+  CODER_SYSTEM_PROMPT,
+  buildCoderPrompt,
+  buildResumePrompt,
+  mapStreamLine,
+  createStreamJsonParser,
+} from "./coder";
+export type { RunCodingAgentOptions, CodingRunResult, StreamJsonParser } from "./coder";
+
 // Orchestrator (issue #6)
 export {
   TRANSITIONS,

@@ -38,6 +38,7 @@ import { registerTerminalHandlers, type TerminalApi } from "./terminal";
 // update credentials + "via" label immediately.
 let updaterRecheck: (() => void) | null = null;
 let orchestratorPoke: (() => void) | null = null;
+let coderKillAll: (() => void) | null = null;
 
 // On macOS, packaged Electron apps don't inherit the user's shell PATH —
 // they get a minimal PATH like /usr/bin:/bin which doesn't include common
@@ -1534,6 +1535,7 @@ app.whenReady().then(async () => {
           // utilityProcess (a second NestBrain.exe that blocks the NSIS
           // file replacement on Windows).
           shuttingDown = true;
+          coderKillAll?.();
           killAllPtySessions();
           await killNextServer();
         },
@@ -1547,7 +1549,7 @@ app.whenReady().then(async () => {
     // the ESM @nestbrain/core; a broken bundle must never block startup.
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { initOrchestrator, pokeOrchestrator } = require("./orchestrator.cjs") as typeof import("./orchestrator");
+      const { initOrchestrator, pokeOrchestrator, killAllCodingRuns } = require("./orchestrator.cjs") as typeof import("./orchestrator");
       initOrchestrator(() => mainWindow, {
         getAccounts: () => authManager?.getState().accounts.filter((a) => a.provider === "github") ?? [],
         getToken: (accountId, force) =>
@@ -1556,8 +1558,10 @@ app.whenReady().then(async () => {
         manifestFilePath: join(app.getPath("userData"), "orchestrator-manifest.json"),
         repoLinksFilePath: join(app.getPath("userData"), "repo-links.json"),
         plansDir: join(app.getPath("userData"), "plans"),
+        worktreesDir: join(app.getPath("userData"), "worktrees"),
       });
       orchestratorPoke = pokeOrchestrator;
+      coderKillAll = killAllCodingRuns;
     } catch (e) {
       console.warn("[orchestrator] bundle unavailable:", e instanceof Error ? e.message : e);
     }
@@ -1598,8 +1602,10 @@ app.on("before-quit", () => {
   if (process.platform === "darwin") app.dock?.hide();
   stopNestBrainWatcher();
   killNextServer();
-  // Live node-pty children (integrated terminals) keep the process alive past
-  // app.quit() — the classic "window gone, app still in the dock" zombie.
+  // Live node-pty children (integrated terminals) and coding agents keep the
+  // process alive past app.quit() — the classic "window gone, app still in
+  // the dock" zombie.
+  coderKillAll?.();
   killAllPtySessions();
   armQuitFailsafe();
 });

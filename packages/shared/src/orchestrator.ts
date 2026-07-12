@@ -63,8 +63,8 @@ export interface TrackedItem {
   resumeTo?: LifecycleState;
   /** Plan + confidence seam (#7/#8). */
   plan?: { confidence?: number; ref?: string };
-  /** Coding runner seam (#9). */
-  worktree?: { path: string; branch: string };
+  /** Coding runner (#9). sessionId is cwd-scoped: only resumable from the same worktree path. */
+  worktree?: { path: string; branch: string; sessionId?: string };
   /** Agent review seam (#10) — rounds consumed, max 2. */
   agentReviewRounds?: number;
   /** Linked PR (#11 writes the authoritative link; reconcile has a branch heuristic). */

@@ -10,6 +10,8 @@ import { tmpdir } from "node:os";
 export interface RepoLink {
   localPath: string;
   linkedAt: string; // ISO 8601
+  /** Overrides origin/HEAD as the coding base branch (#9). Hand-edited for now; UI later. */
+  baseBranch?: string;
 }
 
 export interface RepoLinksFile {
@@ -126,10 +128,31 @@ export async function validateRepoOrigin(
 }
 
 /**
- * Full clone (no shallow — worktrees need history, #9) authenticated via a
- * throwaway GIT_ASKPASS script: the token rides an env var of the child
- * process only, never argv, never .git/config, and the script dies in
- * finally. The plain https URL means nothing needs scrubbing afterwards.
+ * Runs fn with a throwaway GIT_ASKPASS script environment: the token rides
+ * an env var of the child process only, never argv, never .git/config, and
+ * the script dies in finally. Shared by clone (here) and fetch (#9).
+ */
+export async function withAskpass<T>(
+  token: string,
+  fn: (env: NodeJS.ProcessEnv) => Promise<T>,
+): Promise<T> {
+  const askDir = await mkdtemp(join(tmpdir(), "nb-askpass-"));
+  const isWin = process.platform === "win32";
+  const script = join(askDir, isWin ? "askpass.bat" : "askpass.sh");
+  const body = isWin
+    ? '@echo off\r\necho %~1| findstr /b /c:"Username" >nul\r\nif errorlevel 1 (echo %NB_GIT_TOKEN%) else (echo x-access-token)\r\n'
+    : '#!/bin/sh\ncase "$1" in\n  Username*) echo x-access-token ;;\n  *) printf %s "$NB_GIT_TOKEN" ;;\nesac\n';
+  await writeFile(script, body, { mode: 0o700 });
+  try {
+    return await fn({ ...process.env, GIT_ASKPASS: script, NB_GIT_TOKEN: token });
+  } finally {
+    await rm(askDir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Full clone (no shallow — worktrees need history, #9) authenticated via
+ * withAskpass. The plain https URL means nothing needs scrubbing afterwards.
  */
 export async function cloneGitHubRepo(
   owner: string,
@@ -143,29 +166,15 @@ export async function cloneGitHubRepo(
   }
   await mkdir(destParent, { recursive: true });
 
-  const askDir = await mkdtemp(join(tmpdir(), "nb-askpass-"));
-  const isWin = process.platform === "win32";
-  const script = join(askDir, isWin ? "askpass.bat" : "askpass.sh");
-  const body = isWin
-    ? '@echo off\r\necho %~1| findstr /b /c:"Username" >nul\r\nif errorlevel 1 (echo %NB_GIT_TOKEN%) else (echo x-access-token)\r\n'
-    : '#!/bin/sh\ncase "$1" in\n  Username*) echo x-access-token ;;\n  *) printf %s "$NB_GIT_TOKEN" ;;\nesac\n';
-  await writeFile(script, body, { mode: 0o700 });
-
-  try {
-    const r = await run(
-      "git",
-      ["clone", `https://github.com/${owner}/${name}.git`, dest],
-      {
-        env: { ...process.env, GIT_ASKPASS: script, NB_GIT_TOKEN: token },
-        timeout: 600_000,
-      },
-    );
-    if (r.code !== 0) {
-      await rm(dest, { recursive: true, force: true });
-      throw new Error(`git clone failed: ${r.stderr.trim() || `exit ${r.code}`}`);
-    }
-  } finally {
-    await rm(askDir, { recursive: true, force: true });
+  const r = await withAskpass(token, (env) =>
+    run("git", ["clone", `https://github.com/${owner}/${name}.git`, dest], {
+      env,
+      timeout: 600_000,
+    }),
+  );
+  if (r.code !== 0) {
+    await rm(dest, { recursive: true, force: true });
+    throw new Error(`git clone failed: ${r.stderr.trim() || `exit ${r.code}`}`);
   }
 
   await validateRepoOrigin(dest, owner, name);

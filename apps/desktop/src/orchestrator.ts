@@ -14,6 +14,8 @@ import {
 } from "@nestbrain/core";
 import type {
   Account,
+  CodingEvent,
+  CodingEventEnvelope,
   ConfidenceReport,
   Issue,
   LifecycleState,
@@ -33,6 +35,16 @@ import {
 } from "./repo-links";
 import { readStoredPlan } from "./plan-store";
 import { initPlanner, pokePlanner } from "./planner";
+import { initCoder, pokeCoder, cancelCodingRun, killAllCodingRuns } from "./coder";
+import {
+  branchFor,
+  ensureWorktree,
+  fetchOrigin,
+  resolveBaseRef,
+  worktreeDirFor,
+} from "./worktrees";
+
+export { killAllCodingRuns };
 
 // Orchestrator loop (issue #6): absorbs the issue-#5 inbox poller. Keeps
 // per-account snapshots of assigned issues + authored PRs fresh via the core
@@ -65,6 +77,7 @@ export interface OrchestratorDeps {
   manifestFilePath: string;
   repoLinksFilePath: string;
   plansDir: string;
+  worktreesDir: string;
 }
 
 const FIRST_POLL_DELAY_MS = 10_000;
@@ -98,6 +111,31 @@ function broadcast(): void {
   const win = getWindow();
   if (win && !win.isDestroyed()) {
     win.webContents.send("nestbrain:orchestrator:stateChanged", snapshot());
+  }
+}
+
+// Fine-grained coding progress (#9): replay buffer + per-item channel, the
+// terminal.ts per-id pattern. Coarse state changes ride the broadcast above.
+const CODING_EVENT_BUFFER_MAX = 500;
+const codingEvents = new Map<string, CodingEventEnvelope[]>();
+const codingEventSeq = new Map<string, number>();
+
+function emitCodingEvent(itemId: string, event: CodingEvent): void {
+  // A new run restarts the stream: reset the buffer so replay never mixes runs.
+  if (event.kind === "status" && event.phase === "fetching") {
+    codingEvents.set(itemId, []);
+    codingEventSeq.set(itemId, 0);
+  }
+  const seq = codingEventSeq.get(itemId) ?? 0;
+  codingEventSeq.set(itemId, seq + 1);
+  const envelope: CodingEventEnvelope = { itemId, seq, at: new Date().toISOString(), event };
+  const buffer = codingEvents.get(itemId) ?? [];
+  buffer.push(envelope);
+  if (buffer.length > CODING_EVENT_BUFFER_MAX) buffer.shift();
+  codingEvents.set(itemId, buffer);
+  const win = getWindow();
+  if (win && !win.isDestroyed()) {
+    win.webContents.send(`nestbrain:coding:event:${itemId}`, envelope);
   }
 }
 
@@ -286,6 +324,7 @@ async function pollNow(ignoreBackoff = false): Promise<void> {
     status = "idle";
     broadcast();
     pokePlanner();
+    pokeCoder();
   }
 }
 
@@ -310,6 +349,7 @@ async function reconcileFromCache(): Promise<void> {
   }
   broadcast();
   pokePlanner();
+  pokeCoder();
 }
 
 /** Sets plan.ref + confidence and the gated transition in a single manifest write (#8). */
@@ -338,6 +378,22 @@ async function completePlan(
   m.items[itemId] = applyTransition(withRef, target, "planner", reason);
   await saveOrchestratorManifest(deps.manifestFilePath, m);
   broadcast();
+  // High confidence gates straight to queued — wake the coder.
+  pokeCoder();
+}
+
+/** Persists the coding worktree record (path/branch/sessionId) without a transition (#9). */
+async function setWorktree(
+  itemId: string,
+  worktree: { path: string; branch: string; sessionId?: string },
+): Promise<void> {
+  if (!deps) throw new Error("orchestrator not initialized");
+  const m = await ensureManifest();
+  const item = m.items[itemId];
+  if (!item) throw new Error(`unknown item ${itemId}`);
+  m.items[itemId] = { ...item, worktree, updatedAt: new Date().toISOString() };
+  await saveOrchestratorManifest(deps.manifestFilePath, m);
+  broadcast();
 }
 
 /**
@@ -355,11 +411,17 @@ export async function requestTransition(
   const m = await ensureManifest();
   const item = m.items[itemId];
   if (!item) throw new Error(`unknown item ${itemId}`);
+  const prevState = item.state;
   const next = applyTransition(item, to, actor, reason);
   m.items[itemId] = next;
   await saveOrchestratorManifest(deps.manifestFilePath, m);
   broadcast();
   if (actor !== "planner") pokePlanner();
+  if (actor !== "coder") {
+    // Someone else moved a live coding item — abort its run.
+    if (prevState === "coding") cancelCodingRun(itemId);
+    pokeCoder();
+  }
   return next;
 }
 
@@ -472,6 +534,10 @@ export function initOrchestrator(
     if (!ref) return null;
     return readStoredPlan(deps!.plansDir, ref);
   });
+  // Replay for renderers that mount mid-run; live events ride the per-item channel.
+  ipcMain.handle("nestbrain:coding:getEvents", (_e, itemId: string) => {
+    return codingEvents.get(itemId) ?? [];
+  });
 
   initPlanner({
     listItems: () => Object.values(manifest?.items ?? {}),
@@ -485,6 +551,36 @@ export function initOrchestrator(
     completePlan,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     plansDir: orchestratorDeps.plansDir,
+  });
+
+  initCoder({
+    listItems: () => Object.values(manifest?.items ?? {}),
+    getItem: (itemId) => manifest?.items[itemId],
+    getIssue: (item) => {
+      const cached = items.get(item.accountId)?.get(item.id);
+      return cached?.kind === "issue" ? cached : undefined;
+    },
+    getPlan: async (item) => {
+      const ref = item.plan?.ref;
+      return ref ? readStoredPlan(orchestratorDeps.plansDir, ref) : null;
+    },
+    requestTransition,
+    setWorktree,
+    prepareWorktree: async (item) => {
+      const link = repoLinks?.repos[repoKey(item.repo.owner, item.repo.name)];
+      if (!link) throw new Error(`repo ${item.repo.owner}/${item.repo.name} is not linked`);
+      const token = await tokenForRepo(item.repo.owner, item.repo.name, item.accountId);
+      await fetchOrigin(link.localPath, token);
+      const baseRef = await resolveBaseRef(link.localPath, link.baseBranch);
+      return ensureWorktree({
+        repoPath: link.localPath,
+        worktreePath: worktreeDirFor(orchestratorDeps.worktreesDir, item.repo, item.number),
+        branch: branchFor(item.number),
+        baseRef,
+      });
+    },
+    getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
+    emitEvent: emitCodingEvent,
   });
 
   setTimeout(
