@@ -8,6 +8,7 @@ export const IssuePlanSchema = z.object({
       z.object({
         path: z.string().min(1),
         reason: z.string(),
+        status: z.enum(["existing", "new"]).optional(),
       }),
     )
     .min(1),

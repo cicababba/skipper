@@ -49,6 +49,24 @@ export type {
 export { generatePlan, PlanGenerationError, IssuePlanSchema, planJsonSchema } from "./planner";
 export type { GeneratePlanOptions, PlanIssueInput } from "./planner";
 
+// Confidence (issue #8)
+export {
+  computeConfidence,
+  scoreGroundedness,
+  scoreConvergence,
+  scoreClarity,
+  runCritic,
+  critiquePlan,
+  buildCriticPrompt,
+  resolveGate,
+  CriticError,
+  CriticVerdictSchema,
+  DEFAULT_CONFIDENCE_WEIGHTS,
+  DEFAULT_CONFIDENCE_THRESHOLDS,
+  DIVERGENCE_THRESHOLD,
+} from "./confidence";
+export type { CriticInput, ComputeConfidenceOptions, GateTarget } from "./confidence";
+
 // Orchestrator (issue #6)
 export {
   TRANSITIONS,
@@ -59,10 +77,12 @@ export {
   IllegalTransitionError,
   loadOrCreateOrchestratorManifest,
   saveOrchestratorManifest,
+  DEFAULT_ORCHESTRATOR_SETTINGS,
   reconcile,
 } from "./orchestrator";
 export type {
   OrchestratorManifest,
+  OrchestratorSettings,
   AdmissionPolicy,
   ReconcileOutcome,
   ReconcilePoll,

@@ -8,10 +8,13 @@ import {
   saveOrchestratorManifest,
   GitHubApiError,
   GitHubAuthError,
+  resolveGate,
+  DEFAULT_ORCHESTRATOR_SETTINGS,
   type OrchestratorManifest,
 } from "@nestbrain/core";
 import type {
   Account,
+  ConfidenceReport,
   Issue,
   LifecycleState,
   PullRequest,
@@ -309,14 +312,30 @@ async function reconcileFromCache(): Promise<void> {
   pokePlanner();
 }
 
-/** Sets plan.ref and the plan-gate transition in a single manifest write. */
-async function completePlan(itemId: string, ref: string): Promise<void> {
+/** Sets plan.ref + confidence and the gated transition in a single manifest write (#8). */
+async function completePlan(
+  itemId: string,
+  ref: string,
+  confidence?: ConfidenceReport,
+): Promise<void> {
   if (!deps) throw new Error("orchestrator not initialized");
   const m = await ensureManifest();
   const item = m.items[itemId];
   if (!item) throw new Error(`unknown item ${itemId}`);
-  const withRef = { ...item, plan: { ...item.plan, ref } };
-  m.items[itemId] = applyTransition(withRef, "plan-gate", "planner", "plan generated");
+  const target = confidence
+    ? resolveGate(confidence.composite, m.settings.confidence)
+    : "plan-gate";
+  let reason: string;
+  if (confidence) {
+    const divergent = confidence.signals.convergence?.divergent
+      ? " — plans diverge, issue may be ambiguous"
+      : "";
+    reason = `confidence ${confidence.composite.toFixed(2)}${divergent}`;
+  } else {
+    reason = "plan generated (confidence unavailable)";
+  }
+  const withRef = { ...item, plan: { ...item.plan, ref, confidence: confidence?.composite } };
+  m.items[itemId] = applyTransition(withRef, target, "planner", reason);
   await saveOrchestratorManifest(deps.manifestFilePath, m);
   broadcast();
 }
@@ -464,6 +483,7 @@ export function initOrchestrator(
     getRepoPath: repoPathFor,
     requestTransition,
     completePlan,
+    getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     plansDir: orchestratorDeps.plansDir,
   });
 

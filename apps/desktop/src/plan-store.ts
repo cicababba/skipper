@@ -27,7 +27,8 @@ export async function readStoredPlan(plansDir: string, ref: string): Promise<Sto
   try {
     const raw = await readFile(join(plansDir, ref), "utf-8");
     const parsed = JSON.parse(raw) as StoredPlan;
-    return parsed.version === 1 ? parsed : null;
+    // v1 = pre-#8 plans without confidence; read back as-is.
+    return parsed.version === 2 || (parsed.version as number) === 1 ? parsed : null;
   } catch {
     return null;
   }
