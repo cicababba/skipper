@@ -4,6 +4,7 @@
 import { stat } from "node:fs/promises";
 import { join, resolve, normalize } from "node:path";
 import type { RepoRef } from "@nestbrain/shared";
+import type { DiffStats } from "@nestbrain/core";
 import { runGit } from "./git";
 import { withAskpass } from "./repo-links";
 
@@ -129,6 +130,42 @@ export async function ensureWorktree(opts: {
     throw new Error(`git worktree add failed: ${r.stderr.trim() || `exit ${r.code}`}`);
   }
   return { path: worktreePath, branch, created: true };
+}
+
+export interface WorktreeDiff {
+  diff: string;
+  stats: DiffStats;
+}
+
+/**
+ * Uncommitted changes vs HEAD, for the agent review (#10). `git add -A -N`
+ * (intent-to-add) makes untracked files appear in the diff without staging
+ * content — safe in a disposable worktree the coder never commits in, and
+ * the entries stay visible as unstaged new files for the #14 diff view.
+ */
+export async function captureWorktreeDiff(worktreePath: string): Promise<WorktreeDiff> {
+  const intent = await runGit(worktreePath, ["add", "-A", "-N"]);
+  if (intent.code !== 0) {
+    throw new Error(`git add -N failed: ${intent.stderr.trim() || `exit ${intent.code}`}`);
+  }
+  const numstat = await runGit(worktreePath, ["diff", "HEAD", "--numstat"]);
+  if (numstat.code !== 0) {
+    throw new Error(`git diff --numstat failed: ${numstat.stderr.trim() || `exit ${numstat.code}`}`);
+  }
+  const stats: DiffStats = { filesChanged: 0, totalChangedLines: 0, files: [] };
+  for (const line of numstat.stdout.split("\n")) {
+    if (!line.trim()) continue;
+    const [added, deleted, ...pathParts] = line.split("\t");
+    stats.filesChanged++;
+    stats.files.push(pathParts.join("\t"));
+    // binary files report "-\t-": count the file, contribute 0 lines
+    stats.totalChangedLines += (parseInt(added, 10) || 0) + (parseInt(deleted, 10) || 0);
+  }
+  const patch = await runGit(worktreePath, ["diff", "HEAD"]);
+  if (patch.code !== 0) {
+    throw new Error(`git diff failed: ${patch.stderr.trim() || `exit ${patch.code}`}`);
+  }
+  return { diff: patch.stdout, stats };
 }
 
 /** Kept for #11 post-merge cleanup and future UI — nothing calls it in #9. */

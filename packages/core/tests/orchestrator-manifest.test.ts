@@ -52,13 +52,15 @@ describe("orchestrator manifest", () => {
         confidence: { high: 0.85, low: 0.4, extraPlanRuns: 2 },
         coderModel: "opus",
         coderMaxTurns: 60,
+        reviewMode: "auto",
+        reviewerModel: "opus",
       },
       items: {},
       parked: {},
     });
   });
 
-  it("fills #8/#9 settings defaults into an older manifest", async () => {
+  it("fills #8/#9/#10 settings defaults into an older manifest", async () => {
     await writeFile(
       filePath,
       JSON.stringify({ version: 1, settings: { intakePaused: true }, items: {}, parked: {} }),
@@ -70,6 +72,8 @@ describe("orchestrator manifest", () => {
     expect(manifest.settings.confidence).toEqual(DEFAULT_ORCHESTRATOR_SETTINGS.confidence);
     expect(manifest.settings.coderModel).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.coderModel);
     expect(manifest.settings.coderMaxTurns).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.coderMaxTurns);
+    expect(manifest.settings.reviewMode).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.reviewMode);
+    expect(manifest.settings.reviewerModel).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.reviewerModel);
   });
 
   it("round-trips items, settings and parked entries", async () => {

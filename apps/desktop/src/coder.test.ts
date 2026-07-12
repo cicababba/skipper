@@ -302,4 +302,61 @@ describe("coder driver", () => {
     // fresh session persisted for the retry
     expect(h.worktreeWrites.at(-1)!.sessionId).toBe(runner.mock.calls[1][0].sessionId);
   });
+
+  it("fix round uses the fix prompt on a resumed session", async () => {
+    const h = makeHarness();
+    const runner = okRunner();
+    initCoder(h.deps, runner);
+    const item = makeItem(1, "coding");
+    h.items.set("github:1", {
+      ...item,
+      worktree: { path: "/wt/repo/issue-1", branch: "feature/issue-1", sessionId: "old-session" },
+      review: {
+        rounds: 1,
+        outcome: "reject",
+        pendingObjections: [
+          { kind: "acceptance-gap", detail: "criterion not met", blocking: true },
+        ],
+        at: "2026-07-13T00:00:00.000Z",
+      },
+    });
+
+    pokeCoder();
+    await settle();
+
+    const opts = runner.mock.calls[0][0];
+    expect(opts.resumeSessionId).toBe("old-session");
+    expect(opts.prompt).toContain("independent reviewer");
+    expect(opts.prompt).toContain("[BLOCKING] (acceptance-gap) criterion not met");
+    expect(opts.prompt).not.toMatch(/interrupted/);
+  });
+
+  it("fix round dead-resume retry keeps the fix prompt", async () => {
+    const h = makeHarness();
+    const runner = vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      if (opts.resumeSessionId) throw new Error("No conversation found");
+      return { ok: true, summary: "fixed", sessionId: opts.sessionId ?? "" };
+    });
+    initCoder(h.deps, runner);
+    const item = makeItem(1, "coding");
+    h.items.set("github:1", {
+      ...item,
+      worktree: { path: "/wt/repo/issue-1", branch: "feature/issue-1", sessionId: "dead-session" },
+      review: {
+        rounds: 1,
+        outcome: "reject",
+        pendingObjections: [
+          { kind: "acceptance-gap", detail: "criterion not met", blocking: true },
+        ],
+        at: "2026-07-13T00:00:00.000Z",
+      },
+    });
+
+    pokeCoder();
+    await settle();
+
+    expect(runner).toHaveBeenCalledTimes(2);
+    expect(runner.mock.calls[1][0].prompt).toContain("independent reviewer");
+    expect(h.transitions.map((t) => t.to)).toEqual(["agent-review"]);
+  });
 });

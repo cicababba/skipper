@@ -2,7 +2,23 @@
 // NestBrain — Orchestrator lifecycle types (issue #6)
 // ============================================================
 
+import type { CriticObjection, CriticVerdict } from "./confidence";
 import type { PlatformId, RepoRef } from "./inbox";
+
+export type AgentReviewOutcome = CriticVerdict | "skipped" | "unavailable";
+
+export interface AgentReview {
+  /** Reviews performed in the current fix chain. A round = one review of one coding attempt; first review = 1. */
+  rounds: number;
+  outcome: AgentReviewOutcome;
+  /** Skip explanation (never/auto), non-convergence note, or error message. */
+  reason?: string;
+  /** Full objection list from the last review (UI surface for #13). */
+  objections?: CriticObjection[];
+  /** Set only when the reviewer sent the item back to coding — the coder's fix-round seam. */
+  pendingObjections?: CriticObjection[];
+  at: string; // ISO 8601
+}
 
 /** Lifecycle states from docs/DIRECTION.md ("Il ciclo di vita"). */
 export type LifecycleState =
@@ -65,8 +81,8 @@ export interface TrackedItem {
   plan?: { confidence?: number; ref?: string };
   /** Coding runner (#9). sessionId is cwd-scoped: only resumable from the same worktree path. */
   worktree?: { path: string; branch: string; sessionId?: string };
-  /** Agent review seam (#10) — rounds consumed, max 2. */
-  agentReviewRounds?: number;
+  /** Agent review overlay (#10). Written only via completeReview; replaced wholesale each review. */
+  review?: AgentReview;
   /** Linked PR (#11 writes the authoritative link; reconcile has a branch heuristic). */
   pr?: { id: string; number: number; url: string };
 }
