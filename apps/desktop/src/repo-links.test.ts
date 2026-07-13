@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadRepoLinks, saveRepoLinks, repoKey, validateRepoOrigin } from "./repo-links";
-import { planFileName, readStoredPlan, writeStoredPlan } from "./plan-store";
+import { planFileName, readStoredPlan, updateStoredPlan, writeStoredPlan } from "./plan-store";
 import type { StoredPlan } from "@nestbrain/shared";
 
 let dir: string;
@@ -119,5 +119,60 @@ describe("plan store", () => {
     const v1 = { version: 1, itemId: "github:2", plan: { summary: "old" } };
     await writeStoredPlan(plansDir, "v1.json", v1 as unknown as StoredPlan);
     expect(await readStoredPlan(plansDir, "v1.json")).toEqual(v1);
+  });
+
+  it("updates the plan body, stamps editedAt, and preserves the envelope", async () => {
+    const plansDir = join(dir, "plans");
+    const stored: StoredPlan = {
+      version: 2,
+      itemId: "github:3",
+      repo: { owner: "o", name: "r" },
+      issueNumber: 3,
+      generatedAt: "2026-07-11T10:00:00.000Z",
+      model: "sonnet",
+      plan: {
+        summary: "original",
+        files: [{ path: "a.ts", reason: "r" }],
+        steps: [{ title: "t", detail: "d", files: [], symbols: [] }],
+        acceptance: [],
+        risks: [],
+        openQuestions: [],
+        estimatedSize: "s",
+      },
+      confidence: {
+        version: 1,
+        composite: 0.7,
+        weights: { groundedness: 0.35, convergence: 0.25, critic: 0.3, clarity: 0.1 },
+        signals: {},
+        errors: [],
+        computedAt: "2026-07-11T10:01:00.000Z",
+      },
+    };
+    const ref = planFileName(stored.itemId);
+    await writeStoredPlan(plansDir, ref, stored);
+
+    const edited = { ...stored.plan, summary: "edited" };
+    const updated = await updateStoredPlan(plansDir, ref, edited);
+    expect(updated?.plan.summary).toBe("edited");
+    expect(updated?.editedAt).toBeTruthy();
+    expect(updated?.confidence).toEqual(stored.confidence);
+    expect(updated?.generatedAt).toBe(stored.generatedAt);
+    expect(updated?.version).toBe(2);
+    expect(await readStoredPlan(plansDir, ref)).toEqual(updated);
+  });
+
+  it("returns null when updating a missing ref", async () => {
+    const plansDir = join(dir, "plans");
+    expect(
+      await updateStoredPlan(plansDir, "missing.json", {
+        summary: "s",
+        files: [{ path: "a.ts", reason: "r" }],
+        steps: [{ title: "t", detail: "d", files: [], symbols: [] }],
+        acceptance: [],
+        risks: [],
+        openQuestions: [],
+        estimatedSize: "s",
+      }),
+    ).toBeNull();
   });
 });

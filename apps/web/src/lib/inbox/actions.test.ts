@@ -42,11 +42,10 @@ describe("actionsFor", () => {
     }
   });
 
-  it("plan-gate offers approve and replan", () => {
-    expect(actionsFor(item({ state: "plan-gate" })).map((a) => a.id)).toEqual([
-      "approve",
-      "replan",
-    ]);
+  it("plan-gate offers approve, replan, and park", () => {
+    const actions = actionsFor(item({ state: "plan-gate" }));
+    expect(actions.map((a) => a.id)).toEqual(["approve", "replan", "park"]);
+    expect(actions[2]).toEqual({ id: "park", kind: "transition", to: "needs-input" });
   });
 
   it("resume honors resumeTo when legal", () => {

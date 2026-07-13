@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { ExternalLink, TriangleAlert } from "lucide-react";
 import type { TrackedItem } from "@nestbrain/shared";
 import { ATTENTION_SECTION_STATES, KANBAN_COLUMNS, repoKey } from "@/lib/inbox/model";
@@ -15,11 +16,12 @@ function openExternal(url: string) {
 
 function KanbanCard({ item, showState }: { item: TrackedItem; showState: boolean }) {
   const { t } = useT();
+  const router = useRouter();
   const age = formatAge(item.createdAt, new Date());
   return (
     <article className="rounded-lg border border-border bg-background/60 p-2.5 space-y-2">
       <button
-        onClick={() => openExternal(item.url)}
+        onClick={() => router.push(`/inbox/${encodeURIComponent(item.id)}`)}
         className="text-left hover:text-accent transition-colors w-full"
         title={item.title}
       >
@@ -30,6 +32,16 @@ function KanbanCard({ item, showState }: { item: TrackedItem; showState: boolean
       <div className="flex items-center gap-1.5 flex-wrap">
         {showState && <StateBadge item={item} />}
         <ConfidenceBadge item={item} />
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            openExternal(item.url);
+          }}
+          className="text-muted hover:text-accent transition-colors"
+          title={item.url}
+        >
+          <ExternalLink size={10} />
+        </button>
         {item.pr && (
           <button
             onClick={() => openExternal(item.pr!.url)}

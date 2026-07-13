@@ -6,13 +6,13 @@ import { Loader2 } from "lucide-react";
 import type { ConfidenceReport, TrackedItem } from "@nestbrain/shared";
 import { useT } from "@/lib/app-i18n";
 
-function bandClasses(score: number): string {
+export function bandClasses(score: number): string {
   if (score >= 0.75) return "bg-emerald-500/10 text-emerald-300 border-emerald-500/20";
   if (score >= 0.5) return "bg-amber-500/10 text-amber-300 border-amber-500/20";
   return "bg-card text-muted border-border";
 }
 
-function pct(score: number): string {
+export function pct(score: number): string {
   return `${Math.round(score * 100)}%`;
 }
 
@@ -151,7 +151,7 @@ function TruncatedList({ label, entries }: { label: string; entries: string[] })
   );
 }
 
-function ReportBody({ report }: { report: ConfidenceReport }) {
+export function ReportBody({ report }: { report: ConfidenceReport }) {
   const { t } = useT();
   const p = t.inbox.popover;
   const { groundedness, convergence, critic, clarity } = report.signals;

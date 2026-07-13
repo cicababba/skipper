@@ -4,6 +4,7 @@ export type ItemActionId =
   | "plan"
   | "approve"
   | "replan"
+  | "park"
   | "openPr"
   | "resume"
   | "retry"
@@ -23,7 +24,11 @@ export function actionsFor(item: TrackedItem): ItemAction[] {
     case "triage":
       return [...transition("plan", item, "planning"), ...close];
     case "plan-gate":
-      return [...transition("approve", item, "queued"), ...transition("replan", item, "planning")];
+      return [
+        ...transition("approve", item, "queued"),
+        ...transition("replan", item, "planning"),
+        ...transition("park", item, "needs-input"),
+      ];
     case "human-review":
       return [{ id: "openPr", kind: "openPr" }, ...close];
     case "needs-input":

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, ExternalLink } from "lucide-react";
 import type { TrackedItem } from "@nestbrain/shared";
 import { ATTENTION_SECTION_STATES, repoKey } from "@/lib/inbox/model";
@@ -36,6 +37,7 @@ export function InboxTable({
   onSort: (key: SortKey) => void;
 }) {
   const { t } = useT();
+  const router = useRouter();
 
   const header = (label: string, key?: SortKey) => (
     <th className="text-left font-medium text-[11px] uppercase tracking-wide text-muted/70 px-3 py-2">
@@ -79,16 +81,28 @@ export function InboxTable({
                 }`}
               >
                 <td className="px-3 py-2 max-w-[360px]">
-                  <button
-                    onClick={() => openExternal(item.url)}
-                    className="flex items-baseline gap-2 text-left hover:text-accent transition-colors min-w-0 w-full"
-                    title={item.title}
-                  >
-                    <span className="font-mono text-[11px] text-muted shrink-0">
-                      #{item.number}
-                    </span>
-                    <span className="truncate">{item.title}</span>
-                  </button>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <button
+                      onClick={() => router.push(`/inbox/${encodeURIComponent(item.id)}`)}
+                      className="flex items-baseline gap-2 text-left hover:text-accent transition-colors min-w-0 flex-1"
+                      title={item.title}
+                    >
+                      <span className="font-mono text-[11px] text-muted shrink-0">
+                        #{item.number}
+                      </span>
+                      <span className="truncate">{item.title}</span>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openExternal(item.url);
+                      }}
+                      className="shrink-0 text-muted hover:text-accent transition-colors"
+                      title={item.url}
+                    >
+                      <ExternalLink size={11} />
+                    </button>
+                  </div>
                 </td>
                 <td className="px-3 py-2 text-muted whitespace-nowrap">{repoKey(item.repo)}</td>
                 <td className="px-3 py-2">

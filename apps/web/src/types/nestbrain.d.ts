@@ -4,6 +4,7 @@ import type {
   AuthProviderId,
   AuthState,
   CodingEventEnvelope,
+  IssuePlan,
   LifecycleState,
   ListReposResult,
   OrchestratorState,
@@ -11,6 +12,7 @@ import type {
   RepoLinkResult,
   RepoUnlinkResult,
   StoredPlan,
+  UpdatePlanResult,
 } from "@nestbrain/shared";
 
 interface FsEntry {
@@ -171,6 +173,7 @@ declare global {
         unlinkRepo: (owner: string, name: string) => Promise<RepoUnlinkResult>;
         listRepos: () => Promise<ListReposResult>;
         getPlan: (itemId: string) => Promise<StoredPlan | null>;
+        updatePlan: (itemId: string, plan: IssuePlan) => Promise<UpdatePlanResult>;
         openPr: (itemId: string) => Promise<OrchestratorTransitionResult>;
         onStateChanged: (callback: (state: OrchestratorState) => void) => () => void;
       };

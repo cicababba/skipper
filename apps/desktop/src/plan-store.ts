@@ -1,10 +1,10 @@
 // Generated plans, one JSON file per tracked item under <userData>/plans/.
 // Pure Node module; the planner injects the directory. TrackedItem.plan.ref
-// stores the filename. Replan overwrites (history arrives with #13 if ever).
+// stores the filename. Replan and user edits overwrite (no history).
 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { StoredPlan } from "@nestbrain/shared";
+import type { IssuePlan, StoredPlan } from "@nestbrain/shared";
 
 /** Item ids contain ":" which is illegal on Windows filenames. */
 export function planFileName(itemId: string): string {
@@ -32,4 +32,16 @@ export async function readStoredPlan(plansDir: string, ref: string): Promise<Sto
   } catch {
     return null;
   }
+}
+
+export async function updateStoredPlan(
+  plansDir: string,
+  ref: string,
+  plan: IssuePlan,
+): Promise<StoredPlan | null> {
+  const stored = await readStoredPlan(plansDir, ref);
+  if (!stored) return null;
+  const updated: StoredPlan = { ...stored, plan, editedAt: new Date().toISOString() };
+  await writeStoredPlan(plansDir, ref, updated);
+  return updated;
 }

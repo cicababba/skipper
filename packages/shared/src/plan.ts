@@ -51,4 +51,6 @@ export interface StoredPlan {
   plan: IssuePlan;
   /** Absent while scoring runs, on scoring failure, or on v1 plans. */
   confidence?: ConfidenceReport;
+  /** Set when the user edits the plan at the gate (#13). Confidence predates the edit. */
+  editedAt?: string;
 }

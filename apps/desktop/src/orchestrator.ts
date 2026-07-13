@@ -10,6 +10,7 @@ import {
   GitHubAuthError,
   resolveGate,
   DEFAULT_ORCHESTRATOR_SETTINGS,
+  IssuePlanSchema,
   type OrchestratorManifest,
 } from "@nestbrain/core";
 import type {
@@ -37,7 +38,7 @@ import {
   validateRepoOrigin,
   type RepoLinksFile,
 } from "./repo-links";
-import { readStoredPlan } from "./plan-store";
+import { readStoredPlan, updateStoredPlan } from "./plan-store";
 import { initPlanner, pokePlanner } from "./planner";
 import { initCoder, pokeCoder, cancelCodingRun, killAllCodingRuns } from "./coder";
 import { initReviewer, pokeReviewer } from "./reviewer";
@@ -657,6 +658,25 @@ export function initOrchestrator(
     const ref = m.items[itemId]?.plan?.ref;
     if (!ref) return null;
     return readStoredPlan(deps!.plansDir, ref);
+  });
+  // Persist a user-edited plan at the gate (#13). Only legal while the item sits
+  // in plan-gate — during a replan the item is back in planning, so stale saves lose.
+  ipcMain.handle("nestbrain:orchestrator:updatePlan", async (_e, itemId: string, plan: unknown) => {
+    const m = await ensureManifest();
+    const item = m.items[itemId];
+    if (!item) return { ok: false as const, error: `unknown item ${itemId}` };
+    if (item.state !== "plan-gate") {
+      return { ok: false as const, error: `plan is only editable in plan-gate (item is ${item.state})` };
+    }
+    const ref = item.plan?.ref;
+    if (!ref) return { ok: false as const, error: "item has no stored plan" };
+    const parsed = IssuePlanSchema.safeParse(plan);
+    if (!parsed.success) {
+      return { ok: false as const, error: `invalid plan: ${parsed.error.issues[0]?.message ?? "schema mismatch"}` };
+    }
+    const stored = await updateStoredPlan(deps!.plansDir, ref, parsed.data);
+    if (!stored) return { ok: false as const, error: "stored plan not found" };
+    return { ok: true as const, stored };
   });
   // Replay for renderers that mount mid-run; live events ride the per-item channel.
   ipcMain.handle("nestbrain:coding:getEvents", (_e, itemId: string) => {
