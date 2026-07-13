@@ -1,13 +1,7 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
+import { useStoredState } from "./use-stored-state";
 
 interface EditorTabsState {
   tabs: string[]; // absolute file paths, insertion order
@@ -36,77 +30,91 @@ const EditorTabsContext = createContext<EditorTabsState>({
 
 const STORAGE_KEY = "nestbrain-editor-tabs";
 
+interface Persisted {
+  tabs: string[];
+  activePath: string | null;
+}
+
+function parsePersisted(raw: string): Persisted {
+  try {
+    const parsed = JSON.parse(raw) as Persisted;
+    if (Array.isArray(parsed.tabs)) {
+      return {
+        tabs: parsed.tabs.filter((p) => typeof p === "string" && p),
+        activePath: typeof parsed.activePath === "string" ? parsed.activePath : null,
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+  return { tabs: [], activePath: null };
+}
+
 export function EditorTabsProvider({ children }: { children: ReactNode }) {
-  const [tabs, setTabs] = useState<string[]>([]);
-  const [activePath, setActivePath] = useState<string | null>(null);
+  // sessionStorage (not localStorage) so closing the app forgets the open
+  // files — the user starts each session fresh, same as VSCode's default.
+  const [raw, setRaw] = useStoredState(STORAGE_KEY, "", "session");
+  const { tabs, activePath } = useMemo(() => parsePersisted(raw), [raw]);
 
-  // Hydrate from sessionStorage on first mount. We use sessionStorage
-  // (not localStorage) so closing the app forgets the open files — the
-  // user starts each session fresh, same as VSCode's default.
-  useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as { tabs: string[]; activePath: string | null };
-      if (Array.isArray(parsed.tabs)) {
-        setTabs(parsed.tabs.filter((p) => typeof p === "string" && p));
-        setActivePath(parsed.activePath ?? null);
-      }
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const update = useCallback(
+    (fn: (cur: Persisted) => Persisted) =>
+      setRaw((cur) => JSON.stringify(fn(parsePersisted(cur)))),
+    [setRaw],
+  );
 
-  // Persist on every change.
-  useEffect(() => {
-    try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ tabs, activePath }));
-    } catch {
-      /* ignore */
-    }
-  }, [tabs, activePath]);
-
-  const openTab = useCallback((path: string) => {
-    if (!path) return;
-    setTabs((cur) => (cur.includes(path) ? cur : [...cur, path]));
-    setActivePath(path);
-  }, []);
+  const openTab = useCallback(
+    (path: string) => {
+      if (!path) return;
+      update((cur) => ({
+        tabs: cur.tabs.includes(path) ? cur.tabs : [...cur.tabs, path],
+        activePath: path,
+      }));
+    },
+    [update],
+  );
 
   const closeTab = useCallback(
     (path: string) => {
       let nextActive: string | null = null;
-      setTabs((cur) => {
-        const idx = cur.indexOf(path);
-        if (idx < 0) return cur;
-        const next = cur.filter((p) => p !== path);
+      // The hook's functional update runs synchronously, so nextActive is
+      // assigned before we return it.
+      update((cur) => {
+        const idx = cur.tabs.indexOf(path);
+        if (idx < 0) {
+          nextActive = cur.activePath;
+          return cur;
+        }
+        const next = cur.tabs.filter((p) => p !== path);
         // If we just closed the active tab, prefer the right neighbor,
         // falling back to the left one. That matches VSCode's behavior.
-        if (activePath === path) {
-          nextActive = next[idx] ?? next[idx - 1] ?? null;
-        } else {
-          nextActive = activePath;
-        }
-        return next;
+        nextActive = cur.activePath === path ? (next[idx] ?? next[idx - 1] ?? null) : cur.activePath;
+        return { tabs: next, activePath: nextActive };
       });
-      setActivePath(nextActive);
       return nextActive;
     },
-    [activePath],
+    [update],
   );
 
-  const setActive = useCallback((path: string) => {
-    setActivePath(path);
-  }, []);
+  const setActive = useCallback(
+    (path: string) => {
+      update((cur) => ({ ...cur, activePath: path }));
+    },
+    [update],
+  );
 
-  const closeOthers = useCallback((keepPath: string) => {
-    setTabs((cur) => (cur.includes(keepPath) ? [keepPath] : cur));
-    setActivePath(keepPath);
-  }, []);
+  const closeOthers = useCallback(
+    (keepPath: string) => {
+      update((cur) => ({
+        tabs: cur.tabs.includes(keepPath) ? [keepPath] : cur.tabs,
+        activePath: keepPath,
+      }));
+    },
+    [update],
+  );
 
   const closeAll = useCallback(() => {
-    setTabs([]);
-    setActivePath(null);
-  }, []);
+    update(() => ({ tabs: [], activePath: null }));
+  }, [update]);
 
   return (
     <EditorTabsContext.Provider

@@ -3,7 +3,6 @@
 import {
   FileText,
   FileCode2,
-  FileJson,
   FileType2,
   FileImage,
   FileVideo,

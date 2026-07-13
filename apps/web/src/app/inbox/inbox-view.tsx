@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Inbox, Loader2, Pause, RefreshCw, X } from "lucide-react";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { RepoManagerModal } from "@/components/repo-manager-modal";
 import { useT } from "@/lib/app-i18n";
+import { useStoredState } from "@/lib/use-stored-state";
 import { KANBAN_COLUMNS, type ColumnId } from "@/lib/inbox/model";
 import { filterItems, sortItems, type SortDir, type SortKey } from "@/lib/inbox/table";
 import { InboxTable } from "./inbox-table";
@@ -26,21 +27,15 @@ export function InboxView() {
   const searchParams = useSearchParams();
   const repo = searchParams.get("repo");
 
-  const [view, setView] = useState<ViewMode>("table");
+  const [storedView, setStoredView] = useStoredState(VIEW_KEY, "table");
+  const view: ViewMode = storedView === "kanban" ? "kanban" : "table";
   const [sortKey, setSortKey] = useState<SortKey>("age");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [columns, setColumns] = useState<Set<ColumnFilter>>(new Set());
   const [minConfidence, setMinConfidence] = useState<number | undefined>(undefined);
   const [reposOpen, setReposOpen] = useState(false);
 
-  useEffect(() => {
-    if (localStorage.getItem(VIEW_KEY) === "kanban") setView("kanban");
-  }, []);
-
-  const switchView = (mode: ViewMode) => {
-    setView(mode);
-    localStorage.setItem(VIEW_KEY, mode);
-  };
+  const switchView = (mode: ViewMode) => setStoredView(mode);
 
   const onSort = (key: SortKey) => {
     if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));

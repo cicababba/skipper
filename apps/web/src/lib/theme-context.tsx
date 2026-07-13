@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect } from "react";
+import { useStoredState } from "./use-stored-state";
 
 type Theme = "dark" | "light";
 
@@ -12,21 +13,16 @@ interface ThemeState {
 const ThemeContext = createContext<ThemeState>({ theme: "dark", toggle: () => {} });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("dark");
-
-  useEffect(() => {
-    const saved = localStorage.getItem("nestbrain-theme") as Theme | null;
-    if (saved) setTheme(saved);
-  }, []);
+  const [stored, setStored] = useStoredState("nestbrain-theme", "dark");
+  const theme: Theme = stored === "light" ? "light" : "dark";
 
   useEffect(() => {
     document.documentElement.classList.remove("dark", "light");
     document.documentElement.classList.add(theme);
-    localStorage.setItem("nestbrain-theme", theme);
   }, [theme]);
 
   function toggle() {
-    setTheme((t) => (t === "dark" ? "light" : "dark"));
+    setStored(theme === "dark" ? "light" : "dark");
   }
 
   return (

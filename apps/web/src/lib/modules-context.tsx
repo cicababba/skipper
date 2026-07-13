@@ -19,14 +19,11 @@ export function ModulesProvider({ children }: { children: React.ReactNode }) {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    const mn = typeof window !== "undefined" ? window.nestbrain : undefined;
-    if (!mn?.modules) {
-      setLoaded(true);
-      return;
-    }
     let alive = true;
-    mn.modules
-      .get()
+    const mn = typeof window !== "undefined" ? window.nestbrain : undefined;
+    // No bridge → resolve to no modules through the same async path so the
+    // effect never sets state synchronously.
+    (mn?.modules?.get() ?? Promise.resolve([]))
       .then((m) => {
         if (alive) {
           setModules(m);
