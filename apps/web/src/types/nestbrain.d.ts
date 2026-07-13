@@ -11,8 +11,11 @@ import type {
   OrchestratorTransitionResult,
   RepoLinkResult,
   RepoUnlinkResult,
+  SaveWorktreeFileResult,
   StoredPlan,
   UpdatePlanResult,
+  WorktreeChangesResult,
+  WorktreeFileResult,
 } from "@nestbrain/shared";
 
 interface FsEntry {
@@ -175,6 +178,17 @@ declare global {
         getPlan: (itemId: string) => Promise<StoredPlan | null>;
         updatePlan: (itemId: string, plan: IssuePlan) => Promise<UpdatePlanResult>;
         openPr: (itemId: string) => Promise<OrchestratorTransitionResult>;
+        getWorktreeChanges: (itemId: string) => Promise<WorktreeChangesResult>;
+        readWorktreeFile: (
+          itemId: string,
+          path: string,
+          oldPath?: string,
+        ) => Promise<WorktreeFileResult>;
+        saveWorktreeFile: (
+          itemId: string,
+          path: string,
+          content: string,
+        ) => Promise<SaveWorktreeFileResult>;
         onStateChanged: (callback: (state: OrchestratorState) => void) => () => void;
       };
       /** Coding runner progress stream (#9). */

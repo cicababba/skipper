@@ -4,8 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { languages } from "@codemirror/language-data";
-import { LanguageSupport } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 import {
   Save,
@@ -19,6 +17,7 @@ import {
 import { useEditorTabs } from "@/lib/editor-tabs-context";
 import { FileIcon } from "@/components/file-icon";
 import { useT } from "@/lib/app-i18n";
+import { loadLanguageFor } from "@/lib/codemirror-lang";
 
 type LoadState =
   | { kind: "loading" }
@@ -34,32 +33,6 @@ export function EditorFallback() {
       {t.wiki.editor.loadingEditor}
     </div>
   );
-}
-
-// Resolves a language pack for the given filename using CodeMirror's
-// language-data index (~100 languages). The pack is loaded lazily via
-// dynamic import, so only the parser for the actual file is pulled in.
-// Unknown extensions return null → editor opens the file as plain text.
-async function loadLanguageFor(
-  filename: string,
-): Promise<LanguageSupport | null> {
-  const desc =
-    // Match by extension first (cheap)
-    languages.find((l) =>
-      l.extensions.some((ext) =>
-        filename.toLowerCase().endsWith("." + ext.toLowerCase()),
-      ),
-    ) ??
-    // Then by explicit filename (Makefile, Dockerfile, etc.)
-    languages.find((l) =>
-      l.filename?.test(filename.split("/").pop() ?? filename),
-    );
-  if (!desc) return null;
-  try {
-    return await desc.load();
-  } catch {
-    return null;
-  }
 }
 
 function formatSize(bytes: number): string {

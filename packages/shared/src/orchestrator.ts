@@ -176,6 +176,38 @@ export type OrchestratorTransitionResult =
 
 export type UpdatePlanResult = { ok: true; stored: StoredPlan } | { ok: false; error: string };
 
+// Pre-PR diff review (#14): worktree changes exposed to the renderer while an
+// item sits in human-review.
+
+export type WorktreeFileStatus = "added" | "modified" | "deleted" | "renamed";
+
+export interface WorktreeFileChange {
+  /** Worktree-relative POSIX path (the new path for renames). */
+  path: string;
+  /** HEAD-side path, renames only. */
+  oldPath?: string;
+  status: WorktreeFileStatus;
+}
+
+export type WorktreeChangesResult =
+  | { ok: true; files: WorktreeFileChange[] }
+  | { ok: false; error: string };
+
+export interface WorktreeFileContents {
+  /** HEAD blob; null when the file was added. */
+  original: string | null;
+  /** Working-tree content; null when the file was deleted. */
+  modified: string | null;
+  binary: boolean;
+  tooLarge: boolean;
+}
+
+export type WorktreeFileResult =
+  | { ok: true; file: WorktreeFileContents }
+  | { ok: false; error: string };
+
+export type SaveWorktreeFileResult = { ok: true } | { ok: false; error: string };
+
 export type RepoLinkResult = { ok: true; localPath: string } | { ok: false; error: string };
 
 export type RepoUnlinkResult = { ok: true } | { ok: false; error: string };

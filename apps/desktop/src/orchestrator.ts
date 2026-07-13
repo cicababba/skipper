@@ -48,8 +48,11 @@ import {
   captureWorktreeDiff,
   ensureWorktree,
   fetchOrigin,
+  listWorktreeChanges,
+  readWorktreeFileVersions,
   resolveBaseRef,
   worktreeDirFor,
+  writeWorktreeFile,
 } from "./worktrees";
 
 export { killAllCodingRuns };
@@ -709,6 +712,58 @@ export function initOrchestrator(
   ipcMain.handle("nestbrain:planning:getEvents", (_e, itemId: string) => {
     return planningEvents.get(itemId) ?? [];
   });
+  // Pre-PR diff review (#14). The human-review gate bounds what the renderer
+  // can reach: only worktrees of items the user is actively reviewing.
+  async function reviewableWorktree(
+    itemId: string,
+  ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+    const m = await ensureManifest();
+    const item = m.items[itemId];
+    if (!item) return { ok: false, error: `unknown item ${itemId}` };
+    if (item.state !== "human-review") {
+      return {
+        ok: false,
+        error: `worktree is only reviewable in human-review (item is ${item.state})`,
+      };
+    }
+    if (!item.worktree?.path) return { ok: false, error: "no worktree recorded for item" };
+    return { ok: true, path: item.worktree.path };
+  }
+
+  ipcMain.handle("nestbrain:orchestrator:getWorktreeChanges", async (_e, itemId: string) => {
+    const wt = await reviewableWorktree(itemId);
+    if (!wt.ok) return wt;
+    try {
+      return { ok: true as const, files: await listWorktreeChanges(wt.path) };
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle(
+    "nestbrain:orchestrator:readWorktreeFile",
+    async (_e, itemId: string, path: string, oldPath?: string) => {
+      const wt = await reviewableWorktree(itemId);
+      if (!wt.ok) return wt;
+      try {
+        return { ok: true as const, file: await readWorktreeFileVersions(wt.path, path, oldPath) };
+      } catch (err) {
+        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
+  ipcMain.handle(
+    "nestbrain:orchestrator:saveWorktreeFile",
+    async (_e, itemId: string, path: string, content: string) => {
+      const wt = await reviewableWorktree(itemId);
+      if (!wt.ok) return wt;
+      try {
+        await writeWorktreeFile(wt.path, path, content);
+        return { ok: true as const };
+      } catch (err) {
+        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
   // Open the draft PR from human-review, or push a fix round's updates (#11).
   ipcMain.handle("nestbrain:orchestrator:openPr", async (_e, itemId: string) => {
     await ensureManifest();

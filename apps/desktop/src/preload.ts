@@ -9,8 +9,11 @@ import type {
   OrchestratorTransitionResult,
   RepoLinkResult,
   RepoUnlinkResult,
+  SaveWorktreeFileResult,
   StoredPlan,
   UpdatePlanResult,
+  WorktreeChangesResult,
+  WorktreeFileResult,
 } from "@nestbrain/shared";
 
 interface GitOpResult {
@@ -159,6 +162,12 @@ contextBridge.exposeInMainWorld("nestbrain", {
       ipcRenderer.invoke("nestbrain:orchestrator:updatePlan", itemId, plan),
     openPr: (itemId: string): Promise<OrchestratorTransitionResult> =>
       ipcRenderer.invoke("nestbrain:orchestrator:openPr", itemId),
+    getWorktreeChanges: (itemId: string): Promise<WorktreeChangesResult> =>
+      ipcRenderer.invoke("nestbrain:orchestrator:getWorktreeChanges", itemId),
+    readWorktreeFile: (itemId: string, path: string, oldPath?: string): Promise<WorktreeFileResult> =>
+      ipcRenderer.invoke("nestbrain:orchestrator:readWorktreeFile", itemId, path, oldPath),
+    saveWorktreeFile: (itemId: string, path: string, content: string): Promise<SaveWorktreeFileResult> =>
+      ipcRenderer.invoke("nestbrain:orchestrator:saveWorktreeFile", itemId, path, content),
     onStateChanged: (callback: (state: OrchestratorState) => void) => {
       const handler = (_e: unknown, state: OrchestratorState) => callback(state);
       ipcRenderer.on("nestbrain:orchestrator:stateChanged", handler);
