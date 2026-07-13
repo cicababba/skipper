@@ -7,6 +7,7 @@ import { Topbar } from "@/components/topbar";
 import { ThemeProvider } from "@/lib/theme-context";
 import { TerminalProvider } from "@/lib/terminal-context";
 import { AuthProvider } from "@/lib/auth-context";
+import { OrchestratorProvider } from "@/lib/orchestrator-context";
 import { GitStatusProvider } from "@/lib/git-status-context";
 import { EditorTabsProvider } from "@/lib/editor-tabs-context";
 import { OnboardingGate } from "@/lib/onboarding-gate";
@@ -47,6 +48,7 @@ export default function RootLayout({
          <AppLangProvider>
          <ModulesProvider>
           <AuthProvider>
+            <OrchestratorProvider>
               <TerminalProvider>
                 <GitStatusProvider>
                  <EditorTabsProvider>
@@ -66,6 +68,7 @@ export default function RootLayout({
                  </EditorTabsProvider>
                 </GitStatusProvider>
               </TerminalProvider>
+            </OrchestratorProvider>
           </AuthProvider>
          </ModulesProvider>
          </AppLangProvider>

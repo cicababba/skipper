@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   Lightbulb,
   Settings,
@@ -12,11 +12,17 @@ import {
   Sparkles,
   Boxes,
   Trash2,
+  Inbox,
+  ChevronDown,
+  Plus,
 } from "lucide-react";
 import { FileTree } from "./file-tree";
 import { NewProjectModal } from "./new-project-modal";
+import { RepoManagerModal } from "./repo-manager-modal";
 import { BranchIndicator } from "./branch-indicator";
 import { useModules } from "@/lib/modules-context";
+import { useOrchestrator } from "@/lib/orchestrator-context";
+import { attentionCounts, repoKey, reposOf } from "@/lib/inbox/model";
 import { useT } from "@/lib/app-i18n";
 import { useTheme } from "@/lib/theme-context";
 import { useTerminal } from "@/lib/terminal-context";
@@ -190,6 +196,13 @@ export function Sidebar() {
           </Link>
         </div>
 
+        {/* Inbox (issue #12) — the orchestrator's aggregated queue. Needs
+            Suspense because useSearchParams and the sidebar renders on
+            every route. */}
+        <Suspense fallback={null}>
+          <InboxNav />
+        </Suspense>
+
         {/* NestBrain file tree (Electron only, after onboarding) */}
         {nestBrainPath && (
           <FileTree
@@ -267,6 +280,108 @@ export function Sidebar() {
         onClose={() => setNewProjectOpen(false)}
         onCreate={handleCreateProject}
       />
+    </div>
+  );
+}
+
+const INBOX_COLLAPSE_KEY = "nestbrain-inbox-nav-collapsed";
+
+function AttentionBadge({ count, title }: { count: number; title?: string }) {
+  if (count === 0) return null;
+  return (
+    <span
+      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent"
+      title={title}
+    >
+      {count}
+    </span>
+  );
+}
+
+function InboxNav() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { state } = useOrchestrator();
+  const { t } = useT();
+  const [collapsed, setCollapsed] = useState(false);
+  const [reposOpen, setReposOpen] = useState(false);
+
+  useEffect(() => {
+    setCollapsed(localStorage.getItem(INBOX_COLLAPSE_KEY) === "1");
+  }, []);
+
+  if (!state) return null;
+
+  const counts = attentionCounts(state.items);
+  const repos = reposOf(state.items);
+  const onInbox = pathname === "/inbox" || pathname.startsWith("/inbox/");
+  const activeRepo = onInbox ? searchParams.get("repo") : null;
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      localStorage.setItem(INBOX_COLLAPSE_KEY, prev ? "0" : "1");
+      return !prev;
+    });
+  };
+
+  return (
+    <div className="shrink-0 border-b border-sidebar-border p-3 space-y-0.5">
+      <div className="flex items-center">
+        <Link
+          href="/inbox"
+          className={`flex-1 min-w-0 flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+            onInbox && !activeRepo
+              ? "bg-card-hover text-foreground"
+              : "text-muted hover:text-foreground hover:bg-card"
+          }`}
+        >
+          <Inbox size={16} />
+          <span className="flex-1 truncate">{t.inbox.all}</span>
+          <AttentionBadge count={counts.total} />
+        </Link>
+        {repos.length > 0 && (
+          <button
+            onClick={toggleCollapsed}
+            className="shrink-0 p-1.5 rounded-md text-muted/40 hover:text-muted hover:bg-card transition-colors"
+            aria-expanded={!collapsed}
+          >
+            <ChevronDown
+              size={13}
+              className={`transition-transform ${collapsed ? "-rotate-90" : ""}`}
+            />
+          </button>
+        )}
+      </div>
+      {!collapsed &&
+        repos.map((repo) => {
+          const key = repoKey(repo);
+          const isActive = onInbox && activeRepo === key;
+          return (
+            <Link
+              key={key}
+              href={`/inbox?repo=${encodeURIComponent(key)}`}
+              title={key}
+              className={`w-full flex items-center gap-2 pl-9 pr-3 py-1.5 rounded-lg text-[13px] transition-colors ${
+                isActive
+                  ? "bg-card-hover text-foreground"
+                  : "text-muted hover:text-foreground hover:bg-card"
+              }`}
+            >
+              <span className="flex-1 truncate">{key}</span>
+              <AttentionBadge count={counts.byRepo.get(key) ?? 0} />
+            </Link>
+          );
+        })}
+      {!collapsed && (
+        <button
+          onClick={() => setReposOpen(true)}
+          className="w-full flex items-center gap-2 pl-9 pr-3 py-1.5 rounded-lg text-[13px] text-muted/60 hover:text-foreground hover:bg-card transition-colors"
+        >
+          <Plus size={12} className="shrink-0" />
+          <span className="flex-1 truncate text-left">{t.inbox.repos.manage}</span>
+        </button>
+      )}
+      <RepoManagerModal isOpen={reposOpen} onClose={() => setReposOpen(false)} />
     </div>
   );
 }

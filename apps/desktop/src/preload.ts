@@ -1,5 +1,15 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { AuthProviderId, AuthState } from "@nestbrain/shared";
+import type {
+  AuthProviderId,
+  AuthState,
+  LifecycleState,
+  ListReposResult,
+  OrchestratorState,
+  OrchestratorTransitionResult,
+  RepoLinkResult,
+  RepoUnlinkResult,
+  StoredPlan,
+} from "@nestbrain/shared";
 
 interface GitOpResult {
   ok: boolean;
@@ -115,30 +125,38 @@ contextBridge.exposeInMainWorld("nestbrain", {
     get: (): Promise<string[]> => ipcRenderer.invoke("nestbrain:modules:get"),
   },
 
-  // Orchestrator (issue #6 wiring; renderer UI arrives with #12, hence `unknown`)
+  // Orchestrator (issue #6 wiring; typed surface consumed by the inbox UI, #12)
   orchestrator: {
-    getState: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:orchestrator:getState"),
-    refresh: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:orchestrator:refresh"),
-    requestTransition: (itemId: string, to: string, reason?: string): Promise<unknown> =>
+    getState: (): Promise<OrchestratorState> =>
+      ipcRenderer.invoke("nestbrain:orchestrator:getState"),
+    refresh: (): Promise<OrchestratorState> => ipcRenderer.invoke("nestbrain:orchestrator:refresh"),
+    requestTransition: (
+      itemId: string,
+      to: LifecycleState,
+      reason?: string,
+    ): Promise<OrchestratorTransitionResult> =>
       ipcRenderer.invoke("nestbrain:orchestrator:requestTransition", itemId, to, reason),
-    setIntakePaused: (paused: boolean): Promise<unknown> =>
+    setIntakePaused: (paused: boolean): Promise<OrchestratorState> =>
       ipcRenderer.invoke("nestbrain:orchestrator:setIntakePaused", paused),
-    linkRepo: (owner: string, name: string, localPath: string): Promise<unknown> =>
+    linkRepo: (owner: string, name: string, localPath: string): Promise<RepoLinkResult> =>
       ipcRenderer.invoke("nestbrain:orchestrator:linkRepo", owner, name, localPath),
     cloneRepo: (
       owner: string,
       name: string,
       destParent: string,
       accountId?: string,
-    ): Promise<unknown> =>
+    ): Promise<RepoLinkResult> =>
       ipcRenderer.invoke("nestbrain:orchestrator:cloneRepo", owner, name, destParent, accountId),
-    listRepos: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:orchestrator:listRepos"),
-    getPlan: (itemId: string): Promise<unknown> =>
+    unlinkRepo: (owner: string, name: string): Promise<RepoUnlinkResult> =>
+      ipcRenderer.invoke("nestbrain:orchestrator:unlinkRepo", owner, name),
+    listRepos: (): Promise<ListReposResult> =>
+      ipcRenderer.invoke("nestbrain:orchestrator:listRepos"),
+    getPlan: (itemId: string): Promise<StoredPlan | null> =>
       ipcRenderer.invoke("nestbrain:orchestrator:getPlan", itemId),
-    openPr: (itemId: string): Promise<unknown> =>
+    openPr: (itemId: string): Promise<OrchestratorTransitionResult> =>
       ipcRenderer.invoke("nestbrain:orchestrator:openPr", itemId),
-    onStateChanged: (callback: (state: unknown) => void) => {
-      const handler = (_e: unknown, state: unknown) => callback(state);
+    onStateChanged: (callback: (state: OrchestratorState) => void) => {
+      const handler = (_e: unknown, state: OrchestratorState) => callback(state);
       ipcRenderer.on("nestbrain:orchestrator:stateChanged", handler);
       return () => ipcRenderer.off("nestbrain:orchestrator:stateChanged", handler);
     },

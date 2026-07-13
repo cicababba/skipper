@@ -1,6 +1,17 @@
 export {};
 
-import type { AuthProviderId, AuthState, CodingEventEnvelope } from "@nestbrain/shared";
+import type {
+  AuthProviderId,
+  AuthState,
+  CodingEventEnvelope,
+  LifecycleState,
+  ListReposResult,
+  OrchestratorState,
+  OrchestratorTransitionResult,
+  RepoLinkResult,
+  RepoUnlinkResult,
+  StoredPlan,
+} from "@nestbrain/shared";
 
 interface FsEntry {
   name: string;
@@ -141,23 +152,27 @@ declare global {
         stashPop: (repoPath: string, ref?: string) => Promise<GitOpResult>;
         stashDrop: (repoPath: string, ref: string) => Promise<GitOpResult>;
       };
-      /** Issue #6 wiring; payloads stay `unknown` until the inbox UI (#12) types them. */
       orchestrator: {
-        getState: () => Promise<unknown>;
-        refresh: () => Promise<unknown>;
-        requestTransition: (itemId: string, to: string, reason?: string) => Promise<unknown>;
-        setIntakePaused: (paused: boolean) => Promise<unknown>;
-        linkRepo: (owner: string, name: string, localPath: string) => Promise<unknown>;
+        getState: () => Promise<OrchestratorState>;
+        refresh: () => Promise<OrchestratorState>;
+        requestTransition: (
+          itemId: string,
+          to: LifecycleState,
+          reason?: string,
+        ) => Promise<OrchestratorTransitionResult>;
+        setIntakePaused: (paused: boolean) => Promise<OrchestratorState>;
+        linkRepo: (owner: string, name: string, localPath: string) => Promise<RepoLinkResult>;
         cloneRepo: (
           owner: string,
           name: string,
           destParent: string,
           accountId?: string,
-        ) => Promise<unknown>;
-        listRepos: () => Promise<unknown>;
-        getPlan: (itemId: string) => Promise<unknown>;
-        openPr: (itemId: string) => Promise<unknown>;
-        onStateChanged: (callback: (state: unknown) => void) => () => void;
+        ) => Promise<RepoLinkResult>;
+        unlinkRepo: (owner: string, name: string) => Promise<RepoUnlinkResult>;
+        listRepos: () => Promise<ListReposResult>;
+        getPlan: (itemId: string) => Promise<StoredPlan | null>;
+        openPr: (itemId: string) => Promise<OrchestratorTransitionResult>;
+        onStateChanged: (callback: (state: OrchestratorState) => void) => () => void;
       };
       /** Coding runner progress stream (#9). */
       coding: {
