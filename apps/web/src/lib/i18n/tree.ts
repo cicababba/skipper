@@ -20,8 +20,6 @@ const en = {
     fileWord: "file",
     folderWord: "folder",
     deleteConfirm: (kind: string, name: string) => `Delete ${kind} "${name}"?`,
-    deleteTrashNote:
-      "This item is in .trash/ — deleting will remove it permanently from this device.",
     deleteFolderNote: "All its contents will be permanently removed.",
     cannotUndo: "This action cannot be undone.",
     cancel: "Cancel",
@@ -103,8 +101,6 @@ const it: typeof en = {
     folderWord: "la cartella",
     deleteConfirm: (kind: string, name: string) =>
       `Eliminare ${kind} "${name}"?`,
-    deleteTrashNote:
-      "Questo elemento è in .trash/ — l'eliminazione lo rimuoverà definitivamente da questo dispositivo.",
     deleteFolderNote: "Tutto il suo contenuto verrà rimosso definitivamente.",
     cannotUndo: "Questa azione non può essere annullata.",
     cancel: "Annulla",
@@ -186,8 +182,6 @@ const fr: typeof en = {
     folderWord: "le dossier",
     deleteConfirm: (kind: string, name: string) =>
       `Supprimer ${kind} « ${name} » ?`,
-    deleteTrashNote:
-      "Cet élément est dans .trash/ — la suppression le retirera définitivement de cet appareil.",
     deleteFolderNote: "Tout son contenu sera définitivement supprimé.",
     cannotUndo: "Cette action est irréversible.",
     cancel: "Annuler",
@@ -270,8 +264,6 @@ const es: typeof en = {
     folderWord: "la carpeta",
     deleteConfirm: (kind: string, name: string) =>
       `¿Eliminar ${kind} "${name}"?`,
-    deleteTrashNote:
-      "Este elemento está en .trash/ — al eliminarlo se quitará permanentemente de este dispositivo.",
     deleteFolderNote: "Todo su contenido se eliminará permanentemente.",
     cannotUndo: "Esta acción no se puede deshacer.",
     cancel: "Cancelar",

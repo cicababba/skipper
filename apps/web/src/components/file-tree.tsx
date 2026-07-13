@@ -6,14 +6,12 @@ import {
   ChevronRight,
   Folder,
   FolderOpen,
-  Plus,
   FilePlus,
   FolderPlus,
   Pencil,
   Trash2,
   ExternalLink,
   GitBranch,
-  ArrowRight,
   FolderInput,
   Sparkles,
   Share2,
@@ -37,22 +35,16 @@ interface FsEntry {
 
 interface FileTreeProps {
   rootPath: string;
-  onNewProject: () => void;
 }
 
 type CreateKind = "file" | "dir";
 
-export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
+export function FileTree({ rootPath }: FileTreeProps) {
   const router = useRouter();
   const { t } = useT();
   const { has: hasModule } = useModules();
   const devModule = hasModule("dev");
 
-  // Compute the workspace-relative POSIX path so it matches the sync manifest.
-  function toRelPath(absPath: string): string {
-    if (!absPath.startsWith(rootPath + "/")) return absPath;
-    return absPath.slice(rootPath.length + 1).split(/[/\\]/).join("/");
-  }
   const [expanded, setExpanded] = useState<Set<string>>(
     new Set([rootPath, `${rootPath}/Projects`]),
   );
@@ -218,12 +210,7 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
   async function handleDelete(targetPath: string, name: string, isDir: boolean) {
     if (!window.nestbrain) return;
     const kind = isDir ? t.tree.files.folderWord : t.tree.files.fileWord;
-    const relPath = toRelPath(targetPath);
-    const extraMsg = relPath.startsWith(".trash/")
-      ? `\n${t.tree.files.deleteTrashNote}`
-      : isDir
-        ? `\n${t.tree.files.deleteFolderNote}`
-        : "";
+    const extraMsg = isDir ? `\n${t.tree.files.deleteFolderNote}` : "";
     const ok = window.confirm(
       `${t.tree.files.deleteConfirm(kind, name)}${extraMsg}\n\n${t.tree.files.cannotUndo}`,
     );
@@ -291,29 +278,14 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
 
   return (
     <div className="flex-shrink-0 border-b border-sidebar-border">
-      {/* New / Import — one row, New project emphasized (Dev module only) */}
+      {/* Import project (Dev module only) — the "New project" flow was
+          retired with #2; projects arrive by importing existing repos. */}
       {devModule && (
-      <div className="px-3 pt-3 pb-2 flex items-stretch gap-1.5">
-        <button
-          onClick={onNewProject}
-          title={t.tree.projects.newProjectTitle}
-          className="group flex-1 min-w-0 flex items-center justify-between gap-2 px-3 py-2 rounded-md text-[12px] font-medium text-foreground/90 bg-card hover:bg-card-hover border border-border hover:border-accent/40 transition-colors"
-        >
-          <span className="flex items-center gap-2 min-w-0">
-            <span className="flex items-center justify-center w-5 h-5 rounded-md bg-accent/15 text-accent group-hover:bg-accent/20 transition-colors">
-              <Plus size={12} strokeWidth={2.5} />
-            </span>
-            <span className="truncate">{t.tree.projects.newProject}</span>
-          </span>
-          <ArrowRight
-            size={12}
-            className="shrink-0 text-muted/30 -translate-x-1 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 group-hover:text-accent/70 transition-all"
-          />
-        </button>
+      <div className="px-3 pt-3 pb-2 flex items-stretch">
         <button
           onClick={importProject}
           title={t.tree.projects.importTitle}
-          className="shrink-0 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] text-muted/70 hover:text-foreground bg-card/50 hover:bg-card border border-border/60 hover:border-border transition-colors"
+          className="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[11px] text-muted/70 hover:text-foreground bg-card/50 hover:bg-card border border-border/60 hover:border-border transition-colors"
         >
           <FolderInput size={12} className="shrink-0 text-muted/50" />
           <span>{t.tree.projects.import}</span>
