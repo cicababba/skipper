@@ -8,24 +8,32 @@ import {
   saveOrchestratorManifest,
   GitHubApiError,
   GitHubAuthError,
+  listUserInstallationRepos,
   resolveGate,
   DEFAULT_ORCHESTRATOR_SETTINGS,
   IssuePlanSchema,
   type OrchestratorManifest,
 } from "@nestbrain/core";
+import { resolveRepoIntakeSettings } from "@nestbrain/shared";
 import type {
   Account,
   AgentReview,
   CodingEvent,
   CodingEventEnvelope,
   ConfidenceReport,
+  FollowCandidate,
+  FollowCandidatesResult,
   Issue,
   LifecycleState,
   OrchestratorAccountState,
   OrchestratorState,
   PrReviewComment,
   PullRequest,
+  RepoIntakeSettings,
   RepoRef,
+  RepoSettingsRow,
+  ResolvedRepoIntakeSettings,
+  ResumeRiteAction,
   TrackedItem,
   TransitionActor,
 } from "@nestbrain/shared";
@@ -93,12 +101,20 @@ const items = new Map<string, Map<string, Issue | PullRequest>>();
 const lastFullWalkAt = new Map<string, number>();
 
 function snapshot(): OrchestratorState {
+  const tracked = Object.values(manifest?.items ?? {});
   return {
     status,
     intakePaused: manifest?.settings.intakePaused ?? false,
     parkedCount: Object.keys(manifest?.parked ?? {}).length,
-    items: Object.values(manifest?.items ?? {}),
+    queue: {
+      coding: tracked.filter((i) => i.state === "coding").length,
+      queued: tracked.filter((i) => i.state === "queued").length,
+      wipLimitPerRepo: manifest?.settings.codingWipPerRepo ?? 1,
+    },
+    items: tracked,
     accounts: accountsState,
+    repoSettings: manifest?.repoSettings ?? {},
+    resumeRite: manifest?.resumeRite ? { itemIds: [...manifest.resumeRite.itemIds] } : null,
   };
 }
 
@@ -189,6 +205,10 @@ function repoPathFor(repo: RepoRef): string | undefined {
   return repoLinks?.repos[repoKey(repo.owner, repo.name)]?.localPath;
 }
 
+function repoIntake(repo: RepoRef): ResolvedRepoIntakeSettings {
+  return resolveRepoIntakeSettings(manifest?.repoSettings[repoKey(repo.owner, repo.name)]);
+}
+
 /** Token for cloning: explicit account, else the account that sees the repo, else the first one. */
 async function tokenForRepo(
   owner: string,
@@ -213,9 +233,11 @@ function admissionPolicy(m: OrchestratorManifest): {
 } {
   return {
     intakePaused: m.settings.intakePaused,
-    // Only linked repos enter the lifecycle (linked = followed); unlinked
-    // issues stay in the raw inbox arrays until the user links the repo.
-    shouldAdmit: (issue) => Boolean(repoPathFor(issue.repo)),
+    // Follow list (#15): default-all — an absent record means followed. Ignored
+    // repos' issues stay in the raw inbox arrays; linking still gates planning.
+    shouldAdmit: (issue) =>
+      resolveRepoIntakeSettings(m.repoSettings[repoKey(issue.repo.owner, issue.repo.name)])
+        .followed,
   };
 }
 
@@ -551,7 +573,12 @@ export async function requestTransition(
   const item = m.items[itemId];
   if (!item) throw new Error(`unknown item ${itemId}`);
   const prevState = item.state;
-  const next = applyTransition(item, to, actor, reason);
+  // A user moving a held item out of triage overrides the resume-rite hold (#15).
+  const source =
+    actor === "user" && item.state === "triage" && item.holdAutoPlan
+      ? { ...item, holdAutoPlan: undefined }
+      : item;
+  const next = applyTransition(source, to, actor, reason);
   m.items[itemId] = next;
   await saveOrchestratorManifest(deps.manifestFilePath, m);
   broadcast();
@@ -573,6 +600,47 @@ export async function setIntakePaused(paused: boolean): Promise<void> {
   m.settings.intakePaused = paused;
   await saveOrchestratorManifest(deps.manifestFilePath, m);
   broadcast();
+  if (!paused) {
+    // Resume (#15): drain cached parked issues now (they admit held from
+    // auto-plan and surface the rite prompt); a poll picks up the rest.
+    await reconcileFromCache();
+    pokeOrchestrator();
+  }
+}
+
+/**
+ * Resolves the one-shot resume-rite prompt (#15). Selected items move to
+ * planning; the rest keep holdAutoPlan and stay in triage for manual planning.
+ * Any resolution — including dismiss — clears the rite.
+ */
+export async function resolveResumeRite(
+  action: ResumeRiteAction,
+  itemIds?: string[],
+): Promise<void> {
+  if (!deps) throw new Error("orchestrator not initialized");
+  const m = await ensureManifest();
+  if (!m.resumeRite) return;
+  const rite = m.resumeRite.itemIds;
+  const selected =
+    action === "plan-all"
+      ? rite
+      : action === "plan-selected"
+        ? (itemIds ?? []).filter((id) => rite.includes(id))
+        : [];
+  for (const id of selected) {
+    const item = m.items[id];
+    if (!item || item.state !== "triage") continue; // closed/moved meanwhile — skip
+    m.items[id] = applyTransition(
+      { ...item, holdAutoPlan: undefined },
+      "planning",
+      "user",
+      "resume rite",
+    );
+  }
+  delete m.resumeRite;
+  await saveOrchestratorManifest(deps.manifestFilePath, m);
+  broadcast();
+  pokePlanner();
 }
 
 let pokeTimer: NodeJS.Timeout | null = null;
@@ -618,6 +686,154 @@ export function initOrchestrator(
   ipcMain.handle("nestbrain:orchestrator:setIntakePaused", async (_e, paused: boolean) => {
     await setIntakePaused(Boolean(paused));
     return snapshot();
+  });
+  // Queue + intake controls (#15). Narrow whitelist — not a generic settings writer.
+  ipcMain.handle(
+    "nestbrain:orchestrator:updateSettings",
+    async (_e, patch: { codingWipPerRepo?: number }) => {
+      const m = await ensureManifest();
+      if (typeof patch?.codingWipPerRepo === "number" && Number.isInteger(patch.codingWipPerRepo)) {
+        m.settings.codingWipPerRepo = Math.min(10, Math.max(1, patch.codingWipPerRepo));
+      }
+      await saveOrchestratorManifest(deps!.manifestFilePath, m);
+      broadcast();
+      pokeCoder();
+      return snapshot();
+    },
+  );
+  ipcMain.handle(
+    "nestbrain:orchestrator:setRepoSettings",
+    async (_e, owner: string, name: string, patch: Partial<RepoIntakeSettings>) => {
+      const m = await ensureManifest();
+      const key = repoKey(owner, name);
+      const followedBefore = resolveRepoIntakeSettings(m.repoSettings[key]).followed;
+      const merged: RepoIntakeSettings = { ...m.repoSettings[key], ...patch };
+      for (const k of Object.keys(merged) as (keyof RepoIntakeSettings)[]) {
+        if (merged[k] === undefined) delete merged[k];
+      }
+      if (Object.keys(merged).length === 0) delete m.repoSettings[key];
+      else m.repoSettings[key] = merged;
+      await saveOrchestratorManifest(deps!.manifestFilePath, m);
+      if (!followedBefore && resolveRepoIntakeSettings(m.repoSettings[key]).followed) {
+        // Re-followed: cached issues admit retroactively, like a fresh repo link.
+        await reconcileFromCache();
+      } else {
+        broadcast();
+        pokePlanner();
+        pokeCoder();
+      }
+      return snapshot();
+    },
+  );
+  ipcMain.handle("nestbrain:orchestrator:listRepoSettings", async (): Promise<RepoSettingsRow[]> => {
+    const m = await ensureManifest();
+    const links = await ensureRepoLinks();
+    const repos = new Map<string, RepoRef>();
+    const put = (key: string, repo: RepoRef): void => {
+      if (!repos.has(key)) repos.set(key, repo);
+    };
+    // Poll cache + tracked items carry proper-case RepoRefs; keys reconstructed
+    // from links/settings fall back to the lowercased form.
+    for (const map of items.values()) {
+      for (const item of map.values()) put(repoKey(item.repo.owner, item.repo.name), item.repo);
+    }
+    for (const item of Object.values(m.items)) {
+      put(repoKey(item.repo.owner, item.repo.name), item.repo);
+    }
+    for (const key of [...Object.keys(links.repos), ...Object.keys(m.repoSettings)]) {
+      const [owner, name] = key.split("/");
+      if (owner && name) put(key, { owner, name });
+    }
+    return [...repos.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, repo]) => ({
+        key,
+        repo,
+        linked: Boolean(links.repos[key]),
+        localPath: links.repos[key]?.localPath,
+        settings: m.repoSettings[key] ?? {},
+        resolved: resolveRepoIntakeSettings(m.repoSettings[key]),
+      }));
+  });
+  ipcMain.handle(
+    "nestbrain:orchestrator:listFollowCandidates",
+    async (_e, accountId?: string): Promise<FollowCandidatesResult> => {
+      try {
+        const account = accountId
+          ? deps!.getAccounts().find((a) => a.id === accountId)
+          : deps!.getAccounts()[0];
+        if (!account) return { ok: false, error: "no GitHub account connected" };
+        const m = await ensureManifest();
+        const links = await ensureRepoLinks();
+        const result = await listUserInstallationRepos((force) =>
+          deps!.getToken(account.id, force),
+        );
+
+        const candidates = new Map<string, FollowCandidate>();
+        const describe = (repo: RepoRef, key: string): Omit<FollowCandidate, "repo" | "source"> => ({
+          followed: resolveRepoIntakeSettings(m.repoSettings[key]).followed,
+          linked: Boolean(links.repos[key]),
+        });
+        for (const repo of result.repos) {
+          const key = repoKey(repo.owner, repo.name);
+          const ref = { owner: repo.owner, name: repo.name };
+          candidates.set(key, {
+            repo: ref,
+            private: repo.private,
+            source: "installation",
+            ...describe(ref, key),
+          });
+        }
+        // Public repos assigned via general visibility never show in
+        // installations — merge everything the poller has already seen.
+        for (const map of items.values()) {
+          for (const item of map.values()) {
+            const key = repoKey(item.repo.owner, item.repo.name);
+            if (candidates.has(key)) continue;
+            candidates.set(key, {
+              repo: item.repo,
+              source: "polled",
+              ...describe(item.repo, key),
+            });
+          }
+        }
+
+        const installUrl = result.appSlug
+          ? `https://github.com/apps/${result.appSlug}/installations/new`
+          : "https://github.com/settings/installations";
+        return {
+          ok: true,
+          installationCount: result.installationCount,
+          installUrl,
+          repos: [...candidates.values()].sort((a, b) =>
+            `${a.repo.owner}/${a.repo.name}`.localeCompare(`${b.repo.owner}/${b.repo.name}`),
+          ),
+        };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
+  ipcMain.handle(
+    "nestbrain:orchestrator:resolveResumeRite",
+    async (_e, action: ResumeRiteAction, itemIds?: string[]) => {
+      await resolveResumeRite(action, itemIds);
+      return snapshot();
+    },
+  );
+  ipcMain.handle("nestbrain:orchestrator:setPinned", async (_e, itemId: string, pinned: boolean) => {
+    const m = await ensureManifest();
+    const item = m.items[itemId];
+    if (!item) return { ok: false as const, error: `unknown item ${itemId}` };
+    m.items[itemId] = {
+      ...item,
+      pinned: pinned ? true : undefined,
+      updatedAt: new Date().toISOString(),
+    };
+    await saveOrchestratorManifest(deps!.manifestFilePath, m);
+    broadcast();
+    pokeCoder();
+    return { ok: true as const, item: m.items[itemId] };
   });
   ipcMain.handle(
     "nestbrain:orchestrator:linkRepo",
@@ -779,6 +995,7 @@ export function initOrchestrator(
       return cached?.kind === "issue" ? cached : undefined;
     },
     getRepoPath: repoPathFor,
+    getRepoSettings: repoIntake,
     requestTransition,
     completePlan,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
@@ -813,6 +1030,7 @@ export function initOrchestrator(
       });
     },
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
+    getRepoPriority: (repo) => repoIntake(repo).priority,
     emitEvent: emitCodingEvent,
   });
 

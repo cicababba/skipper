@@ -7,12 +7,16 @@ import {
   buildResumePrompt,
   CODER_SYSTEM_PROMPT,
   CodingAbortError,
+  compareQueueCandidates,
   type OrchestratorSettings,
+  type QueueCandidate,
 } from "@nestbrain/core";
 import type {
   CodingEvent,
   Issue,
   LifecycleState,
+  RepoPriority,
+  RepoRef,
   StoredPlan,
   TrackedItem,
   TransitionActor,
@@ -46,11 +50,11 @@ export interface CoderDeps {
   /** Fetch + resolve base + ensure worktree; composed in orchestrator.ts. */
   prepareWorktree: (item: TrackedItem) => Promise<{ path: string; branch: string }>;
   getSettings: () => OrchestratorSettings;
+  /** Per-repo intake priority (#15) — feeds the queue ordering. */
+  getRepoPriority: (repo: RepoRef) => RepoPriority;
   /** Buffer + forward one progress event (orchestrator owns the IPC channel). */
   emitEvent: (itemId: string, event: CodingEvent) => void;
 }
-
-const CODING_WIP_PER_REPO = 1; // full queue mechanics are #15
 
 let deps: CoderDeps | null = null;
 let runner: typeof runCodingAgent = runCodingAgent;
@@ -98,27 +102,45 @@ function queuedAt(item: TrackedItem): string {
   return item.createdAt;
 }
 
+function toCandidate(item: TrackedItem): QueueCandidate {
+  return {
+    pinned: item.pinned === true,
+    priority: deps!.getRepoPriority(item.repo),
+    confidence: item.plan?.confidence,
+    queuedAt: queuedAt(item),
+  };
+}
+
 async function scan(): Promise<void> {
   if (!deps) return;
-  const candidates = deps
-    .listItems()
-    .filter(
-      (item) =>
-        !inFlight.has(item.id) && (item.state === "queued" || item.state === "coding"),
-    )
-    .sort((a, b) => queuedAt(a).localeCompare(queuedAt(b)));
+  const limit = Math.max(1, deps.getSettings().codingWipPerRepo ?? 1);
+  const idle = deps.listItems().filter((item) => !inFlight.has(item.id));
 
-  for (const item of candidates) {
+  // Pass 1 — items already in "coding" (PR re-entries + crash recovery) always
+  // resume first: they skip the queue but consume the repo's WIP limit. When
+  // the repo is at limit they wait for release(), which pokes a rescan.
+  const resumes = idle
+    .filter((item) => item.state === "coding")
+    .sort((a, b) => queuedAt(a).localeCompare(queuedAt(b)));
+  for (const item of resumes) {
     const repoKey = repoKeyOf(item);
-    if ((activeRepos.get(repoKey) ?? 0) >= CODING_WIP_PER_REPO) continue;
-    if (item.state === "queued") {
-      try {
-        await deps.requestTransition(item.id, "coding", "coder", "coding started");
-      } catch {
-        continue;
-      }
+    if ((activeRepos.get(repoKey) ?? 0) >= limit) continue;
+    activeRepos.set(repoKey, (activeRepos.get(repoKey) ?? 0) + 1);
+    void run(item.id, repoKey);
+  }
+
+  // Pass 2 — the queue proper, in #15 order (pin > priority > confidence > age).
+  const queuedItems = idle
+    .filter((item) => item.state === "queued")
+    .sort((a, b) => compareQueueCandidates(toCandidate(a), toCandidate(b)));
+  for (const item of queuedItems) {
+    const repoKey = repoKeyOf(item);
+    if ((activeRepos.get(repoKey) ?? 0) >= limit) continue;
+    try {
+      await deps.requestTransition(item.id, "coding", "coder", "coding started");
+    } catch {
+      continue;
     }
-    // state === "coding" && not in flight: crash recovery — resume the run.
     activeRepos.set(repoKey, (activeRepos.get(repoKey) ?? 0) + 1);
     void run(item.id, repoKey);
   }

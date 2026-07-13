@@ -78,6 +78,40 @@ export interface TransitionEvent {
   reason?: string;
 }
 
+// Per-repo intake settings (#15). Stored in the orchestrator manifest keyed by
+// repoKey(owner, name); absent record / absent field = defaults (follow-all).
+
+export type RepoPriority = "high" | "normal" | "low";
+
+export type AutoPlanMode = "on" | "off" | "label";
+
+export interface RepoIntakeSettings {
+  /** false = ignored at admission. Absent/true = followed (default-all). */
+  followed?: boolean;
+  priority?: RepoPriority;
+  autoPlan?: AutoPlanMode;
+  /** Only issues carrying this label auto-plan when autoPlan === "label". */
+  autoPlanLabel?: string;
+}
+
+export const DEFAULT_AUTO_PLAN_LABEL = "ai-ready";
+
+export interface ResolvedRepoIntakeSettings {
+  followed: boolean;
+  priority: RepoPriority;
+  autoPlan: AutoPlanMode;
+  autoPlanLabel: string;
+}
+
+export function resolveRepoIntakeSettings(s?: RepoIntakeSettings): ResolvedRepoIntakeSettings {
+  return {
+    followed: s?.followed !== false,
+    priority: s?.priority ?? "normal",
+    autoPlan: s?.autoPlan ?? "on",
+    autoPlanLabel: s?.autoPlanLabel?.trim() || DEFAULT_AUTO_PLAN_LABEL,
+  };
+}
+
 /** An issue tracked through the lifecycle. Mirrors platform metadata + orchestrator overlay. */
 export interface TrackedItem {
   /** Same id as the inbox Issue, e.g. "github:1234567890". */
@@ -96,6 +130,8 @@ export interface TrackedItem {
   transitions: TransitionEvent[];
   /** Manual queue-priority pin (#15). */
   pinned?: boolean;
+  /** Suppresses planner auto-plan while in triage (#15 resume rite). */
+  holdAutoPlan?: boolean;
   /** Where needs-input/blocked returns once resolved. */
   resumeTo?: LifecycleState;
   /** Plan + confidence seam (#7/#8). */
@@ -160,12 +196,23 @@ export interface OrchestratorAccountState {
   pullRequests: PullRequest[];
 }
 
+export interface QueueStatus {
+  coding: number;
+  queued: number;
+  wipLimitPerRepo: number;
+}
+
 export interface OrchestratorState {
   status: "idle" | "polling";
   intakePaused: boolean;
   parkedCount: number;
+  queue: QueueStatus;
   items: TrackedItem[];
   accounts: Record<string, OrchestratorAccountState>;
+  /** repoKey(owner, name) → per-repo intake settings (#15). */
+  repoSettings: Record<string, RepoIntakeSettings>;
+  /** Pending resume-rite prompt (#15); null when none. */
+  resumeRite: { itemIds: string[] } | null;
 }
 
 // IPC result shapes shared by the preload bridge and the renderer types.
@@ -216,3 +263,35 @@ export interface ListReposResult {
   linked: { key: string; localPath: string; linkedAt: string; linked: true }[];
   unlinked: { key: string; repo: RepoRef; linked: false }[];
 }
+
+// Queue + intake controls (#15).
+
+export interface RepoSettingsRow {
+  key: string;
+  repo: RepoRef;
+  linked: boolean;
+  localPath?: string;
+  settings: RepoIntakeSettings;
+  resolved: ResolvedRepoIntakeSettings;
+}
+
+export interface FollowCandidate {
+  repo: RepoRef;
+  private?: boolean;
+  /** installation = visible via the GitHub App; polled = seen in the assigned-issues poll. */
+  source: "installation" | "polled";
+  followed: boolean;
+  linked: boolean;
+}
+
+export type FollowCandidatesResult =
+  | {
+      ok: true;
+      installationCount: number;
+      /** GitHub App installation page (fallback: user installations settings). */
+      installUrl: string;
+      repos: FollowCandidate[];
+    }
+  | { ok: false; error: string };
+
+export type ResumeRiteAction = "plan-all" | "plan-selected" | "dismiss";

@@ -16,6 +16,8 @@ import {
   X,
 } from "lucide-react";
 import { AccountSection } from "@/components/account-section";
+import { GithubAccountSection } from "@/components/github-account-section";
+import { RepositoriesSection } from "@/components/repositories-section";
 import { CliInstallSection } from "@/components/cli-install-section";
 import { UpdatesSection } from "@/components/updates-section";
 import { LanguageSection } from "@/components/language-section";
@@ -188,6 +190,10 @@ export default function SettingsPage() {
         <LanguageSection />
 
         <AccountSection />
+
+        <GithubAccountSection />
+
+        <RepositoriesSection />
 
         <UpdatesSection />
 

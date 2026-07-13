@@ -8,7 +8,7 @@ import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 
 export function ItemActions({ item }: { item: TrackedItem }) {
-  const { requestTransition, openPr } = useOrchestrator();
+  const { requestTransition, openPr, setPinned } = useOrchestrator();
   const { t } = useT();
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -19,6 +19,7 @@ export function ItemActions({ item }: { item: TrackedItem }) {
     setBusyId(action.id);
     try {
       if (action.kind === "openPr") await openPr(item.id);
+      else if (action.kind === "pin") await setPinned(item.id, action.pinned);
       else await requestTransition(item.id, action.to);
     } finally {
       setBusyId(null);

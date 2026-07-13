@@ -86,6 +86,7 @@ function makeHarness(overrides: Partial<CoderDeps> = {}): Harness {
       branch: `feature/issue-${item.number}`,
     }),
     getSettings: () => DEFAULT_ORCHESTRATOR_SETTINGS as OrchestratorSettings,
+    getRepoPriority: () => "normal",
     emitEvent: (itemId, event) => events.push({ itemId, event }),
     ...overrides,
   };
@@ -156,6 +157,101 @@ describe("coder driver", () => {
     await settle();
     // repo freed → issue-2 runs
     expect(order).toContain("/wt/repo/issue-2");
+  });
+
+  it("reads the WIP limit from settings", async () => {
+    const h = makeHarness({
+      getSettings: () => ({ ...DEFAULT_ORCHESTRATOR_SETTINGS, codingWipPerRepo: 2 }),
+    });
+    const order: string[] = [];
+    const gate = new Promise<void>(() => {});
+    initCoder(
+      h.deps,
+      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+        order.push(opts.cwd);
+        await gate;
+        return { ok: true, summary: "done", sessionId: opts.sessionId ?? "" };
+      }),
+    );
+    h.items.set("github:1", makeItem(1, "queued"));
+    h.items.set("github:2", makeItem(2, "queued"));
+    h.items.set("github:3", makeItem(3, "queued"));
+
+    pokeCoder();
+    await settle();
+
+    // limit 2: two runs in the same repo, third waits
+    expect(order).toEqual(["/wt/repo/issue-1", "/wt/repo/issue-2"]);
+    expect(h.items.get("github:3")!.state).toBe("queued");
+  });
+
+  it("pinned item jumps an older queued item in the same repo", async () => {
+    const h = makeHarness();
+    const order: string[] = [];
+    const gate = new Promise<void>(() => {});
+    initCoder(
+      h.deps,
+      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+        order.push(opts.cwd);
+        await gate;
+        return { ok: true, summary: "done", sessionId: opts.sessionId ?? "" };
+      }),
+    );
+    h.items.set("github:1", makeItem(1, "queued")); // older queued time
+    h.items.set("github:2", { ...makeItem(2, "queued"), pinned: true });
+
+    pokeCoder();
+    await settle();
+
+    expect(order).toEqual(["/wt/repo/issue-2"]);
+    expect(h.items.get("github:1")!.state).toBe("queued");
+  });
+
+  it("repo priority orders queue admission across repos", async () => {
+    const h = makeHarness({
+      getRepoPriority: (repo) => (repo.name === "important" ? "high" : "normal"),
+    });
+    const order: string[] = [];
+    initCoder(
+      h.deps,
+      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+        order.push(opts.cwd);
+        return { ok: true, summary: "done", sessionId: opts.sessionId ?? "" };
+      }),
+    );
+    h.items.set("github:1", makeItem(1, "queued")); // older, normal-priority repo
+    h.items.set("github:2", makeItem(2, "queued", "important"));
+
+    pokeCoder();
+    await settle();
+
+    expect(order[0]).toBe("/wt/important/issue-2");
+  });
+
+  it("re-entry takes the repo slot before an older queued item", async () => {
+    const h = makeHarness();
+    const order: string[] = [];
+    const gate = new Promise<void>(() => {});
+    initCoder(
+      h.deps,
+      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+        order.push(opts.cwd);
+        await gate;
+        return { ok: true, summary: "done", sessionId: opts.sessionId ?? opts.resumeSessionId ?? "" };
+      }),
+    );
+    h.items.set("github:1", makeItem(1, "queued")); // queued earlier than the re-entry
+    h.items.set("github:2", {
+      ...makeItem(2, "coding"),
+      worktree: { path: "/wt/repo/issue-2", branch: "feature/issue-2", sessionId: "s2" },
+      shepherd: { pendingReviewComments: [{ body: "fix it" }] },
+    });
+
+    pokeCoder();
+    await settle();
+
+    expect(order).toEqual(["/wt/repo/issue-2"]);
+    expect(h.items.get("github:1")!.state).toBe("queued");
   });
 
   it("missing plan lands on needs-input", async () => {

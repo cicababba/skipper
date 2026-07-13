@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { TrackedItem } from "@nestbrain/shared";
+import type { RepoIntakeSettings, TrackedItem } from "@nestbrain/shared";
 
 export interface OrchestratorSettings {
   intakePaused: boolean;
@@ -18,6 +18,8 @@ export interface OrchestratorSettings {
   reviewerModel: string;
   /** After a change-request fix round (#11): hold at human-review or repush unattended. */
   shepherdRepush: "human" | "auto";
+  /** Coding WIP limit per repo (#15); parallelism is across repos. */
+  codingWipPerRepo: number;
 }
 
 export interface OrchestratorManifest {
@@ -25,8 +27,12 @@ export interface OrchestratorManifest {
   settings: OrchestratorSettings;
   /** itemId → tracked issue. */
   items: Record<string, TrackedItem>;
-  /** Issues seen while intake was paused; #15's resume rite consumes this. */
+  /** Issues seen while intake was paused; the resume rite consumes this (#15). */
   parked: Record<string, { firstSeenAt: string }>;
+  /** repoKey(owner, name) → per-repo intake settings (#15). */
+  repoSettings: Record<string, RepoIntakeSettings>;
+  /** Pending resume-rite prompt (#15); survives restarts, cleared on resolution. */
+  resumeRite?: { itemIds: string[]; createdAt: string };
 }
 
 export const DEFAULT_ORCHESTRATOR_SETTINGS: OrchestratorSettings = {
@@ -38,6 +44,7 @@ export const DEFAULT_ORCHESTRATOR_SETTINGS: OrchestratorSettings = {
   reviewMode: "auto",
   reviewerModel: "opus",
   shepherdRepush: "human",
+  codingWipPerRepo: 1,
 };
 
 function freshManifest(): OrchestratorManifest {
@@ -46,6 +53,7 @@ function freshManifest(): OrchestratorManifest {
     settings: structuredClone(DEFAULT_ORCHESTRATOR_SETTINGS),
     items: {},
     parked: {},
+    repoSettings: {},
   };
 }
 
@@ -72,6 +80,8 @@ export async function loadOrCreateOrchestratorManifest(
       parsed.settings.reviewMode ??= DEFAULT_ORCHESTRATOR_SETTINGS.reviewMode;
       parsed.settings.reviewerModel ??= DEFAULT_ORCHESTRATOR_SETTINGS.reviewerModel;
       parsed.settings.shepherdRepush ??= DEFAULT_ORCHESTRATOR_SETTINGS.shepherdRepush;
+      parsed.settings.codingWipPerRepo ??= DEFAULT_ORCHESTRATOR_SETTINGS.codingWipPerRepo;
+      parsed.repoSettings ??= {};
       return parsed;
     }
     return freshManifest();

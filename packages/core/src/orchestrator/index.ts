@@ -7,6 +7,7 @@ export {
   type OrchestratorManifest,
   type OrchestratorSettings,
 } from "./manifest";
+export { compareQueueCandidates, type QueueCandidate } from "./queue";
 export {
   reconcile,
   type AdmissionPolicy,

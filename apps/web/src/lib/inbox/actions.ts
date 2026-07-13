@@ -8,11 +8,14 @@ export type ItemActionId =
   | "openPr"
   | "resume"
   | "retry"
-  | "close";
+  | "close"
+  | "pin"
+  | "unpin";
 
 export type ItemAction =
   | { id: ItemActionId; kind: "transition"; to: LifecycleState }
-  | { id: "openPr"; kind: "openPr" };
+  | { id: "openPr"; kind: "openPr" }
+  | { id: "pin" | "unpin"; kind: "pin"; pinned: boolean };
 
 function transition(id: ItemActionId, item: TrackedItem, to: LifecycleState): ItemAction[] {
   return canTransition(item.state, to) ? [{ id, kind: "transition", to }] : [];
@@ -39,8 +42,15 @@ export function actionsFor(item: TrackedItem): ItemAction[] {
     }
     case "failed":
       return [...transition("retry", item, "triage"), ...close];
-    case "planning":
     case "queued":
+      // Manual queue-priority pin (#15): jumps the item to the front.
+      return [
+        item.pinned
+          ? { id: "unpin", kind: "pin", pinned: false }
+          : { id: "pin", kind: "pin", pinned: true },
+        ...close,
+      ];
+    case "planning":
     case "coding":
     case "agent-review":
       return close;

@@ -55,9 +55,11 @@ describe("orchestrator manifest", () => {
         reviewMode: "auto",
         reviewerModel: "opus",
         shepherdRepush: "human",
+        codingWipPerRepo: 1,
       },
       items: {},
       parked: {},
+      repoSettings: {},
     });
   });
 
@@ -76,6 +78,30 @@ describe("orchestrator manifest", () => {
     expect(manifest.settings.reviewMode).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.reviewMode);
     expect(manifest.settings.reviewerModel).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.reviewerModel);
     expect(manifest.settings.shepherdRepush).toBe("human");
+    expect(manifest.settings.codingWipPerRepo).toBe(1);
+    expect(manifest.repoSettings).toEqual({});
+  });
+
+  it("keeps explicit #15 fields on an existing manifest", async () => {
+    await writeFile(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        settings: { intakePaused: false, codingWipPerRepo: 3 },
+        items: {},
+        parked: {},
+        repoSettings: { "o/r": { followed: false, priority: "high" } },
+        resumeRite: { itemIds: ["github:1"], createdAt: "2026-07-12T00:00:00.000Z" },
+      }),
+      "utf-8",
+    );
+    const manifest = await loadOrCreateOrchestratorManifest(filePath);
+    expect(manifest.settings.codingWipPerRepo).toBe(3);
+    expect(manifest.repoSettings["o/r"]).toEqual({ followed: false, priority: "high" });
+    expect(manifest.resumeRite).toEqual({
+      itemIds: ["github:1"],
+      createdAt: "2026-07-12T00:00:00.000Z",
+    });
   });
 
   it("keeps an explicit shepherdRepush value", async () => {
@@ -125,6 +151,7 @@ describe("orchestrator manifest", () => {
       settings: structuredClone(DEFAULT_ORCHESTRATOR_SETTINGS),
       items: {},
       parked: {},
+      repoSettings: {},
     };
     const saves = Array.from({ length: 10 }, (_, i) =>
       saveOrchestratorManifest(filePath, {
