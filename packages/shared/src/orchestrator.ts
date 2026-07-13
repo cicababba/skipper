@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { CriticObjection, CriticVerdict } from "./confidence";
-import type { PlatformId, RepoRef } from "./inbox";
+import type { Issue, PlatformId, PullRequest, RepoRef } from "./inbox";
 
 export type AgentReviewOutcome = CriticVerdict | "skipped" | "unavailable";
 
@@ -107,4 +107,77 @@ export interface TrackedItem {
   pr?: { id: string; number: number; url: string };
   /** PR shepherding overlay (#11). */
   shepherd?: ShepherdState;
+}
+
+const ACTIVE_STATES: readonly LifecycleState[] = [
+  "triage",
+  "planning",
+  "plan-gate",
+  "queued",
+  "coding",
+  "agent-review",
+  "human-review",
+  "pr-open",
+  "in-review",
+  "changes-requested",
+];
+
+export const TERMINAL_STATES: readonly LifecycleState[] = ["merged"];
+
+export const TRANSITIONS: Record<LifecycleState, readonly LifecycleState[]> = {
+  triage: ["planning", "needs-input", "blocked", "closed"],
+  planning: ["plan-gate", "queued", "needs-input", "failed", "blocked", "closed"],
+  "plan-gate": ["queued", "planning", "needs-input", "blocked", "closed"],
+  queued: ["coding", "needs-input", "blocked", "closed"],
+  coding: ["agent-review", "needs-input", "failed", "blocked", "closed"],
+  "agent-review": ["human-review", "coding", "needs-input", "failed", "closed"],
+  "human-review": ["pr-open", "coding", "needs-input", "failed", "closed"],
+  "pr-open": ["in-review", "merged", "changes-requested", "needs-input", "closed"],
+  "in-review": ["merged", "changes-requested", "needs-input", "blocked", "closed"],
+  "changes-requested": ["coding", "needs-input", "closed"],
+  "needs-input": [...ACTIVE_STATES, "failed", "closed"],
+  blocked: [...ACTIVE_STATES, "failed", "closed"],
+  failed: ["triage", "closed"],
+  merged: [],
+  closed: ["triage"],
+};
+
+export function canTransition(from: LifecycleState, to: LifecycleState): boolean {
+  return TRANSITIONS[from].includes(to);
+}
+
+// Renderer-facing orchestrator snapshot (pushed on nestbrain:orchestrator:stateChanged).
+
+export interface OrchestratorAccountState {
+  accountId: string;
+  status: "idle" | "polling" | "error" | "auth-error";
+  lastSyncAt?: number;
+  /** Epoch ms before which polls are skipped (rate-limit backoff). */
+  nextPollAt?: number;
+  error?: string;
+  issues: Issue[];
+  pullRequests: PullRequest[];
+}
+
+export interface OrchestratorState {
+  status: "idle" | "polling";
+  intakePaused: boolean;
+  parkedCount: number;
+  items: TrackedItem[];
+  accounts: Record<string, OrchestratorAccountState>;
+}
+
+// IPC result shapes shared by the preload bridge and the renderer types.
+
+export type OrchestratorTransitionResult =
+  | { ok: true; item: TrackedItem }
+  | { ok: false; error: string };
+
+export type RepoLinkResult = { ok: true; localPath: string } | { ok: false; error: string };
+
+export type RepoUnlinkResult = { ok: true } | { ok: false; error: string };
+
+export interface ListReposResult {
+  linked: { key: string; localPath: string; linkedAt: string; linked: true }[];
+  unlinked: { key: string; repo: RepoRef; linked: false }[];
 }

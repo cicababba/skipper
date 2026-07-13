@@ -20,6 +20,8 @@ import type {
   ConfidenceReport,
   Issue,
   LifecycleState,
+  OrchestratorAccountState,
+  OrchestratorState,
   PrReviewComment,
   PullRequest,
   RepoRef,
@@ -56,24 +58,7 @@ export { killAllCodingRuns };
 // GitHub adapter, reconciles every poll into the lifecycle manifest, and
 // pushes state to the renderer.
 
-export interface OrchestratorAccountState {
-  accountId: string;
-  status: "idle" | "polling" | "error" | "auth-error";
-  lastSyncAt?: number;
-  /** Epoch ms before which polls are skipped (rate-limit backoff). */
-  nextPollAt?: number;
-  error?: string;
-  issues: Issue[];
-  pullRequests: PullRequest[];
-}
-
-export interface OrchestratorState {
-  status: "idle" | "polling";
-  intakePaused: boolean;
-  parkedCount: number;
-  items: TrackedItem[];
-  accounts: Record<string, OrchestratorAccountState>;
-}
+export type { OrchestratorAccountState, OrchestratorState } from "@nestbrain/shared";
 
 export interface OrchestratorDeps {
   getAccounts: () => Account[];
@@ -638,6 +623,16 @@ export function initOrchestrator(
       }
     },
   );
+  ipcMain.handle("nestbrain:orchestrator:unlinkRepo", async (_e, owner: string, name: string) => {
+    try {
+      const links = await ensureRepoLinks();
+      delete links.repos[repoKey(owner, name)];
+      await saveRepoLinks(deps!.repoLinksFilePath, links);
+      return { ok: true as const };
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
   ipcMain.handle("nestbrain:orchestrator:listRepos", async () => {
     const links = await ensureRepoLinks();
     const seen = new Map<string, RepoRef>();

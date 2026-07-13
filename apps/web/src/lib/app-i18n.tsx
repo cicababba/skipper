@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { common } from "./i18n/common";
 import { settings } from "./i18n/settings";
 import { knowledge } from "./i18n/knowledge";
+import { inbox } from "./i18n/inbox";
 import { wiki } from "./i18n/wiki";
 import { modules } from "./i18n/modules";
 import { tree } from "./i18n/tree";
@@ -29,6 +30,7 @@ function buildDict(lang: AppLang) {
     common: common[lang],
     settings: settings[lang],
     knowledge: knowledge[lang],
+    inbox: inbox[lang],
     wiki: wiki[lang],
     modules: modules[lang],
     tree: tree[lang],

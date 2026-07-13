@@ -3,6 +3,7 @@
 
 const en = {
   nav: {
+    inbox: "Inbox",
     wiki: "Wiki",
     mindMap: "Mind Map",
     search: "Search",
@@ -47,6 +48,7 @@ const en = {
 
 const it: typeof en = {
   nav: {
+    inbox: "Inbox",
     wiki: "Wiki",
     mindMap: "Mind Map",
     search: "Cerca",
@@ -91,6 +93,7 @@ const it: typeof en = {
 
 const fr: typeof en = {
   nav: {
+    inbox: "Inbox",
     wiki: "Wiki",
     mindMap: "Mind Map",
     search: "Recherche",
@@ -135,6 +138,7 @@ const fr: typeof en = {
 
 const es: typeof en = {
   nav: {
+    inbox: "Inbox",
     wiki: "Wiki",
     mindMap: "Mind Map",
     search: "Buscar",
