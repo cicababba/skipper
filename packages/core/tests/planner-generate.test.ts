@@ -90,6 +90,19 @@ describe("generatePlan", () => {
     expect(prompt).toContain("estimatedSize");
   });
 
+  it("passes onEvent through to the agent call and omits it otherwise", async () => {
+    const { llm, agent } = fakeLLM({ agentReply: JSON.stringify(VALID_PLAN) });
+    const onEvent = vi.fn();
+    await generatePlan({ issue: ISSUE, repoPath: "/repo", llm, onEvent });
+    let [, agentOpts] = agent.mock.calls[0] as [string, AgentOptions];
+    expect(agentOpts.onEvent).toBe(onEvent);
+
+    agent.mockClear();
+    await generatePlan({ issue: ISSUE, repoPath: "/repo", llm });
+    [, agentOpts] = agent.mock.calls[0] as [string, AgentOptions];
+    expect("onEvent" in agentOpts).toBe(false);
+  });
+
   it("repairs a schema-invalid reply via askStructured", async () => {
     const invalid = JSON.stringify({ ...VALID_PLAN, steps: [] });
     const { llm, askStructured } = fakeLLM({

@@ -1,9 +1,14 @@
 // ============================================================
-// NestBrain — Coding runner event types (issue #9; rendered by #12/#13)
+// NestBrain — Agent event types, shared by the coding runner (#9)
+// and the planner console (#32)
 // ============================================================
 
 export type CodingEvent =
-  | { kind: "status"; phase: "fetching" | "worktree" | "agent-start" | "resuming"; detail?: string }
+  | {
+      kind: "status";
+      phase: "fetching" | "worktree" | "agent-start" | "resuming" | "scoring";
+      detail?: string;
+    }
   | { kind: "agent-init"; sessionId: string; model?: string; tools?: string[] }
   | { kind: "text"; text: string }
   | {

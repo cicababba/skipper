@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { AgentOptions, LLMProviderInterface, LLMResponse } from "./provider";
 import { parseJsonReply } from "./json";
+import { createStreamJsonParser } from "./stream";
 
 // On Windows, `spawn("claude")` can't execute the npm shim (claude.cmd /
 // claude.ps1): Node refuses .cmd files without a shell, and a shell would
@@ -69,7 +70,12 @@ export function resolveClaude(): ClaudeCmd {
   return (resolvedClaude = { file: "claude", argsPrefix: [] });
 }
 
-function runClaude(args: string[], stdin?: string, cwd?: string): Promise<string> {
+function runClaude(
+  args: string[],
+  stdin?: string,
+  cwd?: string,
+  onStdout?: (chunk: string) => void,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const claude = resolveClaude();
     const proc = spawn(claude.file, [...claude.argsPrefix, ...args], {
@@ -83,7 +89,9 @@ function runClaude(args: string[], stdin?: string, cwd?: string): Promise<string
     let stderr = "";
 
     proc.stdout.on("data", (data) => {
-      stdout += data.toString();
+      const text = data.toString();
+      stdout += text;
+      onStdout?.(text);
     });
 
     proc.stderr.on("data", (data) => {
@@ -189,7 +197,8 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       "-p",
       "-",
       "--output-format",
-      "json",
+      opts.onEvent ? "stream-json" : "json",
+      ...(opts.onEvent ? ["--verbose"] : []), // stream-json requires it in print mode
       "--model",
       this.model,
       "--max-turns",
@@ -215,6 +224,10 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       args.push("--system-prompt", opts.systemPrompt);
     }
 
+    if (opts.onEvent) {
+      return this.agentStreaming(args, prompt, opts);
+    }
+
     const stdout = await runClaude(args, prompt, opts.cwd);
     const data = JSON.parse(stdout);
     if (data.is_error) {
@@ -226,6 +239,41 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
         ? {
             inputTokens: data.usage.input_tokens ?? 0,
             outputTokens: data.usage.output_tokens ?? 0,
+          }
+        : undefined,
+    };
+  }
+
+  private async agentStreaming(
+    args: string[],
+    prompt: string,
+    opts: AgentOptions,
+  ): Promise<LLMResponse> {
+    // The mapped result event truncates its summary — recover the full result
+    // text (the plan JSON can exceed the cap) from the raw line instead.
+    let resultLine: Record<string, unknown> | null = null;
+    const parser = createStreamJsonParser(
+      (event) => opts.onEvent?.(event),
+      (line) => {
+        if (line.type === "result") resultLine = line;
+      },
+    );
+    await runClaude(args, prompt, opts.cwd, (chunk) => parser.feed(chunk));
+    parser.flush();
+    const data = resultLine as Record<string, unknown> | null;
+    if (!data) {
+      throw new Error("Claude CLI stream ended without a result");
+    }
+    if (data.is_error) {
+      throw new Error(`Claude CLI error: ${data.result}`);
+    }
+    const usage = data.usage as Record<string, unknown> | undefined;
+    return {
+      text: typeof data.result === "string" ? data.result : "",
+      usage: usage
+        ? {
+            inputTokens: typeof usage.input_tokens === "number" ? usage.input_tokens : 0,
+            outputTokens: typeof usage.output_tokens === "number" ? usage.output_tokens : 0,
           }
         : undefined,
     };

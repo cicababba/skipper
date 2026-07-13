@@ -9,6 +9,7 @@ import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { repoKey } from "@/lib/inbox/model";
 import { bandClasses, pct, ReportBody } from "@/components/confidence-popover";
+import { EventConsole } from "@/components/event-console";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import {
   applySection,
@@ -334,12 +335,24 @@ export function PlanDetailView() {
       )}
 
       {/* Body */}
-      {loading ? (
+      {item.state === "planning" ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm text-muted">
+            <Loader2 size={16} className="animate-spin" />
+            {t.inbox.states.planning}…
+          </div>
+          <EventConsole
+            itemId={id}
+            getEvents={window.nestbrain!.planning.getEvents}
+            onEvent={window.nestbrain!.planning.onEvent}
+          />
+        </div>
+      ) : loading ? (
         <div className="flex items-center justify-center gap-2 py-16 text-muted">
           <Loader2 size={16} className="animate-spin" />
         </div>
       ) : !plan ? (
-        item.state === "triage" || item.state === "planning" ? (
+        item.state === "triage" ? (
           <div className="flex items-center justify-center gap-2 py-16 text-muted">
             <Loader2 size={16} className="animate-spin" />
             {t.inbox.states[item.state]}…

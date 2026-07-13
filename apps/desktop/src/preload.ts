@@ -178,6 +178,18 @@ contextBridge.exposeInMainWorld("nestbrain", {
     },
   },
 
+  // Planner console (issue #32): same shape as coding, own channel pair.
+  planning: {
+    getEvents: (itemId: string): Promise<unknown[]> =>
+      ipcRenderer.invoke("nestbrain:planning:getEvents", itemId),
+    onEvent: (itemId: string, callback: (envelope: unknown) => void) => {
+      const channel = `nestbrain:planning:event:${itemId}`;
+      const handler = (_e: unknown, envelope: unknown) => callback(envelope);
+      ipcRenderer.on(channel, handler);
+      return () => ipcRenderer.off(channel, handler);
+    },
+  },
+
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke("nestbrain:openExternal", url),
   onShowAbout: (callback: () => void) => {
     const handler = () => callback();

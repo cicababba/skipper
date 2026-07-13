@@ -141,6 +141,20 @@ const en = {
     saveFailed: "Could not save the plan",
     readOnly: "Read-only — the plan is only editable at the gate.",
   },
+  console: {
+    waiting: "Waiting for the agent…",
+    status: {
+      fetching: "Fetching…",
+      worktree: "Preparing worktree…",
+      "agent-start": "Agent started",
+      resuming: "Resuming session…",
+      scoring: "Scoring confidence…",
+    },
+    session: "Session started",
+    finishedOk: "Finished",
+    finishedFail: "Failed",
+    turns: "turns",
+  },
 };
 
 const it: typeof en = {
@@ -282,6 +296,20 @@ const it: typeof en = {
     finishEditing: "Prima termina la modifica",
     saveFailed: "Impossibile salvare il piano",
     readOnly: "Sola lettura — il piano è modificabile solo al gate.",
+  },
+  console: {
+    waiting: "In attesa dell'agente…",
+    status: {
+      fetching: "Recupero…",
+      worktree: "Preparazione worktree…",
+      "agent-start": "Agente avviato",
+      resuming: "Ripresa sessione…",
+      scoring: "Calcolo confidence…",
+    },
+    session: "Sessione avviata",
+    finishedOk: "Completato",
+    finishedFail: "Fallito",
+    turns: "turni",
   },
 };
 
@@ -425,6 +453,20 @@ const fr: typeof en = {
     saveFailed: "Impossible d'enregistrer le plan",
     readOnly: "Lecture seule — le plan n'est modifiable qu'à la validation.",
   },
+  console: {
+    waiting: "En attente de l'agent…",
+    status: {
+      fetching: "Récupération…",
+      worktree: "Préparation du worktree…",
+      "agent-start": "Agent démarré",
+      resuming: "Reprise de session…",
+      scoring: "Calcul de la confiance…",
+    },
+    session: "Session démarrée",
+    finishedOk: "Terminé",
+    finishedFail: "Échec",
+    turns: "tours",
+  },
 };
 
 const es: typeof en = {
@@ -566,6 +608,20 @@ const es: typeof en = {
     finishEditing: "Termina la edición primero",
     saveFailed: "No se pudo guardar el plan",
     readOnly: "Solo lectura — el plan solo se puede editar en la validación.",
+  },
+  console: {
+    waiting: "Esperando al agente…",
+    status: {
+      fetching: "Obteniendo…",
+      worktree: "Preparando worktree…",
+      "agent-start": "Agente iniciado",
+      resuming: "Reanudando sesión…",
+      scoring: "Calculando confianza…",
+    },
+    session: "Sesión iniciada",
+    finishedOk: "Terminado",
+    finishedFail: "Falló",
+    turns: "turnos",
   },
 };
 
