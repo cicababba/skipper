@@ -6,6 +6,7 @@ import {
   type OrchestratorSettings,
 } from "@nestbrain/core";
 import type {
+  CodingEvent,
   ConfidenceReport,
   Issue,
   LifecycleState,
@@ -39,6 +40,8 @@ export interface PlannerDeps {
   completePlan: (itemId: string, ref: string, confidence?: ConfidenceReport) => Promise<void>;
   /** Live orchestrator settings — planner model + confidence knobs. */
   getSettings: () => OrchestratorSettings;
+  /** Planner console stream (#32): per-item envelopes over nestbrain:planning:*. */
+  emitEvent: (itemId: string, event: CodingEvent) => void;
   plansDir: string;
 }
 
@@ -138,7 +141,14 @@ async function run(itemId: string): Promise<void> {
       labels: cached?.labels ?? [],
       body: cached?.body,
     };
-    const plan = await generatePlan({ issue, repoPath, llm: provider });
+    // agent-start marks a fresh run — it also resets the replay buffer upstream.
+    deps.emitEvent(itemId, { kind: "status", phase: "agent-start" });
+    const plan = await generatePlan({
+      issue,
+      repoPath,
+      llm: provider,
+      onEvent: (event) => deps?.emitEvent(itemId, event),
+    });
     const ref = planFileName(itemId);
     const stored: StoredPlan = {
       version: 2,
@@ -154,6 +164,7 @@ async function run(itemId: string): Promise<void> {
     // Cooperative cancel: the item may have been closed/moved mid-generation.
     if (deps.getItem(itemId)?.state !== "planning") return;
     // Scoring failure is never fatal (#8): no report → conservative plan-gate.
+    deps.emitEvent(itemId, { kind: "status", phase: "scoring" });
     let report: ConfidenceReport | undefined;
     try {
       report = await computeConfidence({
@@ -176,6 +187,7 @@ async function run(itemId: string): Promise<void> {
   } catch (err) {
     if (deps.getItem(itemId)?.state === "planning") {
       const message = err instanceof Error ? err.message : String(err);
+      deps.emitEvent(itemId, { kind: "error", message: message.slice(0, 500) });
       await deps
         .requestTransition(
           itemId,

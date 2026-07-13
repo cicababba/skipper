@@ -65,8 +65,15 @@ export interface StreamJsonParser {
   flush: () => void;
 }
 
-/** Stateful NDJSON feeder: buffers partial lines across chunks. */
-export function createStreamJsonParser(onEvent: (event: CodingEvent) => void): StreamJsonParser {
+/**
+ * Stateful NDJSON feeder: buffers partial lines across chunks. `onLine` sees
+ * every parsed line raw — mapped events truncate (e.g. result summary), so
+ * callers that need the full result text must take it from here.
+ */
+export function createStreamJsonParser(
+  onEvent: (event: CodingEvent) => void,
+  onLine?: (line: Record<string, unknown>) => void,
+): StreamJsonParser {
   let buffer = "";
 
   const emitLine = (raw: string) => {
@@ -79,6 +86,7 @@ export function createStreamJsonParser(onEvent: (event: CodingEvent) => void): S
       return;
     }
     const obj = parsed as Record<string, unknown>;
+    if (typeof obj === "object" && obj !== null) onLine?.(obj);
     if (obj?.type === "assistant") {
       for (const event of mapAssistantLine(obj)) onEvent(event);
       return;

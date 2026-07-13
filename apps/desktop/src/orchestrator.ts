@@ -131,6 +131,30 @@ function emitCodingEvent(itemId: string, event: CodingEvent): void {
   }
 }
 
+// Planner console stream (#32): same machinery as coding events, own channel
+// pair so a coding run's buffer reset never wipes planner history.
+const planningEvents = new Map<string, CodingEventEnvelope[]>();
+const planningEventSeq = new Map<string, number>();
+
+function emitPlanningEvent(itemId: string, event: CodingEvent): void {
+  // Every planner run opens with agent-start: reset so replay never mixes runs.
+  if (event.kind === "status" && event.phase === "agent-start") {
+    planningEvents.set(itemId, []);
+    planningEventSeq.set(itemId, 0);
+  }
+  const seq = planningEventSeq.get(itemId) ?? 0;
+  planningEventSeq.set(itemId, seq + 1);
+  const envelope: CodingEventEnvelope = { itemId, seq, at: new Date().toISOString(), event };
+  const buffer = planningEvents.get(itemId) ?? [];
+  buffer.push(envelope);
+  if (buffer.length > CODING_EVENT_BUFFER_MAX) buffer.shift();
+  planningEvents.set(itemId, buffer);
+  const win = getWindow();
+  if (win && !win.isDestroyed()) {
+    win.webContents.send(`nestbrain:planning:event:${itemId}`, envelope);
+  }
+}
+
 function patchAccount(accountId: string, patch: Partial<OrchestratorAccountState>): void {
   const current: OrchestratorAccountState = accountsState[accountId] ?? {
     accountId,
@@ -682,6 +706,9 @@ export function initOrchestrator(
   ipcMain.handle("nestbrain:coding:getEvents", (_e, itemId: string) => {
     return codingEvents.get(itemId) ?? [];
   });
+  ipcMain.handle("nestbrain:planning:getEvents", (_e, itemId: string) => {
+    return planningEvents.get(itemId) ?? [];
+  });
   // Open the draft PR from human-review, or push a fix round's updates (#11).
   ipcMain.handle("nestbrain:orchestrator:openPr", async (_e, itemId: string) => {
     await ensureManifest();
@@ -700,6 +727,7 @@ export function initOrchestrator(
     requestTransition,
     completePlan,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
+    emitEvent: emitPlanningEvent,
     plansDir: orchestratorDeps.plansDir,
   });
 

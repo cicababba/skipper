@@ -1,4 +1,4 @@
-import type { LLMProvider } from "@nestbrain/shared";
+import type { CodingEvent, LLMProvider } from "@nestbrain/shared";
 
 export interface LLMResponse {
   text: string;
@@ -11,6 +11,8 @@ export interface AgentOptions {
   cwd?: string;
   /** Max agent turns (tool-use loops). */
   maxTurns?: number;
+  /** Stream agent progress (text, tool use, result). Providers without streaming ignore it. */
+  onEvent?: (event: CodingEvent) => void;
 }
 
 export interface LLMProviderInterface {

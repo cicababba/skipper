@@ -1,4 +1,4 @@
-import type { IssuePlan } from "@nestbrain/shared";
+import type { CodingEvent, IssuePlan } from "@nestbrain/shared";
 import type { LLMProviderInterface } from "../llm/provider";
 import { parseJsonReply } from "../llm/json";
 import { IssuePlanSchema, planJsonSchema } from "./schema";
@@ -18,6 +18,8 @@ export interface GeneratePlanOptions {
   repoPath: string;
   llm: LLMProviderInterface;
   maxTurns?: number;
+  /** Streams progress from the primary agent run only (repair round stays silent). */
+  onEvent?: (event: CodingEvent) => void;
 }
 
 export class PlanGenerationError extends Error {
@@ -64,6 +66,7 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
     systemPrompt: PLANNER_SYSTEM_PROMPT,
     cwd: opts.repoPath,
     maxTurns: opts.maxTurns ?? 24,
+    ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
   });
 
   const first = tryParsePlan(reply.text);

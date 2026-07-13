@@ -121,4 +121,27 @@ describe("createStreamJsonParser", () => {
     parser.feed(`not json at all\n{"type":"rate_limit_event"}\n\n${JSON.stringify(initLine)}\n`);
     expect(events.map((e) => e.kind)).toEqual(["agent-init"]);
   });
+
+  it("onLine sees every parsed line raw, including the untruncated result", () => {
+    const events: CodingEvent[] = [];
+    const lines: Record<string, unknown>[] = [];
+    const parser = createStreamJsonParser(
+      (e) => events.push(e),
+      (l) => lines.push(l),
+    );
+    const longResult = "y".repeat(5000);
+    parser.feed(
+      `${JSON.stringify(initLine)}\n{"type":"rate_limit_event"}\n${JSON.stringify({
+        ...resultLine,
+        result: longResult,
+      })}\n`,
+    );
+    expect(lines.map((l) => l.type)).toEqual(["system", "rate_limit_event", "result"]);
+    expect(lines[2].result).toBe(longResult);
+    const result = events.find((e) => e.kind === "result") as Extract<
+      CodingEvent,
+      { kind: "result" }
+    >;
+    expect(result.summary).toHaveLength(2000);
+  });
 });

@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import type { CodingEvent } from "@nestbrain/shared";
 import { invalidateResolvedClaude, resolveClaude } from "../llm/claude-cli";
-import { createStreamJsonParser } from "./stream";
+import { createStreamJsonParser } from "../llm/stream";
 
 const CODER_TOOLS = "Read,Grep,Glob,Edit,Write,Bash,WebFetch,WebSearch";
 const DEFAULT_MAX_TURNS = 60;

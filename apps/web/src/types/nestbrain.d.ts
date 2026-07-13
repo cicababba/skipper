@@ -182,6 +182,11 @@ declare global {
         getEvents: (itemId: string) => Promise<CodingEventEnvelope[]>;
         onEvent: (itemId: string, callback: (envelope: CodingEventEnvelope) => void) => () => void;
       };
+      /** Planner progress stream (#32). */
+      planning: {
+        getEvents: (itemId: string) => Promise<CodingEventEnvelope[]>;
+        onEvent: (itemId: string, callback: (envelope: CodingEventEnvelope) => void) => () => void;
+      };
       updates: {
         getState: () => Promise<UpdateState>;
         check: () => Promise<UpdateState>;
