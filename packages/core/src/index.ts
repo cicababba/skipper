@@ -36,6 +36,16 @@ export {
 
 // GitHub adapter
 export { pollGitHubAccount, GitHubApiError, GitHubAuthError, emptyGitHubCursor } from "./github";
+export {
+  createPullRequest,
+  findOpenPullByHead,
+  fetchPullReviews,
+  fetchPullReviewComments,
+  deriveReviewDecision,
+  mapReviewFeedback,
+  fetchCiStatus,
+} from "./github";
+export type { CreatedPull, PullReviewPayload, PullReviewCommentPayload } from "./github";
 export type {
   GitHubTokenProvider,
   GitHubEndpointCursor,
@@ -75,10 +85,14 @@ export {
   buildCoderPrompt,
   buildResumePrompt,
   buildFixPrompt,
+  buildPrFixPrompt,
   mapStreamLine,
   createStreamJsonParser,
 } from "./coder";
 export type { RunCodingAgentOptions, CodingRunResult, StreamJsonParser } from "./coder";
+
+// Shepherd (issue #11)
+export { buildCommitMessage, buildPrTitle, buildPrBody } from "./shepherd";
 
 // Reviewer (issue #10)
 export {

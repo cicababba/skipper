@@ -28,6 +28,9 @@ export interface GitHubPollOptions {
   getToken: GitHubTokenProvider;
   /** undefined (or version mismatch) → full walk of the current open set. */
   cursor?: GitHubAccountCursor;
+  /** Tracked PRs to hydrate unconditionally each poll (#11) — reviews and CI
+   *  don't bump the PR's updated_at, so deltas alone would never surface them. */
+  deepHydrate?: Array<{ owner: string; name: string; number: number }>;
   onProgress?: (message: string) => void;
 }
 

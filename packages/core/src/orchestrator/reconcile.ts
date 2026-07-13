@@ -120,9 +120,17 @@ function reconcilePulls(
   const items = Object.values(manifest.items).filter((i) => i.accountId === accountId);
 
   for (const pr of pullRequests) {
-    let item = items.find((i) => i.pr?.id === pr.id);
+    // Match by repo + number: the list streams carry the issue-record id while
+    // POST /pulls returns the pull-record id, so ids never line up across sources.
+    let item = items.find(
+      (i) =>
+        i.pr &&
+        i.pr.number === pr.number &&
+        i.repo.owner === pr.repo.owner &&
+        i.repo.name === pr.repo.name,
+    );
 
-    // Fallback link heuristic until #11 writes the authoritative link:
+    // Fallback link heuristic for externally opened PRs:
     // open PR whose head branch names a tracked issue in the same repo.
     if (!item && pr.state === "open" && pr.headRef) {
       const match = BRANCH_ISSUE_RE.exec(pr.headRef);

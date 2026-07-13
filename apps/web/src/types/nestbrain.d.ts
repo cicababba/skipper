@@ -156,6 +156,7 @@ declare global {
         ) => Promise<unknown>;
         listRepos: () => Promise<unknown>;
         getPlan: (itemId: string) => Promise<unknown>;
+        openPr: (itemId: string) => Promise<unknown>;
         onStateChanged: (callback: (state: unknown) => void) => () => void;
       };
       /** Coding runner progress stream (#9). */

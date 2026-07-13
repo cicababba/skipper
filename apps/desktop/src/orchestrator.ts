@@ -20,6 +20,7 @@ import type {
   ConfidenceReport,
   Issue,
   LifecycleState,
+  PrReviewComment,
   PullRequest,
   RepoRef,
   TrackedItem,
@@ -38,6 +39,7 @@ import { readStoredPlan } from "./plan-store";
 import { initPlanner, pokePlanner } from "./planner";
 import { initCoder, pokeCoder, cancelCodingRun, killAllCodingRuns } from "./coder";
 import { initReviewer, pokeReviewer } from "./reviewer";
+import { initShepherd, pokeShepherd, openOrPushPr } from "./shepherd";
 import {
   branchFor,
   captureWorktreeDiff,
@@ -81,6 +83,7 @@ export interface OrchestratorDeps {
   repoLinksFilePath: string;
   plansDir: string;
   worktreesDir: string;
+  memoryDir: string;
 }
 
 const FIRST_POLL_DELAY_MS = 10_000;
@@ -229,10 +232,23 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
 
   patchAccount(accountId, { status: "polling" });
   try {
+    const m = await ensureManifest();
+    // Tracked PRs (#11): reviews/CI don't bump updated_at, so deltas alone
+    // would never surface them — hydrate them unconditionally each poll.
+    const deepHydrate = Object.values(m.items)
+      .filter(
+        (i) =>
+          i.accountId === accountId &&
+          i.pr &&
+          (i.state === "pr-open" || i.state === "in-review" || i.state === "changes-requested"),
+      )
+      .map((i) => ({ owner: i.repo.owner, name: i.repo.name, number: i.pr!.number }));
+
     const result = await pollGitHubAccount({
       accountId,
       getToken: (force) => deps!.getToken(accountId, force),
       cursor,
+      deepHydrate,
     });
 
     let map = items.get(accountId);
@@ -242,6 +258,21 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
       lastFullWalkAt.set(accountId, Date.now());
     }
     for (const item of [...result.issues, ...result.pullRequests]) {
+      if (item.kind === "pull-request") {
+        // The same PR can arrive under its issue-record id (list streams) or its
+        // pull-record id (deep hydration) — evict the other id before upserting.
+        for (const [id, existing] of map) {
+          if (
+            id !== item.id &&
+            existing.kind === "pull-request" &&
+            existing.number === item.number &&
+            existing.repo.owner === item.repo.owner &&
+            existing.repo.name === item.repo.name
+          ) {
+            map.delete(id);
+          }
+        }
+      }
       map.set(item.id, item);
     }
     // Closed issues leave the inbox; closed/merged PRs stay (terminal state
@@ -250,7 +281,6 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
       if (item.kind === "issue" && item.state === "closed") map.delete(id);
     }
 
-    const m = await ensureManifest();
     await ensureRepoLinks();
     const outcome = reconcile(
       m,
@@ -329,6 +359,7 @@ async function pollNow(ignoreBackoff = false): Promise<void> {
     pokePlanner();
     pokeCoder();
     pokeReviewer();
+    pokeShepherd();
   }
 }
 
@@ -355,6 +386,7 @@ async function reconcileFromCache(): Promise<void> {
   pokePlanner();
   pokeCoder();
   pokeReviewer();
+  pokeShepherd();
 }
 
 /** Sets plan.ref + confidence and the gated transition in a single manifest write (#8). */
@@ -406,6 +438,74 @@ async function completeReview(
   broadcast();
   // Fix round lands the item back in queued-for-coding territory — wake the coder.
   pokeCoder();
+  // A fix round converging to human-review is the auto-repush trigger (#11).
+  pokeShepherd();
+}
+
+/**
+ * Sets the authoritative PR link + lastPushedSha, clears pending review
+ * comments, and transitions to pr-open in a single manifest write (#11).
+ */
+async function completePrOpen(
+  itemId: string,
+  pr: { id: string; number: number; url: string },
+  pushedSha: string,
+  actor: "user" | "shepherd",
+  reason: string,
+): Promise<void> {
+  if (!deps) throw new Error("orchestrator not initialized");
+  const m = await ensureManifest();
+  const item = m.items[itemId];
+  if (!item) throw new Error(`unknown item ${itemId}`);
+  const withPr: TrackedItem = {
+    ...item,
+    pr,
+    shepherd: { ...item.shepherd, pendingReviewComments: undefined, lastPushedSha: pushedSha },
+  };
+  m.items[itemId] = applyTransition(withPr, "pr-open", actor, reason);
+  await saveOrchestratorManifest(deps.manifestFilePath, m);
+  broadcast();
+}
+
+/**
+ * Sets shepherd.pendingReviewComments + the changes-requested → coding
+ * transition in a single manifest write (#11). The item lands directly in
+ * "coding": the coder's scan picks it up (counts toward the WIP limit) without
+ * passing through the queue — finishing in-flight work beats starting new.
+ */
+async function completeReentry(
+  itemId: string,
+  comments: PrReviewComment[],
+  reason: string,
+): Promise<void> {
+  if (!deps) throw new Error("orchestrator not initialized");
+  const m = await ensureManifest();
+  const item = m.items[itemId];
+  if (!item) throw new Error(`unknown item ${itemId}`);
+  const withComments: TrackedItem = {
+    ...item,
+    shepherd: { ...item.shepherd, pendingReviewComments: comments },
+  };
+  m.items[itemId] = applyTransition(withComments, "coding", "shepherd", reason);
+  await saveOrchestratorManifest(deps.manifestFilePath, m);
+  broadcast();
+  pokeCoder();
+}
+
+/** Stamps the memory ref and drops the worktree record — no transition, merged is terminal (#11). */
+async function completeMergedCleanup(itemId: string, memoryRef: string): Promise<void> {
+  if (!deps) throw new Error("orchestrator not initialized");
+  const m = await ensureManifest();
+  const item = m.items[itemId];
+  if (!item) throw new Error(`unknown item ${itemId}`);
+  m.items[itemId] = {
+    ...item,
+    worktree: undefined,
+    shepherd: { ...item.shepherd, memoryRef },
+    updatedAt: new Date().toISOString(),
+  };
+  await saveOrchestratorManifest(deps.manifestFilePath, m);
+  broadcast();
 }
 
 /** Persists the coding worktree record (path/branch/sessionId) without a transition (#9). */
@@ -450,6 +550,7 @@ export async function requestTransition(
   }
   // The coder landing on agent-review arrives here — wake the reviewer.
   if (actor !== "reviewer") pokeReviewer();
+  if (actor !== "shepherd") pokeShepherd();
   return next;
 }
 
@@ -566,6 +667,12 @@ export function initOrchestrator(
   ipcMain.handle("nestbrain:coding:getEvents", (_e, itemId: string) => {
     return codingEvents.get(itemId) ?? [];
   });
+  // Open the draft PR from human-review, or push a fix round's updates (#11).
+  ipcMain.handle("nestbrain:orchestrator:openPr", async (_e, itemId: string) => {
+    await ensureManifest();
+    await ensureRepoLinks();
+    return openOrPushPr(itemId, "user");
+  });
 
   initPlanner({
     listItems: () => Object.values(manifest?.items ?? {}),
@@ -628,6 +735,29 @@ export function initOrchestrator(
     },
     completeReview,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
+  });
+
+  initShepherd({
+    listItems: () => Object.values(manifest?.items ?? {}),
+    getItem: (itemId) => manifest?.items[itemId],
+    getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
+    getTokenProvider: (item) => (force) => deps!.getToken(item.accountId, force),
+    getRepoPath: repoPathFor,
+    getBaseBranch: async (item) => {
+      const link = repoLinks?.repos[repoKey(item.repo.owner, item.repo.name)];
+      if (!link) throw new Error(`repo ${item.repo.owner}/${item.repo.name} is not linked`);
+      const baseRef = await resolveBaseRef(link.localPath, link.baseBranch);
+      return baseRef.replace(/^origin\//, "");
+    },
+    getPlan: async (item) => {
+      const ref = item.plan?.ref;
+      return ref ? readStoredPlan(orchestratorDeps.plansDir, ref) : null;
+    },
+    requestTransition,
+    completePrOpen,
+    completeReentry,
+    completeMergedCleanup,
+    memoryDir: orchestratorDeps.memoryDir,
   });
 
   setTimeout(

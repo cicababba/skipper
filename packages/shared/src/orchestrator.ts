@@ -20,6 +20,26 @@ export interface AgentReview {
   at: string; // ISO 8601
 }
 
+/** One piece of human PR feedback — a change-request review body or an inline comment (#11). */
+export interface PrReviewComment {
+  author?: string;
+  path?: string;
+  line?: number;
+  body: string;
+  url?: string;
+  submittedAt?: string; // ISO 8601
+}
+
+/** PR shepherding overlay (#11). */
+export interface ShepherdState {
+  /** Set on changes-requested re-entry (replaced wholesale each re-entry); cleared on push. */
+  pendingReviewComments?: PrReviewComment[];
+  /** HEAD sha of the last successful push. */
+  lastPushedSha?: string;
+  /** Solutions-memory record ref — presence means the post-merge capture ran. */
+  memoryRef?: string;
+}
+
 /** Lifecycle states from docs/DIRECTION.md ("Il ciclo di vita"). */
 export type LifecycleState =
   | "triage"
@@ -85,4 +105,6 @@ export interface TrackedItem {
   review?: AgentReview;
   /** Linked PR (#11 writes the authoritative link; reconcile has a branch heuristic). */
   pr?: { id: string; number: number; url: string };
+  /** PR shepherding overlay (#11). */
+  shepherd?: ShepherdState;
 }

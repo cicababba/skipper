@@ -4,6 +4,7 @@ import {
   CODER_SYSTEM_PROMPT,
   buildCoderPrompt,
   buildFixPrompt,
+  buildPrFixPrompt,
   buildResumePrompt,
 } from "../src/coder";
 
@@ -81,6 +82,22 @@ describe("buildFixPrompt", () => {
     expect(prompt).toContain("Issue #42: Add dark mode");
     expect(prompt).toContain("- [BLOCKING] (acceptance-gap) toggle does not persist");
     expect(prompt).toContain("- (risk) FOUC possible");
+    expect(prompt).toMatch(/no git commit\/push\/branch/);
+  });
+});
+
+describe("buildPrFixPrompt", () => {
+  it("renders author, path:line and body for each comment", () => {
+    const prompt = buildPrFixPrompt(issue, [
+      { author: "rev", path: "src/theme.ts", line: 12, body: "rename this" },
+      { author: "rev", body: "Overall: please add tests" },
+      { body: "anonymous note" },
+    ]);
+    expect(prompt).toContain("requested changes on the pull request");
+    expect(prompt).toContain("Issue #42: Add dark mode");
+    expect(prompt).toContain("- rev on src/theme.ts:12: rename this");
+    expect(prompt).toContain("- rev: Overall: please add tests");
+    expect(prompt).toContain("- reviewer: anonymous note");
     expect(prompt).toMatch(/no git commit\/push\/branch/);
   });
 });
