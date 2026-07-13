@@ -9,11 +9,16 @@ import {
   captureWorktreeDiff,
   commitWorktree,
   ensureWorktree,
+  listWorktreeChanges,
   listWorktrees,
+  parseNameStatusZ,
   pushWorktreeBranch,
+  readWorktreeFileVersions,
   removeWorktree,
   resolveBaseRef,
+  resolveInsideWorktree,
   worktreeDirFor,
+  writeWorktreeFile,
 } from "./worktrees";
 
 let dir: string;
@@ -222,6 +227,133 @@ describe("commitWorktree / pushWorktreeBranch / captureBranchDiff (#11)", () => 
     // uncommitted view is empty — the change is committed
     const clean = await captureWorktreeDiff(worktreePath);
     expect(clean.stats.filesChanged).toBe(0);
+  });
+});
+
+describe("resolveInsideWorktree (#14)", () => {
+  const root = join("/tmp", "wt");
+
+  it("resolves a nested relative path", () => {
+    expect(resolveInsideWorktree(root, join("src", "a.ts"))).toBe(join(root, "src", "a.ts"));
+  });
+
+  it("rejects escapes, absolute paths, .git and empty", () => {
+    expect(() => resolveInsideWorktree(root, "../escape")).toThrow(/escapes/);
+    expect(() => resolveInsideWorktree(root, join("src", "..", "..", "x"))).toThrow(/escapes/);
+    expect(() => resolveInsideWorktree(root, "/etc/passwd")).toThrow(/absolute/);
+    expect(() => resolveInsideWorktree(root, join(".git", "config"))).toThrow(/\.git/);
+    expect(() => resolveInsideWorktree(root, "  ")).toThrow(/empty/);
+  });
+});
+
+describe("parseNameStatusZ (#14)", () => {
+  it("parses M/A/D entries", () => {
+    expect(parseNameStatusZ("M\0a.ts\0A\0b.ts\0D\0c.ts\0")).toEqual([
+      { path: "a.ts", status: "modified" },
+      { path: "b.ts", status: "added" },
+      { path: "c.ts", status: "deleted" },
+    ]);
+  });
+
+  it("parses renames with score and old path", () => {
+    expect(parseNameStatusZ("R100\0old.ts\0new.ts\0")).toEqual([
+      { path: "new.ts", oldPath: "old.ts", status: "renamed" },
+    ]);
+  });
+
+  it("returns [] for empty output", () => {
+    expect(parseNameStatusZ("")).toEqual([]);
+  });
+});
+
+describe("worktree review IO (#14)", () => {
+  async function makeReviewWorktree(): Promise<string> {
+    const { clone } = await makeCloneWithOrigin();
+    await writeFile(join(clone, "keep.txt"), "keep\n");
+    await writeFile(join(clone, "gone.txt"), "gone\n");
+    await writeFile(join(clone, "moved.txt"), "moved\n");
+    git(clone, "add", ".");
+    git(clone, "commit", "-qm", "more files");
+    git(clone, "push", "-q", "origin", "main");
+    const worktreePath = join(dir, "wt", "issue-14");
+    await ensureWorktree({
+      repoPath: clone,
+      worktreePath,
+      branch: "feature/issue-14",
+      baseRef: "origin/main",
+    });
+    return worktreePath;
+  }
+
+  it("lists modified, added, deleted and renamed files", async () => {
+    const wt = await makeReviewWorktree();
+    await writeFile(join(wt, "keep.txt"), "keep\nchanged\n");
+    await writeFile(join(wt, "brand-new.ts"), "export const x = 1;\n");
+    await rm(join(wt, "gone.txt"));
+    git(wt, "mv", "moved.txt", "renamed.txt");
+
+    const changes = await listWorktreeChanges(wt);
+    const byPath = Object.fromEntries(changes.map((c) => [c.path, c]));
+    expect(byPath["keep.txt"].status).toBe("modified");
+    expect(byPath["brand-new.ts"].status).toBe("added");
+    expect(byPath["gone.txt"].status).toBe("deleted");
+    expect(byPath["renamed.txt"]).toEqual({
+      path: "renamed.txt",
+      oldPath: "moved.txt",
+      status: "renamed",
+    });
+  });
+
+  it("reads both sides of a modified file", async () => {
+    const wt = await makeReviewWorktree();
+    await writeFile(join(wt, "keep.txt"), "keep\nchanged\n");
+    const file = await readWorktreeFileVersions(wt, "keep.txt");
+    expect(file).toEqual({
+      original: "keep\n",
+      modified: "keep\nchanged\n",
+      binary: false,
+      tooLarge: false,
+    });
+  });
+
+  it("added → original null; deleted → modified null", async () => {
+    const wt = await makeReviewWorktree();
+    await writeFile(join(wt, "brand-new.ts"), "x\n");
+    await rm(join(wt, "gone.txt"));
+    const added = await readWorktreeFileVersions(wt, "brand-new.ts");
+    expect(added.original).toBeNull();
+    expect(added.modified).toBe("x\n");
+    const deleted = await readWorktreeFileVersions(wt, "gone.txt");
+    expect(deleted.original).toBe("gone\n");
+    expect(deleted.modified).toBeNull();
+  });
+
+  it("rename reads the HEAD side via oldPath", async () => {
+    const wt = await makeReviewWorktree();
+    git(wt, "mv", "moved.txt", "renamed.txt");
+    const file = await readWorktreeFileVersions(wt, "renamed.txt", "moved.txt");
+    expect(file.original).toBe("moved\n");
+    expect(file.modified).toBe("moved\n");
+  });
+
+  it("flags binary and too-large files without shipping content", async () => {
+    const wt = await makeReviewWorktree();
+    await writeFile(join(wt, "bin.dat"), Buffer.from([1, 0, 2, 3]));
+    const bin = await readWorktreeFileVersions(wt, "bin.dat");
+    expect(bin).toEqual({ original: null, modified: null, binary: true, tooLarge: false });
+
+    await writeFile(join(wt, "big.txt"), "x".repeat(1024 * 1024 + 1));
+    const big = await readWorktreeFileVersions(wt, "big.txt");
+    expect(big).toEqual({ original: null, modified: null, binary: false, tooLarge: true });
+  });
+
+  it("writeWorktreeFile writes existing files and refuses new paths", async () => {
+    const wt = await makeReviewWorktree();
+    await writeWorktreeFile(wt, "keep.txt", "edited\n");
+    const file = await readWorktreeFileVersions(wt, "keep.txt");
+    expect(file.modified).toBe("edited\n");
+    await expect(writeWorktreeFile(wt, "nope.txt", "x")).rejects.toThrow(/not a file/);
+    await expect(writeWorktreeFile(wt, "../outside.txt", "x")).rejects.toThrow(/escapes/);
   });
 });
 

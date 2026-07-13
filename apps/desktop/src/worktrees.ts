@@ -1,9 +1,9 @@
 // Worktree lifecycle for the coding runner (issue #9). Pure Node module over
 // runGit; callers inject paths. Lives in the public tree (open-core, #1/#18).
 
-import { stat } from "node:fs/promises";
-import { join, resolve, normalize } from "node:path";
-import type { RepoRef } from "@nestbrain/shared";
+import { readFile, stat, writeFile } from "node:fs/promises";
+import { isAbsolute, join, resolve, normalize, sep } from "node:path";
+import type { RepoRef, WorktreeFileChange, WorktreeFileContents } from "@nestbrain/shared";
 import type { DiffStats } from "@nestbrain/core";
 import { runGit } from "./git";
 import { withAskpass } from "./repo-links";
@@ -178,6 +178,134 @@ async function captureDiff(worktreePath: string, range: string): Promise<Worktre
     throw new Error(`git diff failed: ${patch.stderr.trim() || `exit ${patch.code}`}`);
   }
   return { diff: patch.stdout, stats };
+}
+
+// Pre-PR diff review (#14): per-file worktree changes for the renderer.
+
+const MAX_REVIEW_FILE_BYTES = 1024 * 1024;
+const MAX_REVIEW_WRITE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Containment guard for renderer-supplied paths: rejects anything that is
+ * empty, absolute, escapes the worktree, or touches .git/. Returns the
+ * resolved absolute path.
+ */
+export function resolveInsideWorktree(worktreePath: string, relPath: string): string {
+  if (!relPath.trim()) throw new Error("empty path");
+  if (isAbsolute(relPath)) throw new Error(`absolute paths are not allowed: ${relPath}`);
+  const root = resolve(normalize(worktreePath));
+  const abs = resolve(root, normalize(relPath));
+  const contained =
+    process.platform === "win32"
+      ? abs.toLowerCase().startsWith(root.toLowerCase() + sep)
+      : abs.startsWith(root + sep);
+  if (!contained) throw new Error(`path escapes the worktree: ${relPath}`);
+  const rel = abs.slice(root.length + 1);
+  const first = rel.split(sep)[0];
+  if (first === ".git") throw new Error("access to .git/ is not allowed");
+  return abs;
+}
+
+/** Parse `git diff --name-status -z -M` output. Exported for tests. */
+export function parseNameStatusZ(stdout: string): WorktreeFileChange[] {
+  const parts = stdout.split("\0");
+  const changes: WorktreeFileChange[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const status = parts[i];
+    if (!status) continue;
+    const kind = status[0];
+    if (kind === "R" || kind === "C") {
+      const oldPath = parts[++i];
+      const path = parts[++i];
+      if (!path) break;
+      changes.push(
+        kind === "R" ? { path, oldPath, status: "renamed" } : { path, status: "added" },
+      );
+    } else {
+      const path = parts[++i];
+      if (!path) break;
+      const mapped = kind === "A" ? "added" : kind === "D" ? "deleted" : "modified";
+      changes.push({ path, status: mapped });
+    }
+  }
+  return changes;
+}
+
+/** Changed files vs HEAD, intent-to-add first so untracked files appear (as captureWorktreeDiff). */
+export async function listWorktreeChanges(worktreePath: string): Promise<WorktreeFileChange[]> {
+  const intent = await runGit(worktreePath, ["add", "-A", "-N"]);
+  if (intent.code !== 0) {
+    throw new Error(`git add -N failed: ${intent.stderr.trim() || `exit ${intent.code}`}`);
+  }
+  const r = await runGit(worktreePath, ["diff", "HEAD", "--name-status", "-z", "-M"]);
+  if (r.code !== 0) {
+    throw new Error(`git diff --name-status failed: ${r.stderr.trim() || `exit ${r.code}`}`);
+  }
+  return parseNameStatusZ(r.stdout);
+}
+
+function looksBinary(text: string): boolean {
+  const len = Math.min(text.length, 8192);
+  for (let i = 0; i < len; i++) {
+    if (text.charCodeAt(i) === 0) return true;
+  }
+  return false;
+}
+
+/** HEAD blob + working-tree content of one changed file, capped and binary-checked. */
+export async function readWorktreeFileVersions(
+  worktreePath: string,
+  relPath: string,
+  oldPath?: string,
+): Promise<WorktreeFileContents> {
+  const abs = resolveInsideWorktree(worktreePath, relPath);
+  const headPath = oldPath ?? relPath;
+  if (oldPath) resolveInsideWorktree(worktreePath, oldPath);
+
+  let original: string | null = null;
+  let tooLarge = false;
+  // cat-file -s first: distinguishes "not at HEAD" (→ null) from "too large".
+  const size = await runGit(worktreePath, ["cat-file", "-s", `HEAD:${headPath}`]);
+  if (size.code === 0) {
+    if (parseInt(size.stdout.trim(), 10) > MAX_REVIEW_FILE_BYTES) {
+      tooLarge = true;
+    } else {
+      const show = await runGit(worktreePath, ["show", `HEAD:${headPath}`]);
+      if (show.code !== 0) {
+        throw new Error(`git show failed: ${show.stderr.trim() || `exit ${show.code}`}`);
+      }
+      original = show.stdout;
+    }
+  }
+
+  let modified: string | null = null;
+  const st = await stat(abs).catch(() => null);
+  if (st?.isFile()) {
+    if (st.size > MAX_REVIEW_FILE_BYTES) {
+      tooLarge = true;
+    } else {
+      modified = await readFile(abs, "utf-8");
+    }
+  }
+
+  const binary = looksBinary(original ?? "") || looksBinary(modified ?? "");
+  if (binary || tooLarge) return { original: null, modified: null, binary, tooLarge };
+  return { original, modified, binary: false, tooLarge: false };
+}
+
+/** Write a user edit back into the worktree (existing changed files only — never creates paths). */
+export async function writeWorktreeFile(
+  worktreePath: string,
+  relPath: string,
+  content: string,
+): Promise<void> {
+  const abs = resolveInsideWorktree(worktreePath, relPath);
+  if (Buffer.byteLength(content, "utf-8") > MAX_REVIEW_WRITE_BYTES) {
+    throw new Error("content too large");
+  }
+  const st = await stat(abs).catch(() => null);
+  if (!st?.isFile()) throw new Error(`not a file in the worktree: ${relPath}`);
+  await writeFile(abs, content, "utf-8");
 }
 
 /** Stage everything and commit. `committed: false` when the tree was already clean. */

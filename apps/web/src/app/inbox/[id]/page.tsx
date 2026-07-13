@@ -1,12 +1,12 @@
 import { Suspense } from "react";
-import { PlanDetailView } from "./plan-detail";
+import { ItemDetailView } from "./item-detail";
 
 export const dynamic = "force-dynamic";
 
-export default function PlanDetailPage() {
+export default function ItemDetailPage() {
   return (
     <Suspense fallback={null}>
-      <PlanDetailView />
+      <ItemDetailView />
     </Suspense>
   );
 }
