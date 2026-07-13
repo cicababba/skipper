@@ -5,9 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   branchFor,
+  captureBranchDiff,
   captureWorktreeDiff,
+  commitWorktree,
   ensureWorktree,
   listWorktrees,
+  pushWorktreeBranch,
   removeWorktree,
   resolveBaseRef,
   worktreeDirFor,
@@ -165,6 +168,60 @@ describe("captureWorktreeDiff", () => {
     const { diff, stats } = await captureWorktreeDiff(worktreePath);
     expect(stats).toEqual({ filesChanged: 0, totalChangedLines: 0, files: [] });
     expect(diff).toBe("");
+  });
+});
+
+describe("commitWorktree / pushWorktreeBranch / captureBranchDiff (#11)", () => {
+  async function makeWorktree(n: number): Promise<{ clone: string; worktreePath: string }> {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", `issue-${n}`);
+    await ensureWorktree({
+      repoPath: clone,
+      worktreePath,
+      branch: `feature/issue-${n}`,
+      baseRef: "origin/main",
+    });
+    return { clone, worktreePath };
+  }
+
+  it("stages and commits everything, reporting the new sha", async () => {
+    const { worktreePath } = await makeWorktree(1);
+    await writeFile(join(worktreePath, "new.txt"), "x\n");
+    const result = await commitWorktree(worktreePath, "add dark mode (#1)");
+    expect(result.committed).toBe(true);
+    expect(result.sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(git(worktreePath, "log", "-1", "--format=%s")).toContain("add dark mode (#1)");
+    expect(git(worktreePath, "status", "--porcelain")).toBe("");
+  });
+
+  it("returns committed:false with the HEAD sha on a clean tree", async () => {
+    const { worktreePath } = await makeWorktree(2);
+    const head = git(worktreePath, "rev-parse", "HEAD").trim();
+    const result = await commitWorktree(worktreePath, "noop");
+    expect(result).toEqual({ committed: false, sha: head });
+  });
+
+  it("pushes the branch to origin with upstream", async () => {
+    const { clone, worktreePath } = await makeWorktree(3);
+    await writeFile(join(worktreePath, "new.txt"), "x\n");
+    await commitWorktree(worktreePath, "change (#3)");
+    await pushWorktreeBranch(worktreePath, "feature/issue-3");
+    expect(git(clone, "ls-remote", "--heads", "origin", "feature/issue-3")).toContain(
+      "refs/heads/feature/issue-3",
+    );
+  });
+
+  it("captureBranchDiff reports committed changes vs the base", async () => {
+    const { worktreePath } = await makeWorktree(4);
+    await writeFile(join(worktreePath, "new.txt"), "line\n");
+    await commitWorktree(worktreePath, "change (#4)");
+    const { diff, stats } = await captureBranchDiff(worktreePath, "origin/main");
+    expect(stats.filesChanged).toBe(1);
+    expect(stats.files).toContain("new.txt");
+    expect(diff).toContain("+line");
+    // uncommitted view is empty — the change is committed
+    const clean = await captureWorktreeDiff(worktreePath);
+    expect(clean.stats.filesChanged).toBe(0);
   });
 });
 

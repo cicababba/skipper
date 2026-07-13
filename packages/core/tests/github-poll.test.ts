@@ -222,6 +222,122 @@ describe("pollGitHubAccount", () => {
     expect(result.issues).toHaveLength(1);
   });
 
+  it("deep-hydrates tracked PRs absent from the delta stream, with reviews + CI", async () => {
+    const cursor: GitHubAccountCursor = {
+      ...emptyGitHubCursor(),
+      assigned: { since: "2026-07-09T00:00:00Z", etags: {} },
+      created: { since: "2026-07-09T00:00:00Z", etags: {} },
+    };
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      const u = String(url);
+      if (u.includes("/repos/o/r/pulls/7/reviews")) {
+        return jsonResponse(200, [{ user: { login: "rev" }, state: "CHANGES_REQUESTED" }]);
+      }
+      if (u.includes("/check-runs")) {
+        return jsonResponse(200, { check_runs: [{ status: "completed", conclusion: "success" }] });
+      }
+      if (u.includes("/status")) {
+        return jsonResponse(200, { state: "pending", total_count: 0 });
+      }
+      if (u.includes("/repos/o/r/pulls/7")) {
+        return jsonResponse(200, {
+          id: 700,
+          number: 7,
+          title: "tracked pr",
+          body: "b",
+          state: "open",
+          merged: false,
+          draft: false,
+          mergeable: true,
+          html_url: "https://github.com/o/r/pull/7",
+          created_at: "2026-07-01T00:00:00Z",
+          updated_at: "2026-07-10T00:00:00Z",
+          user: { login: "cicababba" },
+          head: { ref: "feature/issue-7", sha: "abc123" },
+          base: { ref: "develop" },
+        });
+      }
+      return jsonResponse(200, []); // empty delta streams
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await pollGitHubAccount({
+      accountId: ACCOUNT,
+      getToken: token,
+      cursor,
+      deepHydrate: [{ owner: "o", name: "r", number: 7 }],
+    });
+    expect(result.pullRequests).toHaveLength(1);
+    expect(result.pullRequests[0]).toMatchObject({
+      id: "github:700",
+      number: 7,
+      headRef: "feature/issue-7",
+      reviewDecision: "changes-requested",
+      ciStatus: "passing",
+    });
+  });
+
+  it("merges deep-hydrated PRs by repo+number, keeping the stream's issue-record id", async () => {
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      const u = String(url);
+      if (u.includes("/reviews")) return jsonResponse(200, []);
+      if (u.includes("/check-runs")) return jsonResponse(200, { check_runs: [] });
+      if (u.includes("/status")) return jsonResponse(200, { total_count: 0 });
+      if (u.includes("/repos/o/r/pulls/7")) {
+        return jsonResponse(200, {
+          id: 700,
+          number: 7,
+          title: "my pr",
+          state: "open",
+          merged: false,
+          draft: true,
+          mergeable: null,
+          html_url: "https://github.com/o/r/pull/7",
+          created_at: "2026-07-01T00:00:00Z",
+          updated_at: "2026-07-10T00:00:00Z",
+          user: { login: "cicababba" },
+          head: { ref: "feature/issue-7", sha: "abc" },
+          base: { ref: "develop" },
+        });
+      }
+      if (u.includes("filter=created")) {
+        return jsonResponse(200, [
+          issuePayload({ id: 7, number: 7, title: "my pr", pull_request: { merged_at: null } }),
+        ]);
+      }
+      return jsonResponse(200, []);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await pollGitHubAccount({
+      accountId: ACCOUNT,
+      getToken: token,
+      deepHydrate: [{ owner: "o", name: "r", number: 7 }],
+    });
+    expect(result.pullRequests).toHaveLength(1);
+    // stream id (github:7) wins over the pull-record id (github:700)
+    expect(result.pullRequests[0].id).toBe("github:7");
+    expect(result.pullRequests[0].reviewDecision).toBe("review-required");
+    // deep hydration replaces regular hydration: exactly one detail GET for #7
+    const detailCalls = fetchMock.mock.calls.filter((c) => /\/pulls\/7$/.test(String(c[0])));
+    expect(detailCalls).toHaveLength(1);
+  });
+
+  it("a failing deep-hydration target is non-fatal", async () => {
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      const u = String(url);
+      if (u.includes("/repos/o/r/pulls/9")) return jsonResponse(500, { message: "boom" });
+      return jsonResponse(200, []);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await pollGitHubAccount({
+      accountId: ACCOUNT,
+      getToken: token,
+      deepHydrate: [{ owner: "o", name: "r", number: 9 }],
+    });
+    expect(result.pullRequests).toEqual([]);
+  });
+
   it("performs requests serially", async () => {
     let inFlight = 0;
     let maxInFlight = 0;

@@ -1,7 +1,15 @@
 import { GITHUB_API_BASE_URL } from "@nestbrain/shared";
 import type { Issue, PullRequest } from "@nestbrain/shared";
 import { githubGet } from "./client";
-import { applyPullDetails, mapIssue, mapPullFromIssue, type GitHubIssuePayload, type GitHubPullPayload } from "./map";
+import {
+  applyPullDetails,
+  mapIssue,
+  mapPullDetail,
+  mapPullFromIssue,
+  type GitHubIssuePayload,
+  type GitHubPullPayload,
+} from "./map";
+import { deriveReviewDecision, fetchCiStatus, fetchPullReviews } from "./pulls";
 import {
   GitHubApiError,
   emptyGitHubCursor,
@@ -17,6 +25,7 @@ import {
 // harmless because consumers upsert by id.
 const SINCE_OVERLAP_MS = 60_000;
 const HYDRATION_CAP = 50;
+const DEEP_HYDRATION_CAP = 20;
 
 interface StreamResult {
   payloads: GitHubIssuePayload[];
@@ -73,15 +82,20 @@ async function walkStream(
   return { payloads, cursor: { since, etags }, rateLimit };
 }
 
+function pullKey(repo: { owner: string; name: string }, number: number): string {
+  return `${repo.owner}/${repo.name}#${number}`;
+}
+
 async function hydratePulls(
   pulls: PullRequest[],
   getToken: GitHubTokenProvider,
   onProgress?: (message: string) => void,
+  skipKeys?: Set<string>,
 ): Promise<PullRequest[]> {
   const out: PullRequest[] = [];
   let hydrated = 0;
   for (const pr of pulls) {
-    if (pr.state !== "open" || hydrated >= HYDRATION_CAP) {
+    if (pr.state !== "open" || hydrated >= HYDRATION_CAP || skipKeys?.has(pullKey(pr.repo, pr.number))) {
       out.push(pr);
       continue;
     }
@@ -94,6 +108,43 @@ async function hydratePulls(
       // Non-fatal: keep the list-level PR without head/base details.
       onProgress?.(`pull details failed for ${pr.repo.owner}/${pr.repo.name}#${pr.number}: ${String(err)}`);
       out.push(pr);
+    }
+  }
+  return out;
+}
+
+// Tracked PRs (#11): reviews and CI never bump updated_at, so these are fetched
+// unconditionally each poll — detail, then review decision + CI while still open.
+async function hydrateTrackedPulls(
+  targets: NonNullable<GitHubPollOptions["deepHydrate"]>,
+  accountId: string,
+  getToken: GitHubTokenProvider,
+  onProgress?: (message: string) => void,
+): Promise<PullRequest[]> {
+  if (targets.length > DEEP_HYDRATION_CAP) {
+    onProgress?.(`deep hydration capped at ${DEEP_HYDRATION_CAP} of ${targets.length} tracked PRs`);
+  }
+  const out: PullRequest[] = [];
+  for (const target of targets.slice(0, DEEP_HYDRATION_CAP)) {
+    const repo = { owner: target.owner, name: target.name };
+    const label = `${target.owner}/${target.name}#${target.number}`;
+    try {
+      const detail = await githubGet<GitHubPullPayload>(
+        `${GITHUB_API_BASE_URL}/repos/${target.owner}/${target.name}/pulls/${target.number}`,
+        getToken,
+      );
+      if (!detail.body) continue;
+      const pr = mapPullDetail(detail.body, accountId, repo);
+      if (pr.state !== "open") {
+        out.push(pr);
+        continue;
+      }
+      const reviews = await fetchPullReviews(repo, target.number, getToken);
+      const ciStatus = await fetchCiStatus(repo, detail.body.head.sha, getToken);
+      out.push({ ...pr, reviewDecision: deriveReviewDecision(reviews, pr.author), ciStatus });
+    } catch (err) {
+      // Non-fatal: the next poll retries; reconcile just sees no fresh evidence.
+      onProgress?.(`deep hydration failed for ${label}: ${String(err)}`);
     }
   }
   return out;
@@ -130,7 +181,18 @@ async function runPoll(
     .filter((p) => p.pull_request)
     .map((p) => mapPullFromIssue(p, accountId));
 
-  const pullRequests = await hydratePulls(listPulls, getToken, onProgress);
+  const deepTargets = options.deepHydrate ?? [];
+  const deepKeys = new Set(deepTargets.map((t) => pullKey(t, t.number)));
+  const pullRequests = await hydratePulls(listPulls, getToken, onProgress, deepKeys);
+  const deepPulls = await hydrateTrackedPulls(deepTargets, accountId, getToken, onProgress);
+
+  // Merge by repo+number: the stream's issue-record id wins over the pull-record id.
+  for (const deep of deepPulls) {
+    const key = pullKey(deep.repo, deep.number);
+    const idx = pullRequests.findIndex((p) => pullKey(p.repo, p.number) === key);
+    if (idx >= 0) pullRequests[idx] = { ...deep, id: pullRequests[idx].id };
+    else pullRequests.push(deep);
+  }
 
   return {
     mode,

@@ -1559,6 +1559,7 @@ app.whenReady().then(async () => {
         repoLinksFilePath: join(app.getPath("userData"), "repo-links.json"),
         plansDir: join(app.getPath("userData"), "plans"),
         worktreesDir: join(app.getPath("userData"), "worktrees"),
+        memoryDir: join(app.getPath("userData"), "memory"),
       });
       orchestratorPoke = pokeOrchestrator;
       coderKillAll = killAllCodingRuns;

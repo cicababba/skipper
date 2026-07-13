@@ -331,6 +331,66 @@ describe("coder driver", () => {
     expect(opts.prompt).not.toMatch(/interrupted/);
   });
 
+  it("PR fix round (#11) uses the PR fix prompt and outranks stale critic objections", async () => {
+    const h = makeHarness();
+    const runner = okRunner();
+    initCoder(h.deps, runner);
+    const item = makeItem(1, "coding");
+    h.items.set("github:1", {
+      ...item,
+      worktree: { path: "/wt/repo/issue-1", branch: "feature/issue-1", sessionId: "old-session" },
+      review: {
+        rounds: 1,
+        outcome: "reject",
+        pendingObjections: [{ kind: "risk", detail: "stale objection", blocking: false }],
+        at: "2026-07-13T00:00:00.000Z",
+      },
+      shepherd: {
+        pendingReviewComments: [
+          { author: "rev", path: "src/a.ts", line: 3, body: "rename this" },
+        ],
+      },
+    });
+
+    pokeCoder();
+    await settle();
+
+    const opts = runner.mock.calls[0][0];
+    expect(opts.resumeSessionId).toBe("old-session");
+    expect(opts.prompt).toContain("requested changes on the pull request");
+    expect(opts.prompt).toContain("- rev on src/a.ts:3: rename this");
+    expect(opts.prompt).not.toContain("stale objection");
+    expect(h.transitions.map((t) => t.to)).toEqual(["agent-review"]);
+  });
+
+  it("PR re-entry in coding state counts toward the per-repo WIP limit", async () => {
+    const h = makeHarness();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const runner = vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      await gate;
+      return { ok: true, summary: "done", sessionId: opts.sessionId ?? opts.resumeSessionId ?? "" };
+    });
+    initCoder(h.deps, runner);
+    // Re-entered item occupies the repo's single slot...
+    h.items.set("github:1", {
+      ...makeItem(1, "coding"),
+      worktree: { path: "/wt/repo/issue-1", branch: "feature/issue-1", sessionId: "s1" },
+      shepherd: { pendingReviewComments: [{ body: "fix it" }] },
+    });
+    // ...so this queued item in the same repo must wait.
+    h.items.set("github:2", makeItem(2, "queued"));
+
+    pokeCoder();
+    await settle();
+    expect(runner).toHaveBeenCalledTimes(1);
+    expect(h.items.get("github:2")!.state).toBe("queued");
+
+    release();
+    await settle();
+    expect(runner).toHaveBeenCalledTimes(2);
+  });
+
   it("fix round dead-resume retry keeps the fix prompt", async () => {
     const h = makeHarness();
     const runner = vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {

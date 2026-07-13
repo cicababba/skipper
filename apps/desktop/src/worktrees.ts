@@ -148,7 +148,19 @@ export async function captureWorktreeDiff(worktreePath: string): Promise<Worktre
   if (intent.code !== 0) {
     throw new Error(`git add -N failed: ${intent.stderr.trim() || `exit ${intent.code}`}`);
   }
-  const numstat = await runGit(worktreePath, ["diff", "HEAD", "--numstat"]);
+  return captureDiff(worktreePath, "HEAD");
+}
+
+/** Committed branch changes vs the base, for the post-merge memory capture (#11). */
+export async function captureBranchDiff(
+  worktreePath: string,
+  baseRef: string,
+): Promise<WorktreeDiff> {
+  return captureDiff(worktreePath, `${baseRef}...HEAD`);
+}
+
+async function captureDiff(worktreePath: string, range: string): Promise<WorktreeDiff> {
+  const numstat = await runGit(worktreePath, ["diff", range, "--numstat"]);
   if (numstat.code !== 0) {
     throw new Error(`git diff --numstat failed: ${numstat.stderr.trim() || `exit ${numstat.code}`}`);
   }
@@ -161,11 +173,72 @@ export async function captureWorktreeDiff(worktreePath: string): Promise<Worktre
     // binary files report "-\t-": count the file, contribute 0 lines
     stats.totalChangedLines += (parseInt(added, 10) || 0) + (parseInt(deleted, 10) || 0);
   }
-  const patch = await runGit(worktreePath, ["diff", "HEAD"]);
+  const patch = await runGit(worktreePath, ["diff", range]);
   if (patch.code !== 0) {
     throw new Error(`git diff failed: ${patch.stderr.trim() || `exit ${patch.code}`}`);
   }
   return { diff: patch.stdout, stats };
+}
+
+/** Stage everything and commit. `committed: false` when the tree was already clean. */
+export async function commitWorktree(
+  worktreePath: string,
+  message: string,
+): Promise<{ committed: boolean; sha: string }> {
+  const add = await runGit(worktreePath, ["add", "-A"]);
+  if (add.code !== 0) {
+    throw new Error(`git add failed: ${add.stderr.trim() || `exit ${add.code}`}`);
+  }
+  const headSha = async (): Promise<string> => {
+    const head = await runGit(worktreePath, ["rev-parse", "HEAD"]);
+    if (head.code !== 0) {
+      throw new Error(`git rev-parse HEAD failed: ${head.stderr.trim() || `exit ${head.code}`}`);
+    }
+    return head.stdout.trim();
+  };
+
+  const staged = await runGit(worktreePath, ["diff", "--cached", "--quiet"]);
+  if (staged.code === 0) return { committed: false, sha: await headSha() };
+
+  let commit = await runGit(worktreePath, ["commit", "-m", message]);
+  if (commit.code !== 0 && /tell me who you are|user\.(name|email)/i.test(commit.stderr + commit.stdout)) {
+    commit = await runGit(worktreePath, [
+      "-c",
+      "user.name=NestBrain",
+      "-c",
+      "user.email=nestbrain@localhost",
+      "commit",
+      "-m",
+      message,
+    ]);
+  }
+  if (commit.code !== 0) {
+    throw new Error(`git commit failed: ${commit.stderr.trim() || commit.stdout.trim() || `exit ${commit.code}`}`);
+  }
+  return { committed: true, sha: await headSha() };
+}
+
+/** git push -u origin <branch>; on failure with a token, retry once under GIT_ASKPASS. */
+export async function pushWorktreeBranch(
+  worktreePath: string,
+  branch: string,
+  token?: string | null,
+): Promise<void> {
+  const timeout = 300_000;
+  const args = ["push", "-u", "origin", branch];
+  const plain = await runGit(worktreePath, args, timeout);
+  if (plain.code === 0) return;
+  let last = plain;
+  if (token) {
+    const authed = await withAskpass(token, (env) => runGit(worktreePath, args, timeout, env));
+    if (authed.code === 0) return;
+    last = authed;
+  }
+  const stderr = last.stderr.trim() || plain.stderr.trim() || `exit ${last.code}`;
+  if (/non-fast-forward|fetch first|\[rejected\]/i.test(stderr)) {
+    throw new Error(`push rejected (non-fast-forward): the remote branch changed — ${stderr}`);
+  }
+  throw new Error(`git push failed: ${stderr}`);
 }
 
 /** Kept for #11 post-merge cleanup and future UI — nothing calls it in #9. */

@@ -54,13 +54,14 @@ describe("orchestrator manifest", () => {
         coderMaxTurns: 60,
         reviewMode: "auto",
         reviewerModel: "opus",
+        shepherdRepush: "human",
       },
       items: {},
       parked: {},
     });
   });
 
-  it("fills #8/#9/#10 settings defaults into an older manifest", async () => {
+  it("fills #8/#9/#10/#11 settings defaults into an older manifest", async () => {
     await writeFile(
       filePath,
       JSON.stringify({ version: 1, settings: { intakePaused: true }, items: {}, parked: {} }),
@@ -74,6 +75,22 @@ describe("orchestrator manifest", () => {
     expect(manifest.settings.coderMaxTurns).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.coderMaxTurns);
     expect(manifest.settings.reviewMode).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.reviewMode);
     expect(manifest.settings.reviewerModel).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.reviewerModel);
+    expect(manifest.settings.shepherdRepush).toBe("human");
+  });
+
+  it("keeps an explicit shepherdRepush value", async () => {
+    await writeFile(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        settings: { intakePaused: false, shepherdRepush: "auto" },
+        items: {},
+        parked: {},
+      }),
+      "utf-8",
+    );
+    const manifest = await loadOrCreateOrchestratorManifest(filePath);
+    expect(manifest.settings.shepherdRepush).toBe("auto");
   });
 
   it("round-trips items, settings and parked entries", async () => {

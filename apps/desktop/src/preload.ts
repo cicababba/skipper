@@ -135,6 +135,8 @@ contextBridge.exposeInMainWorld("nestbrain", {
     listRepos: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:orchestrator:listRepos"),
     getPlan: (itemId: string): Promise<unknown> =>
       ipcRenderer.invoke("nestbrain:orchestrator:getPlan", itemId),
+    openPr: (itemId: string): Promise<unknown> =>
+      ipcRenderer.invoke("nestbrain:orchestrator:openPr", itemId),
     onStateChanged: (callback: (state: unknown) => void) => {
       const handler = (_e: unknown, state: unknown) => callback(state);
       ipcRenderer.on("nestbrain:orchestrator:stateChanged", handler);

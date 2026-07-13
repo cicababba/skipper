@@ -18,11 +18,21 @@ export interface GitHubIssuePayload {
 }
 
 export interface GitHubPullPayload {
+  id: number;
+  number: number;
+  title: string;
+  body?: string | null;
   state: "open" | "closed";
   merged: boolean;
   draft: boolean;
   mergeable: boolean | null;
-  head: { ref: string };
+  html_url: string;
+  created_at: string;
+  updated_at: string;
+  user?: { login: string } | null;
+  labels?: Array<{ name?: string } | string> | null;
+  assignees?: Array<{ login: string }> | null;
+  head: { ref: string; sha: string };
   base: { ref: string };
 }
 
@@ -60,6 +70,40 @@ export function mapPullFromIssue(payload: GitHubIssuePayload, accountId: string)
     state: payload.state,
     merged: payload.pull_request?.merged_at != null,
     draft: payload.draft ?? false,
+  };
+}
+
+/** Full PR from a /pulls/{n} payload, for tracked PRs absent from the delta stream (#11).
+ *  Carries the pull-record id (differs from the issue-record id of the list streams) —
+ *  consumers match tracked PRs by repo + number, never by id. */
+export function mapPullDetail(
+  payload: GitHubPullPayload,
+  accountId: string,
+  repo: RepoRef,
+): PullRequest {
+  return {
+    id: `github:${payload.id}`,
+    platform: "github",
+    accountId,
+    repo,
+    number: payload.number,
+    title: payload.title,
+    body: payload.body ?? undefined,
+    labels: (payload.labels ?? [])
+      .map((l) => (typeof l === "string" ? l : (l.name ?? "")))
+      .filter(Boolean),
+    assignees: (payload.assignees ?? []).map((a) => a.login),
+    author: payload.user?.login,
+    url: payload.html_url,
+    createdAt: payload.created_at,
+    updatedAt: payload.updated_at,
+    kind: "pull-request",
+    state: payload.state,
+    merged: payload.merged,
+    draft: payload.draft,
+    mergeable: payload.mergeable ?? undefined,
+    headRef: payload.head.ref,
+    baseRef: payload.base.ref,
   };
 }
 

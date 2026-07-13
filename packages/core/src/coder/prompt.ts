@@ -1,4 +1,4 @@
-import type { CriticObjection, IssuePlan } from "@nestbrain/shared";
+import type { CriticObjection, IssuePlan, PrReviewComment } from "@nestbrain/shared";
 import type { PlanIssueInput } from "../planner/generate";
 
 const MAX_BODY_CHARS = 20_000;
@@ -76,6 +76,29 @@ export function buildFixPrompt(issue: PlanIssueInput, objections: CriticObjectio
     `--- End objections ---`,
     ``,
     `Inspect the working tree (git status, git diff) to see the current implementation, then fix. The same rules apply: no git commit/push/branch operations; finish with a concise summary of all changes.`,
+  ]
+    .filter((l) => l !== "")
+    .join("\n");
+}
+
+/**
+ * Change-request re-entry (#11). Plan-free and self-sufficient so the same
+ * prompt works for a resumed session and a fresh fallback session.
+ */
+export function buildPrFixPrompt(issue: PlanIssueInput, comments: PrReviewComment[]): string {
+  return [
+    `A human reviewer requested changes on the pull request for this issue. Address the review feedback below.`,
+    ``,
+    ...issueHeader(issue),
+    ``,
+    `--- Review feedback ---`,
+    ...comments.map((c) => {
+      const where = c.path ? ` on ${c.path}${c.line != null ? `:${c.line}` : ""}` : "";
+      return `- ${c.author ?? "reviewer"}${where}: ${c.body}`;
+    }),
+    `--- End review feedback ---`,
+    ``,
+    `The pushed commits are already on this branch. Inspect the working tree and history (git status, git diff, git log) to see the current implementation, then address the feedback. The same rules apply: no git commit/push/branch operations; finish with a concise summary of all changes.`,
   ]
     .filter((l) => l !== "")
     .join("\n");

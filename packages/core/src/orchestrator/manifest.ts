@@ -16,6 +16,8 @@ export interface OrchestratorSettings {
   reviewMode: "always" | "never" | "auto";
   /** Model handed to the diff critic (#10). */
   reviewerModel: string;
+  /** After a change-request fix round (#11): hold at human-review or repush unattended. */
+  shepherdRepush: "human" | "auto";
 }
 
 export interface OrchestratorManifest {
@@ -35,6 +37,7 @@ export const DEFAULT_ORCHESTRATOR_SETTINGS: OrchestratorSettings = {
   coderMaxTurns: 60,
   reviewMode: "auto",
   reviewerModel: "opus",
+  shepherdRepush: "human",
 };
 
 function freshManifest(): OrchestratorManifest {
@@ -68,6 +71,7 @@ export async function loadOrCreateOrchestratorManifest(
       parsed.settings.coderMaxTurns ??= DEFAULT_ORCHESTRATOR_SETTINGS.coderMaxTurns;
       parsed.settings.reviewMode ??= DEFAULT_ORCHESTRATOR_SETTINGS.reviewMode;
       parsed.settings.reviewerModel ??= DEFAULT_ORCHESTRATOR_SETTINGS.reviewerModel;
+      parsed.settings.shepherdRepush ??= DEFAULT_ORCHESTRATOR_SETTINGS.shepherdRepush;
       return parsed;
     }
     return freshManifest();

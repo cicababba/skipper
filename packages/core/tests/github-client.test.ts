@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { githubGet, parseLinkNext } from "../src/github/client";
+import { githubGet, githubPost, parseLinkNext } from "../src/github/client";
 import { GitHubApiError, GitHubAuthError } from "../src/github/types";
 
 function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
@@ -93,6 +93,13 @@ describe("githubGet", () => {
     expect(err.retryAfterSeconds).toBe(60);
   });
 
+  it("throws GitHubApiError with status on non-ok responses", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(422, { message: "Validation Failed" })));
+    const err = await githubGet("https://api.github.com/issues", token).catch((e) => e);
+    expect(err).toBeInstanceOf(GitHubApiError);
+    expect(err.status).toBe(422);
+  });
+
   it("computes retry from the rate limit reset when remaining is 0", async () => {
     const resetEpoch = Math.floor(Date.now() / 1000) + 120;
     vi.stubGlobal("fetch", vi.fn(async () =>
@@ -105,5 +112,42 @@ describe("githubGet", () => {
     expect(err).toBeInstanceOf(GitHubApiError);
     expect(err.retryAfterSeconds).toBeGreaterThan(100);
     expect(err.retryAfterSeconds).toBeLessThanOrEqual(120);
+  });
+});
+
+describe("githubPost", () => {
+  it("sends a JSON body with content-type and parses the created resource", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(201, { id: 7, number: 3 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await githubPost<{ id: number; number: number }>(
+      "https://api.github.com/repos/o/r/pulls",
+      token,
+      { title: "t", head: "feature/issue-3", base: "main", draft: true },
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ id: 7, number: 3 });
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.method).toBe("POST");
+    expect((init.headers as Record<string, string>)["content-type"]).toBe("application/json");
+    expect(JSON.parse(init.body as string).head).toBe("feature/issue-3");
+  });
+
+  it("retries once with forceRefresh on 401", async () => {
+    const getToken = vi.fn(async (force?: boolean) => (force ? "fresh" : "stale"));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(401, { message: "bad" }))
+      .mockResolvedValueOnce(jsonResponse(201, { ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await githubPost("https://api.github.com/repos/o/r/pulls", getToken, {});
+    expect(res.status).toBe(200);
+    expect(getToken).toHaveBeenNthCalledWith(2, true);
+  });
+
+  it("propagates a 422 as GitHubApiError with status", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(422, { message: "already exists" })));
+    const err = await githubPost("https://api.github.com/repos/o/r/pulls", token, {}).catch((e) => e);
+    expect(err).toBeInstanceOf(GitHubApiError);
+    expect(err.status).toBe(422);
   });
 });

@@ -269,6 +269,39 @@ describe("reconcile — pull requests", () => {
     expect(m.items["github:42"].state).toBe("changes-requested");
   });
 
+  it("matches a linked item by repo + number even when the PR ids differ", () => {
+    // openPr writes the pull-record id; the poll streams carry the issue-record id.
+    const m = manifest();
+    m.items["github:42"] = tracked(42, "in-review", {
+      pr: { id: "github:555", number: 7, url: "u" },
+    });
+    reconcile(
+      m,
+      ACCOUNT,
+      poll({ pullRequests: [pull(7, { id: "github:pr-7", state: "closed", merged: true })] }),
+      openPolicy,
+    );
+    expect(m.items["github:42"].state).toBe("merged");
+  });
+
+  it("does not match a same-number PR from a different repo", () => {
+    const m = manifest();
+    m.items["github:42"] = tracked(42, "in-review", {
+      pr: { id: "github:555", number: 7, url: "u" },
+    });
+    reconcile(
+      m,
+      ACCOUNT,
+      poll({
+        pullRequests: [
+          pull(7, { repo: { owner: "other", name: "repo" }, state: "closed", merged: true }),
+        ],
+      }),
+      openPolicy,
+    );
+    expect(m.items["github:42"].state).toBe("in-review");
+  });
+
   it("ignores standalone PRs with no tracked issue", () => {
     const m = manifest();
     const outcome = reconcile(m, ACCOUNT, poll({ pullRequests: [pull(7)] }), openPolicy);

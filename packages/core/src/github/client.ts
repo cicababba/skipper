@@ -32,10 +32,11 @@ function parseRateLimit(res: Response): GitHubRateLimit | undefined {
   };
 }
 
-export async function githubGet<T>(
+async function githubRequest<T>(
+  method: "GET" | "POST",
   url: string,
   getToken: GitHubTokenProvider,
-  opts?: { etag?: string },
+  opts?: { etag?: string; body?: unknown },
 ): Promise<GitHubResponse<T>> {
   const doFetch = async (token: string) => {
     const headers: Record<string, string> = {
@@ -43,7 +44,12 @@ export async function githubGet<T>(
       authorization: `Bearer ${token}`,
     };
     if (opts?.etag) headers["if-none-match"] = opts.etag;
-    return fetch(url, { headers });
+    if (opts?.body !== undefined) headers["content-type"] = "application/json";
+    return fetch(url, {
+      method,
+      headers,
+      body: opts?.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    });
   };
 
   const token = await getToken();
@@ -92,4 +98,20 @@ export async function githubGet<T>(
     nextUrl: parseLinkNext(res.headers.get("link")),
     rateLimit,
   };
+}
+
+export async function githubGet<T>(
+  url: string,
+  getToken: GitHubTokenProvider,
+  opts?: { etag?: string },
+): Promise<GitHubResponse<T>> {
+  return githubRequest<T>("GET", url, getToken, opts);
+}
+
+export async function githubPost<T>(
+  url: string,
+  getToken: GitHubTokenProvider,
+  body: unknown,
+): Promise<GitHubResponse<T>> {
+  return githubRequest<T>("POST", url, getToken, { body });
 }
