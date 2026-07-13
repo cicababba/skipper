@@ -58,6 +58,22 @@ describe("actionsFor", () => {
     expect(actions[0]).toEqual({ id: "resume", kind: "transition", to: "triage" });
   });
 
+  it("queued offers pin, unpin when already pinned (#15)", () => {
+    expect(actionsFor(item({ state: "queued" }))[0]).toEqual({
+      id: "pin",
+      kind: "pin",
+      pinned: true,
+    });
+    expect(actionsFor(item({ state: "queued", pinned: true }))[0]).toEqual({
+      id: "unpin",
+      kind: "pin",
+      pinned: false,
+    });
+    for (const state of ALL_STATES.filter((s) => s !== "queued")) {
+      expect(actionsFor(item({ state })).some((a) => a.kind === "pin"), state).toBe(false);
+    }
+  });
+
   it("settled and platform-owned states expose no actions", () => {
     for (const state of ["merged", "closed", "pr-open", "in-review", "changes-requested"]) {
       expect(actionsFor(item({ state: state as LifecycleState }))).toEqual([]);

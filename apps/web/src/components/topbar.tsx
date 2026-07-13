@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { LogOut, Settings as SettingsIcon, Loader2 } from "lucide-react";
+import { LogOut, Settings as SettingsIcon, Loader2, Pause, Play } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 
 // Slim top bar that sits above the main content area. The whole strip is a
@@ -11,11 +12,60 @@ import { useT } from "@/lib/app-i18n";
 export function Topbar() {
   return (
     <div
-      className="topbar h-10 shrink-0 border-b border-border bg-sidebar/60 backdrop-blur flex items-center justify-end px-3"
+      className="topbar h-10 shrink-0 border-b border-border bg-sidebar/60 backdrop-blur flex items-center justify-end gap-3 px-3"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
+      <OrchestratorChip />
       <AccountWidget />
     </div>
+  );
+}
+
+// Always-visible pause + queue state (#15): one click pauses/resumes intake.
+function OrchestratorChip() {
+  const { t } = useT();
+  const { state, setIntakePaused } = useOrchestrator();
+  const [busy, setBusy] = useState(false);
+  const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
+
+  if (!state || Object.keys(state.accounts).length === 0) return null;
+
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      await setIntakePaused(!state.intakePaused);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (state.intakePaused) {
+    return (
+      <button
+        onClick={toggle}
+        disabled={busy}
+        style={noDrag}
+        title={t.inbox.intake.resumeTooltip}
+        className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-amber-500/20 bg-amber-500/10 text-amber-300 text-[11px] font-medium hover:bg-amber-500/20 transition-colors"
+      >
+        <Pause size={11} />
+        {t.inbox.intake.paused}
+        {state.parkedCount > 0 && ` · ${state.parkedCount} ${t.inbox.intake.queued}`}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={toggle}
+      disabled={busy}
+      style={noDrag}
+      title={t.inbox.intake.pauseTooltip}
+      className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border bg-card text-muted text-[11px] font-medium hover:bg-card-hover hover:text-foreground transition-colors"
+    >
+      <Play size={11} />
+      {`${state.queue.coding} ${t.inbox.intake.coding} · ${state.queue.queued} ${t.inbox.intake.inQueue}`}
+    </button>
   );
 }
 

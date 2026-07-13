@@ -51,7 +51,17 @@ export function reconcile(
   };
 
   const admit = (issue: Issue): void => {
-    const item = admitItem(issue, now);
+    const wasParked = issue.id in manifest.parked;
+    let item = admitItem(issue, now);
+    if (wasParked) {
+      // Ex-parked issues join the resume rite (#15): held from auto-plan until
+      // the user resolves the one-shot prompt — no unwanted token burst.
+      item = { ...item, holdAutoPlan: true };
+      manifest.resumeRite ??= { itemIds: [], createdAt: now.toISOString() };
+      if (!manifest.resumeRite.itemIds.includes(item.id)) {
+        manifest.resumeRite.itemIds.push(item.id);
+      }
+    }
     manifest.items[item.id] = item;
     delete manifest.parked[issue.id];
     outcome.admitted.push(issue.id);
@@ -64,10 +74,12 @@ export function reconcile(
     if (!item) {
       if (issue.state === "closed") {
         delete manifest.parked[issue.id];
+      } else if (policy.shouldAdmit?.(issue) === false) {
+        // Unfollowed repo: never parked, never admitted — raw inbox only.
       } else if (policy.intakePaused) {
         manifest.parked[issue.id] ??= { firstSeenAt: now.toISOString() };
         outcome.parked.push(issue.id);
-      } else if (policy.shouldAdmit?.(issue) !== false) {
+      } else {
         admit(issue);
       }
       continue;

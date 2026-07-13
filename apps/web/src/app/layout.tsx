@@ -15,6 +15,7 @@ import { ModulesProvider } from "@/lib/modules-context";
 import { AppLangProvider } from "@/lib/app-i18n";
 import { UpdateToast } from "@/components/update-toast";
 import { AboutModal } from "@/components/about-modal";
+import { ResumeRiteModal } from "@/components/resume-rite-modal";
 import "./globals.css";
 
 const inter = Inter({
@@ -64,6 +65,7 @@ export default function RootLayout({
                     </div>
                     <UpdateToast />
                     <AboutModal />
+                    <ResumeRiteModal />
                   </OnboardingGate>
                  </EditorTabsProvider>
                 </GitStatusProvider>

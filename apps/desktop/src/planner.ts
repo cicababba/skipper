@@ -11,6 +11,7 @@ import type {
   Issue,
   LifecycleState,
   RepoRef,
+  ResolvedRepoIntakeSettings,
   StoredPlan,
   TrackedItem,
   TransitionActor,
@@ -30,6 +31,8 @@ export interface PlannerDeps {
   /** Cached inbox issue for the item (labels + body), best-effort. */
   getIssue: (item: TrackedItem) => Issue | undefined;
   getRepoPath: (repo: RepoRef) => string | undefined;
+  /** Per-repo intake settings (#15) — gates auto-plan on admission. */
+  getRepoSettings: (repo: RepoRef) => ResolvedRepoIntakeSettings;
   requestTransition: (
     itemId: string,
     to: LifecycleState,
@@ -91,7 +94,16 @@ async function scan(): Promise<void> {
   for (const item of deps.listItems()) {
     if (inFlight.has(item.id) || queued.has(item.id)) continue;
     if (item.state === "triage") {
+      if (item.holdAutoPlan) continue; // resume rite (#15): wait for the user
       if (!deps.getRepoPath(item.repo)) continue;
+      const rs = deps.getRepoSettings(item.repo);
+      if (rs.autoPlan === "off") continue;
+      if (rs.autoPlan === "label") {
+        // Labels live in the poll cache only — after a restart, label-gated
+        // repos wait one poll cycle for the cache to refill.
+        const labels = deps.getIssue(item)?.labels ?? [];
+        if (!labels.includes(rs.autoPlanLabel)) continue;
+      }
       try {
         await deps.requestTransition(item.id, "planning", "planner", "auto-plan on admission");
       } catch {

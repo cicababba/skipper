@@ -11,6 +11,8 @@ export {
   fetchCiStatus,
 } from "./pulls";
 export type { CreatedPull, PullReviewPayload, PullReviewCommentPayload } from "./pulls";
+export { listUserInstallationRepos } from "./installations";
+export type { InstallationRepo, InstallationsResult } from "./installations";
 export { GitHubApiError, GitHubAuthError, emptyGitHubCursor } from "./types";
 export type {
   GitHubTokenProvider,

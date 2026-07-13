@@ -50,7 +50,7 @@ function pull(n: number, overrides: Partial<PullRequest> = {}): PullRequest {
 }
 
 function manifest(): OrchestratorManifest {
-  return { version: 1, settings: { intakePaused: false }, items: {}, parked: {} };
+  return { version: 1, settings: { intakePaused: false }, items: {}, parked: {}, repoSettings: {} };
 }
 
 function tracked(n: number, state: LifecycleState, extra: Partial<TrackedItem> = {}): TrackedItem {
@@ -111,6 +111,38 @@ describe("reconcile — issues", () => {
     const outcome = reconcile(m, ACCOUNT, poll({ issues: [issue(1)] }), openPolicy);
     expect(outcome.admitted).toEqual(["github:1"]);
     expect(m.parked).toEqual({});
+  });
+
+  it("ex-parked admission holds auto-plan and joins the resume rite (#15)", () => {
+    const m = manifest();
+    reconcile(m, ACCOUNT, poll({ issues: [issue(1)] }), { intakePaused: true });
+    reconcile(m, ACCOUNT, poll({ issues: [issue(1), issue(2)] }), openPolicy);
+    expect(m.items["github:1"].holdAutoPlan).toBe(true);
+    expect(m.resumeRite?.itemIds).toEqual(["github:1"]);
+    // never-parked sibling admitted in the same poll is not held
+    expect(m.items["github:2"].holdAutoPlan).toBeUndefined();
+  });
+
+  it("resume rite dedupes item ids across polls", () => {
+    const m = manifest();
+    reconcile(m, ACCOUNT, poll({ issues: [issue(1)] }), { intakePaused: true });
+    reconcile(m, ACCOUNT, poll({ issues: [issue(1)] }), openPolicy);
+    // item closed + reopened while the rite is still pending → re-admission path
+    delete m.items["github:1"];
+    m.parked["github:1"] = { firstSeenAt: "2026-07-12T00:00:00.000Z" };
+    reconcile(m, ACCOUNT, poll({ issues: [issue(1)] }), openPolicy);
+    expect(m.resumeRite?.itemIds).toEqual(["github:1"]);
+  });
+
+  it("unfollowed issues are never parked while intake is paused (#15)", () => {
+    const m = manifest();
+    const outcome = reconcile(m, ACCOUNT, poll({ issues: [issue(1)] }), {
+      intakePaused: true,
+      shouldAdmit: () => false,
+    });
+    expect(outcome.parked).toEqual([]);
+    expect(m.parked).toEqual({});
+    expect(m.items).toEqual({});
   });
 
   it("ignores unknown closed issues and drops them from parked", () => {

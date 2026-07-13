@@ -6,11 +6,15 @@ import type {
   CodingEventEnvelope,
   IssuePlan,
   LifecycleState,
+  FollowCandidatesResult,
   ListReposResult,
   OrchestratorState,
   OrchestratorTransitionResult,
+  RepoIntakeSettings,
   RepoLinkResult,
+  RepoSettingsRow,
   RepoUnlinkResult,
+  ResumeRiteAction,
   SaveWorktreeFileResult,
   StoredPlan,
   UpdatePlanResult,
@@ -166,6 +170,19 @@ declare global {
           reason?: string,
         ) => Promise<OrchestratorTransitionResult>;
         setIntakePaused: (paused: boolean) => Promise<OrchestratorState>;
+        updateSettings: (patch: { codingWipPerRepo?: number }) => Promise<OrchestratorState>;
+        setRepoSettings: (
+          owner: string,
+          name: string,
+          patch: Partial<RepoIntakeSettings>,
+        ) => Promise<OrchestratorState>;
+        listRepoSettings: () => Promise<RepoSettingsRow[]>;
+        listFollowCandidates: (accountId?: string) => Promise<FollowCandidatesResult>;
+        resolveResumeRite: (
+          action: ResumeRiteAction,
+          itemIds?: string[],
+        ) => Promise<OrchestratorState>;
+        setPinned: (itemId: string, pinned: boolean) => Promise<OrchestratorTransitionResult>;
         linkRepo: (owner: string, name: string, localPath: string) => Promise<RepoLinkResult>;
         cloneRepo: (
           owner: string,

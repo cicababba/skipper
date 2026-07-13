@@ -9,16 +9,21 @@ import {
   useState,
 } from "react";
 import { deriveProviderView } from "@nestbrain/shared";
-import type { AuthState, ProviderAuthView } from "@nestbrain/shared";
+import type { AuthProviderId, AuthState, ProviderAuthView } from "@nestbrain/shared";
 
 interface AuthContextValue {
   /** Google view — what the current account UI renders. */
   state: ProviderAuthView;
+  /** GitHub view — feeds the orchestrator connect UI (#15). */
+  github: ProviderAuthView;
   /** Full multi-provider state, for provider-aware UI. */
   authState: AuthState;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   cancelSignIn: () => Promise<void>;
+  signInProvider: (provider: AuthProviderId) => Promise<void>;
+  signOutProvider: (provider: AuthProviderId) => Promise<void>;
+  cancelSignInProvider: (provider: AuthProviderId) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -57,15 +62,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await window.nestbrain.auth.cancelSignIn("google");
   }, []);
 
+  const signInProvider = useCallback(async (provider: AuthProviderId) => {
+    if (!window.nestbrain) return;
+    await window.nestbrain.auth.signIn(provider);
+  }, []);
+
+  const signOutProvider = useCallback(async (provider: AuthProviderId) => {
+    if (!window.nestbrain) return;
+    await window.nestbrain.auth.signOut(provider);
+  }, []);
+
+  const cancelSignInProvider = useCallback(async (provider: AuthProviderId) => {
+    if (!window.nestbrain) return;
+    await window.nestbrain.auth.cancelSignIn(provider);
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       state: deriveProviderView(authState, "google"),
+      github: deriveProviderView(authState, "github"),
       authState,
       signIn,
       signOut,
       cancelSignIn,
+      signInProvider,
+      signOutProvider,
+      cancelSignInProvider,
     }),
-    [authState, signIn, signOut, cancelSignIn],
+    [authState, signIn, signOut, cancelSignIn, signInProvider, signOutProvider, cancelSignInProvider],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -35,7 +35,13 @@ export {
 } from "./knowledge";
 
 // GitHub adapter
-export { pollGitHubAccount, GitHubApiError, GitHubAuthError, emptyGitHubCursor } from "./github";
+export {
+  pollGitHubAccount,
+  GitHubApiError,
+  GitHubAuthError,
+  emptyGitHubCursor,
+  listUserInstallationRepos,
+} from "./github";
 export {
   createPullRequest,
   findOpenPullByHead,
@@ -45,7 +51,13 @@ export {
   mapReviewFeedback,
   fetchCiStatus,
 } from "./github";
-export type { CreatedPull, PullReviewPayload, PullReviewCommentPayload } from "./github";
+export type {
+  CreatedPull,
+  PullReviewPayload,
+  PullReviewCommentPayload,
+  InstallationRepo,
+  InstallationsResult,
+} from "./github";
 export type {
   GitHubTokenProvider,
   GitHubEndpointCursor,
@@ -118,6 +130,7 @@ export {
   saveOrchestratorManifest,
   DEFAULT_ORCHESTRATOR_SETTINGS,
   reconcile,
+  compareQueueCandidates,
 } from "./orchestrator";
 export type {
   OrchestratorManifest,
@@ -125,6 +138,7 @@ export type {
   AdmissionPolicy,
   ReconcileOutcome,
   ReconcilePoll,
+  QueueCandidate,
 } from "./orchestrator";
 
 // Runtime loader that must be registered by the consumer app.
