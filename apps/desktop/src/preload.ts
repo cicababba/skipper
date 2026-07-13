@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   AuthProviderId,
   AuthState,
+  IssuePlan,
   LifecycleState,
   ListReposResult,
   OrchestratorState,
@@ -9,6 +10,7 @@ import type {
   RepoLinkResult,
   RepoUnlinkResult,
   StoredPlan,
+  UpdatePlanResult,
 } from "@nestbrain/shared";
 
 interface GitOpResult {
@@ -153,6 +155,8 @@ contextBridge.exposeInMainWorld("nestbrain", {
       ipcRenderer.invoke("nestbrain:orchestrator:listRepos"),
     getPlan: (itemId: string): Promise<StoredPlan | null> =>
       ipcRenderer.invoke("nestbrain:orchestrator:getPlan", itemId),
+    updatePlan: (itemId: string, plan: IssuePlan): Promise<UpdatePlanResult> =>
+      ipcRenderer.invoke("nestbrain:orchestrator:updatePlan", itemId, plan),
     openPr: (itemId: string): Promise<OrchestratorTransitionResult> =>
       ipcRenderer.invoke("nestbrain:orchestrator:openPr", itemId),
     onStateChanged: (callback: (state: OrchestratorState) => void) => {

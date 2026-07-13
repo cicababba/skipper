@@ -4,6 +4,7 @@
 
 import type { CriticObjection, CriticVerdict } from "./confidence";
 import type { Issue, PlatformId, PullRequest, RepoRef } from "./inbox";
+import type { StoredPlan } from "./plan";
 
 export type AgentReviewOutcome = CriticVerdict | "skipped" | "unavailable";
 
@@ -172,6 +173,8 @@ export interface OrchestratorState {
 export type OrchestratorTransitionResult =
   | { ok: true; item: TrackedItem }
   | { ok: false; error: string };
+
+export type UpdatePlanResult = { ok: true; stored: StoredPlan } | { ok: false; error: string };
 
 export type RepoLinkResult = { ok: true; localPath: string } | { ok: false; error: string };
 
