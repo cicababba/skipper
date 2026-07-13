@@ -14,6 +14,7 @@ import {
 } from "@nestbrain/core";
 import type {
   Account,
+  AgentReview,
   CodingEvent,
   CodingEventEnvelope,
   ConfidenceReport,
@@ -36,8 +37,10 @@ import {
 import { readStoredPlan } from "./plan-store";
 import { initPlanner, pokePlanner } from "./planner";
 import { initCoder, pokeCoder, cancelCodingRun, killAllCodingRuns } from "./coder";
+import { initReviewer, pokeReviewer } from "./reviewer";
 import {
   branchFor,
+  captureWorktreeDiff,
   ensureWorktree,
   fetchOrigin,
   resolveBaseRef,
@@ -325,6 +328,7 @@ async function pollNow(ignoreBackoff = false): Promise<void> {
     broadcast();
     pokePlanner();
     pokeCoder();
+    pokeReviewer();
   }
 }
 
@@ -350,6 +354,7 @@ async function reconcileFromCache(): Promise<void> {
   broadcast();
   pokePlanner();
   pokeCoder();
+  pokeReviewer();
 }
 
 /** Sets plan.ref + confidence and the gated transition in a single manifest write (#8). */
@@ -379,6 +384,27 @@ async function completePlan(
   await saveOrchestratorManifest(deps.manifestFilePath, m);
   broadcast();
   // High confidence gates straight to queued — wake the coder.
+  pokeCoder();
+}
+
+/**
+ * Sets item.review + the transition in a single manifest write (#10) — atomic
+ * rounds+transition so a crash can never burn a review round.
+ */
+async function completeReview(
+  itemId: string,
+  review: AgentReview,
+  to: LifecycleState,
+  reason: string,
+): Promise<void> {
+  if (!deps) throw new Error("orchestrator not initialized");
+  const m = await ensureManifest();
+  const item = m.items[itemId];
+  if (!item) throw new Error(`unknown item ${itemId}`);
+  m.items[itemId] = applyTransition({ ...item, review }, to, "reviewer", reason);
+  await saveOrchestratorManifest(deps.manifestFilePath, m);
+  broadcast();
+  // Fix round lands the item back in queued-for-coding territory — wake the coder.
   pokeCoder();
 }
 
@@ -422,6 +448,8 @@ export async function requestTransition(
     if (prevState === "coding") cancelCodingRun(itemId);
     pokeCoder();
   }
+  // The coder landing on agent-review arrives here — wake the reviewer.
+  if (actor !== "reviewer") pokeReviewer();
   return next;
 }
 
@@ -581,6 +609,25 @@ export function initOrchestrator(
     },
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     emitEvent: emitCodingEvent,
+  });
+
+  initReviewer({
+    listItems: () => Object.values(manifest?.items ?? {}),
+    getItem: (itemId) => manifest?.items[itemId],
+    getIssue: (item) => {
+      const cached = items.get(item.accountId)?.get(item.id);
+      return cached?.kind === "issue" ? cached : undefined;
+    },
+    getPlan: async (item) => {
+      const ref = item.plan?.ref;
+      return ref ? readStoredPlan(orchestratorDeps.plansDir, ref) : null;
+    },
+    getDiff: async (item) => {
+      if (!item.worktree?.path) throw new Error("no worktree recorded for item");
+      return captureWorktreeDiff(item.worktree.path);
+    },
+    completeReview,
+    getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
   });
 
   setTimeout(

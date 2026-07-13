@@ -1,4 +1,4 @@
-import type { IssuePlan } from "@nestbrain/shared";
+import type { CriticObjection, IssuePlan } from "@nestbrain/shared";
 import type { PlanIssueInput } from "../planner/generate";
 
 const MAX_BODY_CHARS = 20_000;
@@ -57,6 +57,28 @@ export function buildCoderPrompt(issue: PlanIssueInput, plan: IssuePlan): string
     `--- End plan ---`,
   ];
   return lines.filter((l) => l !== "").join("\n");
+}
+
+/**
+ * Reviewer-driven fix round (#10). Plan-free and self-sufficient so the same
+ * prompt works for a resumed session and a fresh fallback session.
+ */
+export function buildFixPrompt(issue: PlanIssueInput, objections: CriticObjection[]): string {
+  return [
+    `An independent reviewer examined your uncommitted changes for this issue and raised objections. Address the blocking ones; use your judgment on the rest.`,
+    ``,
+    ...issueHeader(issue),
+    ``,
+    `--- Reviewer objections ---`,
+    ...objections.map(
+      (o) => `- ${o.blocking ? "[BLOCKING] " : ""}(${o.kind}) ${o.detail}`,
+    ),
+    `--- End objections ---`,
+    ``,
+    `Inspect the working tree (git status, git diff) to see the current implementation, then fix. The same rules apply: no git commit/push/branch operations; finish with a concise summary of all changes.`,
+  ]
+    .filter((l) => l !== "")
+    .join("\n");
 }
 
 /** Re-entry after an interrupted run: the session already carries the plan context. */

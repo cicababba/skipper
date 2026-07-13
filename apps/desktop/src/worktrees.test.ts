@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   branchFor,
+  captureWorktreeDiff,
   ensureWorktree,
   listWorktrees,
   removeWorktree,
@@ -126,6 +127,44 @@ describe("ensureWorktree", () => {
         baseRef: "origin/main",
       }),
     ).rejects.toThrow(/worktree add failed/);
+  });
+});
+
+describe("captureWorktreeDiff", () => {
+  it("includes modified and untracked files in diff and stats", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-9");
+    await ensureWorktree({
+      repoPath: clone,
+      worktreePath,
+      branch: "feature/issue-9",
+      baseRef: "origin/main",
+    });
+    await writeFile(join(worktreePath, "README.md"), "hello\nmodified\n");
+    await writeFile(join(worktreePath, "new-file.ts"), "export const x = 1;\n");
+
+    const { diff, stats } = await captureWorktreeDiff(worktreePath);
+
+    expect(stats.filesChanged).toBe(2);
+    expect(stats.files).toContain("README.md");
+    expect(stats.files).toContain("new-file.ts");
+    expect(stats.totalChangedLines).toBeGreaterThan(0);
+    expect(diff).toContain("modified");
+    expect(diff).toContain("export const x = 1;");
+  });
+
+  it("reports an empty diff for a clean worktree", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-10");
+    await ensureWorktree({
+      repoPath: clone,
+      worktreePath,
+      branch: "feature/issue-10",
+      baseRef: "origin/main",
+    });
+    const { diff, stats } = await captureWorktreeDiff(worktreePath);
+    expect(stats).toEqual({ filesChanged: 0, totalChangedLines: 0, files: [] });
+    expect(diff).toBe("");
   });
 });
 

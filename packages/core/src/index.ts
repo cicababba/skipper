@@ -74,10 +74,23 @@ export {
   CODER_SYSTEM_PROMPT,
   buildCoderPrompt,
   buildResumePrompt,
+  buildFixPrompt,
   mapStreamLine,
   createStreamJsonParser,
 } from "./coder";
 export type { RunCodingAgentOptions, CodingRunResult, StreamJsonParser } from "./coder";
+
+// Reviewer (issue #10)
+export {
+  critiqueDiff,
+  truncateDiff,
+  resolveReviewMode,
+  DIFF_CHAR_BUDGET,
+  AUTO_MAX_CHANGED_LINES,
+  AUTO_MAX_FILES,
+  RISKY_FILE_PATTERNS,
+} from "./reviewer";
+export type { CritiqueDiffArgs, ReviewMode, DiffStats, ReviewModeInput } from "./reviewer";
 
 // Orchestrator (issue #6)
 export {

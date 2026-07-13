@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import type { IssuePlan } from "@nestbrain/shared";
-import { CODER_SYSTEM_PROMPT, buildCoderPrompt, buildResumePrompt } from "../src/coder";
+import {
+  CODER_SYSTEM_PROMPT,
+  buildCoderPrompt,
+  buildFixPrompt,
+  buildResumePrompt,
+} from "../src/coder";
 
 const issue = {
   number: 42,
@@ -63,6 +68,20 @@ describe("buildCoderPrompt", () => {
   it("handles a missing body", () => {
     const prompt = buildCoderPrompt({ ...issue, body: undefined }, plan);
     expect(prompt).toContain("(The issue has no body.)");
+  });
+});
+
+describe("buildFixPrompt", () => {
+  it("lists objections and flags blocking ones", () => {
+    const prompt = buildFixPrompt(issue, [
+      { kind: "acceptance-gap", detail: "toggle does not persist", blocking: true },
+      { kind: "risk", detail: "FOUC possible", blocking: false },
+    ]);
+    expect(prompt).toContain("independent reviewer");
+    expect(prompt).toContain("Issue #42: Add dark mode");
+    expect(prompt).toContain("- [BLOCKING] (acceptance-gap) toggle does not persist");
+    expect(prompt).toContain("- (risk) FOUC possible");
+    expect(prompt).toMatch(/no git commit\/push\/branch/);
   });
 });
 

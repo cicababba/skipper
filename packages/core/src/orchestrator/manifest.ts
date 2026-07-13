@@ -12,6 +12,10 @@ export interface OrchestratorSettings {
   coderModel: string;
   /** Max agent turns per coding run (#9). */
   coderMaxTurns: number;
+  /** Agent review policy (#10): always / never / auto (mechanical skip heuristic). */
+  reviewMode: "always" | "never" | "auto";
+  /** Model handed to the diff critic (#10). */
+  reviewerModel: string;
 }
 
 export interface OrchestratorManifest {
@@ -29,6 +33,8 @@ export const DEFAULT_ORCHESTRATOR_SETTINGS: OrchestratorSettings = {
   confidence: { high: 0.85, low: 0.4, extraPlanRuns: 2 },
   coderModel: "opus",
   coderMaxTurns: 60,
+  reviewMode: "auto",
+  reviewerModel: "opus",
 };
 
 function freshManifest(): OrchestratorManifest {
@@ -55,11 +61,13 @@ export async function loadOrCreateOrchestratorManifest(
       typeof parsed.parked === "object" &&
       parsed.parked !== null
     ) {
-      // Additive settings (#8, #9): fill defaults into older manifests.
+      // Additive settings (#8, #9, #10): fill defaults into older manifests.
       parsed.settings.plannerModel ??= DEFAULT_ORCHESTRATOR_SETTINGS.plannerModel;
       parsed.settings.confidence ??= structuredClone(DEFAULT_ORCHESTRATOR_SETTINGS.confidence);
       parsed.settings.coderModel ??= DEFAULT_ORCHESTRATOR_SETTINGS.coderModel;
       parsed.settings.coderMaxTurns ??= DEFAULT_ORCHESTRATOR_SETTINGS.coderMaxTurns;
+      parsed.settings.reviewMode ??= DEFAULT_ORCHESTRATOR_SETTINGS.reviewMode;
+      parsed.settings.reviewerModel ??= DEFAULT_ORCHESTRATOR_SETTINGS.reviewerModel;
       return parsed;
     }
     return freshManifest();

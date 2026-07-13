@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   runCodingAgent,
   buildCoderPrompt,
+  buildFixPrompt,
   buildResumePrompt,
   CODER_SYSTEM_PROMPT,
   CodingAbortError,
@@ -169,6 +170,17 @@ async function run(itemId: string, repoKey: string): Promise<void> {
     const settings = deps.getSettings();
     deps.emitEvent(itemId, { kind: "status", phase: resume ? "resuming" : "agent-start" });
 
+    // Reviewer-driven fix round (#10): pendingObjections is set only when the
+    // reviewer sent the item back; nobody clears it — the next completeReview
+    // replaces the record wholesale, so a crashed fix run re-delivers the fix
+    // prompt idempotently.
+    const pending = item.review?.pendingObjections;
+    const fixMode = (pending?.length ?? 0) > 0;
+    const freshPrompt = fixMode
+      ? buildFixPrompt(issue, pending!)
+      : buildCoderPrompt(issue, stored.plan);
+    const resumePrompt = fixMode ? buildFixPrompt(issue, pending!) : buildResumePrompt(issue);
+
     const baseOptions = {
       systemPrompt: CODER_SYSTEM_PROMPT,
       cwd: worktree.path,
@@ -189,8 +201,8 @@ async function run(itemId: string, repoKey: string): Promise<void> {
         ...baseOptions,
         onEvent: trackFirstEvent,
         ...(resume
-          ? { resumeSessionId: resume, prompt: buildResumePrompt(issue) }
-          : { sessionId, prompt: buildCoderPrompt(issue, stored.plan) }),
+          ? { resumeSessionId: resume, prompt: resumePrompt }
+          : { sessionId, prompt: freshPrompt }),
       });
     } catch (err) {
       // A dead --resume (session gone from disk) fails fast without events:
@@ -201,7 +213,7 @@ async function run(itemId: string, repoKey: string): Promise<void> {
       result = await runner({
         ...baseOptions,
         sessionId: freshId,
-        prompt: buildCoderPrompt(issue, stored.plan),
+        prompt: freshPrompt,
       });
     }
 
