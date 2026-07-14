@@ -9,28 +9,27 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<GateState>("loading");
 
   useEffect(() => {
-    checkOnboarding();
+    async function checkOnboarding() {
+      // Only Electron triggers the onboarding flow
+      if (typeof window === "undefined" || !window.nestbrain) {
+        setState("done");
+        return;
+      }
+      try {
+        const [bootstrap, settingsRes] = await Promise.all([
+          window.nestbrain.getBootstrap(),
+          fetch("/api/settings").then((r) => r.json()),
+        ]);
+        const hasNestBrain = !!bootstrap?.nestBrainPath;
+        const completed = settingsRes?.onboardingCompleted === true;
+        setState(hasNestBrain && completed ? "done" : "needed");
+      } catch {
+        // If anything fails, show the onboarding to be safe
+        setState("needed");
+      }
+    }
+    void checkOnboarding();
   }, []);
-
-  async function checkOnboarding() {
-    // Only Electron triggers the onboarding flow
-    if (typeof window === "undefined" || !window.nestbrain) {
-      setState("done");
-      return;
-    }
-    try {
-      const [bootstrap, settingsRes] = await Promise.all([
-        window.nestbrain.getBootstrap(),
-        fetch("/api/settings").then((r) => r.json()),
-      ]);
-      const hasNestBrain = !!bootstrap?.nestBrainPath;
-      const completed = settingsRes?.onboardingCompleted === true;
-      setState(hasNestBrain && completed ? "done" : "needed");
-    } catch {
-      // If anything fails, show the onboarding to be safe
-      setState("needed");
-    }
-  }
 
   if (state === "loading") {
     return (

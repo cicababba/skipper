@@ -5,6 +5,7 @@ import { Plus, X } from "lucide-react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { useTerminal, type TerminalSession } from "@/lib/terminal-context";
+import { useStoredState } from "@/lib/use-stored-state";
 import "@xterm/xterm/css/xterm.css";
 
 // Terminal panel (public core — issue #18). One xterm instance per session,
@@ -63,7 +64,7 @@ function XtermView({ session, visible }: { session: TerminalSession; visible: bo
       term.dispose();
     };
     // Session identity is stable for the lifetime of the tab.
-  }, [session.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [session.id]);
 
   useEffect(() => {
     if (visible) fitRef.current?.fit();
@@ -72,18 +73,19 @@ function XtermView({ session, visible }: { session: TerminalSession; visible: bo
   return <div ref={containerRef} className={`h-full w-full ${visible ? "" : "hidden"}`} />;
 }
 
+function clampHeight(raw: string): number {
+  const parsed = parseInt(raw, 10);
+  if (Number.isNaN(parsed)) return DEFAULT_HEIGHT;
+  return Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, parsed));
+}
+
 export function TerminalPanel() {
   const { sessions, activeId, panelOpen, setActive, closeTerminal, newTerminal } = useTerminal();
-  const [height, setHeight] = useState(DEFAULT_HEIGHT);
+  const [storedHeight, setStoredHeight] = useStoredState(HEIGHT_KEY, String(DEFAULT_HEIGHT));
+  // Live value during a drag; storage is only written on mouse-up.
+  const [dragHeight, setDragHeight] = useState<number | null>(null);
+  const height = dragHeight ?? clampHeight(storedHeight);
   const dragging = useRef(false);
-
-  useEffect(() => {
-    const saved = localStorage.getItem(HEIGHT_KEY);
-    if (saved) {
-      const h = parseInt(saved, 10);
-      if (!Number.isNaN(h)) setHeight(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, h)));
-    }
-  }, []);
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -91,24 +93,23 @@ export function TerminalPanel() {
       dragging.current = true;
       const startY = e.clientY;
       const startHeight = height;
+      let pending = startHeight;
       const onMove = (ev: MouseEvent) => {
         if (!dragging.current) return;
-        const next = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, startHeight + (startY - ev.clientY)));
-        setHeight(next);
+        pending = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, startHeight + (startY - ev.clientY)));
+        setDragHeight(pending);
       };
       const onUp = () => {
         dragging.current = false;
-        setHeight((h) => {
-          localStorage.setItem(HEIGHT_KEY, String(h));
-          return h;
-        });
+        setStoredHeight(String(pending));
+        setDragHeight(null);
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [height],
+    [height, setStoredHeight],
   );
 
   if (sessions.length === 0) return null;

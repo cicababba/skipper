@@ -26,8 +26,15 @@ export function EventConsole({ itemId, getEvents, onEvent, className }: EventCon
   const scrollRef = useRef<HTMLDivElement>(null);
   const stuckRef = useRef(true);
 
-  useEffect(() => {
+  // Reset during render when the item changes (the sanctioned alternative to
+  // clearing state inside the subscription effect below).
+  const [prevItemId, setPrevItemId] = useState(itemId);
+  if (prevItemId !== itemId) {
+    setPrevItemId(itemId);
     setEnvelopes([]);
+  }
+
+  useEffect(() => {
     let cancelled = false;
     // Subscribe before replaying so nothing lands in the gap; both dedup by seq.
     const unsubscribe = onEvent(itemId, (envelope) => {

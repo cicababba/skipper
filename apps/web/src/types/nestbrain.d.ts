@@ -64,13 +64,6 @@ declare global {
         makeReady: (projectPath: string) => Promise<{ ready: boolean }>;
         status: (projectPath: string) => Promise<{ ready: boolean }>;
       };
-      trash: {
-        list: () => Promise<
-          { id: string; name: string; originalPath: string; size: number; deletedAt: number }[]
-        >;
-        restore: (id: string) => Promise<{ ok: true; restoredTo: string }>;
-        empty: () => Promise<{ ok: true }>;
-      };
       session: {
         run: (
           mode: "save" | "resume",

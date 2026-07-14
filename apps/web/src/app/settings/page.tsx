@@ -85,6 +85,9 @@ export default function SettingsPage() {
       // Key is masked, load with saved key
       loadModels();
     }
+    // Refetch only on provider switch — depending on openaiApiKey would
+    // refetch the model list on every keystroke of the key field.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider]);
 
   // Probe Ollama whenever it becomes the selected provider.

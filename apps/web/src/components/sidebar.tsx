@@ -9,15 +9,12 @@ import {
   Sun,
   Moon,
   Blocks,
-  Sparkles,
   Boxes,
-  Trash2,
   Inbox,
   ChevronDown,
   Plus,
 } from "lucide-react";
 import { FileTree } from "./file-tree";
-import { NewProjectModal } from "./new-project-modal";
 import { RepoManagerModal } from "./repo-manager-modal";
 import { BranchIndicator } from "./branch-indicator";
 import { useModules } from "@/lib/modules-context";
@@ -25,7 +22,7 @@ import { useOrchestrator } from "@/lib/orchestrator-context";
 import { attentionCounts, repoKey, reposOf } from "@/lib/inbox/model";
 import { useT } from "@/lib/app-i18n";
 import { useTheme } from "@/lib/theme-context";
-import { useTerminal } from "@/lib/terminal-context";
+import { useStoredState } from "@/lib/use-stored-state";
 import { moduleSettings } from "@/lib/module-settings";
 
 const navItems = [
@@ -46,21 +43,22 @@ function prettyModule(id: string): string {
     .join(" · ");
 }
 
+function clampWidth(raw: string): number {
+  const parsed = parseInt(raw, 10);
+  if (Number.isNaN(parsed)) return DEFAULT_WIDTH;
+  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, parsed));
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const { modules } = useModules();
   const { t } = useT();
-  const [width, setWidth] = useState(DEFAULT_WIDTH);
+  const [storedWidth, setStoredWidth] = useStoredState(STORAGE_KEY, String(DEFAULT_WIDTH));
+  // Live value during a drag; storage is only written on mouse-up.
+  const [dragWidth, setDragWidth] = useState<number | null>(null);
+  const width = dragWidth ?? clampWidth(storedWidth);
   const isDragging = useRef(false);
   const [nestBrainPath, setNestBrainPath] = useState<string | null>(null);
-  const [newProjectOpen, setNewProjectOpen] = useState(false);
-  const { openTerminal } = useTerminal();
-
-  // Load saved width
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, parseInt(saved))));
-  }, []);
 
   // Load NestBrain path (Electron only). Subscribes to onNestBrainMoved
   // so the file tree appears as soon as onboarding completes (and updates
@@ -80,29 +78,6 @@ export function Sidebar() {
     return off;
   }, []);
 
-  const handleCreateProject = useCallback(
-    async (projectName: string) => {
-      if (!nestBrainPath || typeof window === "undefined" || !window.nestbrain) {
-        throw new Error("NestBrain path not available");
-      }
-      const projectPath = `${nestBrainPath}/Projects/${projectName}`;
-      await window.nestbrain.fs.createDir(projectPath);
-      // Make it knowledge-ready (git init + post-commit hook) so commits feed
-      // the knowledge base from the start. A failed git init is surfaced (a
-      // project without a repo is broken); a failed hook install only warns.
-      try {
-        const r = (await window.nestbrain.projects.makeReady(projectPath)) as { warning?: string };
-        if (r?.warning) console.warn("[projects]", r.warning);
-      } catch (e) {
-        window.alert(e instanceof Error ? e.message : "Project created, but git init failed.");
-      }
-      await openTerminal(projectPath, projectName);
-      // Trigger file tree refresh via focus event
-      window.dispatchEvent(new Event("focus"));
-    },
-    [nestBrainPath, openTerminal],
-  );
-
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDragging.current = true;
@@ -119,7 +94,7 @@ export function Sidebar() {
 
     function flush() {
       rafId = null;
-      setWidth(pendingWidth);
+      setDragWidth(pendingWidth);
     }
 
     function onMouseMove(e: MouseEvent) {
@@ -140,12 +115,13 @@ export function Sidebar() {
       document.removeEventListener("mouseup", onMouseUp);
       // Persist the final width once on mouse-up — saving on every frame
       // wastes a localStorage write per pixel of drag.
-      localStorage.setItem(STORAGE_KEY, String(pendingWidth));
+      setStoredWidth(String(pendingWidth));
+      setDragWidth(null);
     }
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [width]);
+  }, [width, setStoredWidth]);
 
   // Poll knowledge counts so the sidebar shows a badge with the atoms
   // awaiting review (hidden when zero).
@@ -204,28 +180,21 @@ export function Sidebar() {
         </Suspense>
 
         {/* NestBrain file tree (Electron only, after onboarding) */}
-        {nestBrainPath && (
-          <FileTree
-            rootPath={nestBrainPath}
-            onNewProject={() => setNewProjectOpen(true)}
-          />
-        )}
+        {nestBrainPath && <FileTree rootPath={nestBrainPath} />}
 
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-0.5 overflow-auto">
           {[
             ...navItems.slice(0, -1),
-            ...(modules.includes("anatomize") ? [{ href: "/insights", icon: Sparkles, key: "insights" as const }] : []),
             // Generic entry for any active module without a dedicated surface
-            // (dev integrates into the existing UI; anatomize → Insights;
-            // modules that register a settings panel live in /modules instead).
+            // (dev and anatomize integrate into the existing UI; modules that
+            // register a settings panel live in /modules instead).
             // A surface-less third-party module's page lives at /<id> — this
             // makes it reachable without editing the sidebar.
             ...modules
               .filter((m) => m !== "dev" && m !== "anatomize" && !moduleSettings[m])
               .map((m) => ({ href: `/${m}`, icon: Boxes, label: prettyModule(m) })),
             ...(modules.length > 0 ? [{ href: "/modules", icon: Blocks, key: "modules" as const }] : []),
-            { href: "/trash", icon: Trash2, label: "Trash" },
             navItems[navItems.length - 1],
           ].map((item) => {
             const isActive =
@@ -274,12 +243,6 @@ export function Sidebar() {
         onMouseDown={handleMouseDown}
         className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-50 hover:bg-accent/20 active:bg-accent/30 transition-colors"
       />
-
-      <NewProjectModal
-        isOpen={newProjectOpen}
-        onClose={() => setNewProjectOpen(false)}
-        onCreate={handleCreateProject}
-      />
     </div>
   );
 }
@@ -303,12 +266,9 @@ function InboxNav() {
   const searchParams = useSearchParams();
   const { state } = useOrchestrator();
   const { t } = useT();
-  const [collapsed, setCollapsed] = useState(false);
+  const [storedCollapsed, setStoredCollapsed] = useStoredState(INBOX_COLLAPSE_KEY, "0");
+  const collapsed = storedCollapsed === "1";
   const [reposOpen, setReposOpen] = useState(false);
-
-  useEffect(() => {
-    setCollapsed(localStorage.getItem(INBOX_COLLAPSE_KEY) === "1");
-  }, []);
 
   if (!state) return null;
 
@@ -317,12 +277,7 @@ function InboxNav() {
   const onInbox = pathname === "/inbox" || pathname.startsWith("/inbox/");
   const activeRepo = onInbox ? searchParams.get("repo") : null;
 
-  const toggleCollapsed = () => {
-    setCollapsed((prev) => {
-      localStorage.setItem(INBOX_COLLAPSE_KEY, prev ? "0" : "1");
-      return !prev;
-    });
-  };
+  const toggleCollapsed = () => setStoredCollapsed((cur) => (cur === "1" ? "0" : "1"));
 
   return (
     <div className="shrink-0 border-b border-sidebar-border p-3 space-y-0.5">
