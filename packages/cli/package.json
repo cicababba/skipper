@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^4.0.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@skipper/core": "workspace:*",
     "@skipper/shared": "workspace:*",
     "commander": "^13.1.0"

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import type { AgentOptions, LLMProviderInterface, LLMResponse } from "./provider";
 import { parseJsonReply } from "./json";
 import { createStreamJsonParser } from "./stream";
+import { MEMORY_TOOLS, buildMemoryMcpArgs } from "./memory-mcp";
 
 // On Windows, `spawn("claude")` can't execute the npm shim (claude.cmd /
 // claude.ps1): Node refuses .cmd files without a shell, and a shell would
@@ -193,6 +194,10 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
    * Used by the wiki AI-edit flow ("analyze this project and fix the page").
    */
   async agent(prompt: string, opts: AgentOptions = {}): Promise<LLMResponse> {
+    // Solutions-memory MCP is opt-in (#45): the planner passes opts.memory, the
+    // reviewer / wiki-edit callers don't — so their tool surface is unchanged.
+    const baseTools = "Read,Grep,Glob,WebFetch,WebSearch,Bash";
+    const tools = opts.memory ? `${baseTools},${MEMORY_TOOLS}` : baseTools;
     const args = [
       "-p",
       "-",
@@ -213,11 +218,12 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       // --setting-sources empty so the user's global skills / project
       // CLAUDE.md don't hijack the run.
       "--tools",
-      "Read,Grep,Glob,WebFetch,WebSearch,Bash",
+      tools,
       "--allowedTools",
-      "Read,Grep,Glob,WebFetch,WebSearch,Bash",
+      tools,
       "--setting-sources",
       "",
+      ...(opts.memory ? buildMemoryMcpArgs(opts.memory) : []),
     ];
 
     if (opts.systemPrompt) {

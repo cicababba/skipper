@@ -8,6 +8,7 @@ import {
   CODER_SYSTEM_PROMPT,
   CodingAbortError,
   compareQueueCandidates,
+  type MemoryMcp,
   type OrchestratorSettings,
   type QueueCandidate,
 } from "@skipper/core";
@@ -54,6 +55,8 @@ export interface CoderDeps {
   getRepoPriority: (repo: RepoRef) => RepoPriority;
   /** Buffer + forward one progress event (orchestrator owns the IPC channel). */
   emitEvent: (itemId: string, event: CodingEvent) => void;
+  /** skipper-memory MCP for this item's repo (#45); undefined = no CLI bundle. */
+  getMemoryMcp?: (item: TrackedItem) => MemoryMcp | undefined;
 }
 
 let deps: CoderDeps | null = null;
@@ -213,6 +216,7 @@ async function run(itemId: string, repoKey: string): Promise<void> {
         ? buildFixPrompt(issue, pending!)
         : buildResumePrompt(issue);
 
+    const memory = deps.getMemoryMcp?.(item);
     const baseOptions = {
       systemPrompt: CODER_SYSTEM_PROMPT,
       cwd: worktree.path,
@@ -220,6 +224,7 @@ async function run(itemId: string, repoKey: string): Promise<void> {
       maxTurns: settings.coderMaxTurns,
       onEvent: (event: CodingEvent) => deps?.emitEvent(itemId, event),
       signal: controller.signal,
+      ...(memory ? { memory } : {}),
     };
 
     let result;

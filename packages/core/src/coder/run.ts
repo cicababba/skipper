@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import type { CodingEvent } from "@skipper/shared";
 import { invalidateResolvedClaude, resolveClaude } from "../llm/claude-cli";
 import { createStreamJsonParser } from "../llm/stream";
+import { MEMORY_TOOLS, buildMemoryMcpArgs, type MemoryMcp } from "../llm/memory-mcp";
 
 const CODER_TOOLS = "Read,Grep,Glob,Edit,Write,Bash,WebFetch,WebSearch";
 const DEFAULT_MAX_TURNS = 60;
@@ -32,6 +33,8 @@ export interface RunCodingAgentOptions {
   /** Reset on every stdout line; a silent agent past this is hung. */
   inactivityTimeoutMs?: number;
   hardTimeoutMs?: number;
+  /** Inject the skipper-memory MCP server, scoped to the item's repo (#45). */
+  memory?: MemoryMcp;
 }
 
 export interface CodingRunResult {
@@ -48,6 +51,10 @@ export function runCodingAgent(
 ): Promise<CodingRunResult> {
   return new Promise((resolve, reject) => {
     const claude = resolveClaude();
+    // Solutions-memory MCP is opt-in (#45): only wired when the caller passes
+    // opts.memory. Tool names must join both --tools and --allowedTools —
+    // headless -p auto-denies an un-pre-approved tool.
+    const tools = opts.memory ? `${CODER_TOOLS},${MEMORY_TOOLS}` : CODER_TOOLS;
     const args = [
       ...claude.argsPrefix,
       "-p",
@@ -63,9 +70,10 @@ export function runCodingAgent(
       "--setting-sources",
       "",
       "--tools",
-      CODER_TOOLS,
+      tools,
       "--allowedTools",
-      CODER_TOOLS,
+      tools,
+      ...(opts.memory ? buildMemoryMcpArgs(opts.memory) : []),
     ];
     if (opts.systemPrompt) args.push("--system-prompt", opts.systemPrompt);
     // No --no-session-persistence (unlike ask/agent): the on-disk session is
