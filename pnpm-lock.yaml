@@ -214,6 +214,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@huggingface/transformers':
+        specifier: ^4.0.1
+        version: 4.0.1
       '@skipper/core':
         specifier: workspace:*
         version: link:../core

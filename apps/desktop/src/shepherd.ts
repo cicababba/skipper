@@ -13,6 +13,7 @@ import {
   fetchPullReviews,
   findOpenPullByHead,
   mapReviewFeedback,
+  writeSolutionRecord,
   type GitHubTokenProvider,
   type OrchestratorSettings,
 } from "@skipper/core";
@@ -25,7 +26,6 @@ import type {
   TrackedItem,
   TransitionActor,
 } from "@skipper/shared";
-import { writeSolutionRecord } from "./memory-store";
 import { captureBranchDiff, commitWorktree, pushWorktreeBranch, removeWorktree } from "./worktrees";
 
 export interface ShepherdDeps {
