@@ -84,9 +84,14 @@ git push -u origin "$BRANCH"
 URL=$(gh pr create --base develop --title "$TITLE" --body-file "$BODY_FILE")
 PR_NUMBER="${URL##*/}"
 
+# REST, not `gh pr edit --add-label`: the latter queries deprecated Projects
+# classic via GraphQL and fails on this repo
 LABELS=$(derive_labels "$TITLE")
 if [[ -n "$LABELS" ]]; then
-  gh pr edit "$PR_NUMBER" --add-label "$LABELS" || echo "note=could not apply labels '$LABELS'" >&2
+  REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')
+  printf '{"labels":[%s]}' "$(sed 's/[^,]*/"&"/g' <<<"$LABELS")" \
+    | gh api "repos/$REPO/issues/$PR_NUMBER/labels" --input - --silent \
+    || echo "note=could not apply labels '$LABELS'" >&2
 fi
 
 echo "pr=$PR_NUMBER"
