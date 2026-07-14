@@ -5,81 +5,31 @@ description: Merge a Pull Request, close related issues, and sync local branch. 
 
 # Merge Pull Request
 
+The mechanics live in `scripts/merge-pr.sh` (relative to this skill's base directory). Run it in **one** Bash call — do not reimplement its steps manually.
+
 ## Instructions
 
-### 1. Determine PR number
+### 1. Release-PR gate (judgment)
 
-**If PR number provided as argument:**
-```bash
-PR_NUMBER=<argument>
-```
+If the PR is `develop` → `main` (a release PR), **confirm with the user first** — merging it fires the full release pipeline (build, sign, publish). For release PRs prefer `/release` (its `publish` subcommand); this script tolerates them safely (regular merge, never deletes develop, skips issue closing) but the confirmation stays with you.
 
-**If no argument, get from current branch:**
-```bash
-BRANCH=$(git branch --show-current)
-PR_NUMBER=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number')
-```
-
-If no PR found, inform user and exit.
-
-### 2. Get PR details
+### 2. Run the script
 
 ```bash
-gh pr view $PR_NUMBER --json number,title,baseRefName,headRefName,body,state
+bash <skill-base-dir>/scripts/merge-pr.sh [pr-number]
 ```
 
-- Verify PR is open (state = "OPEN")
-- Extract base branch (usually `develop`)
-- Extract issue numbers from body (look for `Closes #X`, `closes #X`, `Fixes #X`, etc.)
+Without an argument it resolves the PR from the current branch. The script handles everything deterministic:
 
-### 3. Extract related issues
+- squash-merge + delete branch for feature PRs; regular merge (no delete) for release PRs
+- 502-race safety: on merge failure it polls the PR state before retrying (a 502 can complete server-side; blind retry duplicates the squash commit)
+- parses `Closes/Fixes/Resolves #N` from the PR body; for each open issue: comment `Done in #PR`, then close (`gh issue close` has no `--comment` here)
+- already-merged PR → skips the merge, still closes issues and syncs (safe re-run)
+- always ends on `develop`, pulled up to date, local + remote feature branch cleaned up
 
-Parse the PR body to find all issue references:
-```bash
-gh pr view $PR_NUMBER --json body --jq '.body' | grep -oiE '(closes|fixes|resolves) #[0-9]+' | grep -oE '[0-9]+'
-```
+Summary keys printed: `pr`, `title`, `merged`, `release_pr`, `issues_closed`, `branch`, `synced`.
 
-### 4. Merge the PR
-
-**IMPORTANT**: Only use `--delete-branch` for feature branches, NEVER for `develop`!
-
-```bash
-BASE_BRANCH=$(gh pr view $PR_NUMBER --json baseRefName --jq '.baseRefName')
-HEAD_BRANCH=$(gh pr view $PR_NUMBER --json headRefName --jq '.headRefName')
-
-if [ "$HEAD_BRANCH" = "develop" ]; then
-  # Release PR: develop → main — DO NOT delete develop!
-  # NOTE: merging into main triggers the full release pipeline
-  # (mac+win build, Polar upload, update feed). Confirm with the user first.
-  gh pr merge $PR_NUMBER --merge
-else
-  # Feature PR: feature/* → develop - safe to delete
-  gh pr merge $PR_NUMBER --squash --delete-branch
-fi
-```
-
-### 5. Close ALL related issues
-
-Feature PRs merge into `develop` (not the default branch), so GitHub does **not** auto-close the referenced issues. Close them explicitly:
-
-```bash
-for issue_num in <list-of-issues>; do
-  gh issue close $issue_num --comment "Done in #$PR_NUMBER"
-  echo "Issue #$issue_num → closed"
-done
-```
-
-(Skip this for release PRs — their issues were already closed when the feature PRs merged.)
-
-### 6. Checkout base branch and pull
-
-```bash
-BASE_BRANCH=<from-step-2>
-git checkout $BASE_BRANCH
-git pull origin $BASE_BRANCH
-```
-
-### 7. Output summary
+### 3. Report
 
 ```
 ## PR Merged
@@ -89,7 +39,6 @@ git pull origin $BASE_BRANCH
 
 **Issues closed:**
 - #10 <title>
-- #11 <title>
 
 **Local branch synced**: develop is up to date
 ```
@@ -97,6 +46,4 @@ git pull origin $BASE_BRANCH
 ## Notes
 
 - Conventions sourced from `.claude/rules/conventions.md` (single source of truth)
-- Feature branches: squash merge + delete branch
-- Release PRs (develop → main): regular merge, **NEVER delete develop**, and they fire the release build — always confirm with the user before merging one
-- If local branch was the PR branch, you'll be on base branch after
+- If the script errors, relay stderr to the user — don't fall back to running the merge steps by hand without asking

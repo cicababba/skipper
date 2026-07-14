@@ -5,6 +5,8 @@ description: Start working on GitHub issues. Can handle single issue or batch of
 
 # Start Working on Issues
 
+The mechanics live in `scripts/start-issue.sh` (relative to this skill's base directory). Run it in **one** Bash call — do not reimplement its steps manually.
+
 ## Instructions
 
 ### 1. Get issue(s) from user
@@ -14,53 +16,25 @@ Can be:
 - Multiple issues: `#10, #11, #12` or `10 11 12`
 - Batch reference: `batch #10-#14`
 
-### 2. Fetch issue details for ALL issues
+### 2. Update issues with conversation details (judgment)
+
+Before running the script, check if details emerged during the conversation that should be added to the issues (implementation decisions, clarified requirements, technical choices). If yes, append an `## Implementation Details (from discussion)` section via `gh issue edit <n> --body ...`, and ask the user: "Do you want to add any details to the issues before starting?"
+
+Skip this entirely in a fresh session with no prior discussion.
+
+### 3. Run the script
 
 ```bash
-# For each issue number
-gh issue view <number> --json number,title,labels,body --jq '{number, title, labels: [.labels[].name], body}'
+bash <skill-base-dir>/scripts/start-issue.sh [--slug <slug>] <issue> [issue...]
 ```
 
-### 3. Update issues with conversation details
+- Pass `--slug` when you want a descriptive batch name (e.g. `--slug oauth-refactor` for a batch) or when the auto-slug from the first issue's title would be poor. Otherwise the script slugifies the first issue's title itself.
+- The script fetches each issue (prints one `issue={json}` line with number/title/labels), checks out `develop`, pulls, and creates `feature/issue-<first>-<slug>`.
+- If the branch already exists it reuses it and reports `reused=true` — tell the user work continues on the existing branch.
 
-**IMPORTANT**: Before proceeding, check if any details emerged during the conversation that should be added to the issues.
+Summary keys printed: `issue=` (one per issue), `branch`, `reused`.
 
-For each issue, ask yourself:
-- Were implementation decisions made? (e.g., which library to use, API design)
-- Were requirements clarified? (e.g., specific behavior, edge cases)
-- Were technical choices discussed? (e.g., data model, IPC surface)
-
-If yes, update the issue body with the new details:
-
-```bash
-gh issue edit <number> --body "$(cat <<'EOF'
-<original body>
-
-## Implementation Details (from discussion)
-
-- <detail 1>
-- <detail 2>
-EOF
-)"
-```
-
-Ask the user: "Do you want to add any details to the issues before starting?"
-
-### 4. Create feature branch
-
-From the **first/main issue** in the batch:
-
-```bash
-git checkout develop
-git pull origin develop
-git checkout -b feature/issue-<first-number>-<slugified-description>
-```
-
-Branch naming:
-- Single issue: `feature/issue-10-diff-view`
-- Batch: `feature/issue-10-orchestrator-setup` (use descriptive name for the batch)
-
-### 5. Output summary
+### 4. Output summary
 
 ```
 ## Started Working
@@ -79,6 +53,5 @@ Ready to code!
 ## Notes
 
 - Conventions sourced from `.claude/rules/conventions.md` (single source of truth)
-- Always start from `develop` branch — never from `main`
-- If branch already exists, ask user if they want to continue on it
+- The script always starts from `develop` — never from `main`
 - No project board in this repo — an existing feature branch *is* the "in progress" state
