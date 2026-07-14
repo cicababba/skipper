@@ -5,90 +5,44 @@ description: Create a standardized commit with conventional format and co-author
 
 # Create Standardized Commit
 
-Conventions live in `.claude/rules/conventions.md` ("Commits") — this skill applies them.
+Conventions live in `.claude/rules/conventions.md` ("Commits") — this skill applies them. The mechanics live in `scripts/commit.sh` (relative to this skill's base directory).
 
 ## Instructions
 
-1. **Check for staged changes**:
-   ```bash
-   git diff --cached --stat
-   ```
-   - If nothing staged, check unstaged changes and ask user what to stage
+### 1. Inspect what's staged
 
-2. **Show changed files** to understand what's being committed:
-   ```bash
-   git status --short
-   ```
+```bash
+bash <skill-base-dir>/scripts/commit.sh suggest
+```
 
-3. **Determine commit type** based on changes:
-   - `feat`: New feature
-   - `fix`: Bug fix
-   - `refactor`: Code refactoring (no feature/fix)
-   - `test`: Adding/updating tests
-   - `docs`: Documentation only
-   - `chore`: Build, config, dependencies
-   - `style`: Formatting, no code change
+Prints the staged stat plus scope candidates inferred from the changed paths. If nothing is staged it errors and shows `git status --short` — ask the user what to stage.
 
-   And the **scope** (optional but preferred), matching the existing history:
-   `desktop`, `web`, `core`, `cli`, `db`, `shared`, `sync`, `infra` — or a narrower
-   one like `win`/`mac` when platform-specific. Omit the scope only for truly
-   cross-cutting changes.
+### 2. Compose the message (judgment)
 
-4. **Ask user for commit message** if not provided, or suggest one based on changes
+Determine **type** (`feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `style`) and **scope** (optional but preferred: `desktop`, `web`, `core`, `cli`, `shared`, `sync`, `infra`, or narrower like `win`/`mac`; omit only for truly cross-cutting changes). If the user provided a message, use it but ensure the format is correct. If multiple logical changes are staged, suggest splitting into multiple commits.
 
-5. **Create commit** with standard format:
-   ```bash
-   git commit -m "$(cat <<'EOF'
-   <type>(<scope>): <short description>
+Write the message to a temp file:
 
-   <optional body - what and why>
-
-   Co-Authored-By: <current model> <noreply@anthropic.com>
-   EOF
-   )"
-   ```
-
-## Commit Message Guidelines
-
-### Format
 ```
 <type>(<scope>): <description>
 
-[optional body]
-
-Co-Authored-By: <current model> <noreply@anthropic.com>
+[optional body — what and why]
 ```
 
-### Examples
+- Description: imperative mood ("add" not "added"), no trailing period.
+- Examples from history: `feat(cli): session summary is now agentic`, `fix(win): find claude regardless of stale PATH`, `chore: bump version to 1.16.3`.
+- No need to add the co-author line yourself — the script appends it.
+
+### 3. Run the script
 
 ```bash
-# Feature
-feat(cli): session summary is now agentic
-
-# Fix
-fix(win): find claude regardless of stale PATH
-
-# Refactor
-refactor(core): extract provider selection into llm/index
-
-# Test
-test(sync): add manifest merge unit tests
-
-# Chore (no scope — cross-cutting)
-chore: bump version to 1.16.3
+bash <skill-base-dir>/scripts/commit.sh --message-file <f> --model "<current Claude model>"
 ```
 
-### Rules
+The script verifies staged changes, validates the subject format, appends `Co-Authored-By: <model> <noreply@anthropic.com>` if missing, and commits.
 
-- **Type**: Always lowercase
-- **Scope**: Optional, lowercase, in parentheses
-- **Description**: Imperative mood ("add" not "added"), no period at end
-- **Body**: Explain what and why (not how)
-- **Co-author**: Always include the co-author line for the Claude model actually
-  running (e.g. `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`) — never
-  hardcode a model name from an example
+Summary keys printed: `commit` (short sha), `subject`.
 
 ## Notes
 
-- If user provides a message, use it but ensure format is correct
-- If multiple logical changes, suggest splitting into multiple commits
+- Pass the model actually running via `--model` (e.g. `Claude Fable 5`) — never hardcode a model name from an example

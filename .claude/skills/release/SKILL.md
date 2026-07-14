@@ -5,113 +5,50 @@ description: Create a release from develop to main. Bumps version, creates PR, a
 
 # Create Release
 
-Merging to `main` triggers `.github/workflows/release.yml`: signed mac+win builds, upload to Polar, auto-update feed, private releases repo. A release here is a **publish event** — always confirm with the user before the final merge.
+Merging to `main` triggers `.github/workflows/release.yml`: signed mac+win builds, upload to Polar, auto-update feed, private releases repo. A release is a **publish event** — the human go/no-go sits between the script's two destructive-capable phases.
+
+The mechanics live in `scripts/release.sh` (relative to this skill's base directory). Run each phase in **one** Bash call — do not reimplement the steps manually.
 
 ## Instructions
 
-### 1. Ensure develop is up to date
+### 1. Status (read-only)
 
 ```bash
-git checkout develop
-git pull origin develop
+bash <skill-base-dir>/scripts/release.sh status
 ```
 
-### 2. Determine version bump
+Prints current versions (root + desktop, must stay aligned), any already-open release PR, and `git log main..develop` (the changelog input). Nothing destructive.
 
-Check current version:
-```bash
-node -p "require('./package.json').version"
-```
+### 2. Determine version bump (judgment)
 
-Ask the user what the new version should be (or suggest based on changes):
-- **Patch** (1.16.3 → 1.16.4): Bug fixes only
-- **Minor** (1.16.3 → 1.17.0): New features (default)
-- **Major** (1.16.3 → 2.0.0): Breaking changes
+Ask the user for the new version (or suggest from the changes):
+- **Patch** (1.16.3 → 1.16.4): bug fixes only
+- **Minor** (1.16.3 → 1.17.0): new features (default)
+- **Major** (1.16.3 → 2.0.0): breaking changes
 
-### 3. Bump version
+Optionally write a curated release-PR body to a temp file (changes list + checklist); without it the script auto-generates a changelog body from `git log`.
 
-The version lives in **two** files that must stay aligned: the root `package.json` (used by CI for the release tag) and `apps/desktop/package.json` (used by electron-builder for the installer/app version).
+### 3. Prepare (reversible — touches develop only)
 
 ```bash
-for f in package.json apps/desktop/package.json; do
-  node -e "
-  const pkg = require('./$f');
-  pkg.version = '<NEW_VERSION>';
-  require('fs').writeFileSync('./$f', JSON.stringify(pkg, null, 2) + '\n');
-  "
-done
+bash <skill-base-dir>/scripts/release.sh prepare <new-version> [--body-file <f>] --model "<current Claude model>"
 ```
 
-### 4. Commit version bump
+Checks out develop + pulls, verifies clean tree, bumps the version in root `package.json` **and** `apps/desktop/package.json`, commits (`chore: bump version to X` with co-author), pushes develop, opens the `Release vX` PR develop → main. Idempotent: version already bumped → skips; release PR already open → reuses it.
+
+### 4. Confirm with the user — MANDATORY
+
+Ask explicitly: merging this PR **publishes the release**. Do not run `publish` without a clear yes.
+
+### 5. Publish (destructive — fires the pipeline)
 
 ```bash
-git add package.json apps/desktop/package.json
-git commit -m "$(cat <<'EOF'
-chore: bump version to <NEW_VERSION>
-
-Co-Authored-By: <current model> <noreply@anthropic.com>
-EOF
-)"
+bash <skill-base-dir>/scripts/release.sh publish <pr-number>
 ```
 
-### 5. Push develop
+Verifies the PR is develop → main and titled `Release v*`, regular-merges it (**never** `--delete-branch` — develop must survive; 502-poll safety included), then syncs: main pulled, develop pulled, `git merge main`, develop pushed.
 
-```bash
-git push origin develop
-```
-
-### 6. Create PR from develop → main
-
-```bash
-gh pr create \
-  --base main \
-  --head develop \
-  --title "Release v<NEW_VERSION>" \
-  --body "$(cat <<'EOF'
-## Release v<NEW_VERSION>
-
-### Changes since last release
-
-<List of PRs/changes merged into develop since last release>
-
-### Checklist
-
-- [ ] All CI checks pass
-- [ ] Version bumped in package.json + apps/desktop/package.json
-
----
-Generated with Claude Code
-EOF
-)"
-```
-
-To get changes since last release:
-```bash
-git log main..develop --oneline --no-merges
-```
-
-### 7. Merge the PR
-
-**CRITICAL**: NEVER use `--delete-branch` for develop → main! And confirm with the user — this merge publishes the release.
-
-```bash
-gh pr merge <PR_NUMBER> --merge
-```
-
-### 8. Sync local branches and merge main back into develop
-
-This step ensures develop absorbs the merge commit from main, so main is never ahead of develop.
-
-```bash
-git checkout main
-git pull origin main
-git checkout develop
-git pull origin develop
-git merge main
-git push origin develop
-```
-
-### 9. Output summary
+### 6. Output summary
 
 ```
 ## Release Created
@@ -126,8 +63,8 @@ develop is synced with main and ready for continued development.
 
 ## Notes
 
-- **NEVER delete develop branch** - this is the most critical rule
-- Version is bumped in root `package.json` **and** `apps/desktop/package.json` (keep aligned)
+- **NEVER delete develop branch** — the script never does; don't do it manually either
+- Version lives in root `package.json` **and** `apps/desktop/package.json` (script keeps them aligned)
 - The push to `main` runs the whole pipeline automatically: build, sign, notarize, upload to Polar, publish update feed, create the release on the private `skipper-releases` repo (placeholder until the #17 cutover)
-- Version bumping is **manual only** (no CI automation) - this skill is the only way to bump versions
+- Version bumping is **manual only** (no CI automation) — this skill is the only way to bump versions
 - If the pipeline has CI failures, fix on develop first, then release again
