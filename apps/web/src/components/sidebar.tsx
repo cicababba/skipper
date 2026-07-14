@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useRef, useState } from "react";
 import {
-  Lightbulb,
   Settings,
   Sun,
   Moon,
@@ -12,7 +11,6 @@ import {
   ChevronDown,
   Plus,
 } from "lucide-react";
-import { FileTree } from "./file-tree";
 import { RepoManagerModal } from "./repo-manager-modal";
 import { BranchIndicator } from "./branch-indicator";
 import { useOrchestrator } from "@/lib/orchestrator-context";
@@ -22,7 +20,6 @@ import { useTheme } from "@/lib/theme-context";
 import { useStoredState } from "@/lib/use-stored-state";
 
 const navItems = [
-  { href: "/knowledge", icon: Lightbulb, key: "knowledge" as const },
   { href: "/settings", icon: Settings, key: "settings" as const },
 ];
 
@@ -45,25 +42,6 @@ export function Sidebar() {
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const width = dragWidth ?? clampWidth(storedWidth);
   const isDragging = useRef(false);
-  const [skipperPath, setSkipperPath] = useState<string | null>(null);
-
-  // Load Skipper path (Electron only). Subscribes to onSkipperMoved
-  // so the file tree appears as soon as onboarding completes (and updates
-  // when the user moves the workspace from Settings).
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.skipper) return;
-    function refetch() {
-      window.skipper!
-        .getBootstrap()
-        .then((b) => {
-          if (b.skipperPath) setSkipperPath(b.skipperPath);
-        })
-        .catch(() => { /* ignore */ });
-    }
-    refetch();
-    const off = window.skipper.onSkipperMoved?.(() => refetch());
-    return off;
-  }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -110,34 +88,6 @@ export function Sidebar() {
     document.addEventListener("mouseup", onMouseUp);
   }, [width, setStoredWidth]);
 
-  // Poll knowledge counts so the sidebar shows a badge with the atoms
-  // awaiting review (hidden when zero).
-  const [pendingCount, setPendingCount] = useState(0);
-  useEffect(() => {
-    let cancelled = false;
-    const fetchCounts = async () => {
-      try {
-        const res = await fetch("/api/knowledge/counts", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (cancelled) return;
-        setPendingCount(data.pending ?? 0);
-      } catch {
-        /* ignore — endpoint may not be wired yet */
-      }
-    };
-    void fetchCounts();
-    // Long cadence: a 10s poll caused a visible flash whenever the badge
-    // re-rendered into existence. The /knowledge page already refreshes
-    // its own list when it's mounted; the sidebar badge is just an
-    // ambient notification.
-    const id = setInterval(fetchCounts, 30_000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, []);
-
   return (
     <div className="relative shrink-0 flex" style={{ width }}>
       <aside className="w-full h-full border-r border-sidebar-border bg-sidebar flex flex-col overflow-hidden">
@@ -166,16 +116,12 @@ export function Sidebar() {
           <InboxNav />
         </Suspense>
 
-        {/* Skipper file tree (Electron only, after onboarding) */}
-        {skipperPath && <FileTree rootPath={skipperPath} />}
-
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-0.5 overflow-auto">
           {navItems.map((item) => {
             const isActive =
               pathname === item.href || pathname.startsWith(item.href + "/");
             const Icon = item.icon;
-            const isKnowledge = item.href === "/knowledge";
             const label = t.common.nav[item.key];
             return (
               <Link
@@ -189,14 +135,6 @@ export function Sidebar() {
               >
                 <Icon size={16} />
                 <span className="flex-1">{label}</span>
-                {isKnowledge && pendingCount > 0 && (
-                  <span
-                    className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent"
-                    title={`${pendingCount} atom${pendingCount === 1 ? "" : "s"} awaiting review`}
-                  >
-                    {pendingCount}
-                  </span>
-                )}
               </Link>
             );
           })}

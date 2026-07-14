@@ -9,7 +9,6 @@ export interface AppSettings {
     claudeModel: string;
     ollamaModel: string;
   };
-  autoCompile?: boolean;
   /** Auto-generate knowledge atoms from git commits (post-commit hook). */
   autoExtractAtoms?: boolean;
   onboardingCompleted?: boolean;
@@ -23,7 +22,6 @@ const DEFAULT_SETTINGS: AppSettings = {
     claudeModel: "sonnet",
     ollamaModel: "",
   },
-  autoCompile: false,
   autoExtractAtoms: true,
   onboardingCompleted: false,
 };
@@ -43,7 +41,6 @@ export async function loadSettings(): Promise<AppSettings> {
       ...DEFAULT_SETTINGS,
       ...saved,
       llm: { ...DEFAULT_SETTINGS.llm, ...saved.llm },
-      autoCompile: saved.autoCompile ?? DEFAULT_SETTINGS.autoCompile,
       autoExtractAtoms: saved.autoExtractAtoms ?? DEFAULT_SETTINGS.autoExtractAtoms,
       onboardingCompleted: saved.onboardingCompleted ?? DEFAULT_SETTINGS.onboardingCompleted,
     };

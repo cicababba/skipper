@@ -2,7 +2,8 @@
 //
 // The hook fires after every commit on a registered repository and runs
 // the knowledge extractor in the background (commit terminal does NOT block).
-// Atoms land in <workspace>/.skipper/knowledge-pending/ for later review.
+// Atoms land in the app's <userData>/knowledge/pending/ for later review;
+// the CLI resolves that directory itself.
 //
 // Install is append-aware: if a non-Skipper post-commit already exists, we
 // add our snippet at the end, surrounded by markers so re-install (upgrade)
@@ -13,7 +14,7 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** Bumped when we change the hook body so re-register upgrades the snippet. */
-const HOOK_VERSION = 1;
+const HOOK_VERSION = 2;
 const BEGIN_MARKER = "# >>> skipper knowledge hook (managed) >>>";
 const END_MARKER = "# <<< skipper knowledge hook (managed) <<<";
 
@@ -72,31 +73,12 @@ function buildHookSnippet(cliCommand: string): string {
   return [
     BEGIN_MARKER,
     `# skipper-knowledge-hook:${HOOK_VERSION}`,
-    "# Extracts knowledge atoms from the latest commit into <workspace>/.skipper/",
-    "# knowledge-pending/ for later review. Runs detached — does NOT block the commit.",
+    "# Extracts knowledge atoms from the latest commit into the Skipper app's",
+    "# knowledge/pending/ dir. Runs detached — does NOT block the commit.",
     `skipper_cli='${safe}'`,
     "skipper_repo=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0",
-    "skipper_workspace=''",
-    "skipper_dir=\"$skipper_repo\"",
-    "skipper_i=0",
-    "while [ \"$skipper_i\" -lt 20 ]; do",
-    "  if [ -d \"$skipper_dir/.skipper\" ]; then",
-    "    skipper_workspace=\"$skipper_dir\"",
-    "    break",
-    "  fi",
-    "  skipper_parent=$(dirname \"$skipper_dir\")",
-    "  [ \"$skipper_parent\" = \"$skipper_dir\" ] && break",
-    "  skipper_dir=\"$skipper_parent\"",
-    "  skipper_i=$((skipper_i + 1))",
-    "done",
-    "[ -z \"$skipper_workspace\" ] && exit 0",
     "skipper_sha=$(git rev-parse HEAD)",
-    "skipper_log_dir=\"$skipper_workspace/.skipper/knowledge-log\"",
-    "mkdir -p \"$skipper_log_dir\"",
-    "{",
-    "  echo \"--- $(date -u +%Y-%m-%dT%H:%M:%SZ) commit $skipper_sha ---\"",
-    "  eval \"$skipper_cli knowledge extract \\\"$skipper_sha\\\" --repo \\\"$skipper_repo\\\" --workspace \\\"$skipper_workspace\\\"\"",
-    "} >> \"$skipper_log_dir/extract.log\" 2>&1 </dev/null &",
+    "eval \"$skipper_cli knowledge extract \\\"$skipper_sha\\\" --repo \\\"$skipper_repo\\\"\" >/dev/null 2>&1 </dev/null &",
     "disown 2>/dev/null || true",
     END_MARKER,
     "",

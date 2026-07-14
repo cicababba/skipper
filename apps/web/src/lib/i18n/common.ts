@@ -4,15 +4,6 @@
 const en = {
   nav: {
     inbox: "Inbox",
-    wiki: "Wiki",
-    mindMap: "Mind Map",
-    search: "Search",
-    ask: "Ask",
-    ingest: "Ingest",
-    knowledge: "Knowledge",
-    health: "Health",
-    insights: "Insights",
-    modules: "Modules",
     settings: "Settings",
   },
   actions: {
@@ -49,15 +40,6 @@ const en = {
 const it: typeof en = {
   nav: {
     inbox: "Inbox",
-    wiki: "Wiki",
-    mindMap: "Mind Map",
-    search: "Cerca",
-    ask: "Chiedi",
-    ingest: "Ingerisci",
-    knowledge: "Knowledge",
-    health: "Salute",
-    insights: "Insights",
-    modules: "Moduli",
     settings: "Impostazioni",
   },
   actions: {
@@ -94,15 +76,6 @@ const it: typeof en = {
 const fr: typeof en = {
   nav: {
     inbox: "Inbox",
-    wiki: "Wiki",
-    mindMap: "Mind Map",
-    search: "Recherche",
-    ask: "Demander",
-    ingest: "Ingérer",
-    knowledge: "Knowledge",
-    health: "Santé",
-    insights: "Insights",
-    modules: "Modules",
     settings: "Réglages",
   },
   actions: {
@@ -139,15 +112,6 @@ const fr: typeof en = {
 const es: typeof en = {
   nav: {
     inbox: "Inbox",
-    wiki: "Wiki",
-    mindMap: "Mind Map",
-    search: "Buscar",
-    ask: "Preguntar",
-    ingest: "Ingerir",
-    knowledge: "Knowledge",
-    health: "Salud",
-    insights: "Insights",
-    modules: "Módulos",
     settings: "Ajustes",
   },
   actions: {

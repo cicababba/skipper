@@ -54,7 +54,6 @@ declare global {
       isElectron: true;
       platform: NodeJS.Platform;
       getBootstrap: () => Promise<{
-        skipperPath?: string;
         isElectron: true;
         platform: NodeJS.Platform;
       }>;
@@ -65,13 +64,6 @@ declare global {
           projectDir: string,
         ) => Promise<{ ok: boolean; output: string }>;
       };
-      setupSkipper: (parentPath: string) => Promise<{ skipperPath: string }>;
-      moveOrCreateSkipper: (
-        parentPath: string,
-      ) => Promise<{ skipperPath: string; moved: boolean; created: boolean }>;
-      onSkipperMoved: (
-        callback: (info: { skipperPath: string }) => void,
-      ) => () => void;
       /** Resolve a DOM File to its absolute filesystem path (drag-drop). */
       getPathForFile: (file: File) => string;
       fs: {

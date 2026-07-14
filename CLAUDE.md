@@ -27,9 +27,6 @@ skipper/
 │   ├── shared/                 # Types and constants (auth types live here so main + renderer share them)
 │   └── sync/                   # Orchestrator seams kept from the retired Drive engine
 │       └── src/{backend,manifest,types}   # diffFiles + SyncBackend contract, local manifest
-├── skeleton/                   # Workspace template copied to Skipper/ on first run
-│   ├── CLAUDE.md
-│   └── Skills/{start_session,end_session,promote-knowledge}/SKILL.md
 ├── data/                       # Local-dev workspace (legacy artifacts; untouched by the build)
 ├── docs/screenshots/
 ├── pnpm-workspace.yaml
@@ -101,7 +98,7 @@ Gitflow: `main` is release-only (**every push to `main` fires `.github/workflows
 
 ## Important Notes
 
-- In user workspaces, `<Skipper>/.skipper/raw/` holds captured knowledge atoms — user data, never modify or delete it.
+- **No workspace folder** (removed with #39): all app state lives in Electron `userData` (`~/.config/Skipper` on Linux, `%APPDATA%/Skipper` on Windows, `~/Library/Application Support/Skipper` on macOS) — `settings.json`, `knowledge/{pending,rejected,accepted}`, plus the orchestrator files (manifest, plans/, worktrees/, memory/). `<userData>/knowledge/` holds captured knowledge atoms — user data, never modify or delete it. The CLI resolves the same directory itself (no anchor file).
 - LLM credentials come from the user's `claude` CLI auth (default) or the OpenAI key in Settings. Never hardcode keys, never log them.
 - The Electron main on macOS does **not** inherit the user's shell PATH — `apps/desktop/src/main.ts` runs an inline `fix-path` equivalent so that spawning `claude` works regardless of where it's installed. Don't remove it.
 - `node-pty` is loaded with a `try/catch require` because a native-binding load failure must not crash the app — the terminal is optional.

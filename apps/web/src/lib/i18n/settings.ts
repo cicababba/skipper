@@ -43,9 +43,7 @@ const en = {
   },
 
   compile: {
-    title: "Compilation",
-    autoTitle: "Auto-compile after ingest",
-    autoDesc: "Automatically compile the knowledge base after adding new sources.",
+    title: "Knowledge atoms",
     atomsTitle: "Auto-generate atoms from commits",
     atomsDesc: "On each git commit, extract knowledge atoms into the review queue. Turn off to add atoms only manually or from ingested files.",
   },
@@ -153,37 +151,7 @@ const en = {
     },
   },
 
-  location: {
-    title: "Skipper Location",
-    currentPath: "Current path",
-    notSet: "Not set",
-    desc: "Move your Skipper workspace to a different location on disk. If a Skipper already exists, it will be moved (preserving all your data); otherwise a fresh one will be created at the chosen location. Any open terminal sessions will be closed.",
-    change: "Change location…",
-    moved: "Skipper moved successfully.",
-    created: "New Skipper created at the chosen location.",
-    unchanged: "Skipper location unchanged.",
-    moveFailed: "Failed to move Skipper.",
-    confirmMove: "Move Skipper to this location?",
-    confirmCreate: "Create Skipper at this location?",
-    working: "Working…",
-    confirm: "Confirm",
-    cancel: "Cancel",
-  },
 
-  danger: {
-    title: "Danger Zone",
-    wipeTitle: "Wipe All Data",
-    descIntro: "This will permanently delete",
-    sources: "all ingested sources",
-    articles: "all compiled wiki articles",
-    qa: "all Q&A outputs",
-    andThe: "and the",
-    index: "vector search index",
-    noUndo: "This action cannot be undone.",
-    wipedMsg: "All data has been wiped. The knowledge base is empty.",
-    placeholder: 'Type "DELETE" to confirm',
-    wipeButton: "Wipe Everything",
-  },
 };
 
 const it: typeof en = {
@@ -228,9 +196,7 @@ const it: typeof en = {
   },
 
   compile: {
-    title: "Compilazione",
-    autoTitle: "Compilazione automatica dopo l'ingest",
-    autoDesc: "Compila automaticamente la knowledge base dopo l'aggiunta di nuove fonti.",
+    title: "Atom di conoscenza",
     atomsTitle: "Genera atom dai commit",
     atomsDesc: "A ogni commit git, estrae atom di conoscenza nella coda di revisione. Disattiva per aggiungere atom solo manualmente o da file importati.",
   },
@@ -338,37 +304,7 @@ const it: typeof en = {
     },
   },
 
-  location: {
-    title: "Posizione di Skipper",
-    currentPath: "Percorso attuale",
-    notSet: "Non impostato",
-    desc: "Sposta il tuo workspace Skipper in un'altra posizione sul disco. Se un Skipper esiste già, verrà spostato (preservando tutti i tuoi dati); altrimenti ne verrà creato uno nuovo nella posizione scelta. Le sessioni di terminale aperte verranno chiuse.",
-    change: "Cambia posizione…",
-    moved: "Skipper spostato correttamente.",
-    created: "Nuovo Skipper creato nella posizione scelta.",
-    unchanged: "Posizione di Skipper invariata.",
-    moveFailed: "Impossibile spostare Skipper.",
-    confirmMove: "Spostare Skipper in questa posizione?",
-    confirmCreate: "Creare Skipper in questa posizione?",
-    working: "In corso…",
-    confirm: "Conferma",
-    cancel: "Annulla",
-  },
 
-  danger: {
-    title: "Zona pericolosa",
-    wipeTitle: "Cancella tutti i dati",
-    descIntro: "Verranno eliminati definitivamente",
-    sources: "tutte le fonti acquisite",
-    articles: "tutti gli articoli wiki compilati",
-    qa: "tutti gli output Q&A",
-    andThe: "e",
-    index: "l'indice di ricerca vettoriale",
-    noUndo: "Questa azione non può essere annullata.",
-    wipedMsg: "Tutti i dati sono stati cancellati. La knowledge base è vuota.",
-    placeholder: 'Scrivi "DELETE" per confermare',
-    wipeButton: "Cancella tutto",
-  },
 };
 
 const fr: typeof en = {
@@ -413,9 +349,7 @@ const fr: typeof en = {
   },
 
   compile: {
-    title: "Compilation",
-    autoTitle: "Compilation automatique après ingestion",
-    autoDesc: "Compile automatiquement la base de connaissances après l'ajout de nouvelles sources.",
+    title: "Atomes de connaissance",
     atomsTitle: "Générer des atomes depuis les commits",
     atomsDesc: "À chaque commit git, extrait des atomes de connaissance dans la file de revue. Désactivez pour ajouter des atomes uniquement manuellement ou depuis des fichiers importés.",
   },
@@ -523,37 +457,7 @@ const fr: typeof en = {
     },
   },
 
-  location: {
-    title: "Emplacement de Skipper",
-    currentPath: "Chemin actuel",
-    notSet: "Non défini",
-    desc: "Déplacez votre espace de travail Skipper vers un autre emplacement sur le disque. Si un Skipper existe déjà, il sera déplacé (toutes vos données seront préservées) ; sinon, un nouveau sera créé à l'emplacement choisi. Les sessions de terminal ouvertes seront fermées.",
-    change: "Changer d'emplacement…",
-    moved: "Skipper déplacé avec succès.",
-    created: "Nouveau Skipper créé à l'emplacement choisi.",
-    unchanged: "Emplacement de Skipper inchangé.",
-    moveFailed: "Échec du déplacement de Skipper.",
-    confirmMove: "Déplacer Skipper vers cet emplacement ?",
-    confirmCreate: "Créer Skipper à cet emplacement ?",
-    working: "En cours…",
-    confirm: "Confirmer",
-    cancel: "Annuler",
-  },
 
-  danger: {
-    title: "Zone de danger",
-    wipeTitle: "Effacer toutes les données",
-    descIntro: "Cette action supprimera définitivement",
-    sources: "toutes les sources ingérées",
-    articles: "tous les articles wiki compilés",
-    qa: "toutes les sorties Q&A",
-    andThe: "et",
-    index: "l'index de recherche vectorielle",
-    noUndo: "Cette action est irréversible.",
-    wipedMsg: "Toutes les données ont été effacées. La base de connaissances est vide.",
-    placeholder: "Tapez « DELETE » pour confirmer",
-    wipeButton: "Tout effacer",
-  },
 };
 
 const es: typeof en = {
@@ -598,9 +502,7 @@ const es: typeof en = {
   },
 
   compile: {
-    title: "Compilación",
-    autoTitle: "Compilar automáticamente tras la ingesta",
-    autoDesc: "Compila automáticamente la base de conocimiento después de añadir nuevas fuentes.",
+    title: "Átomos de conocimiento",
     atomsTitle: "Generar átomos desde los commits",
     atomsDesc: "En cada commit de git, extrae átomos de conocimiento a la cola de revisión. Desactiva para añadir átomos solo manualmente o desde archivos importados.",
   },
@@ -708,37 +610,7 @@ const es: typeof en = {
     },
   },
 
-  location: {
-    title: "Ubicación de Skipper",
-    currentPath: "Ruta actual",
-    notSet: "Sin definir",
-    desc: "Mueve tu espacio de trabajo Skipper a otra ubicación del disco. Si ya existe un Skipper, se moverá (conservando todos tus datos); de lo contrario, se creará uno nuevo en la ubicación elegida. Las sesiones de terminal abiertas se cerrarán.",
-    change: "Cambiar ubicación…",
-    moved: "Skipper movido correctamente.",
-    created: "Nuevo Skipper creado en la ubicación elegida.",
-    unchanged: "La ubicación de Skipper no ha cambiado.",
-    moveFailed: "No se pudo mover Skipper.",
-    confirmMove: "¿Mover Skipper a esta ubicación?",
-    confirmCreate: "¿Crear Skipper en esta ubicación?",
-    working: "Procesando…",
-    confirm: "Confirmar",
-    cancel: "Cancelar",
-  },
 
-  danger: {
-    title: "Zona de peligro",
-    wipeTitle: "Borrar todos los datos",
-    descIntro: "Esto eliminará permanentemente",
-    sources: "todas las fuentes ingeridas",
-    articles: "todos los artículos wiki compilados",
-    qa: "todas las salidas de Q&A",
-    andThe: "y el",
-    index: "índice de búsqueda vectorial",
-    noUndo: "Esta acción no se puede deshacer.",
-    wipedMsg: "Todos los datos han sido borrados. La base de conocimiento está vacía.",
-    placeholder: 'Escribe "DELETE" para confirmar',
-    wipeButton: "Borrar todo",
-  },
 };
 
 export const settings = { en, it, fr, es };
