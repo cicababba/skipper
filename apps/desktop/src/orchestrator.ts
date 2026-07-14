@@ -60,6 +60,7 @@ import {
   readWorktreeFileVersions,
   resolveBaseRef,
   worktreeDirFor,
+  worktreeStatus,
   writeWorktreeFile,
 } from "./worktrees";
 
@@ -980,6 +981,14 @@ export function initOrchestrator(
       }
     },
   );
+  // Worktree control center (#40): location + liveness for any item with a
+  // worktree, in any lifecycle state — unlike the review-gated diff handlers.
+  ipcMain.handle("skipper:orchestrator:getWorktreeStatus", async (_e, itemId: string) => {
+    const m = await ensureManifest();
+    const item = m.items[itemId];
+    if (!item) return { ok: false as const, error: `unknown item ${itemId}` };
+    return worktreeStatus(item.worktree);
+  });
   // Open the draft PR from human-review, or push a fix round's updates (#11).
   ipcMain.handle("skipper:orchestrator:openPr", async (_e, itemId: string) => {
     await ensureManifest();

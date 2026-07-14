@@ -24,7 +24,7 @@ interface TerminalState {
   sessions: TerminalSession[];
   activeId: string | null;
   panelOpen: boolean;
-  openTerminal: (cwd: string, label: string) => Promise<void>;
+  openTerminal: (cwd: string, label: string, initialCommand?: string) => Promise<void>;
   newTerminal: () => Promise<void>;
   setActive: (id: string) => void;
   closeTerminal: (id: string) => void;
@@ -67,7 +67,7 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const openTerminal = useCallback(
-    async (cwd: string, label: string) => {
+    async (cwd: string, label: string, initialCommand?: string) => {
       const api = terminalApi();
       if (!api) return;
       const { id } = await api.create({ cwd });
@@ -76,6 +76,20 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
         id,
         api.onExit(id, () => removeSession(id)),
       );
+      if (initialCommand) {
+        // Type the command once the shell prompt shows (first output chunk);
+        // fall back to a timer for shells that stay silent until input.
+        let sent = false;
+        const send = () => {
+          if (sent) return;
+          sent = true;
+          unsubData();
+          clearTimeout(timer);
+          api.write(id, initialCommand + "\r");
+        };
+        const unsubData = api.onData(id, send);
+        const timer = setTimeout(send, 500);
+      }
       setSessions((prev) => [...prev, { id, cwd, label }]);
       setActiveId(id);
       setPanelOpen(true);
@@ -83,9 +97,12 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
     [removeSession],
   );
 
-  // No default cwd since the workspace was removed (#39) — the worktree
-  // control center (#40) will wire this to the selected item's worktree.
-  const newTerminal = useCallback(async () => {}, []);
+  // "+" clones the active session's cwd — there is no app-wide default cwd
+  // since the workspace was removed (#39). No-op while the panel is empty.
+  const newTerminal = useCallback(async () => {
+    const current = sessions.find((s) => s.id === activeId) ?? sessions[sessions.length - 1];
+    if (current) await openTerminal(current.cwd, current.label);
+  }, [sessions, activeId, openTerminal]);
 
   const setActive = useCallback((id: string) => {
     setActiveId(id);

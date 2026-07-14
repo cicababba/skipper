@@ -4,6 +4,7 @@
 
 const en = {
   files: {
+    refreshTitle: "Refresh file tree",
     newFileTitle: "New file in selected folder",
     newFolderTitle: "New folder in selected folder",
     newFileIn: "New file in",
@@ -74,6 +75,7 @@ const en = {
 
 const it: typeof en = {
   files: {
+    refreshTitle: "Aggiorna l'albero dei file",
     newFileTitle: "Nuovo file nella cartella selezionata",
     newFolderTitle: "Nuova cartella nella cartella selezionata",
     newFileIn: "Nuovo file in",
@@ -145,6 +147,7 @@ const it: typeof en = {
 
 const fr: typeof en = {
   files: {
+    refreshTitle: "Actualiser l'arborescence",
     newFileTitle: "Nouveau fichier dans le dossier sélectionné",
     newFolderTitle: "Nouveau dossier dans le dossier sélectionné",
     newFileIn: "Nouveau fichier dans",
@@ -217,6 +220,7 @@ const fr: typeof en = {
 
 const es: typeof en = {
   files: {
+    refreshTitle: "Actualizar el árbol de archivos",
     newFileTitle: "Nuevo archivo en la carpeta seleccionada",
     newFolderTitle: "Nueva carpeta en la carpeta seleccionada",
     newFileIn: "Nuevo archivo en",

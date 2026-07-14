@@ -18,6 +18,7 @@ import {
   resolveBaseRef,
   resolveInsideWorktree,
   worktreeDirFor,
+  worktreeStatus,
   writeWorktreeFile,
 } from "./worktrees";
 
@@ -60,6 +61,41 @@ describe("worktreeDirFor / branchFor", () => {
   it("branch matches the reconcile heuristic", () => {
     expect(branchFor(42)).toBe("feature/issue-42");
     expect(/^(?:feature|fix)\/issue-(\d+)\b/.exec(branchFor(42))?.[1]).toBe("42");
+  });
+});
+
+describe("worktreeStatus", () => {
+  it("errors when no worktree is recorded", async () => {
+    await expect(worktreeStatus(undefined)).resolves.toEqual({
+      ok: false,
+      error: "no worktree recorded for item",
+    });
+  });
+
+  it("reports a live directory with its record fields", async () => {
+    await expect(
+      worktreeStatus({ path: dir, branch: "feature/issue-7", sessionId: "abc-123" }),
+    ).resolves.toEqual({
+      ok: true,
+      path: dir,
+      branch: "feature/issue-7",
+      sessionId: "abc-123",
+      present: true,
+    });
+  });
+
+  it("reports present=false for a pruned path", async () => {
+    await expect(
+      worktreeStatus({ path: join(dir, "gone"), branch: "feature/issue-7" }),
+    ).resolves.toMatchObject({ ok: true, present: false });
+  });
+
+  it("reports present=false when the path is a file, not a directory", async () => {
+    const filePath = join(dir, "not-a-dir");
+    await writeFile(filePath, "");
+    await expect(
+      worktreeStatus({ path: filePath, branch: "feature/issue-7" }),
+    ).resolves.toMatchObject({ ok: true, present: false });
   });
 });
 

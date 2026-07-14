@@ -18,6 +18,7 @@ import type {
   UpdatePlanResult,
   WorktreeChangesResult,
   WorktreeFileResult,
+  WorktreeStatusResult,
 } from "@skipper/shared";
 
 interface GitOpResult {
@@ -159,6 +160,8 @@ contextBridge.exposeInMainWorld("skipper", {
       ipcRenderer.invoke("skipper:orchestrator:readWorktreeFile", itemId, path, oldPath),
     saveWorktreeFile: (itemId: string, path: string, content: string): Promise<SaveWorktreeFileResult> =>
       ipcRenderer.invoke("skipper:orchestrator:saveWorktreeFile", itemId, path, content),
+    getWorktreeStatus: (itemId: string): Promise<WorktreeStatusResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:getWorktreeStatus", itemId),
     onStateChanged: (callback: (state: OrchestratorState) => void) => {
       const handler = (_e: unknown, state: OrchestratorState) => callback(state);
       ipcRenderer.on("skipper:orchestrator:stateChanged", handler);

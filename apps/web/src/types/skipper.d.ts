@@ -20,6 +20,7 @@ import type {
   UpdatePlanResult,
   WorktreeChangesResult,
   WorktreeFileResult,
+  WorktreeStatusResult,
 } from "@skipper/shared";
 
 interface FsEntry {
@@ -183,6 +184,7 @@ declare global {
           path: string,
           content: string,
         ) => Promise<SaveWorktreeFileResult>;
+        getWorktreeStatus: (itemId: string) => Promise<WorktreeStatusResult>;
         onStateChanged: (callback: (state: OrchestratorState) => void) => () => void;
       };
       /** Coding runner progress stream (#9). */

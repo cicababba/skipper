@@ -3,7 +3,12 @@
 
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve, normalize, sep } from "node:path";
-import type { RepoRef, WorktreeFileChange, WorktreeFileContents } from "@skipper/shared";
+import type {
+  RepoRef,
+  WorktreeFileChange,
+  WorktreeFileContents,
+  WorktreeStatusResult,
+} from "@skipper/shared";
 import type { DiffStats } from "@skipper/core";
 import { runGit } from "./git";
 import { withAskpass } from "./repo-links";
@@ -20,6 +25,21 @@ export function worktreeDirFor(root: string, repo: RepoRef, issueNumber: number)
 /** Must match the reconcile PR-linking heuristic (reconcile.ts BRANCH_ISSUE_RE). */
 export function branchFor(issueNumber: number): string {
   return `feature/issue-${issueNumber}`;
+}
+
+/** Location + on-disk liveness of an item's worktree record (control center, #40). */
+export async function worktreeStatus(
+  worktree: { path: string; branch: string; sessionId?: string } | undefined,
+): Promise<WorktreeStatusResult> {
+  if (!worktree?.path) return { ok: false, error: "no worktree recorded for item" };
+  const alive = await stat(worktree.path).catch(() => null);
+  return {
+    ok: true,
+    path: worktree.path,
+    branch: worktree.branch,
+    sessionId: worktree.sessionId,
+    present: alive?.isDirectory() ?? false,
+  };
 }
 
 /** git fetch origin; on failure with a token, retry once under GIT_ASKPASS. */
