@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   ChevronRight,
   Folder,
@@ -12,12 +11,7 @@ import {
   Trash2,
   ExternalLink,
   GitBranch,
-  Share2,
-  Download,
-  Loader2,
-  Copy,
-  Check,
-  X,
+  RefreshCw,
 } from "lucide-react";
 import { useT } from "@/lib/app-i18n";
 import { FileIcon } from "./file-icon";
@@ -32,17 +26,16 @@ interface FsEntry {
 
 interface FileTreeProps {
   rootPath: string;
+  rootLabel: string;
+  onOpenFile: (path: string) => void;
 }
 
 type CreateKind = "file" | "dir";
 
-export function FileTree({ rootPath }: FileTreeProps) {
-  const router = useRouter();
+export function FileTree({ rootPath, rootLabel, onOpenFile }: FileTreeProps) {
   const { t } = useT();
 
-  const [expanded, setExpanded] = useState<Set<string>>(
-    new Set([rootPath, `${rootPath}/Projects`]),
-  );
+  const [expanded, setExpanded] = useState<Set<string>>(new Set([rootPath]));
   const [refreshKey, setRefreshKey] = useState(0);
   // selectedPath can be a file or a directory. The "effective parent"
   // for creation = selectedPath if it's a directory, else its parent,
@@ -62,24 +55,6 @@ export function FileTree({ rootPath }: FileTreeProps) {
     name: string;
     isDir: boolean;
   } | null>(null);
-  const [session, setSession] = useState<{
-    mode: "save" | "resume";
-    project: string;
-    busy: boolean;
-    output: string;
-  } | null>(null);
-
-  async function runSession(mode: "save" | "resume", path: string, name: string) {
-    if (typeof window === "undefined" || !window.skipper?.session) return;
-    setSession({ mode, project: name, busy: true, output: "" });
-    try {
-      const r = await window.skipper.session.run(mode, path);
-      setSession({ mode, project: name, busy: false, output: r.output });
-    } catch (e) {
-      setSession({ mode, project: name, busy: false, output: e instanceof Error ? e.message : "Failed" });
-    }
-  }
-
   const toggle = useCallback((path: string) => {
     setExpanded((s) => {
       const next = new Set(s);
@@ -94,27 +69,7 @@ export function FileTree({ rootPath }: FileTreeProps) {
     setSelectedIsDir(isDir);
   }, []);
 
-  const openFile = useCallback(
-    (path: string) => {
-      router.push(`/editor?path=${encodeURIComponent(path)}`);
-    },
-    [router],
-  );
-
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
-
-  // A directory that's a direct child of Projects/ (a project root).
-  const isProjectDir = useCallback(
-    (p: string): boolean => {
-      const norm = p.replace(/\\/g, "/");
-      const base = `${rootPath.replace(/\\/g, "/")}/Projects/`;
-      if (!norm.startsWith(base)) return false;
-      const rest = norm.slice(base.length);
-      return rest.length > 0 && !rest.includes("/");
-    },
-    [rootPath],
-  );
-
 
   // Auto refresh when window gains focus
   useEffect(() => {
@@ -123,15 +78,6 @@ export function FileTree({ rootPath }: FileTreeProps) {
     }
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [refresh]);
-
-  // Auto refresh when the native file watcher reports a change
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.skipper?.fs?.onChange) {
-      return;
-    }
-    const off = window.skipper.fs.onChange(refresh);
-    return off;
   }, [refresh]);
 
   // Dismiss context menu on outside click or Escape
@@ -231,9 +177,10 @@ export function FileTree({ rootPath }: FileTreeProps) {
       }
       setCreating(null);
       setCreateError(null);
-      // File watcher will auto-refresh. Open the new file in the editor.
+      // No file watcher anymore (#42) — re-read explicitly, then open the file.
+      refresh();
       if (creating.kind === "file") {
-        router.push(`/editor?path=${encodeURIComponent(fullPath)}`);
+        onOpenFile(fullPath);
       }
     } catch (err) {
       setCreateError(
@@ -244,17 +191,24 @@ export function FileTree({ rootPath }: FileTreeProps) {
 
   const parentLabel = creating
     ? creating.parent === rootPath
-      ? "Skipper"
+      ? rootLabel
       : creating.parent.replace(rootPath + "/", "")
     : "";
 
   return (
-    <div className="flex-shrink-0 border-b border-sidebar-border">
+    <div className="h-full flex flex-col min-h-0">
       <div className="px-4 py-2 flex items-center justify-between">
-        <span className="text-[10px] font-semibold text-muted/60 uppercase tracking-wider">
-          Skipper
+        <span className="text-[10px] font-semibold text-muted/60 uppercase tracking-wider truncate">
+          {rootLabel}
         </span>
         <div className="flex items-center gap-0.5">
+          <button
+            onClick={refresh}
+            className="p-1 text-muted/40 hover:text-foreground hover:bg-card rounded transition-colors"
+            title={t.tree.files.refreshTitle}
+          >
+            <RefreshCw size={12} />
+          </button>
           <button
             onClick={() => startCreate("file")}
             className="p-1 text-muted/40 hover:text-foreground hover:bg-card rounded transition-colors"
@@ -285,14 +239,14 @@ export function FileTree({ rootPath }: FileTreeProps) {
         />
       )}
 
-      <div className="max-h-[300px] overflow-y-auto pb-2 pr-1">
+      <div className="flex-1 min-h-0 overflow-y-auto pb-2 pr-1">
         <TreeNode
           path={rootPath}
-          name="Skipper"
+          name={rootLabel}
           depth={0}
           expanded={expanded}
           onToggle={toggle}
-          onOpenFile={openFile}
+          onOpenFile={onOpenFile}
           onSelect={selectEntry}
           onContextMenu={openContextMenu}
           onRenameConfirm={handleRename}
@@ -313,7 +267,7 @@ export function FileTree({ rootPath }: FileTreeProps) {
             contextMenu.isDir
               ? undefined
               : () => {
-                  openFile(contextMenu.path);
+                  onOpenFile(contextMenu.path);
                   setContextMenu(null);
                 }
           }
@@ -326,92 +280,8 @@ export function FileTree({ rootPath }: FileTreeProps) {
             setContextMenu(null);
             handleDelete(path, name, isDir);
           }}
-          onSessionSave={
-            contextMenu.isDir && isProjectDir(contextMenu.path)
-              ? () => {
-                  const { path, name } = contextMenu;
-                  setContextMenu(null);
-                  void runSession("save", path, name);
-                }
-              : undefined
-          }
-          onSessionResume={
-            contextMenu.isDir && isProjectDir(contextMenu.path)
-              ? () => {
-                  const { path, name } = contextMenu;
-                  setContextMenu(null);
-                  void runSession("resume", path, name);
-                }
-              : undefined
-          }
         />
       )}
-      {session && <SessionDialog session={session} onClose={() => setSession(null)} />}
-    </div>
-  );
-}
-
-function SessionDialog({
-  session,
-  onClose,
-}: {
-  session: { mode: "save" | "resume"; project: string; busy: boolean; output: string };
-  onClose: () => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const title = session.mode === "save" ? "Save session for another machine" : "Resume session here";
-  return (
-    <div
-      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 p-6"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !session.busy) onClose();
-      }}
-    >
-      <div className="w-[640px] max-w-[92vw] max-h-[82vh] rounded-2xl bg-card border border-border shadow-2xl flex flex-col overflow-hidden">
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-border">
-          {session.mode === "save" ? <Share2 size={16} className="text-accent" /> : <Download size={16} className="text-accent" />}
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold leading-tight">{title}</h2>
-            <p className="text-[11px] text-muted font-mono truncate">{session.project}</p>
-          </div>
-          {!session.busy && (
-            <button onClick={onClose} className="ml-auto p-1 rounded text-muted hover:text-foreground hover:bg-card-hover">
-              <X size={14} />
-            </button>
-          )}
-        </div>
-        <div className="flex-1 overflow-auto p-5">
-          {session.busy ? (
-            <div className="flex items-center gap-2 text-sm text-muted">
-              <Loader2 size={16} className="animate-spin" />
-              {session.mode === "save" ? "Generating the session summary…" : "Building the resumption briefing…"}
-            </div>
-          ) : (
-            <pre className="text-[12px] leading-relaxed whitespace-pre-wrap font-mono text-foreground/90">{session.output}</pre>
-          )}
-        </div>
-        {!session.busy && (
-          <div className="flex items-center gap-2 px-5 py-3 border-t border-border">
-            {session.mode === "resume" && (
-              <button
-                onClick={() => {
-                  navigator.clipboard?.writeText(session.output).then(() => {
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
-                  });
-                }}
-                className="flex items-center gap-1.5 text-xs font-semibold text-background bg-accent hover:bg-accent-hover rounded-lg px-3.5 py-2 transition-colors"
-              >
-                {copied ? <Check size={13} /> : <Copy size={13} />}
-                {copied ? "Copied" : "Copy briefing"}
-              </button>
-            )}
-            <button onClick={onClose} className="text-xs font-medium text-muted hover:text-foreground border border-border hover:border-accent/40 rounded-lg px-3.5 py-2 transition-colors">
-              Close
-            </button>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -423,19 +293,9 @@ interface ContextMenuProps {
   onOpen?: () => void;
   onRename: () => void;
   onDelete: () => void;
-  onSessionSave?: () => void;
-  onSessionResume?: () => void;
 }
 
-function ContextMenu({
-  x,
-  y,
-  onOpen,
-  onRename,
-  onDelete,
-  onSessionSave,
-  onSessionResume,
-}: ContextMenuProps) {
+function ContextMenu({ x, y, onOpen, onRename, onDelete }: ContextMenuProps) {
   const { t } = useT();
   // Clamp within viewport so it doesn't clip on the right/bottom
   const MENU_W = 220;
@@ -455,23 +315,6 @@ function ContextMenu({
             icon={<ExternalLink size={12} />}
             label={t.tree.files.open}
             onClick={onOpen}
-          />
-          <div className="my-1 h-px bg-border/60" />
-        </>
-      )}
-      {onSessionSave && (
-        <MenuItem
-          icon={<Share2 size={12} />}
-          label="Save session for another machine"
-          onClick={onSessionSave}
-        />
-      )}
-      {onSessionResume && (
-        <>
-          <MenuItem
-            icon={<Download size={12} />}
-            label="Resume session here"
-            onClick={onSessionResume}
           />
           <div className="my-1 h-px bg-border/60" />
         </>

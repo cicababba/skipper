@@ -196,6 +196,17 @@ const en = {
     agentReview: "Agent review",
     rounds: "rounds",
   },
+  worktree: {
+    detailsTab: "Details",
+    worktreeTab: "Worktree",
+    openTerminal: "Open terminal",
+    openClaude: "Open Claude here",
+    resumeClaude: "Resume Claude session",
+    noWorktree: "No worktree recorded for this item.",
+    pruned: "The worktree folder is no longer on disk.",
+    statusFailed: "Could not read the worktree status",
+    pickFile: "Select a file to open.",
+  },
 };
 
 const it: typeof en = {
@@ -392,6 +403,17 @@ const it: typeof en = {
     leftReview: "Questo item non è più in review umana — modifica disabilitata.",
     agentReview: "Review agente",
     rounds: "giri",
+  },
+  worktree: {
+    detailsTab: "Dettagli",
+    worktreeTab: "Worktree",
+    openTerminal: "Apri terminale",
+    openClaude: "Apri Claude qui",
+    resumeClaude: "Riprendi la sessione Claude",
+    noWorktree: "Nessun worktree registrato per questo item.",
+    pruned: "La cartella del worktree non è più su disco.",
+    statusFailed: "Impossibile leggere lo stato del worktree",
+    pickFile: "Seleziona un file da aprire.",
   },
 };
 
@@ -591,6 +613,17 @@ const fr: typeof en = {
     agentReview: "Review agent",
     rounds: "tours",
   },
+  worktree: {
+    detailsTab: "Détails",
+    worktreeTab: "Worktree",
+    openTerminal: "Ouvrir un terminal",
+    openClaude: "Ouvrir Claude ici",
+    resumeClaude: "Reprendre la session Claude",
+    noWorktree: "Aucun worktree enregistré pour cet élément.",
+    pruned: "Le dossier du worktree n'est plus sur le disque.",
+    statusFailed: "Impossible de lire l'état du worktree",
+    pickFile: "Sélectionnez un fichier à ouvrir.",
+  },
 };
 
 const es: typeof en = {
@@ -787,6 +820,17 @@ const es: typeof en = {
     leftReview: "Este elemento ya no está en revisión humana — edición desactivada.",
     agentReview: "Review del agente",
     rounds: "rondas",
+  },
+  worktree: {
+    detailsTab: "Detalles",
+    worktreeTab: "Worktree",
+    openTerminal: "Abrir terminal",
+    openClaude: "Abrir Claude aquí",
+    resumeClaude: "Reanudar la sesión de Claude",
+    noWorktree: "No hay worktree registrado para este elemento.",
+    pruned: "La carpeta del worktree ya no está en el disco.",
+    statusFailed: "No se pudo leer el estado del worktree",
+    pickFile: "Selecciona un archivo para abrir.",
   },
 };
 

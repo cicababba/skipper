@@ -255,6 +255,13 @@ export type WorktreeFileResult =
 
 export type SaveWorktreeFileResult = { ok: true } | { ok: false; error: string };
 
+// Worktree control center (#40): worktree location + liveness for any tracked
+// item that has one, regardless of lifecycle state.
+
+export type WorktreeStatusResult =
+  | { ok: true; path: string; branch: string; sessionId?: string; present: boolean }
+  | { ok: false; error: string };
+
 export type RepoLinkResult = { ok: true; localPath: string } | { ok: false; error: string };
 
 export type RepoUnlinkResult = { ok: true } | { ok: false; error: string };
