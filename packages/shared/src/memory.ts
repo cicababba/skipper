@@ -5,6 +5,9 @@
 import type { RepoRef } from "./inbox";
 import type { StoredPlan } from "./plan";
 
+/** Which run consulted a memory — planner or coder (#46). */
+export type MemoryPhase = "planning" | "coding";
+
 /**
  * One completed issue captured as problema → piano → diff → esito.
  * Written on merge (capture from day 1); retrieval arrives with v2.

@@ -11,6 +11,7 @@ import { repoKey } from "@/lib/inbox/model";
 import { bandClasses, pct, ReportBody } from "@/components/confidence-popover";
 import { EventConsole } from "@/components/event-console";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { MemoriesCard } from "./memories-card";
 import {
   applySection,
   draftFor,
@@ -457,6 +458,12 @@ export function PlanDetailView() {
               <p className="text-sm text-muted">{t.inbox.popover.reportUnavailable}</p>
             )}
           </Section>
+          <MemoriesCard
+            itemId={id}
+            phase="planning"
+            refs={item.usedMemory?.planning}
+            title={p.sections.memories}
+          />
         </div>
       )}
     </div>

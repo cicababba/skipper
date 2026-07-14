@@ -6,14 +6,17 @@ import type {
   LifecycleState,
   FollowCandidatesResult,
   ListReposResult,
+  MemoryPhase,
   OrchestratorState,
   OrchestratorTransitionResult,
   RepoIntakeSettings,
   RepoLinkResult,
+  RepoRef,
   RepoSettingsRow,
   RepoUnlinkResult,
   ResumeRiteAction,
   SaveWorktreeFileResult,
+  SolutionRecord,
   StoredPlan,
   UpdatePlanResult,
   WorktreeChangesResult,
@@ -191,6 +194,21 @@ contextBridge.exposeInMainWorld("skipper", {
       ipcRenderer.on(channel, handler);
       return () => ipcRenderer.off(channel, handler);
     },
+  },
+
+  // Solutions memory (issue #46): the "memories used" card reads records + votes.
+  memory: {
+    get: (id: string): Promise<SolutionRecord | null> =>
+      ipcRenderer.invoke("skipper:memory:get", id),
+    list: (repo: RepoRef): Promise<SolutionRecord[]> =>
+      ipcRenderer.invoke("skipper:memory:list", repo),
+    feedback: (
+      itemId: string,
+      phase: MemoryPhase,
+      id: string,
+      vote: "up" | "down" | null,
+    ): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("skipper:memory:feedback", itemId, phase, id, vote),
   },
 
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke("skipper:openExternal", url),

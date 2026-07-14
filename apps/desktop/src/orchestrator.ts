@@ -12,6 +12,11 @@ import {
   resolveGate,
   DEFAULT_ORCHESTRATOR_SETTINGS,
   IssuePlanSchema,
+  readSolutionRecord,
+  writeSolutionRecord,
+  listSolutionRecords,
+  memoryFileName,
+  applyFeedbackVote,
   type OrchestratorManifest,
 } from "@skipper/core";
 import { resolveRepoIntakeSettings } from "@skipper/shared";
@@ -25,6 +30,7 @@ import type {
   FollowCandidatesResult,
   Issue,
   LifecycleState,
+  MemoryPhase,
   OrchestratorAccountState,
   OrchestratorState,
   PrReviewComment,
@@ -140,6 +146,7 @@ function emitCodingEvent(itemId: string, event: CodingEvent): void {
   if (event.kind === "status" && event.phase === "fetching") {
     codingEvents.set(itemId, []);
     codingEventSeq.set(itemId, 0);
+    void resetMemoryUse(itemId, "coding");
   }
   const seq = codingEventSeq.get(itemId) ?? 0;
   codingEventSeq.set(itemId, seq + 1);
@@ -148,6 +155,7 @@ function emitCodingEvent(itemId: string, event: CodingEvent): void {
   buffer.push(envelope);
   if (buffer.length > CODING_EVENT_BUFFER_MAX) buffer.shift();
   codingEvents.set(itemId, buffer);
+  if (isMemoryGet(event)) void recordMemoryUse(itemId, "coding", event.detail);
   const win = getWindow();
   if (win && !win.isDestroyed()) {
     win.webContents.send(`skipper:coding:event:${itemId}`, envelope);
@@ -164,6 +172,7 @@ function emitPlanningEvent(itemId: string, event: CodingEvent): void {
   if (event.kind === "status" && event.phase === "agent-start") {
     planningEvents.set(itemId, []);
     planningEventSeq.set(itemId, 0);
+    void resetMemoryUse(itemId, "planning");
   }
   const seq = planningEventSeq.get(itemId) ?? 0;
   planningEventSeq.set(itemId, seq + 1);
@@ -172,10 +181,49 @@ function emitPlanningEvent(itemId: string, event: CodingEvent): void {
   buffer.push(envelope);
   if (buffer.length > CODING_EVENT_BUFFER_MAX) buffer.shift();
   planningEvents.set(itemId, buffer);
+  if (isMemoryGet(event)) void recordMemoryUse(itemId, "planning", event.detail);
   const win = getWindow();
   if (win && !win.isDestroyed()) {
     win.webContents.send(`skipper:planning:event:${itemId}`, envelope);
   }
+}
+
+// "Memories used" (#46): record which solutions a run fetched in full via
+// get_memory — the ground truth for the card, persisted on the tracked item so
+// it survives restart. search_memory queries surface only in the live console.
+const MEMORY_GET_TOOL_SUFFIX = "__get_memory";
+
+/** Ground-truth signal: a get_memory tool call fetched a full record. */
+function isMemoryGet(event: CodingEvent): event is CodingEvent & { detail: string } {
+  return (
+    event.kind === "tool-use" &&
+    event.tool.endsWith(MEMORY_GET_TOOL_SUFFIX) &&
+    typeof event.detail === "string" &&
+    event.detail.length > 0
+  );
+}
+
+/** Append a fetched memory id to the item's phase list (deduped), then persist. */
+async function recordMemoryUse(itemId: string, phase: MemoryPhase, id: string): Promise<void> {
+  const m = await ensureManifest();
+  const item = m.items[itemId];
+  if (!item) return;
+  const used = item.usedMemory ?? {};
+  const list = used[phase] ?? [];
+  if (list.some((ref) => ref.id === id)) return;
+  item.usedMemory = { ...used, [phase]: [...list, { id }] };
+  await saveOrchestratorManifest(deps!.manifestFilePath, m);
+  broadcast();
+}
+
+/** Clear a phase's used-memory list at the start of a fresh run. */
+async function resetMemoryUse(itemId: string, phase: MemoryPhase): Promise<void> {
+  const m = await ensureManifest();
+  const item = m.items[itemId];
+  if (!item?.usedMemory?.[phase]?.length) return;
+  item.usedMemory = { ...item.usedMemory, [phase]: [] };
+  await saveOrchestratorManifest(deps!.manifestFilePath, m);
+  broadcast();
 }
 
 function patchAccount(accountId: string, patch: Partial<OrchestratorAccountState>): void {
@@ -932,6 +980,44 @@ export function initOrchestrator(
   ipcMain.handle("skipper:planning:getEvents", (_e, itemId: string) => {
     return planningEvents.get(itemId) ?? [];
   });
+  // Solutions memory surface (#46). get/feedback drive the "memories used" card;
+  // list is the read side #47's browser will consume.
+  ipcMain.handle("skipper:memory:get", async (_e, id: string) => {
+    return readSolutionRecord(deps!.memoryDir, memoryFileName(id));
+  });
+  ipcMain.handle("skipper:memory:list", async (_e, repo: RepoRef) => {
+    const key = repoKey(repo.owner, repo.name);
+    const entries = await listSolutionRecords(deps!.memoryDir);
+    return entries
+      .map((e) => e.record)
+      .filter((r) => repoKey(r.repo.owner, r.repo.name) === key);
+  });
+  // 👍/👎 (#46): move the record's aggregate counters by the delta between the
+  // item entry's old vote and the new one, and store the new vote as the local
+  // idempotency anchor. Feedback is query-time only — no reindex.
+  ipcMain.handle(
+    "skipper:memory:feedback",
+    async (_e, itemId: string, phase: MemoryPhase, id: string, vote: "up" | "down" | null) => {
+      const m = await ensureManifest();
+      const entry = m.items[itemId]?.usedMemory?.[phase]?.find((ref) => ref.id === id);
+      if (!entry) return { ok: false as const, error: "used-memory entry not found" };
+      const record = await readSolutionRecord(deps!.memoryDir, memoryFileName(id));
+      if (!record) return { ok: false as const, error: `no memory record for id "${id}"` };
+      const oldVote = entry.vote;
+      if (oldVote === (vote ?? undefined)) return { ok: true as const };
+      record.feedback = applyFeedbackVote(record.feedback, oldVote, vote);
+      try {
+        await writeSolutionRecord(deps!.memoryDir, record);
+      } catch (err) {
+        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+      }
+      if (vote) entry.vote = vote;
+      else delete entry.vote;
+      await saveOrchestratorManifest(deps!.manifestFilePath, m);
+      broadcast();
+      return { ok: true as const };
+    },
+  );
   // Pre-PR diff review (#14). The human-review gate bounds what the renderer
   // can reach: only worktrees of items the user is actively reviewing.
   async function reviewableWorktree(

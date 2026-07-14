@@ -136,6 +136,7 @@ const en = {
       risks: "Risks",
       openQuestions: "Open questions",
       confidence: "Confidence",
+      memories: "Memories used",
     },
     edit: "Edit",
     save: "Save",
@@ -158,6 +159,12 @@ const en = {
     finishEditing: "Finish editing first",
     saveFailed: "Could not save the plan",
     readOnly: "Read-only — the plan is only editable at the gate.",
+    memories: {
+      consulted: "Memories consulted",
+      loadFailed: "Could not load this memory.",
+      helpful: "Mark helpful",
+      notHelpful: "Mark not helpful",
+    },
   },
   console: {
     waiting: "Waiting for the agent…",
@@ -344,6 +351,7 @@ const it: typeof en = {
       risks: "Rischi",
       openQuestions: "Domande aperte",
       confidence: "Confidence",
+      memories: "Memorie usate",
     },
     edit: "Modifica",
     save: "Salva",
@@ -366,6 +374,12 @@ const it: typeof en = {
     finishEditing: "Prima termina la modifica",
     saveFailed: "Impossibile salvare il piano",
     readOnly: "Sola lettura — il piano è modificabile solo al gate.",
+    memories: {
+      consulted: "Memorie consultate",
+      loadFailed: "Impossibile caricare questa memoria.",
+      helpful: "Segna utile",
+      notHelpful: "Segna non utile",
+    },
   },
   console: {
     waiting: "In attesa dell'agente…",
@@ -552,6 +566,7 @@ const fr: typeof en = {
       risks: "Risques",
       openQuestions: "Questions ouvertes",
       confidence: "Confiance",
+      memories: "Mémoires utilisées",
     },
     edit: "Modifier",
     save: "Enregistrer",
@@ -574,6 +589,12 @@ const fr: typeof en = {
     finishEditing: "Terminez d'abord la modification",
     saveFailed: "Impossible d'enregistrer le plan",
     readOnly: "Lecture seule — le plan n'est modifiable qu'à la validation.",
+    memories: {
+      consulted: "Mémoires consultées",
+      loadFailed: "Impossible de charger cette mémoire.",
+      helpful: "Marquer utile",
+      notHelpful: "Marquer non utile",
+    },
   },
   console: {
     waiting: "En attente de l'agent…",
@@ -761,6 +782,7 @@ const es: typeof en = {
       risks: "Riesgos",
       openQuestions: "Preguntas abiertas",
       confidence: "Confianza",
+      memories: "Memorias usadas",
     },
     edit: "Editar",
     save: "Guardar",
@@ -783,6 +805,12 @@ const es: typeof en = {
     finishEditing: "Termina la edición primero",
     saveFailed: "No se pudo guardar el plan",
     readOnly: "Solo lectura — el plan solo se puede editar en la validación.",
+    memories: {
+      consulted: "Memorias consultadas",
+      loadFailed: "No se pudo cargar esta memoria.",
+      helpful: "Marcar útil",
+      notHelpful: "Marcar no útil",
+    },
   },
   console: {
     waiting: "Esperando al agente…",

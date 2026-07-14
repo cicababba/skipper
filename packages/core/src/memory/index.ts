@@ -14,4 +14,4 @@ export { buildEmbedText, indexSolutionRecord, reconcileMemoryIndex } from "./ind
 export type { ReconcileResult } from "./indexer";
 export { searchMemory } from "./search";
 export type { MemoryHit, SearchMemoryOptions } from "./search";
-export { recencyWeight, feedbackWeight } from "./ranking";
+export { recencyWeight, feedbackWeight, applyFeedbackVote } from "./ranking";

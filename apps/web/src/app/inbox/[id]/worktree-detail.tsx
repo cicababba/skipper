@@ -19,8 +19,10 @@ import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useTerminal } from "@/lib/terminal-context";
 import { useT } from "@/lib/app-i18n";
 import { repoKey } from "@/lib/inbox/model";
+import { EventConsole } from "@/components/event-console";
 import { FileTree } from "@/components/file-tree";
 import { StateBadge } from "../state-badge";
+import { MemoriesCard } from "./memories-card";
 import { WorktreeFileView } from "./worktree-file-view";
 
 type StatusState =
@@ -155,6 +157,25 @@ export function WorktreeDetailView() {
               {ready.sessionId ? w.resumeClaude : w.openClaude}
             </button>
           </div>
+
+          <div className="shrink-0">
+            <MemoriesCard
+              itemId={id}
+              phase="coding"
+              refs={item.usedMemory?.coding}
+              title={t.inbox.plan.memories.consulted}
+            />
+          </div>
+
+          {window.skipper && (
+            <div className="shrink-0">
+              <EventConsole
+                itemId={id}
+                getEvents={window.skipper.coding.getEvents}
+                onEvent={window.skipper.coding.onEvent}
+              />
+            </div>
+          )}
 
           <div className="flex-1 min-h-0 flex rounded-lg border border-border overflow-hidden">
             <div className="w-64 shrink-0 border-r border-border bg-sidebar min-h-0">

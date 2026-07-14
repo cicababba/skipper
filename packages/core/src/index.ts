@@ -120,6 +120,7 @@ export {
   searchMemory,
   recencyWeight,
   feedbackWeight,
+  applyFeedbackVote,
 } from "./memory";
 export type { SolutionRecordEntry, ReconcileResult, MemoryHit, SearchMemoryOptions } from "./memory";
 

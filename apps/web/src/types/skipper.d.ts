@@ -8,14 +8,17 @@ import type {
   LifecycleState,
   FollowCandidatesResult,
   ListReposResult,
+  MemoryPhase,
   OrchestratorState,
   OrchestratorTransitionResult,
   RepoIntakeSettings,
   RepoLinkResult,
+  RepoRef,
   RepoSettingsRow,
   RepoUnlinkResult,
   ResumeRiteAction,
   SaveWorktreeFileResult,
+  SolutionRecord,
   StoredPlan,
   UpdatePlanResult,
   WorktreeChangesResult,
@@ -196,6 +199,17 @@ declare global {
       planning: {
         getEvents: (itemId: string) => Promise<CodingEventEnvelope[]>;
         onEvent: (itemId: string, callback: (envelope: CodingEventEnvelope) => void) => () => void;
+      };
+      /** Solutions memory — "memories used" card + 👍/👎 (#46). */
+      memory: {
+        get: (id: string) => Promise<SolutionRecord | null>;
+        list: (repo: RepoRef) => Promise<SolutionRecord[]>;
+        feedback: (
+          itemId: string,
+          phase: MemoryPhase,
+          id: string,
+          vote: "up" | "down" | null,
+        ) => Promise<{ ok: boolean; error?: string }>;
       };
       updates: {
         getState: () => Promise<UpdateState>;
