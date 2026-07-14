@@ -56,16 +56,6 @@ contextBridge.exposeInMainWorld("skipper", {
     run: (mode: "save" | "resume", projectDir: string): Promise<{ ok: boolean; output: string }> =>
       ipcRenderer.invoke("skipper:session:run", mode, projectDir),
   },
-  setupSkipper: (parentPath: string) =>
-    ipcRenderer.invoke("skipper:setupSkipper", parentPath),
-  moveOrCreateSkipper: (parentPath: string) =>
-    ipcRenderer.invoke("skipper:moveOrCreateSkipper", parentPath),
-  onSkipperMoved: (callback: (info: { skipperPath: string }) => void) => {
-    const handler = (_e: unknown, info: { skipperPath: string }) =>
-      callback(info);
-    ipcRenderer.on("skipper:skipperMoved", handler);
-    return () => ipcRenderer.off("skipper:skipperMoved", handler);
-  },
 
   // File system
   fs: {

@@ -83,13 +83,9 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
     [removeSession],
   );
 
-  const newTerminal = useCallback(async () => {
-    if (typeof window === "undefined" || !window.skipper) return;
-    const bootstrap = await window.skipper.getBootstrap();
-    const cwd = bootstrap.skipperPath;
-    if (!cwd) return;
-    await openTerminal(cwd, cwd.split(/[/\\]/).pop() || "shell");
-  }, [openTerminal]);
+  // No default cwd since the workspace was removed (#39) — the worktree
+  // control center (#40) will wire this to the selected item's worktree.
+  const newTerminal = useCallback(async () => {}, []);
 
   const setActive = useCallback((id: string) => {
     setActiveId(id);

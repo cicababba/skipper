@@ -12,7 +12,7 @@ import {
   safeStorage,
 } from "electron";
 import { createServer } from "node:net";
-import { join, dirname, resolve, sep, basename } from "node:path";
+import { join, dirname, resolve, sep } from "node:path";
 import {
   existsSync,
   mkdirSync,
@@ -20,11 +20,8 @@ import {
   writeFileSync,
   readdirSync,
   statSync,
-  cpSync,
   renameSync,
   rmSync,
-  watch,
-  type FSWatcher,
 } from "node:fs";
 import { execSync, spawn } from "node:child_process";
 import { AuthManager } from "./auth";
@@ -169,63 +166,10 @@ let currentPort: number | null = null;
 let lastServerOutput = "";
 let authManager: AuthManager | null = null;
 
-// Core workspace dirs — created for every install. Projects/ belongs to the
-// Dev module (created lazily when the module is entitled) and isn't
-// scaffolded for source installs. It stays in the protected list so it can't
-// be deleted/renamed from the file tree once it exists.
-const CORE_SUBDIRS = [
-  "Business",
-  "Context",
-  "Daily",
-  "Library",
-  "Skills",
-];
-const SKIPPER_SUBDIRS = [...CORE_SUBDIRS, "Projects"];
-
-interface Bootstrap {
-  skipperPath?: string;
-}
-
-function getBootstrapPath(): string {
-  return join(app.getPath("userData"), "bootstrap.json");
-}
-
-function readBootstrap(): Bootstrap {
-  try {
-    const raw = readFileSync(getBootstrapPath(), "utf-8");
-    return JSON.parse(raw);
-  } catch {
-    return {};
-  }
-}
-
-function writeBootstrap(b: Bootstrap): void {
-  const p = getBootstrapPath();
-  mkdirSync(join(p, ".."), { recursive: true });
-  writeFileSync(p, JSON.stringify(b, null, 2), "utf-8");
-}
-
 function getDataDir(): string {
-  const bootstrap = readBootstrap();
-  if (bootstrap.skipperPath && existsSync(bootstrap.skipperPath)) {
-    const dir = join(bootstrap.skipperPath, ".skipper");
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    return dir;
-  }
-  // First-run fallback
-  const dir = join(app.getPath("userData"), "data-tmp");
+  const dir = app.getPath("userData");
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   return dir;
-}
-
-function getWikiDir(): string | null {
-  const bootstrap = readBootstrap();
-  if (bootstrap.skipperPath && existsSync(bootstrap.skipperPath)) {
-    const dir = join(bootstrap.skipperPath, "Library", "Knowledge");
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    return dir;
-  }
-  return null;
 }
 
 function findFreePort(): Promise<number> {
@@ -249,7 +193,6 @@ async function startNextServer(reusePort = false): Promise<string> {
   const port = reusePort && currentPort ? currentPort : await findFreePort();
   currentPort = port;
   const dataDir = getDataDir();
-  const wikiDir = getWikiDir();
 
   const resourcesRoot = app.isPackaged
     ? join(process.resourcesPath, "web")
@@ -268,7 +211,6 @@ async function startNextServer(reusePort = false): Promise<string> {
       PORT: String(port),
       HOSTNAME: "127.0.0.1",
       SKIPPER_DATA_DIR: dataDir,
-      ...(wikiDir ? { SKIPPER_WIKI_DIR: wikiDir } : {}),
       // Writable, update-surviving cache for the local embedding model
       // (downloaded from huggingface.co on first use).
       SKIPPER_HF_CACHE: join(app.getPath("userData"), "hf-cache"),
@@ -365,33 +307,6 @@ function killNextServer(): Promise<void> {
     // Safety timeout
     setTimeout(resolve, 2000);
   });
-}
-
-async function restartNextServer(): Promise<void> {
-  // In dev the Next.js server is run externally (`pnpm --filter @skipper/web dev`)
-  // and we don't manage its lifecycle from here. A Skipper location change
-  // means the dev server is now pointing at a stale data dir, but a hard
-  // restart of that external process is outside our control — log and move on.
-  if (isDev) {
-    console.warn("[dev] Skipper location changed; restart `pnpm --filter @skipper/web dev` manually to pick up the new data dir");
-    return;
-  }
-  await killNextServer();
-  // Give the OS a moment to release the port (TIME_WAIT)
-  await new Promise((r) => setTimeout(r, 300));
-  // Reuse the same port so the renderer's API calls transparently hit the new server
-  // without requiring a page reload (which would wipe React state mid-onboarding)
-  let attempts = 0;
-  while (attempts < 5) {
-    try {
-      serverUrl = await startNextServer(true);
-      return;
-    } catch (err) {
-      attempts++;
-      if (attempts >= 5) throw err;
-      await new Promise((r) => setTimeout(r, 500));
-    }
-  }
 }
 
 /**
@@ -548,7 +463,6 @@ ipcMain.handle("skipper:openExternal", (_e, url: string) => {
 
 ipcMain.handle("skipper:getBootstrap", () => {
   return {
-    ...readBootstrap(),
     isElectron: true,
     platform: process.platform,
   };
@@ -557,7 +471,7 @@ ipcMain.handle("skipper:getBootstrap", () => {
 ipcMain.handle("skipper:selectDirectory", async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: "Choose where to create Skipper",
+    title: "Choose a folder",
     properties: ["openDirectory", "createDirectory"],
     buttonLabel: "Select",
   });
@@ -616,18 +530,16 @@ ipcMain.handle(
 ipcMain.handle(
   "skipper:fs:createDir",
   (_e, dirPath: string): { ok: true; path: string } => {
-    // Containment check — createDir must stay within the active Skipper
-    // (used for New Project and for the in-tree new-folder action).
-    const abs = assertInsideSkipper(dirPath);
+    const abs = assertInsideWorktrees(dirPath);
     mkdirSync(abs, { recursive: true });
     return { ok: true, path: abs };
   },
 );
 
 // ===== File read/write for the in-app editor =====
-// Both handlers enforce that the target path is inside the active
-// Skipper root, so the renderer cannot read or write arbitrary files
-// elsewhere on the user's disk even if the preload is compromised.
+// Both handlers enforce that the target path is inside the worktrees root,
+// so the renderer cannot read or write arbitrary files elsewhere on the
+// user's disk even if the preload is compromised.
 const MAX_EDITABLE_BYTES = 1024 * 1024; // 1 MiB hard cap for the editor
 
 interface ReadFileResult {
@@ -637,16 +549,16 @@ interface ReadFileResult {
   tooLarge: boolean;
 }
 
-function assertInsideSkipper(targetPath: string): string {
-  const bootstrap = readBootstrap();
-  if (!bootstrap.skipperPath) {
-    throw new Error("No Skipper configured");
-  }
-  const root = resolve(bootstrap.skipperPath);
+function worktreesRoot(): string {
+  return resolve(join(app.getPath("userData"), "worktrees"));
+}
+
+function assertInsideWorktrees(targetPath: string): string {
+  const root = worktreesRoot();
   const abs = resolve(targetPath);
   if (abs !== root && !abs.startsWith(root + sep)) {
     throw new Error(
-      `Refusing to access path outside Skipper: ${abs}`,
+      `Refusing to access path outside the worktrees root: ${abs}`,
     );
   }
   return abs;
@@ -664,7 +576,7 @@ function looksBinary(buf: Buffer): boolean {
 ipcMain.handle(
   "skipper:fs:readFile",
   (_e, filePath: string): ReadFileResult => {
-    const abs = assertInsideSkipper(filePath);
+    const abs = assertInsideWorktrees(filePath);
     const stat = statSync(abs);
     if (!stat.isFile()) {
       throw new Error(`Not a file: ${abs}`);
@@ -688,14 +600,7 @@ ipcMain.handle(
 ipcMain.handle(
   "skipper:fs:writeFile",
   (_e, filePath: string, content: string): { ok: true; size: number } => {
-    const abs = assertInsideSkipper(filePath);
-    // Refuse to write into .skipper/ — that's internal state the user
-    // should never hand-edit through the app's editor.
-    const bootstrap = readBootstrap();
-    const internal = resolve(bootstrap.skipperPath!, ".skipper");
-    if (abs === internal || abs.startsWith(internal + sep)) {
-      throw new Error("Cannot write into .skipper/ — internal state");
-    }
+    const abs = assertInsideWorktrees(filePath);
     // Ensure parent directory exists
     const parent = join(abs, "..");
     if (!existsSync(parent)) {
@@ -706,33 +611,12 @@ ipcMain.handle(
   },
 );
 
-// Paths inside Skipper that cannot be deleted or renamed — these are
-// either workspace-structural (top-level skeleton dirs) or internal state.
-const PROTECTED_TOP_LEVEL_NAMES = new Set([
-  ...SKIPPER_SUBDIRS,
-  ".skipper",
-]);
-
-function isProtectedPath(abs: string): boolean {
-  const bootstrap = readBootstrap();
-  if (!bootstrap.skipperPath) return true;
-  const root = resolve(bootstrap.skipperPath);
-  if (abs === root) return true;
-  const internal = resolve(root, ".skipper");
-  if (abs === internal || abs.startsWith(internal + sep)) return true;
-  const rel = abs.slice(root.length + 1);
-  if (!rel.includes(sep) && PROTECTED_TOP_LEVEL_NAMES.has(rel)) return true;
-  return false;
-}
-
 ipcMain.handle(
   "skipper:fs:delete",
   (_e, targetPath: string): { ok: true } => {
-    const abs = assertInsideSkipper(targetPath);
-    if (isProtectedPath(abs)) {
-      throw new Error(
-        "This path is protected by Skipper and cannot be deleted.",
-      );
+    const abs = assertInsideWorktrees(targetPath);
+    if (abs === worktreesRoot()) {
+      throw new Error("The worktrees root cannot be deleted.");
     }
     if (!existsSync(abs)) {
       throw new Error("Path does not exist");
@@ -749,11 +633,9 @@ ipcMain.handle(
     oldPath: string,
     newName: string,
   ): { ok: true; newPath: string } => {
-    const absOld = assertInsideSkipper(oldPath);
-    if (isProtectedPath(absOld)) {
-      throw new Error(
-        "This path is protected by Skipper and cannot be renamed.",
-      );
+    const absOld = assertInsideWorktrees(oldPath);
+    if (absOld === worktreesRoot()) {
+      throw new Error("The worktrees root cannot be renamed.");
     }
     const trimmed = (newName ?? "").trim();
     if (
@@ -767,8 +649,8 @@ ipcMain.handle(
     }
     const parent = join(absOld, "..");
     const absNew = join(parent, trimmed);
-    // Must still end up inside Skipper (extra safety)
-    assertInsideSkipper(absNew);
+    // Must still end up inside the worktrees root (extra safety)
+    assertInsideWorktrees(absNew);
     if (existsSync(absNew)) {
       throw new Error(`A file or folder named "${trimmed}" already exists`);
     }
@@ -782,7 +664,7 @@ ipcMain.handle(
   "skipper:session:run",
   (_e, mode: "save" | "resume", projectDir: string): Promise<{ ok: boolean; output: string }> => {
     if (mode !== "save" && mode !== "resume") throw new Error("invalid mode");
-    const abs = assertInsideSkipper(projectDir);
+    const abs = assertInsideWorktrees(projectDir);
     return new Promise((resolveP) => {
       let onPath = false;
       try {
@@ -799,259 +681,6 @@ ipcMain.handle(
         resolveP({ ok: code === 0, output: (out || err).trim() || (code === 0 ? "Done." : `exited ${code}`) }),
       );
     });
-  },
-);
-
-function getSkeletonPath(): string {
-  // Packaged: resources/skeleton. Dev: repo_root/skeleton.
-  if (app.isPackaged) {
-    return join(process.resourcesPath, "skeleton");
-  }
-  return resolve(__dirname, "../../../skeleton");
-}
-
-function copySkeletonToSkipper(skipperPath: string): void {
-  const skeletonPath = getSkeletonPath();
-  if (!existsSync(skeletonPath)) return;
-
-  // CLAUDE.md in the Skipper root — only write if missing (preserve user edits on re-setup)
-  const claudeSrc = join(skeletonPath, "CLAUDE.md");
-  const claudeDst = join(skipperPath, "CLAUDE.md");
-  if (existsSync(claudeSrc) && !existsSync(claudeDst)) {
-    cpSync(claudeSrc, claudeDst);
-  }
-
-  // Skills — copy each skill folder into Skipper/Skills/ only if missing
-  const skillsSrc = join(skeletonPath, "Skills");
-  const skillsDst = join(skipperPath, "Skills");
-  if (existsSync(skillsSrc)) {
-    mkdirSync(skillsDst, { recursive: true });
-    for (const entry of readdirSync(skillsSrc)) {
-      const src = join(skillsSrc, entry);
-      const dst = join(skillsDst, entry);
-      if (statSync(src).isDirectory() && !existsSync(dst)) {
-        cpSync(src, dst, { recursive: true });
-      }
-    }
-  }
-}
-
-function createFreshSkipper(skipperPath: string): void {
-  mkdirSync(skipperPath, { recursive: true });
-  for (const sub of CORE_SUBDIRS) {
-    mkdirSync(join(skipperPath, sub), { recursive: true });
-  }
-  // Skipper-generated wiki lives inside the user-visible Library folder
-  mkdirSync(join(skipperPath, "Library", "Knowledge"), { recursive: true });
-  // .skipper holds internal state (raw sources, settings, vector index)
-  mkdirSync(join(skipperPath, ".skipper"), { recursive: true });
-  // Seed CLAUDE.md and Skills from the bundled skeleton (non-destructive)
-  copySkeletonToSkipper(skipperPath);
-}
-
-function moveDir(src: string, dst: string): void {
-  try {
-    renameSync(src, dst);
-  } catch (err: unknown) {
-    const code = (err as NodeJS.ErrnoException)?.code;
-    if (code === "EXDEV") {
-      // Cross-device move — fall back to copy + delete
-      cpSync(src, dst, { recursive: true });
-      rmSync(src, { recursive: true, force: true });
-    } else {
-      throw err;
-    }
-  }
-}
-
-// ===== Skipper auto-refresh watcher =====
-// Recursively watches the Skipper directory and emits a debounced
-// `skipper:fs:changed` event to the renderer so the file tree refreshes
-// automatically when files are added/modified/removed from Finder, the
-// terminal, or any other source.
-//
-// Uses fs.watch with { recursive: true } which is supported on macOS and
-// Windows (our target platforms). Debounced at 500ms so bursts of events
-// (e.g. npm install, git operations) collapse into a single refresh.
-// Noise from .skipper/, .git/, node_modules/, and temp files is filtered
-// in-process so the IPC channel stays quiet.
-let fsWatcher: FSWatcher | null = null;
-let fsWatchDebounce: NodeJS.Timeout | null = null;
-const FS_WATCH_DEBOUNCE_MS = 1200;
-
-function shouldIgnoreFsChange(filename: string | null): boolean {
-  if (!filename) return false;
-  const f = filename.replace(/\\/g, "/");
-  // Hidden / internal directories
-  if (f === ".skipper" || f.startsWith(".skipper/")) return true;
-  if (f === ".git" || f.startsWith(".git/") || f.includes("/.git/")) return true;
-  if (
-    f === "node_modules" ||
-    f.startsWith("node_modules/") ||
-    f.includes("/node_modules/")
-  ) {
-    return true;
-  }
-  // Noise files
-  const base = f.split("/").pop() || "";
-  if (base === ".DS_Store" || base === "Thumbs.db") return true;
-  // The local vector index is rewritten on every reindex — large and
-  // irrelevant to the tree; ignoring it kills a big source of churn.
-  if (base === "vector-index.json") return true;
-  if (
-    base.endsWith(".swp") ||
-    base.endsWith(".swx") ||
-    base.endsWith(".tmp") ||
-    base.endsWith("~")
-  ) {
-    return true;
-  }
-  return false;
-}
-
-function startSkipperWatcher(skipperPath: string): void {
-  stopSkipperWatcher();
-  if (!existsSync(skipperPath)) return;
-  try {
-    fsWatcher = watch(
-      skipperPath,
-      { recursive: true, persistent: false },
-      (_eventType, filename) => {
-        if (shouldIgnoreFsChange(filename)) return;
-        if (fsWatchDebounce) clearTimeout(fsWatchDebounce);
-        fsWatchDebounce = setTimeout(() => {
-          fsWatchDebounce = null;
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send("skipper:fs:changed");
-          }
-        }, FS_WATCH_DEBOUNCE_MS);
-      },
-    );
-    fsWatcher.on("error", (err) => {
-      console.error("[watcher] error:", err);
-    });
-    console.log(`[watcher] watching ${skipperPath}`);
-  } catch (err) {
-    console.error("[watcher] failed to start:", err);
-  }
-}
-
-function stopSkipperWatcher(): void {
-  if (fsWatchDebounce) {
-    clearTimeout(fsWatchDebounce);
-    fsWatchDebounce = null;
-  }
-  if (fsWatcher) {
-    try {
-      fsWatcher.close();
-    } catch {
-      /* ignore */
-    }
-    fsWatcher = null;
-  }
-}
-
-ipcMain.handle("skipper:setupSkipper", async (_e, parentPath: string) => {
-  if (!parentPath || typeof parentPath !== "string") {
-    throw new Error("Invalid parent path");
-  }
-  const skipperPath = join(parentPath, "Skipper");
-  createFreshSkipper(skipperPath);
-
-  writeBootstrap({ skipperPath });
-  // Restart Next.js server so it picks up the new data dir
-  await restartNextServer();
-  // Start watching the freshly created Skipper for file tree auto-refresh
-  startSkipperWatcher(skipperPath);
-
-  // Notify the renderer so the sidebar / file tree pick up the new
-  // workspace path immediately at the end of onboarding (without needing
-  // an app restart). Reuses the same channel as the move handler.
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("skipper:skipperMoved", {
-      skipperPath,
-    });
-  }
-
-  return { skipperPath };
-});
-
-ipcMain.handle(
-  "skipper:moveOrCreateSkipper",
-  async (_e, parentPath: string) => {
-    if (!parentPath || typeof parentPath !== "string") {
-      throw new Error("Invalid parent path");
-    }
-    const newPath = join(parentPath, "Skipper");
-    const bootstrap = readBootstrap();
-    const oldPath = bootstrap.skipperPath;
-
-    // Same destination as current → no-op
-    if (oldPath && resolve(oldPath) === resolve(newPath)) {
-      return { skipperPath: newPath, moved: false, created: false };
-    }
-
-    // Refuse if something is already at the destination
-    if (existsSync(newPath)) {
-      throw new Error(
-        `A folder named "Skipper" already exists at ${parentPath}. Choose a different location or remove it first.`,
-      );
-    }
-
-    // Close terminals, stop the watcher, and stop the Next.js server —
-    // they all hold references to the old data dir (terminal cwd, watch
-    // handles, open file handles, env vars). In dev the Next server is
-    // external (next dev), so we skip the kill+restart dance — the user
-    // will need to restart `pnpm --filter @skipper/web dev` manually.
-    killAllPtySessions();
-    stopSkipperWatcher();
-    if (!isDev) await killNextServer();
-
-    let moved = false;
-    let created = false;
-
-    if (oldPath && existsSync(oldPath)) {
-      // Move existing Skipper to the new location
-      mkdirSync(parentPath, { recursive: true });
-      moveDir(oldPath, newPath);
-      moved = true;
-    } else {
-      // No existing Skipper — create fresh at the new location
-      createFreshSkipper(newPath);
-      created = true;
-    }
-
-    writeBootstrap({ skipperPath: newPath });
-
-    // Give the OS a moment to release the port, then restart Next.js
-    // reusing the same port so the renderer's fetch calls transparently
-    // hit the new server without a window reload. Skipped in dev (see above).
-    if (!isDev) {
-      await new Promise((r) => setTimeout(r, 300));
-      let attempts = 0;
-      while (attempts < 5) {
-        try {
-          serverUrl = await startNextServer(true);
-          break;
-        } catch (err) {
-          attempts++;
-          if (attempts >= 5) throw err;
-          await new Promise((r) => setTimeout(r, 500));
-        }
-      }
-    }
-
-    // Restart the file watcher on the new Skipper location
-    startSkipperWatcher(newPath);
-
-    // Notify the renderer so it can refresh file tree, terminal state, etc.
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("skipper:skipperMoved", {
-        skipperPath: newPath,
-      });
-    }
-
-    return { skipperPath: newPath, moved, created };
   },
 );
 
@@ -1410,13 +1039,6 @@ app.whenReady().then(async () => {
     } catch (e) {
       console.warn("[orchestrator] bundle unavailable:", e instanceof Error ? e.message : e);
     }
-    // Start watching Skipper for file-tree auto-refresh if we already
-    // have a bootstrap from a previous run. Fresh installs start it from
-    // inside setupSkipper after onboarding.
-    const bootstrap = readBootstrap();
-    if (bootstrap.skipperPath && existsSync(bootstrap.skipperPath)) {
-      startSkipperWatcher(bootstrap.skipperPath);
-    }
   } catch (err) {
     console.error("Failed to start:", err);
     dialog.showErrorBox(
@@ -1445,7 +1067,6 @@ app.on("before-quit", () => {
   // Drop the dock icon immediately: while the (bounded) teardown runs, a
   // still-clickable icon could relaunch into a black window.
   if (process.platform === "darwin") app.dock?.hide();
-  stopSkipperWatcher();
   killNextServer();
   // Live node-pty children (integrated terminals) and coding agents keep the
   // process alive past app.quit() — the classic "window gone, app still in

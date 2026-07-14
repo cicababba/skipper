@@ -16,13 +16,9 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
         return;
       }
       try {
-        const [bootstrap, settingsRes] = await Promise.all([
-          window.skipper.getBootstrap(),
-          fetch("/api/settings").then((r) => r.json()),
-        ]);
-        const hasSkipper = !!bootstrap?.skipperPath;
+        const settingsRes = await fetch("/api/settings").then((r) => r.json());
         const completed = settingsRes?.onboardingCompleted === true;
-        setState(hasSkipper && completed ? "done" : "needed");
+        setState(completed ? "done" : "needed");
       } catch {
         // If anything fails, show the onboarding to be safe
         setState("needed");

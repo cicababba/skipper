@@ -63,10 +63,6 @@
         "to": "web"
       },
       {
-        "from": "../../skeleton",
-        "to": "skeleton"
-      },
-      {
         "from": "build/cli",
         "to": "cli"
       }

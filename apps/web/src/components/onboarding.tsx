@@ -3,13 +3,11 @@
 import { useState, useCallback } from "react";
 import {
   Sparkles,
-  FolderPlus,
   Cpu,
   Trophy,
   ArrowRight,
   Check,
   Loader2,
-  FolderOpen,
   Key,
   Eye,
   EyeOff,
@@ -18,12 +16,11 @@ import { useT } from "@/lib/app-i18n";
 
 type Step =
   | "welcome"
-  | "directory"
   | "settings"
   | "celebrate";
 
-const MODAL_STEPS: Step[] = ["welcome", "directory", "settings", "celebrate"];
-const PROGRESS_STEPS: Step[] = ["welcome", "directory", "settings"];
+const MODAL_STEPS: Step[] = ["welcome", "settings", "celebrate"];
+const PROGRESS_STEPS: Step[] = ["welcome", "settings"];
 
 interface OpenAIModel {
   id: string;
@@ -34,11 +31,6 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
   const to = t.wiki.onboarding;
   const [step, setStep] = useState<Step>("welcome");
   const [transitioning, setTransitioning] = useState(false);
-
-  // Directory state
-  const [parentPath, setParentPath] = useState<string | null>(null);
-  const [creatingDir, setCreatingDir] = useState(false);
-  const [dirError, setDirError] = useState<string | null>(null);
 
   // Settings state
   const [provider, setProvider] = useState<"claude-cli" | "openai">("claude-cli");
@@ -69,35 +61,6 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
     } catch { /* ignore */ }
     next("celebrate");
     setTimeout(() => onFinish(), 3200);
-  }
-
-  async function handlePickDirectory() {
-    setDirError(null);
-    if (!window.skipper) {
-      setDirError(to.pickerUnavailable);
-      return;
-    }
-    try {
-      const picked = await window.skipper.selectDirectory();
-      if (picked) setParentPath(picked);
-    } catch (err) {
-      setDirError(err instanceof Error ? err.message : to.pickerFailed);
-    }
-  }
-
-  async function handleCreateSkipper() {
-    if (!parentPath || !window.skipper) return;
-    setCreatingDir(true);
-    setDirError(null);
-    try {
-      await window.skipper.setupSkipper(parentPath);
-      // Give the restarted Next server a moment before moving on
-      await new Promise((r) => setTimeout(r, 600));
-      next("settings");
-    } catch (err) {
-      setDirError(err instanceof Error ? err.message : to.createFailed);
-    }
-    setCreatingDir(false);
   }
 
   async function loadOpenAIModels() {
@@ -186,100 +149,12 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
               </p>
             </div>
             <button
-              onClick={() => next("directory")}
+              onClick={() => next("settings")}
               className="inline-flex items-center gap-2 px-8 py-4 bg-accent text-background font-semibold rounded-2xl hover:bg-accent-hover transition-all hover:scale-105 shadow-xl shadow-accent/20"
             >
               {to.getStarted}
               <ArrowRight size={18} />
             </button>
-          </div>
-        )}
-
-        {step === "directory" && (
-          <div className="space-y-7 animate-fade-in">
-            <div className="text-center space-y-3">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-accent to-purple-500 shadow-xl shadow-accent/30">
-                <FolderPlus size={28} className="text-white" />
-              </div>
-              <h2 className="text-3xl font-bold tracking-tight">
-                {to.dirTitle}
-              </h2>
-              <p className="text-muted/80 max-w-md mx-auto">
-                {to.dirDescBefore}{" "}
-                <code className="text-accent/90 bg-accent/5 px-1.5 py-0.5 rounded text-xs">
-                  Skipper/
-                </code>{" "}
-                {to.dirDescAfter}
-              </p>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-card border border-border space-y-4">
-              <button
-                onClick={handlePickDirectory}
-                className="w-full p-5 rounded-xl border-2 border-dashed border-border hover:border-accent/50 hover:bg-accent/5 transition-all flex items-center justify-center gap-3 group"
-              >
-                <FolderOpen
-                  size={20}
-                  className="text-muted/60 group-hover:text-accent transition-colors"
-                />
-                <span className="text-sm text-muted/80 group-hover:text-foreground transition-colors">
-                  {parentPath ? parentPath : to.browse}
-                </span>
-              </button>
-
-              {parentPath && (
-                <div className="p-4 rounded-xl bg-background/50 border border-border">
-                  <p className="text-[11px] text-muted/50 uppercase tracking-wider mb-2">
-                    {to.willBeCreated}
-                  </p>
-                  <p className="text-xs font-mono text-accent break-all">
-                    {parentPath}/Skipper
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {["Business", "Context", "Daily", "Library", "Projects", "Skills"].map(
-                      (d) => (
-                        <span
-                          key={d}
-                          className="text-[10px] px-2 py-0.5 rounded-md bg-accent/10 text-accent/80 font-mono"
-                        >
-                          {d}/
-                        </span>
-                      ),
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {dirError && (
-                <p className="text-xs text-red-400">{dirError}</p>
-              )}
-            </div>
-
-            <div className="flex justify-between items-center">
-              <button
-                onClick={() => next("directory")}
-                className="text-sm text-muted/60 hover:text-muted transition-colors"
-              >
-                {to.back}
-              </button>
-              <button
-                onClick={handleCreateSkipper}
-                disabled={!parentPath || creatingDir}
-                className="inline-flex items-center gap-2 px-7 py-3.5 bg-accent text-background font-semibold rounded-2xl hover:bg-accent-hover transition-all hover:scale-105 shadow-xl shadow-accent/20 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100"
-              >
-                {creatingDir ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin" />
-                    {to.creating}
-                  </>
-                ) : (
-                  <>
-                    {to.createSkipper}
-                    <ArrowRight size={18} />
-                  </>
-                )}
-              </button>
-            </div>
           </div>
         )}
 
@@ -428,7 +303,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
 
             <div className="flex justify-between items-center">
               <button
-                onClick={() => next("directory")}
+                onClick={() => next("welcome")}
                 className="text-sm text-muted/60 hover:text-muted transition-colors"
               >
                 {to.back}

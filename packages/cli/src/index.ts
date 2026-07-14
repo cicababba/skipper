@@ -33,59 +33,33 @@ declare const __SKIPPER_CLI_VERSION__: string;
 const CLI_VERSION = typeof __SKIPPER_CLI_VERSION__ !== "undefined" ? __SKIPPER_CLI_VERSION__ : "dev";
 
 /**
- * Look up the Skipper workspace path the Electron app persists in its
- * bootstrap file. This is the canonical "where is my workspace" pointer
- * for installed users — set once during onboarding and updated whenever
- * the user moves their Skipper folder via Settings.
+ * The Electron app's userData directory — where Skipper keeps settings.json
+ * and knowledge/. The app calls `app.setName("Skipper")`, so the platform
+ * default is deterministic and the CLI can compute it without any anchor file.
  *
- * On macOS: ~/Library/Application Support/Skipper/bootstrap.json
- * On Windows: %APPDATA%/Skipper/bootstrap.json
- * On Linux: ~/.config/Skipper/bootstrap.json
+ * On macOS: ~/Library/Application Support/Skipper
+ * On Windows: %APPDATA%/Skipper
+ * On Linux: $XDG_CONFIG_HOME/Skipper or ~/.config/Skipper
  */
-function readElectronBootstrapWorkspace(): string | null {
+function resolveUserDataDir(): string {
   const home = process.env.HOME || process.env.USERPROFILE;
-  if (!home) return null;
-  const candidates: string[] = [];
+  if (!home) throw new Error("Cannot resolve home directory (HOME/USERPROFILE unset)");
   if (process.platform === "darwin") {
-    candidates.push(resolve(home, "Library/Application Support/Skipper/bootstrap.json"));
-  } else if (process.platform === "win32") {
-    const appData = process.env.APPDATA;
-    if (appData) candidates.push(resolve(appData, "Skipper/bootstrap.json"));
-  } else {
-    const xdg = process.env.XDG_CONFIG_HOME || resolve(home, ".config");
-    candidates.push(resolve(xdg, "Skipper/bootstrap.json"));
+    return resolve(home, "Library/Application Support/Skipper");
   }
-  for (const p of candidates) {
-    try {
-      if (!existsSync(p)) continue;
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const data = require(p) as { skipperPath?: string };
-      if (data.skipperPath && existsSync(resolve(data.skipperPath, ".skipper"))) {
-        return data.skipperPath;
-      }
-    } catch {
-      /* skip unreadable */
-    }
+  if (process.platform === "win32") {
+    const appData = process.env.APPDATA || resolve(home, "AppData/Roaming");
+    return resolve(appData, "Skipper");
   }
-  return null;
+  const xdg = process.env.XDG_CONFIG_HOME || resolve(home, ".config");
+  return resolve(xdg, "Skipper");
 }
 
-/**
- * Walk up from `start` looking for a `.skipper/` directory. Returns the
- * containing dir (the workspace root) or null.
- */
-function findWorkspaceAbove(start: string): string | null {
-  let dir = start;
-  for (let i = 0; i < 20; i++) {
-    if (existsSync(resolve(dir, ".skipper"))) return dir;
-    const parent = resolve(dir, "..");
-    if (parent === dir) return null;
-    dir = parent;
-  }
-  return null;
+function knowledgeRoot(): string {
+  return resolve(resolveUserDataDir(), "knowledge");
 }
 
-interface WorkspaceSettings {
+interface SkipperSettings {
   llm?: {
     provider?: "claude-cli" | "openai" | "ollama";
     openaiApiKey?: string;
@@ -96,23 +70,22 @@ interface WorkspaceSettings {
   autoExtractAtoms?: boolean;
 }
 
-/** Read the app Settings (provider/model + flags) from the workspace. */
-function loadWorkspaceSettings(workspace?: string): WorkspaceSettings | null {
+/** Read the app Settings (provider/model + flags) from userData. */
+function loadSettings(): SkipperSettings | null {
   try {
-    const ws = workspace ?? resolveWorkspace();
-    const p = resolve(ws, ".skipper", "settings.json");
+    const p = resolve(resolveUserDataDir(), "settings.json");
     if (!existsSync(p)) return null;
-    return JSON.parse(readFileSync(p, "utf-8")) as WorkspaceSettings;
+    return JSON.parse(readFileSync(p, "utf-8")) as SkipperSettings;
   } catch {
     return null;
   }
 }
 
-// Resolve the LLM from the workspace Settings — the provider + model the user
+// Resolve the LLM from the app Settings — the provider + model the user
 // picked in the app. Falls back to the claude-cli default when there are no
-// settings (e.g. a bare CLI checkout with no app workspace).
-function getLLM(workspace?: string): LLMProviderInterface {
-  const llm = loadWorkspaceSettings(workspace)?.llm;
+// settings (e.g. a bare CLI checkout where the app never ran).
+function getLLM(): LLMProviderInterface {
+  const llm = loadSettings()?.llm;
   if (llm?.provider) {
     const model =
       llm.provider === "claude-cli"
@@ -146,16 +119,6 @@ const knowledge = program
   .command("knowledge")
   .description("Project knowledge atom pipeline (extract from commits, review, accept/reject)");
 
-function resolveWorkspace(opt?: string): string {
-  if (opt) return resolve(opt);
-  const walked = findWorkspaceAbove(process.cwd());
-  if (walked) return walked;
-  const fromBootstrap = readElectronBootstrapWorkspace();
-  if (fromBootstrap) return fromBootstrap;
-  // Last resort — ensureQueueDirs will populate `.skipper/` under cwd.
-  return process.cwd();
-}
-
 function detectProjectName(repoPath: string, override?: string): string {
   if (override) return override;
   try {
@@ -172,18 +135,16 @@ knowledge
   .command("extract <sha>")
   .description("Extract knowledge atoms from a git commit into the pending queue")
   .option("-r, --repo <path>", "Repository path (default: current dir)", process.cwd())
-  .option("-w, --workspace <path>", "Skipper workspace path (default: auto-detect via .skipper)")
   .option("-p, --project <name>", "Project tag (default: git repo basename)")
   .action(async (sha, options) => {
     try {
       const repoPath = resolve(options.repo);
-      const workspace = resolveWorkspace(options.workspace);
       const projectName = detectProjectName(repoPath, options.project);
-      if (loadWorkspaceSettings(workspace)?.autoExtractAtoms === false) {
+      if (loadSettings()?.autoExtractAtoms === false) {
         console.log("  (auto-atom extraction disabled in settings — skipping)");
         return;
       }
-      const llm = getLLM(workspace);
+      const llm = getLLM();
       console.log(`Extracting from ${sha} (project: ${projectName})…`);
       const atoms = await extractFromCommit({
         repoPath,
@@ -196,7 +157,7 @@ knowledge
         return;
       }
       for (const atom of atoms) {
-        const file = await writePendingAtom(workspace, atom);
+        const file = await writePendingAtom(knowledgeRoot(), atom);
         const marker = atom.score >= 7 ? "★" : atom.score >= 4 ? "·" : "○";
         console.log(`  ${marker} [score ${atom.score}] ${atom.title}`);
         console.log(`         → ${file}`);
@@ -211,11 +172,9 @@ knowledge
 knowledge
   .command("list")
   .description("List atoms in the pending queue")
-  .option("-w, --workspace <path>", "Skipper workspace path (default: auto-detect)")
-  .action(async (options) => {
+  .action(async () => {
     try {
-      const workspace = resolveWorkspace(options.workspace);
-      const entries = await listPending(workspace);
+      const entries = await listPending(knowledgeRoot());
       if (entries.length === 0) {
         console.log("(pending queue is empty)");
         return;
@@ -235,20 +194,19 @@ knowledge
 knowledge
   .command("review")
   .description("Interactively triage pending atoms (a accept · r reject · e edit · s skip · q quit)")
-  .option("-w, --workspace <path>", "Skipper workspace path (default: auto-detect)")
   .option("--min-score <n>", "Only show atoms with score >= n", "0")
   .action(async (options) => {
     try {
-      const workspace = resolveWorkspace(options.workspace);
+      const root = knowledgeRoot();
       const minScore = Math.max(0, Math.min(10, parseInt(options.minScore, 10) || 0));
-      let entries = (await listPending(workspace)).filter((e) => e.atom.score >= minScore);
+      let entries = (await listPending(root)).filter((e) => e.atom.score >= minScore);
       if (entries.length === 0) {
         console.log("(nothing to review)");
         return;
       }
       const rl = createInterface({ input, output });
       const reload = async () => {
-        entries = (await listPending(workspace)).filter((e) => e.atom.score >= minScore);
+        entries = (await listPending(root)).filter((e) => e.atom.score >= minScore);
       };
       let acceptedN = 0,
         rejectedN = 0,
@@ -268,12 +226,12 @@ knowledge
           console.log("─".repeat(72));
           const choice = (await rl.question("[a]ccept · [r]eject · [e]dit · [s]kip · [q]uit · [?] help > ")).trim().toLowerCase();
           if (choice === "a" || choice === "accept") {
-            const dest = await acceptAtom(workspace, e);
+            const dest = await acceptAtom(root, e);
             console.log(`✓ accepted → ${dest}`);
             acceptedN++;
             i++;
           } else if (choice === "r" || choice === "reject") {
-            const dest = await rejectAtom(workspace, e);
+            const dest = await rejectAtom(root, e);
             console.log(`✗ rejected → ${dest}`);
             rejectedN++;
             i++;
@@ -326,10 +284,8 @@ knowledge
       "Used by the promote-knowledge skill as the escape hatch for insights that " +
       "aren't tied to a git commit.",
   )
-  .option("-w, --workspace <path>", "Skipper workspace path (default: auto-detect)")
-  .action(async (options) => {
+  .action(async () => {
     try {
-      const workspace = resolveWorkspace(options.workspace);
       const raw = await new Promise<string>((resolveStdin, rejectStdin) => {
         let data = "";
         process.stdin.setEncoding("utf-8");
@@ -363,7 +319,7 @@ knowledge
         ? payload.tags.map((t: unknown) => String(t).trim()).filter(Boolean)
         : [];
 
-      const file = await writePendingAtom(workspace, {
+      const file = await writePendingAtom(knowledgeRoot(), {
         id,
         title,
         project,
@@ -375,7 +331,7 @@ knowledge
       });
       console.log(`✓ ${title}`);
       console.log(`  → ${file}`);
-      console.log(`  Open Skipper → Knowledge to accept it.`);
+      console.log(`  Run \`skipper knowledge review\` to accept it.`);
     } catch (error) {
       console.error(`✗ ${error instanceof Error ? error.message : error}`);
       process.exit(1);
@@ -419,7 +375,7 @@ projects
       const result = installHook({ repoPath, cliCommand });
       console.log(`${result.replaced ? "✓ Updated" : "✓ Installed"}: ${result.hookPath}`);
       console.log(`  CLI: ${cliCommand}`);
-      console.log("  Atoms will land in <workspace>/.skipper/knowledge-pending/ after every commit.");
+      console.log("  Atoms will land in the Skipper app's knowledge/pending/ dir after every commit.");
       console.log("  Run `skipper knowledge review` to triage.");
     } catch (error) {
       console.error(`✗ ${error instanceof Error ? error.message : error}`);
@@ -475,7 +431,7 @@ session
   .action(async (options) => {
     try {
       const dir = resolve(options.project);
-      const llm = getLLM(resolveWorkspace());
+      const llm = getLLM();
       const path = await saveSession(dir, { llm, log: (m) => console.log(m) });
       console.log(`\n✔ Session summary saved → ${path}`);
     } catch (e) {
@@ -491,7 +447,7 @@ session
   .action(async (options) => {
     try {
       const dir = resolve(options.project);
-      const llm = getLLM(resolveWorkspace());
+      const llm = getLLM();
       // Progress goes to stderr so stdout is a clean briefing the caller can pipe.
       const briefing = await resumeSession(dir, { llm, log: (m) => console.error(m) });
       console.log(briefing);

@@ -10,8 +10,6 @@ import {
   EyeOff,
   AlertCircle,
   AlertTriangle,
-  FolderOpen,
-  ArrowRight,
   RefreshCw,
   X,
 } from "lucide-react";
@@ -45,7 +43,6 @@ export default function SettingsPage() {
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
-  const [autoCompile, setAutoCompile] = useState(false);
   const [autoExtractAtoms, setAutoExtractAtoms] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -70,7 +67,6 @@ export default function SettingsPage() {
           setOpenaiModel(data.llm.openaiModel ?? "gpt-4o");
           setOllamaModel(data.llm.ollamaModel ?? "");
         }
-        setAutoCompile(data.autoCompile ?? false);
         setAutoExtractAtoms(data.autoExtractAtoms ?? true);
         setLoading(false);
       })
@@ -157,7 +153,6 @@ export default function SettingsPage() {
             openaiModel,
             ollamaModel,
           },
-          autoCompile,
           autoExtractAtoms,
         }),
       });
@@ -443,34 +438,13 @@ export default function SettingsPage() {
           )}
         </section>
 
-        {/* Auto-Compile */}
+        {/* Knowledge atoms */}
         <section className="mb-10">
           <h2 className="text-sm font-medium text-muted/70 uppercase tracking-wider mb-4">
             {t.settings.compile.title}
           </h2>
           <div className="p-5 rounded-xl bg-card border border-border space-y-5">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">{t.settings.compile.autoTitle}</p>
-                <p className="text-[11px] text-muted/60 leading-relaxed mt-1">
-                  {t.settings.compile.autoDesc}
-                </p>
-              </div>
-              <button
-                onClick={() => setAutoCompile(!autoCompile)}
-                className={`relative w-10 h-[22px] rounded-full transition-colors shrink-0 ${
-                  autoCompile ? "bg-accent" : "bg-border"
-                }`}
-              >
-                <span
-                  className={`absolute top-[3px] h-4 w-4 rounded-full bg-white transition-transform ${
-                    autoCompile ? "left-[22px]" : "left-[3px]"
-                  }`}
-                />
-              </button>
-            </div>
-
-            <div className="flex items-center justify-between border-t border-border pt-5">
               <div>
                 <p className="text-sm font-medium">{t.settings.compile.atomsTitle}</p>
                 <p className="text-[11px] text-muted/60 leading-relaxed mt-1">
@@ -517,10 +491,6 @@ export default function SettingsPage() {
           )}
         </div>
 
-        {/* Skipper Location */}
-        <SkipperLocation />
-
-        {/* Danger Zone */}
       </div>
 
       {showOllamaError && (
@@ -608,143 +578,3 @@ function OllamaErrorModal({
   );
 }
 
-function SkipperLocation() {
-  const { t } = useT();
-  const [currentPath, setCurrentPath] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [confirmParent, setConfirmParent] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.skipper) return;
-    window.skipper.getBootstrap().then((b) => {
-      setCurrentPath(b?.skipperPath ?? null);
-    });
-    const off = window.skipper.onSkipperMoved?.((info) => {
-      setCurrentPath(info.skipperPath);
-    });
-    return () => {
-      if (off) off();
-    };
-  }, []);
-
-  // Only render in Electron — moving the workspace is a native-only feature
-  if (typeof window !== "undefined" && !window.skipper) return null;
-
-  async function handlePickLocation() {
-    setError(null);
-    setNotice(null);
-    if (!window.skipper) return;
-    const parent = await window.skipper.selectDirectory();
-    if (!parent) return;
-    setConfirmParent(parent);
-  }
-
-  async function handleConfirm() {
-    if (!confirmParent || !window.skipper) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await window.skipper.moveOrCreateSkipper(confirmParent);
-      setCurrentPath(result.skipperPath);
-      setNotice(
-        result.moved
-          ? t.settings.location.moved
-          : result.created
-            ? t.settings.location.created
-            : t.settings.location.unchanged,
-      );
-      setConfirmParent(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t.settings.location.moveFailed);
-    }
-    setBusy(false);
-  }
-
-  return (
-    <section className="mt-12 pt-8 border-t border-border">
-      <h2 className="text-sm font-medium text-muted/70 uppercase tracking-wider mb-4">
-        {t.settings.location.title}
-      </h2>
-
-      <div className="p-5 rounded-xl bg-card border border-border">
-        <div className="flex items-start gap-3 mb-4">
-          <FolderOpen size={16} className="text-muted/60 mt-0.5 shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-[11px] text-muted/60 uppercase tracking-wider mb-1">
-              {t.settings.location.currentPath}
-            </p>
-            <p className="text-sm font-mono text-foreground truncate" title={currentPath ?? ""}>
-              {currentPath ?? t.settings.location.notSet}
-            </p>
-          </div>
-        </div>
-
-        <p className="text-[11px] text-muted/60 leading-relaxed mb-4">
-          {t.settings.location.desc}
-        </p>
-
-        <button
-          onClick={handlePickLocation}
-          disabled={busy}
-          className="px-4 py-2 bg-background border border-border rounded-lg text-xs text-foreground hover:border-accent/40 hover:bg-accent/5 transition-colors disabled:opacity-50 flex items-center gap-2"
-        >
-          <FolderOpen size={13} />
-          {t.settings.location.change}
-        </button>
-
-        {notice && (
-          <p className="mt-3 text-xs text-green-400/80 flex items-center gap-1.5">
-            <Check size={12} />
-            {notice}
-          </p>
-        )}
-        {error && (
-          <p className="mt-3 text-xs text-red-400/80 flex items-start gap-1.5">
-            <AlertCircle size={12} className="mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </p>
-        )}
-
-        {confirmParent && (
-          <div className="mt-4 p-4 rounded-lg bg-accent/5 border border-accent/20">
-            <p className="text-xs text-foreground/90 mb-3 leading-relaxed">
-              {currentPath ? t.settings.location.confirmMove : t.settings.location.confirmCreate}
-            </p>
-            <div className="flex items-center gap-2 text-[11px] font-mono text-muted/70 mb-4 overflow-hidden">
-              {currentPath && (
-                <>
-                  <span className="truncate" title={currentPath}>
-                    {currentPath}
-                  </span>
-                  <ArrowRight size={12} className="shrink-0 text-muted/40" />
-                </>
-              )}
-              <span className="truncate text-foreground/80" title={`${confirmParent}/Skipper`}>
-                {confirmParent}/Skipper
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleConfirm}
-                disabled={busy}
-                className="px-4 py-2 bg-accent text-background text-xs font-medium rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-50 flex items-center gap-2"
-              >
-                {busy && <Loader2 size={12} className="animate-spin" />}
-                {busy ? t.settings.location.working : t.settings.location.confirm}
-              </button>
-              <button
-                onClick={() => setConfirmParent(null)}
-                disabled={busy}
-                className="px-4 py-2 bg-background border border-border rounded-lg text-xs text-muted hover:text-foreground transition-colors disabled:opacity-50"
-              >
-                {t.settings.location.cancel}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}

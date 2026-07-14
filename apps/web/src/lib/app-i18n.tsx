@@ -4,7 +4,6 @@ import { createContext, useContext } from "react";
 import { useStoredState } from "./use-stored-state";
 import { common } from "./i18n/common";
 import { settings } from "./i18n/settings";
-import { knowledge } from "./i18n/knowledge";
 import { inbox } from "./i18n/inbox";
 import { wiki } from "./i18n/wiki";
 import { about } from "./i18n/about";
@@ -28,7 +27,6 @@ function buildDict(lang: AppLang) {
   return {
     common: common[lang],
     settings: settings[lang],
-    knowledge: knowledge[lang],
     inbox: inbox[lang],
     wiki: wiki[lang],
     about: about[lang],

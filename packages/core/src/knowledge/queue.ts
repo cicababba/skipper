@@ -8,7 +8,7 @@
 //   ▼     ▼
 // accepted  rejected
 //
-// "accepted" lives under .skipper/raw/projects/<project>/ — the curated
+// "accepted" lives under <knowledgeRoot>/accepted/<project>/ — the curated
 // per-project archive the solutions memory builds on. "rejected" is kept
 // (not deleted) so the user can re-pickup if they change their mind.
 
@@ -19,26 +19,25 @@ import { atomFilename, parseAtom, serializeAtom, type KnowledgeAtom } from "./at
 export interface QueuePaths {
   pending: string;
   rejected: string;
-  /** Where accepted atoms land — under raw/projects/<project>/. */
+  /** Where accepted atoms land — under accepted/<project>/. */
   acceptedRoot: string;
 }
 
 /**
- * Resolve the queue paths for a Skipper workspace.
- * `workspacePath` is the user's Skipper root (the dir that holds .skipper).
+ * Resolve the queue paths under the knowledge root
+ * (the app's `<userData>/knowledge/` directory).
  */
-export function queuePaths(workspacePath: string): QueuePaths {
-  const dot = join(workspacePath, ".skipper");
+export function queuePaths(knowledgeRoot: string): QueuePaths {
   return {
-    pending: join(dot, "knowledge-pending"),
-    rejected: join(dot, "knowledge-rejected"),
-    acceptedRoot: join(dot, "raw", "projects"),
+    pending: join(knowledgeRoot, "pending"),
+    rejected: join(knowledgeRoot, "rejected"),
+    acceptedRoot: join(knowledgeRoot, "accepted"),
   };
 }
 
 /** Ensure all queue dirs exist. Idempotent. */
-export async function ensureQueueDirs(workspacePath: string): Promise<QueuePaths> {
-  const p = queuePaths(workspacePath);
+export async function ensureQueueDirs(knowledgeRoot: string): Promise<QueuePaths> {
+  const p = queuePaths(knowledgeRoot);
   await Promise.all([
     mkdir(p.pending, { recursive: true }),
     mkdir(p.rejected, { recursive: true }),
@@ -49,10 +48,10 @@ export async function ensureQueueDirs(workspacePath: string): Promise<QueuePaths
 
 /** Write a freshly extracted atom into the pending queue. Returns its path. */
 export async function writePendingAtom(
-  workspacePath: string,
+  knowledgeRoot: string,
   atom: KnowledgeAtom,
 ): Promise<string> {
-  const p = await ensureQueueDirs(workspacePath);
+  const p = await ensureQueueDirs(knowledgeRoot);
   const file = join(p.pending, atomFilename(atom));
   await writeFile(file, serializeAtom(atom), "utf-8");
   return file;
@@ -64,8 +63,8 @@ export interface PendingEntry {
 }
 
 /** List every readable atom in the pending queue, sorted by score desc, then date desc. */
-export async function listPending(workspacePath: string): Promise<PendingEntry[]> {
-  const p = queuePaths(workspacePath);
+export async function listPending(knowledgeRoot: string): Promise<PendingEntry[]> {
+  const p = queuePaths(knowledgeRoot);
   let names: string[];
   try {
     names = await readdir(p.pending);
@@ -96,10 +95,10 @@ export async function listPending(workspacePath: string): Promise<PendingEntry[]
  * picks it up. Returns the destination path.
  */
 export async function acceptAtom(
-  workspacePath: string,
+  knowledgeRoot: string,
   entry: PendingEntry,
 ): Promise<string> {
-  const p = await ensureQueueDirs(workspacePath);
+  const p = await ensureQueueDirs(knowledgeRoot);
   const projectDir = join(p.acceptedRoot, entry.atom.project);
   await mkdir(projectDir, { recursive: true });
   const dest = join(projectDir, atomFilename(entry.atom));
@@ -112,10 +111,10 @@ export async function acceptAtom(
  * user can resurrect it later if they change their mind.
  */
 export async function rejectAtom(
-  workspacePath: string,
+  knowledgeRoot: string,
   entry: PendingEntry,
 ): Promise<string> {
-  const p = await ensureQueueDirs(workspacePath);
+  const p = await ensureQueueDirs(knowledgeRoot);
   const dest = join(p.rejected, atomFilename(entry.atom));
   await rename(entry.filePath, dest);
   return dest;
