@@ -152,6 +152,12 @@ export class VectorStore {
       .sort((a, b) => b.count - a.count);
   }
 
+  /** Ids of every indexed document. */
+  async ids(): Promise<string[]> {
+    await this.load();
+    return this.index.entries.map((e) => e.id);
+  }
+
   /** Check if a document is indexed */
   async has(id: string): Promise<boolean> {
     await this.load();

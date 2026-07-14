@@ -1,9 +1,9 @@
 // Solutions-memory records (issue #11), one JSON file per merged item under
-// <userData>/memory/. Pure Node module; the shepherd injects the directory.
-// TrackedItem.shepherd.memoryRef stores the filename. Capture from day 1;
-// retrieval arrives with v2 (docs/DIRECTION.md "Memoria").
+// <userData>/memory/. Pure Node module; callers inject the directory.
+// TrackedItem.shepherd.memoryRef stores the filename. Promoted from the
+// desktop app with #44 so the CLI (indexing/retrieval host) can read it too.
 
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SolutionRecord } from "@skipper/shared";
 
@@ -36,4 +36,29 @@ export async function readSolutionRecord(
   } catch {
     return null;
   }
+}
+
+export interface SolutionRecordEntry {
+  ref: string;
+  record: SolutionRecord;
+}
+
+/**
+ * Enumerate every record in the memory dir. Foreign/invalid JSON files
+ * (including the vector index, which shares the directory) are skipped.
+ */
+export async function listSolutionRecords(memoryDir: string): Promise<SolutionRecordEntry[]> {
+  let names: string[];
+  try {
+    names = await readdir(memoryDir);
+  } catch {
+    return [];
+  }
+  const entries: SolutionRecordEntry[] = [];
+  for (const name of names) {
+    if (!name.endsWith(".json")) continue;
+    const record = await readSolutionRecord(memoryDir, name);
+    if (record) entries.push({ ref: name, record });
+  }
+  return entries;
 }

@@ -10,6 +10,11 @@ export interface RepoRef {
   name: string;
 }
 
+/** Canonical "owner/name" key — the per-repo partition/scoping axis. */
+export function repoKey(repo: RepoRef): string {
+  return `${repo.owner}/${repo.name}`;
+}
+
 interface WorkItemBase {
   /** Platform-scoped stable id, e.g. "github:1234567890". */
   id: string;

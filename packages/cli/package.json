@@ -13,6 +13,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.0.1",
     "@skipper/core": "workspace:*",
     "@skipper/shared": "workspace:*",
     "commander": "^13.1.0"

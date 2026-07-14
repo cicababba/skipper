@@ -6,9 +6,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { execFileSync, execSync, spawnSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { createRequire } from "node:module";
 import {
   createProvider,
   extractFromCommit,
+  reconcileMemoryIndex,
+  registerTransformersLoader,
+  searchMemory,
   writePendingAtom,
   listPending,
   acceptAtom,
@@ -57,6 +61,33 @@ function resolveUserDataDir(): string {
 
 function knowledgeRoot(): string {
   return resolve(resolveUserDataDir(), "knowledge");
+}
+
+function memoryRoot(): string {
+  return resolve(resolveUserDataDir(), "memory");
+}
+
+// The embedder is DI-gated (registerTransformersLoader) so @skipper/core
+// never imports @huggingface/transformers statically. The CLI is the
+// embedder host (#44): plain require — the package sits in the co-located
+// node_modules next to the packaged bundle, or the workspace in dev.
+function ensureEmbedderRegistered(): void {
+  const req = createRequire(__filename);
+  registerTransformersLoader(() => {
+    const t = req("@huggingface/transformers");
+    // Same cache the app uses — model downloaded once, shared.
+    const cacheDir = process.env.SKIPPER_HF_CACHE ?? resolve(resolveUserDataDir(), "hf-cache");
+    if (t?.env) t.env.cacheDir = cacheDir;
+    return t;
+  });
+}
+
+function parseRepoRef(value: string): { owner: string; name: string } {
+  const [owner, name, ...rest] = value.split("/");
+  if (!owner || !name || rest.length > 0) {
+    throw new Error(`Invalid repo "${value}" — expected owner/name`);
+  }
+  return { owner, name };
 }
 
 interface SkipperSettings {
@@ -413,6 +444,59 @@ projects
       console.log(`Hook path: ${s.hookPath}`);
       console.log(`Exists:    ${s.exists ? "yes" : "no"}`);
       console.log(`Managed:   ${s.ours ? `yes (v${s.version})` : "no"}`);
+    } catch (error) {
+      console.error(`✗ ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+  });
+
+// ---------- solutions memory (debug surface for #44; `serve` arrives with #45) ----------
+
+const memory = program
+  .command("memory")
+  .description("Solutions memory: per-repo index of merged issues (plan + diff)");
+
+memory
+  .command("reindex")
+  .description("Reconcile the vector index with the record files (embed missing, drop stale)")
+  .action(async () => {
+    try {
+      ensureEmbedderRegistered();
+      const result = await reconcileMemoryIndex(memoryRoot(), (m) => console.log(`  ${m}`));
+      console.log(
+        `✔ ${result.total} record(s) — ${result.indexed} indexed, ${result.removed} stale removed`,
+      );
+    } catch (error) {
+      console.error(`✗ ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+  });
+
+memory
+  .command("search <query>")
+  .description("Search a repo's solutions memory (ranked: similarity × recency × feedback)")
+  .requiredOption("-r, --repo <owner/name>", "Repo scope")
+  .option("-k, --top <n>", "Max results", "5")
+  .action(async (query, options) => {
+    try {
+      ensureEmbedderRegistered();
+      const repo = parseRepoRef(options.repo);
+      const hits = await searchMemory(memoryRoot(), query, {
+        repo,
+        k: Number.parseInt(options.top, 10) || 5,
+      });
+      if (hits.length === 0) {
+        console.log("No matches.");
+        return;
+      }
+      for (const hit of hits) {
+        console.log(`${hit.score.toFixed(3)}  #${hit.issueNumber} ${hit.title}`);
+        console.log(`       id ${hit.id} · PR #${hit.pr.number} · captured ${hit.capturedAt}`);
+        if (hit.planSummary) console.log(`       ${hit.planSummary.slice(0, 200)}`);
+        if (hit.filesTouched.length > 0) {
+          console.log(`       files: ${hit.filesTouched.slice(0, 8).join(", ")}`);
+        }
+      }
     } catch (error) {
       console.error(`✗ ${error instanceof Error ? error.message : error}`);
       process.exit(1);

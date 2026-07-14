@@ -106,6 +106,21 @@ export type { RunCodingAgentOptions, CodingRunResult, StreamJsonParser } from ".
 // Shepherd (issue #11)
 export { buildCommitMessage, buildPrTitle, buildPrBody } from "./shepherd";
 
+// Solutions memory — index + retrieval (issue #44)
+export {
+  memoryFileName,
+  writeSolutionRecord,
+  readSolutionRecord,
+  listSolutionRecords,
+  buildEmbedText,
+  indexSolutionRecord,
+  reconcileMemoryIndex,
+  searchMemory,
+  recencyWeight,
+  feedbackWeight,
+} from "./memory";
+export type { SolutionRecordEntry, ReconcileResult, MemoryHit, SearchMemoryOptions } from "./memory";
+
 // Reviewer (issue #10)
 export {
   critiqueDiff,

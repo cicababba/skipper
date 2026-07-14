@@ -3,10 +3,13 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LifecycleState, PrReviewComment, TrackedItem } from "@skipper/shared";
-import { DEFAULT_ORCHESTRATOR_SETTINGS, type OrchestratorSettings } from "@skipper/core";
+import {
+  DEFAULT_ORCHESTRATOR_SETTINGS,
+  memoryFileName,
+  type OrchestratorSettings,
+} from "@skipper/core";
 import { initShepherd, openOrPushPr, pokeShepherd, type ShepherdDeps } from "./shepherd";
 import { commitWorktree, pushWorktreeBranch, captureBranchDiff, removeWorktree } from "./worktrees";
-import { memoryFileName } from "./memory-store";
 
 vi.mock("./worktrees", () => ({
   commitWorktree: vi.fn(async () => ({ committed: true, sha: "abc123" })),

@@ -24,4 +24,6 @@ export interface SolutionRecord {
   diffStats?: { filesChanged: number; totalChangedLines: number; files: string[] };
   outcome: "merged";
   capturedAt: string; // ISO 8601
+  /** 👍/👎 from the "memories used" UI (#46); weighs retrieval ranking at query time. */
+  feedback?: { up: number; down: number };
 }
