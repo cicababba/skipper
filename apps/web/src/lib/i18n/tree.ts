@@ -27,22 +27,12 @@ const en = {
     empty: "empty",
   },
   projects: {
-    newProject: "New project",
-    newProjectTitle: "Create a new project in NestBrain/Projects",
-    import: "Import",
-    importTitle:
-      "Import an existing folder into Projects — made knowledge-ready automatically",
-    importFailed: "Import failed",
-    makeReady: "Make knowledge-ready",
-    makeReadyDone:
-      "Project is now knowledge-ready — commits will feed the knowledge base.",
-    makeReadyFailed: "Failed to make knowledge-ready",
     openTerminalTitle: (name: string) =>
       `Open terminal here · focus branch indicator on ${name}`,
   },
   topbar: {
     syncUnavailableTitle:
-      "Drive sync requires the official build from nestbrain.app — or wire your own Google OAuth client (see README).",
+      "Drive sync requires the official build from skipper.app — or wire your own Google OAuth client (see README).",
     syncUnavailable: "Sync — not available in the free build",
     signInGoogle: "Sign in with Google",
     waitingBrowser: "Waiting for browser…",
@@ -55,7 +45,7 @@ const en = {
   updates: {
     ready: "Update ready",
     downloaded: (version: string) =>
-      `NestBrain ${version} has been downloaded. Restart to apply it now, or it will install automatically the next time you quit.`,
+      `Skipper ${version} has been downloaded. Restart to apply it now, or it will install automatically the next time you quit.`,
     restartNow: "Restart now",
     later: "Later",
   },
@@ -108,22 +98,12 @@ const it: typeof en = {
     empty: "vuota",
   },
   projects: {
-    newProject: "Nuovo progetto",
-    newProjectTitle: "Crea un nuovo progetto in NestBrain/Projects",
-    import: "Importa",
-    importTitle:
-      "Importa una cartella esistente in Projects — resa knowledge-ready automaticamente",
-    importFailed: "Importazione non riuscita",
-    makeReady: "Rendi knowledge-ready",
-    makeReadyDone:
-      "Il progetto ora è knowledge-ready — i commit alimenteranno la knowledge base.",
-    makeReadyFailed: "Impossibile rendere il progetto knowledge-ready",
     openTerminalTitle: (name: string) =>
       `Apri un terminale qui · indicatore branch su ${name}`,
   },
   topbar: {
     syncUnavailableTitle:
-      "La sincronizzazione Drive richiede la build ufficiale da nestbrain.app — oppure configura il tuo client Google OAuth (vedi README).",
+      "La sincronizzazione Drive richiede la build ufficiale da skipper.app — oppure configura il tuo client Google OAuth (vedi README).",
     syncUnavailable: "Sync — non disponibile nella build gratuita",
     signInGoogle: "Accedi con Google",
     waitingBrowser: "In attesa del browser…",
@@ -136,7 +116,7 @@ const it: typeof en = {
   updates: {
     ready: "Aggiornamento pronto",
     downloaded: (version: string) =>
-      `NestBrain ${version} è stato scaricato. Riavvia per applicarlo subito, oppure verrà installato automaticamente alla prossima chiusura.`,
+      `Skipper ${version} è stato scaricato. Riavvia per applicarlo subito, oppure verrà installato automaticamente alla prossima chiusura.`,
     restartNow: "Riavvia ora",
     later: "Più tardi",
   },
@@ -189,22 +169,12 @@ const fr: typeof en = {
     empty: "vide",
   },
   projects: {
-    newProject: "Nouveau projet",
-    newProjectTitle: "Créer un nouveau projet dans NestBrain/Projects",
-    import: "Importer",
-    importTitle:
-      "Importer un dossier existant dans Projects — rendu knowledge-ready automatiquement",
-    importFailed: "Échec de l'import",
-    makeReady: "Rendre knowledge-ready",
-    makeReadyDone:
-      "Le projet est désormais knowledge-ready — les commits alimenteront la base de connaissances.",
-    makeReadyFailed: "Impossible de rendre le projet knowledge-ready",
     openTerminalTitle: (name: string) =>
       `Ouvrir un terminal ici · indicateur de branch sur ${name}`,
   },
   topbar: {
     syncUnavailableTitle:
-      "La synchronisation Drive nécessite la build officielle de nestbrain.app — ou configurez votre propre client Google OAuth (voir README).",
+      "La synchronisation Drive nécessite la build officielle de skipper.app — ou configurez votre propre client Google OAuth (voir README).",
     syncUnavailable: "Sync — indisponible dans la version gratuite",
     signInGoogle: "Se connecter avec Google",
     waitingBrowser: "En attente du navigateur…",
@@ -217,7 +187,7 @@ const fr: typeof en = {
   updates: {
     ready: "Mise à jour prête",
     downloaded: (version: string) =>
-      `NestBrain ${version} a été téléchargé. Redémarrez pour l'appliquer maintenant, sinon il s'installera automatiquement à la prochaine fermeture.`,
+      `Skipper ${version} a été téléchargé. Redémarrez pour l'appliquer maintenant, sinon il s'installera automatiquement à la prochaine fermeture.`,
     restartNow: "Redémarrer maintenant",
     later: "Plus tard",
   },
@@ -271,22 +241,12 @@ const es: typeof en = {
     empty: "vacía",
   },
   projects: {
-    newProject: "Nuevo proyecto",
-    newProjectTitle: "Crea un nuevo proyecto en NestBrain/Projects",
-    import: "Importar",
-    importTitle:
-      "Importa una carpeta existente en Projects — se vuelve knowledge-ready automáticamente",
-    importFailed: "Error al importar",
-    makeReady: "Hacer knowledge-ready",
-    makeReadyDone:
-      "El proyecto ya es knowledge-ready — los commits alimentarán la base de conocimiento.",
-    makeReadyFailed: "No se pudo hacer knowledge-ready el proyecto",
     openTerminalTitle: (name: string) =>
       `Abrir una terminal aquí · indicador de branch en ${name}`,
   },
   topbar: {
     syncUnavailableTitle:
-      "La sincronización con Drive requiere la build oficial de nestbrain.app — o configura tu propio cliente Google OAuth (ver README).",
+      "La sincronización con Drive requiere la build oficial de skipper.app — o configura tu propio cliente Google OAuth (ver README).",
     syncUnavailable: "Sync — no disponible en la versión gratuita",
     signInGoogle: "Iniciar sesión con Google",
     waitingBrowser: "Esperando al navegador…",
@@ -299,7 +259,7 @@ const es: typeof en = {
   updates: {
     ready: "Actualización lista",
     downloaded: (version: string) =>
-      `NestBrain ${version} se ha descargado. Reinicia para aplicarla ahora, o se instalará automáticamente la próxima vez que cierres la app.`,
+      `Skipper ${version} se ha descargado. Reinicia para aplicarla ahora, o se instalará automáticamente la próxima vez que cierres la app.`,
     restartNow: "Reiniciar ahora",
     later: "Más tarde",
   },

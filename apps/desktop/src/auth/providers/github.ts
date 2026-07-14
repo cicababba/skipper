@@ -1,4 +1,4 @@
-import { GITHUB_OAUTH_ENDPOINTS, type Account } from "@nestbrain/shared";
+import { GITHUB_OAUTH_ENDPOINTS, type Account } from "@skipper/shared";
 import { OAuthError, type ProviderConfig, type ProviderTokens } from "../provider";
 import { GITHUB_OAUTH_CLIENT_ID, GITHUB_OAUTH_CLIENT_SECRET } from "../oauth-config";
 

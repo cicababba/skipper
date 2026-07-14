@@ -20,7 +20,7 @@ import type {
   UpdatePlanResult,
   WorktreeChangesResult,
   WorktreeFileResult,
-} from "@nestbrain/shared";
+} from "@skipper/shared";
 
 interface FsEntry {
   name: string;
@@ -50,32 +50,27 @@ declare global {
   }
 
   interface Window {
-    nestbrain?: {
+    skipper?: {
       isElectron: true;
       platform: NodeJS.Platform;
       getBootstrap: () => Promise<{
-        nestBrainPath?: string;
+        skipperPath?: string;
         isElectron: true;
         platform: NodeJS.Platform;
       }>;
       selectDirectory: () => Promise<string | null>;
-      projects: {
-        import: () => Promise<{ projectPath: string; name: string } | null>;
-        makeReady: (projectPath: string) => Promise<{ ready: boolean }>;
-        status: (projectPath: string) => Promise<{ ready: boolean }>;
-      };
       session: {
         run: (
           mode: "save" | "resume",
           projectDir: string,
         ) => Promise<{ ok: boolean; output: string }>;
       };
-      setupNestBrain: (parentPath: string) => Promise<{ nestBrainPath: string }>;
-      moveOrCreateNestBrain: (
+      setupSkipper: (parentPath: string) => Promise<{ skipperPath: string }>;
+      moveOrCreateSkipper: (
         parentPath: string,
-      ) => Promise<{ nestBrainPath: string; moved: boolean; created: boolean }>;
-      onNestBrainMoved: (
-        callback: (info: { nestBrainPath: string }) => void,
+      ) => Promise<{ skipperPath: string; moved: boolean; created: boolean }>;
+      onSkipperMoved: (
+        callback: (info: { skipperPath: string }) => void,
       ) => () => void;
       /** Resolve a DOM File to its absolute filesystem path (drag-drop). */
       getPathForFile: (file: File) => string;
@@ -105,9 +100,6 @@ declare global {
         signOut: (provider: AuthProviderId, accountId?: string) => Promise<void>;
         cancelSignIn: (provider: AuthProviderId) => Promise<void>;
         onStateChanged: (callback: (state: AuthState) => void) => () => void;
-      };
-      modules: {
-        get: () => Promise<string[]>;
       };
       openExternal: (url: string) => Promise<void>;
       onShowAbout: (callback: () => void) => () => void;

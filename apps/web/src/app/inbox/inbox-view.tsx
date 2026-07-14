@@ -13,7 +13,7 @@ import { filterItems, sortItems, type SortDir, type SortKey } from "@/lib/inbox/
 import { InboxTable } from "./inbox-table";
 import { InboxKanban } from "./inbox-kanban";
 
-const VIEW_KEY = "nestbrain-inbox-view";
+const VIEW_KEY = "skipper-inbox-view";
 
 type ViewMode = "table" | "kanban";
 type ColumnFilter = ColumnId | "attention";
@@ -64,7 +64,7 @@ export function InboxView() {
     return view === "table" ? sortItems(filtered, sortKey, sortDir) : filtered;
   }, [state, repo, view, columns, minConfidence, sortKey, sortDir]);
 
-  const isElectron = typeof window !== "undefined" && !!window.nestbrain;
+  const isElectron = typeof window !== "undefined" && !!window.skipper;
 
   return (
     <div className="min-h-full p-6 space-y-4">

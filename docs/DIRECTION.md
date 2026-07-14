@@ -349,7 +349,8 @@ giudizio si può mostrare fin da v1.
 
 ## Da decidere più avanti
 
-- **Nome** del prodotto (candidati: Foreman, Warden, Docket, Triage, Sift, Loomer).
+- ~~**Nome** del prodotto~~ — **deciso (2026-07-14): Skipper**, il codename del repo promosso
+  a nome del prodotto (rename coordinato in #16).
 - **Come si impone la licenza** (chiavi firmate verificate in locale vs micro-funzione
   serverless — comunque *non* un backend pieno). Le chiavi Polar del tier founder
   sono il punto di partenza.

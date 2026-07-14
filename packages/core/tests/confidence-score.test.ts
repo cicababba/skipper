@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { IssuePlan } from "@nestbrain/shared";
+import type { IssuePlan } from "@skipper/shared";
 import type { LLMProviderInterface, LLMResponse } from "../src/llm/provider";
 import type { PlanIssueInput } from "../src/planner";
 import { computeConfidence, scoreClarity, DEFAULT_CONFIDENCE_WEIGHTS } from "../src/confidence";

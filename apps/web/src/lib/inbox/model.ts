@@ -1,4 +1,4 @@
-import type { LifecycleState, RepoRef, TrackedItem } from "@nestbrain/shared";
+import type { LifecycleState, RepoRef, TrackedItem } from "@skipper/shared";
 
 export function repoKey(repo: RepoRef): string {
   return `${repo.owner}/${repo.name}`;

@@ -1,4 +1,4 @@
-import { canTransition, type LifecycleState, type TrackedItem } from "@nestbrain/shared";
+import { canTransition, type LifecycleState, type TrackedItem } from "@skipper/shared";
 
 export type ItemActionId =
   | "plan"

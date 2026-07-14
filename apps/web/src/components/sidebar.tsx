@@ -8,8 +8,6 @@ import {
   Settings,
   Sun,
   Moon,
-  Blocks,
-  Boxes,
   Inbox,
   ChevronDown,
   Plus,
@@ -17,13 +15,11 @@ import {
 import { FileTree } from "./file-tree";
 import { RepoManagerModal } from "./repo-manager-modal";
 import { BranchIndicator } from "./branch-indicator";
-import { useModules } from "@/lib/modules-context";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { attentionCounts, repoKey, reposOf } from "@/lib/inbox/model";
 import { useT } from "@/lib/app-i18n";
 import { useTheme } from "@/lib/theme-context";
 import { useStoredState } from "@/lib/use-stored-state";
-import { moduleSettings } from "@/lib/module-settings";
 
 const navItems = [
   { href: "/knowledge", icon: Lightbulb, key: "knowledge" as const },
@@ -33,15 +29,7 @@ const navItems = [
 const MIN_WIDTH = 200;
 const MAX_WIDTH = 400;
 const DEFAULT_WIDTH = 256;
-const STORAGE_KEY = "nestbrain-sidebar-width";
-
-/** Human label for a module id with no i18n entry: "dev-besidetech" → "Dev · Besidetech". */
-function prettyModule(id: string): string {
-  return id
-    .split("-")
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-    .join(" · ");
-}
+const STORAGE_KEY = "skipper-sidebar-width";
 
 function clampWidth(raw: string): number {
   const parsed = parseInt(raw, 10);
@@ -51,30 +39,29 @@ function clampWidth(raw: string): number {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { modules } = useModules();
   const { t } = useT();
   const [storedWidth, setStoredWidth] = useStoredState(STORAGE_KEY, String(DEFAULT_WIDTH));
   // Live value during a drag; storage is only written on mouse-up.
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const width = dragWidth ?? clampWidth(storedWidth);
   const isDragging = useRef(false);
-  const [nestBrainPath, setNestBrainPath] = useState<string | null>(null);
+  const [skipperPath, setSkipperPath] = useState<string | null>(null);
 
-  // Load NestBrain path (Electron only). Subscribes to onNestBrainMoved
+  // Load Skipper path (Electron only). Subscribes to onSkipperMoved
   // so the file tree appears as soon as onboarding completes (and updates
   // when the user moves the workspace from Settings).
   useEffect(() => {
-    if (typeof window === "undefined" || !window.nestbrain) return;
+    if (typeof window === "undefined" || !window.skipper) return;
     function refetch() {
-      window.nestbrain!
+      window.skipper!
         .getBootstrap()
         .then((b) => {
-          if (b.nestBrainPath) setNestBrainPath(b.nestBrainPath);
+          if (b.skipperPath) setSkipperPath(b.skipperPath);
         })
         .catch(() => { /* ignore */ });
     }
     refetch();
-    const off = window.nestbrain.onNestBrainMoved?.(() => refetch());
+    const off = window.skipper.onSkipperMoved?.(() => refetch());
     return off;
   }, []);
 
@@ -165,7 +152,7 @@ export function Sidebar() {
           >
             <div className="flex items-baseline gap-2">
               <h1 className="text-lg font-semibold tracking-tight">
-                <span className="text-accent">Nest</span>Brain
+                <span className="text-accent">Skipper</span>
               </h1>
             </div>
             <p className="text-[11px] text-muted/60 mt-0.5">v{process.env.NEXT_PUBLIC_APP_VERSION}</p>
@@ -179,29 +166,17 @@ export function Sidebar() {
           <InboxNav />
         </Suspense>
 
-        {/* NestBrain file tree (Electron only, after onboarding) */}
-        {nestBrainPath && <FileTree rootPath={nestBrainPath} />}
+        {/* Skipper file tree (Electron only, after onboarding) */}
+        {skipperPath && <FileTree rootPath={skipperPath} />}
 
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-0.5 overflow-auto">
-          {[
-            ...navItems.slice(0, -1),
-            // Generic entry for any active module without a dedicated surface
-            // (dev and anatomize integrate into the existing UI; modules that
-            // register a settings panel live in /modules instead).
-            // A surface-less third-party module's page lives at /<id> — this
-            // makes it reachable without editing the sidebar.
-            ...modules
-              .filter((m) => m !== "dev" && m !== "anatomize" && !moduleSettings[m])
-              .map((m) => ({ href: `/${m}`, icon: Boxes, label: prettyModule(m) })),
-            ...(modules.length > 0 ? [{ href: "/modules", icon: Blocks, key: "modules" as const }] : []),
-            navItems[navItems.length - 1],
-          ].map((item) => {
+          {navItems.map((item) => {
             const isActive =
               pathname === item.href || pathname.startsWith(item.href + "/");
             const Icon = item.icon;
             const isKnowledge = item.href === "/knowledge";
-            const label = "key" in item ? t.common.nav[item.key] : item.label;
+            const label = t.common.nav[item.key];
             return (
               <Link
                 key={item.href}
@@ -230,7 +205,7 @@ export function Sidebar() {
         {/* Footer — the BranchIndicator slot is height-reserved so the
             footer doesn't bob whenever the chip appears or disappears */}
         <div className="h-9 px-4 border-t border-sidebar-border flex items-center gap-2">
-          <p className="text-[10px] text-muted/30 shrink-0">NestBrain</p>
+          <p className="text-[10px] text-muted/30 shrink-0">Skipper</p>
           <div className="flex-1 min-w-0 flex justify-center">
             <BranchIndicator />
           </div>
@@ -247,7 +222,7 @@ export function Sidebar() {
   );
 }
 
-const INBOX_COLLAPSE_KEY = "nestbrain-inbox-nav-collapsed";
+const INBOX_COLLAPSE_KEY = "skipper-inbox-nav-collapsed";
 
 function AttentionBadge({ count, title }: { count: number; title?: string }) {
   if (count === 0) return null;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { TrackedItem } from "@nestbrain/shared";
+import type { TrackedItem } from "@skipper/shared";
 import { filterItems, formatAge, sortItems } from "./table";
 
 function item(overrides: Partial<TrackedItem>): TrackedItem {

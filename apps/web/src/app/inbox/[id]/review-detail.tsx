@@ -15,7 +15,7 @@ import {
   Save,
   X,
 } from "lucide-react";
-import type { WorktreeFileChange, WorktreeFileContents } from "@nestbrain/shared";
+import type { WorktreeFileChange, WorktreeFileContents } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { repoKey } from "@/lib/inbox/model";
@@ -70,9 +70,9 @@ export function ReviewDetailView() {
 
   const fetchChanges = useCallback(
     async (keepSelection: boolean) => {
-      if (!window.nestbrain) return;
+      if (!window.skipper) return;
       if (!keepSelection) setChanges({ kind: "loading" });
-      const result = await window.nestbrain.orchestrator.getWorktreeChanges(id);
+      const result = await window.skipper.orchestrator.getWorktreeChanges(id);
       if (result.ok) setChanges({ kind: "ready", files: result.files });
       else setChanges({ kind: "error", message: result.error });
     },
@@ -85,11 +85,11 @@ export function ReviewDetailView() {
 
   const openFile = useCallback(
     async (change: WorktreeFileChange) => {
-      if (!window.nestbrain) return;
+      if (!window.skipper) return;
       setSelected(change);
       setSaveError(null);
       setFileState({ kind: "loading" });
-      const result = await window.nestbrain.orchestrator.readWorktreeFile(
+      const result = await window.skipper.orchestrator.readWorktreeFile(
         id,
         change.path,
         change.oldPath,
@@ -112,11 +112,11 @@ export function ReviewDetailView() {
   };
 
   const handleSave = useCallback(async () => {
-    if (!window.nestbrain || !selected || !dirtyRef.current || !live) return;
+    if (!window.skipper || !selected || !dirtyRef.current || !live) return;
     setSaving(true);
     setSaveError(null);
     try {
-      const result = await window.nestbrain.orchestrator.saveWorktreeFile(
+      const result = await window.skipper.orchestrator.saveWorktreeFile(
         id,
         selected.path,
         content,
@@ -192,7 +192,7 @@ export function ReviewDetailView() {
     }
   };
 
-  const isElectron = typeof window !== "undefined" && !!window.nestbrain;
+  const isElectron = typeof window !== "undefined" && !!window.skipper;
 
   if (!isElectron) {
     return (
@@ -244,7 +244,7 @@ export function ReviewDetailView() {
           <span className="font-mono text-[13px] text-muted shrink-0">#{item.number}</span>
           <h1 className="text-xl font-semibold tracking-tight min-w-0">{item.title}</h1>
           <button
-            onClick={() => void window.nestbrain?.openExternal(item.url)}
+            onClick={() => void window.skipper?.openExternal(item.url)}
             className="p-1 rounded text-muted hover:text-accent transition-colors shrink-0 self-center"
             title={item.url}
           >

@@ -16,7 +16,7 @@ import { execFileSync } from "node:child_process";
 import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, basename, resolve, dirname } from "node:path";
-import type { LLMProviderInterface } from "@nestbrain/core";
+import type { LLMProviderInterface } from "@skipper/core";
 
 const SUMMARY_REL = "session-summary.md";
 const LEGACY_REL = join(".nest", "session-summary.md");
@@ -233,7 +233,7 @@ export async function resumeSession(projectDir: string, { llm }: SessionDeps): P
   const path = existingSummaryPath(dir);
   if (!path) {
     throw new Error(
-      `no ${SUMMARY_REL} in this project — run \`nestbrain session save\` on the other machine (and let it sync) first`,
+      `no ${SUMMARY_REL} in this project — run \`skipper session save\` on the other machine (and let it sync) first`,
     );
   }
   const { fm, body } = parseSummary(await readFile(path, "utf8"));

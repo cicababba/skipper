@@ -25,7 +25,7 @@ Format: `<scope>:<type>: <descriptive title>`
   | `desktop` | `apps/desktop` — Electron shell, main/preload, IPC, packaging hooks |
   | `web` | `apps/web` — Next.js UI, components, editor, terminal UI |
   | `core` | `packages/core` — llm, vectorstore, knowledge |
-  | `cli` | `packages/cli` — the `nestbrain` CLI |
+  | `cli` | `packages/cli` — the `skipper` CLI |
   | `shared` | `packages/shared` — shared types and constants |
   | `sync` | `packages/sync` — SyncBackend contract + manifest seams |
   | `infra` | CI/CD, workflows, build scripts, repo tooling |

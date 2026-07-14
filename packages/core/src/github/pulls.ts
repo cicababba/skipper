@@ -1,5 +1,5 @@
-import { GITHUB_API_BASE_URL } from "@nestbrain/shared";
-import type { PrReviewComment, PullRequest, RepoRef } from "@nestbrain/shared";
+import { GITHUB_API_BASE_URL } from "@skipper/shared";
+import type { PrReviewComment, PullRequest, RepoRef } from "@skipper/shared";
 import { githubGet, githubPost, type GitHubResponse } from "./client";
 import type { GitHubTokenProvider } from "./types";
 

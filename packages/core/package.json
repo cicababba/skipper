@@ -1,5 +1,5 @@
 {
-  "name": "@nestbrain/core",
+  "name": "@skipper/core",
   "version": "1.14.3",
   "private": true,
   "main": "./dist/index.js",
@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^4.0.1",
-    "@nestbrain/shared": "workspace:*",
+    "@skipper/shared": "workspace:*",
     "zod": "^4.3.6"
   }
 }

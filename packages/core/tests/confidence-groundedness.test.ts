@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { IssuePlan } from "@nestbrain/shared";
+import type { IssuePlan } from "@skipper/shared";
 import { scoreGroundedness } from "../src/confidence";
 
 let repo: string;

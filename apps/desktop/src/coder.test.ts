@@ -6,9 +6,9 @@ import type {
   StoredPlan,
   TrackedItem,
   TransitionActor,
-} from "@nestbrain/shared";
-import type { RunCodingAgentOptions, CodingRunResult, OrchestratorSettings } from "@nestbrain/core";
-import { DEFAULT_ORCHESTRATOR_SETTINGS, CodingAbortError } from "@nestbrain/core";
+} from "@skipper/shared";
+import type { RunCodingAgentOptions, CodingRunResult, OrchestratorSettings } from "@skipper/core";
+import { DEFAULT_ORCHESTRATOR_SETTINGS, CodingAbortError } from "@skipper/core";
 import { initCoder, pokeCoder, cancelCodingRun, type CoderDeps } from "./coder";
 
 const plan: IssuePlan = {

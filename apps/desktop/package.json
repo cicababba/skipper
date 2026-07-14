@@ -1,8 +1,8 @@
 {
-  "name": "@nestbrain/desktop",
+  "name": "@skipper/desktop",
   "version": "1.16.3",
   "private": true,
-  "description": "NestBrain native desktop app",
+  "description": "Skipper native desktop app",
   "main": "dist/main.js",
   "scripts": {
     "ensure-oauth-config": "node build/ensure-oauth-config.mjs",
@@ -13,16 +13,16 @@
     "build:ts": "pnpm ensure-oauth-config && pnpm ensure-update-config && tsc -p tsconfig.json && pnpm bundle-updater && pnpm bundle-orchestrator",
     "build": "pnpm build:ts",
     "test": "vitest run --passWithNoTests",
-    "dev": "pnpm build:ts && NESTBRAIN_DEV=1 electron .",
+    "dev": "pnpm build:ts && SKIPPER_DEV=1 electron .",
     "start": "electron .",
     "package": "pnpm dereference-workspace-deps && electron-builder",
     "package:mac": "pnpm dereference-workspace-deps && electron-builder --mac",
     "package:win": "pnpm dereference-workspace-deps && electron-builder --win"
   },
   "dependencies": {
-    "@nestbrain/shared": "workspace:*",
-    "@nestbrain/core": "workspace:*",
-    "@nestbrain/sync": "workspace:*",
+    "@skipper/shared": "workspace:*",
+    "@skipper/core": "workspace:*",
+    "@skipper/sync": "workspace:*",
     "node-pty": "^1.0.0"
   },
   "devDependencies": {
@@ -36,8 +36,8 @@
     "typescript": "^5.9.3"
   },
   "build": {
-    "appId": "com.nextepochs.nestbrain",
-    "productName": "NestBrain",
+    "appId": "com.nextepochs.skipper",
+    "productName": "Skipper",
     "copyright": "Copyright © 2026 NextEpochs",
     "npmRebuild": false,
     "afterPack": "build/after-pack.cjs",
@@ -73,7 +73,7 @@
     ],
     "publish": {
       "provider": "generic",
-      "url": "https://updates.nestbrain.app"
+      "url": "https://updates.skipper.app"
     },
     "mac": {
       "category": "public.app-category.productivity",

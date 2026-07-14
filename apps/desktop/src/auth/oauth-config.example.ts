@@ -10,7 +10,7 @@
 //      → OAuth client ID → Application type: "Desktop app". Name it anything.
 //   2. Copy the Client ID (ends with `.apps.googleusercontent.com`) and the
 //      Client secret (starts with `GOCSPX-`) into the constants below.
-//   3. On the OAuth consent screen, add the scopes used by NestBrain:
+//   3. On the OAuth consent screen, add the scopes used by Skipper:
 //        openid, email, profile
 //      and (while in Testing mode) add your Google account as a test user.
 //

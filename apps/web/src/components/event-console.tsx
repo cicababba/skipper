@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Bot, CheckCircle2, CircleDashed, Wrench, XCircle } from "lucide-react";
-import type { CodingEvent, CodingEventEnvelope } from "@nestbrain/shared";
+import type { CodingEvent, CodingEventEnvelope } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { appendLive, mergeReplay } from "@/lib/inbox/console";
 

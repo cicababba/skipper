@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EventEmitter } from "node:events";
 import { spawn } from "node:child_process";
-import type { CodingEvent } from "@nestbrain/shared";
+import type { CodingEvent } from "@skipper/shared";
 import { ClaudeCLIProvider, invalidateResolvedClaude } from "../src/llm/claude-cli";
 
 vi.mock("node:child_process", () => ({

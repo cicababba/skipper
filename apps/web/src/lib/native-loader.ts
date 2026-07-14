@@ -9,7 +9,7 @@
 //   - @huggingface/transformers: .mjs entry has an ESM↔CJS interop issue
 //     with onnxruntime-common; .cjs entry works via require().
 import { createRequire } from "node:module";
-import { registerTransformersLoader } from "@nestbrain/core";
+import { registerTransformersLoader } from "@skipper/core";
 
 const nodeRequire = createRequire(import.meta.url);
 
@@ -24,11 +24,11 @@ const loadTransformersRaw: () => any = new Function(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const loadTransformers: () => any = () => {
   const t = loadTransformersRaw();
-  // Persist the model cache in the app's userData (NESTBRAIN_HF_CACHE, set by
+  // Persist the model cache in the app's userData (SKIPPER_HF_CACHE, set by
   // the Electron main). The library default writes inside node_modules — in a
   // packaged install that's the app bundle: not reliably writable (Windows)
   // and wiped on every update, forcing a re-download from huggingface.co.
-  const cacheDir = process.env.NESTBRAIN_HF_CACHE;
+  const cacheDir = process.env.SKIPPER_HF_CACHE;
   if (cacheDir && t?.env) t.env.cacheDir = cacheDir;
   return t;
 };

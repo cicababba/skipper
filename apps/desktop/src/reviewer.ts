@@ -4,14 +4,14 @@ import {
   ClaudeCLIProvider,
   type LLMProviderInterface,
   type OrchestratorSettings,
-} from "@nestbrain/core";
+} from "@skipper/core";
 import type {
   AgentReview,
   Issue,
   LifecycleState,
   StoredPlan,
   TrackedItem,
-} from "@nestbrain/shared";
+} from "@skipper/shared";
 import type { WorktreeDiff } from "./worktrees";
 
 // Agent review loop (issue #10): consumes "agent-review" items (the #9 coder's

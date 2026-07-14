@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { LifecycleState, TrackedItem } from "@nestbrain/shared";
-import { canTransition, TRANSITIONS } from "@nestbrain/shared";
+import type { LifecycleState, TrackedItem } from "@skipper/shared";
+import { canTransition, TRANSITIONS } from "@skipper/shared";
 import { actionsFor } from "./actions";
 
 const ALL_STATES = Object.keys(TRANSITIONS) as LifecycleState[];

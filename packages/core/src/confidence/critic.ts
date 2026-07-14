@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { CriticSignal, CriticVerdict, IssuePlan } from "@nestbrain/shared";
+import type { CriticSignal, CriticVerdict, IssuePlan } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm";
 import type { PlanIssueInput } from "../planner";
 

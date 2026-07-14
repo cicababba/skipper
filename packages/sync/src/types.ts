@@ -24,7 +24,7 @@ export interface Manifest {
   deviceId: string;
   /** Human-readable label (os.hostname() at creation time). */
   deviceName: string;
-  /** Drive folder id of the NestBrain-Sync root. */
+  /** Drive folder id of the Skipper-Sync root. */
   rootFolderDriveId?: string;
   /** Map of relative folder path → Drive folder id. Root has key "". */
   folders: Record<string, string>;

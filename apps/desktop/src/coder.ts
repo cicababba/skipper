@@ -10,7 +10,7 @@ import {
   compareQueueCandidates,
   type OrchestratorSettings,
   type QueueCandidate,
-} from "@nestbrain/core";
+} from "@skipper/core";
 import type {
   CodingEvent,
   Issue,
@@ -20,7 +20,7 @@ import type {
   StoredPlan,
   TrackedItem,
   TransitionActor,
-} from "@nestbrain/shared";
+} from "@skipper/shared";
 
 // Coding runner loop (issue #9): consumes "queued" items — the approval gate's
 // output — one at a time per repo. Creates/reuses an isolated git worktree,

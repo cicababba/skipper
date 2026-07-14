@@ -4,7 +4,7 @@
 
 import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { GitHubAccountCursor } from "@nestbrain/core";
+import type { GitHubAccountCursor } from "@skipper/core";
 
 export interface InboxCursorFile {
   version: 1;

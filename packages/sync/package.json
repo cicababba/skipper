@@ -1,5 +1,5 @@
 {
-  "name": "@nestbrain/sync",
+  "name": "@skipper/sync",
   "version": "1.16.3",
   "private": true,
   "main": "./dist/index.js",

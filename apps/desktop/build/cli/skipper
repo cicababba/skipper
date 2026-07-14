@@ -1,8 +1,8 @@
 #!/bin/sh
-# `nestbrain` CLI shell wrapper bundled with NestBrain.app.
-# Lives at <App>/Contents/Resources/cli/nestbrain after packaging.
+# `skipper` CLI shell wrapper bundled with Skipper.app.
+# Lives at <App>/Contents/Resources/cli/skipper after packaging.
 # Resolves the bundled JS via a path relative to itself so the app can be
-# moved anywhere and the install-on-PATH symlink (/usr/local/bin/nestbrain)
+# moved anywhere and the install-on-PATH symlink (/usr/local/bin/skipper)
 # still works.
 
 # Follow symlinks portably (no readlink -f dependency — macOS BSD readlink
@@ -24,8 +24,8 @@ script_dir="$(cd -P "$(dirname "$src")" && pwd)"
 #                       <repo>/apps/web/.next/standalone/apps/web/
 # Resolve the first one that exists, error out if neither does.
 candidates="
-  $script_dir/../web/apps/web/nestbrain.bundle.cjs
-  $script_dir/../../../web/.next/standalone/apps/web/nestbrain.bundle.cjs
+  $script_dir/../web/apps/web/skipper.bundle.cjs
+  $script_dir/../../../web/.next/standalone/apps/web/skipper.bundle.cjs
 "
 bundle=""
 for c in $candidates; do
@@ -35,7 +35,7 @@ for c in $candidates; do
   fi
 done
 if [ -z "$bundle" ]; then
-  echo "nestbrain: cannot locate the CLI bundle. Was NestBrain.app moved? Re-install the CLI from Settings → Command line." >&2
+  echo "skipper: cannot locate the CLI bundle. Was Skipper.app moved? Re-install the CLI from Settings → Command line." >&2
   exit 127
 fi
 

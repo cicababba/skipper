@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Issue, LifecycleState, PullRequest, TrackedItem } from "@nestbrain/shared";
+import type { Issue, LifecycleState, PullRequest, TrackedItem } from "@skipper/shared";
 import {
   reconcile,
   admitItem,

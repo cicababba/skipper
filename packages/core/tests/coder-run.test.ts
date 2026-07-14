@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import type { spawn } from "node:child_process";
-import type { CodingEvent } from "@nestbrain/shared";
+import type { CodingEvent } from "@skipper/shared";
 import { runCodingAgent, CodingAbortError } from "../src/coder";
 
 class FakeChild extends EventEmitter {

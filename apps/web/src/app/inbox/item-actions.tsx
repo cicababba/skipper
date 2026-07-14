@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
-import type { TrackedItem } from "@nestbrain/shared";
+import type { TrackedItem } from "@skipper/shared";
 import { actionsFor, type ItemAction } from "@/lib/inbox/actions";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";

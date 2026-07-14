@@ -1,4 +1,4 @@
-import type { TrackedItem } from "@nestbrain/shared";
+import type { TrackedItem } from "@skipper/shared";
 import { columnFor, repoKey, KANBAN_COLUMNS, type ColumnId } from "./model";
 
 export type SortKey = "confidence" | "repo" | "age" | "state";

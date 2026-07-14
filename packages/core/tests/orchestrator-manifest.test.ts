@@ -9,7 +9,7 @@ import {
   DEFAULT_ORCHESTRATOR_SETTINGS,
   type OrchestratorManifest,
 } from "../src/orchestrator";
-import type { Issue } from "@nestbrain/shared";
+import type { Issue } from "@skipper/shared";
 
 let dir: string;
 let filePath: string;

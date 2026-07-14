@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { ExternalLink, TriangleAlert } from "lucide-react";
-import type { TrackedItem } from "@nestbrain/shared";
+import type { TrackedItem } from "@skipper/shared";
 import { ATTENTION_SECTION_STATES, KANBAN_COLUMNS, repoKey } from "@/lib/inbox/model";
 import { formatAge } from "@/lib/inbox/table";
 import { ConfidenceBadge } from "@/components/confidence-popover";
@@ -11,7 +11,7 @@ import { StateBadge } from "./state-badge";
 import { ItemActions } from "./item-actions";
 
 function openExternal(url: string) {
-  void window.nestbrain?.openExternal(url);
+  void window.skipper?.openExternal(url);
 }
 
 function KanbanCard({ item, showState }: { item: TrackedItem; showState: boolean }) {

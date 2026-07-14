@@ -5,7 +5,7 @@
 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { SolutionRecord } from "@nestbrain/shared";
+import type { SolutionRecord } from "@skipper/shared";
 
 /** Item ids contain ":" which is illegal on Windows filenames. */
 export function memoryFileName(itemId: string): string {

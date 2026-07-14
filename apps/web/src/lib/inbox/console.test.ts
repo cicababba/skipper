@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CodingEventEnvelope } from "@nestbrain/shared";
+import type { CodingEventEnvelope } from "@skipper/shared";
 import { appendLive, mergeReplay } from "./console";
 
 function env(seq: number): CodingEventEnvelope {

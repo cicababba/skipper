@@ -61,7 +61,7 @@ No dates. Watch the repo.
 
 ## Heritage
 
-Skipper is built on the NestBrain codebase, and reuses its best parts: the Electron + Next.js desktop shell with editor, file tree and real PTY terminal; the desktop OAuth stack; local embeddings (ONNX, no API); and a battle-tested "observe → reconcile → track state" engine being repurposed as the orchestrator. Everything still says `nestbrain` in package names, IPC channels and configs — the coordinated rename is tracked in [#16](../../issues/16) and waits for the final product name.
+Skipper is built on the NestBrain codebase, and reuses its best parts: the Electron + Next.js desktop shell with editor, file tree and real PTY terminal; the desktop OAuth stack; local embeddings (ONNX, no API); and a battle-tested "observe → reconcile → track state" engine being repurposed as the orchestrator. The coordinated rename landed with [#16](../../issues/16) — everything is `skipper` now (`@skipper/*` packages, `skipper:*` IPC, `SKIPPER_*` env vars).
 
 ## Development
 
@@ -69,7 +69,7 @@ Skipper is built on the NestBrain codebase, and reuses its best parts: the Elect
 # Node 20+, pnpm
 pnpm install
 pnpm desktop:build
-pnpm --filter @nestbrain/desktop start
+pnpm --filter @skipper/desktop start
 ```
 
 Gitflow: `main` is release-only, `develop` is the integration branch. Conventions for branches, commits, and issue/PR titles live in [`.claude/rules/conventions.md`](.claude/rules/conventions.md).
@@ -78,8 +78,8 @@ Gitflow: `main` is release-only, `develop` is the integration branch. Convention
 
 Sign-in works out of the box only in official builds. Source builds run with placeholder credentials — each provider shows as "unconfigured" until you supply your own client in `apps/desktop/src/auth/oauth-config.ts` (gitignored; see [`oauth-config.example.ts`](apps/desktop/src/auth/oauth-config.example.ts) for setup steps) or via env vars / `apps/desktop/.env.local`:
 
-- **Google** (identity for the supporter entitlement): `NESTBRAIN_GOOGLE_CLIENT_ID` + `NESTBRAIN_GOOGLE_CLIENT_SECRET` — an OAuth "Desktop app" client from Google Cloud Console.
-- **GitHub** (issue/PR orchestration): `NESTBRAIN_GITHUB_CLIENT_ID` + `NESTBRAIN_GITHUB_CLIENT_SECRET` — a GitHub App with "Expire user authorization tokens" enabled, callback URLs `http://127.0.0.1:8127/callback`, `:8128`, `:8129`, and permissions Issues (read), Pull requests (read & write), Metadata (read), Email addresses (read).
+- **Google** (identity for the supporter entitlement): `SKIPPER_GOOGLE_CLIENT_ID` + `SKIPPER_GOOGLE_CLIENT_SECRET` — an OAuth "Desktop app" client from Google Cloud Console.
+- **GitHub** (issue/PR orchestration): `SKIPPER_GITHUB_CLIENT_ID` + `SKIPPER_GITHUB_CLIENT_SECRET` — a GitHub App with "Expire user authorization tokens" enabled, callback URLs `http://127.0.0.1:8127/callback`, `:8128`, `:8129`, and permissions Issues (read), Pull requests (read & write), Metadata (read), Email addresses (read).
 
 ## Author
 

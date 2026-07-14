@@ -1,4 +1,4 @@
-import type { CriticSignal, PlanAcceptance } from "@nestbrain/shared";
+import type { CriticSignal, PlanAcceptance } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm";
 import type { PlanIssueInput } from "../planner";
 import { runCritic } from "../confidence";

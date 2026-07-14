@@ -7,9 +7,9 @@
 //
 // On-disk layout:
 //
-//   <workspace>/.nestbrain/knowledge-pending/   ← LLM proposed, awaiting review
-//   <workspace>/.nestbrain/knowledge-rejected/  ← user rejected, kept for re-pickup
-//   <workspace>/.nestbrain/raw/projects/<name>/ ← accepted, eligible for compile
+//   <workspace>/.skipper/knowledge-pending/   ← LLM proposed, awaiting review
+//   <workspace>/.skipper/knowledge-rejected/  ← user rejected, kept for re-pickup
+//   <workspace>/.skipper/raw/projects/<name>/ ← accepted, eligible for compile
 
 export interface SourceRef {
   /** Git SHA the atom was extracted from. Always present for commit-derived atoms. */

@@ -12,7 +12,7 @@ import "@xterm/xterm/css/xterm.css";
 // kept mounted across tab switches and panel toggles so scrollback and
 // running processes stay visible when you come back.
 
-const HEIGHT_KEY = "nestbrain-terminal-height";
+const HEIGHT_KEY = "skipper-terminal-height";
 const DEFAULT_HEIGHT = 260;
 const MIN_HEIGHT = 120;
 const MAX_HEIGHT = 600;
@@ -23,7 +23,7 @@ function XtermView({ session, visible }: { session: TerminalSession; visible: bo
 
   useEffect(() => {
     const el = containerRef.current;
-    const api = window.nestbrain?.terminal;
+    const api = window.skipper?.terminal;
     if (!el || !api) return;
 
     const styles = getComputedStyle(el);

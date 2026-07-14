@@ -14,13 +14,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const target = join(__dirname, "../src/update-config.ts");
 const envLocal = join(__dirname, "../.env.local");
 
-let key = process.env.NESTBRAIN_UPDATE_KEY;
-let url = process.env.NESTBRAIN_UPDATE_URL;
+let key = process.env.SKIPPER_UPDATE_KEY;
+let url = process.env.SKIPPER_UPDATE_URL;
 
 if ((!key || !url) && existsSync(envLocal)) {
   const vars = parseEnvFile(readFileSync(envLocal, "utf-8"));
-  key = key || vars.NESTBRAIN_UPDATE_KEY;
-  url = url || vars.NESTBRAIN_UPDATE_URL;
+  key = key || vars.SKIPPER_UPDATE_KEY;
+  url = url || vars.SKIPPER_UPDATE_URL;
 }
 
 function parseEnvFile(text) {
@@ -45,7 +45,7 @@ const contents = [
   "// Empty key ⇒ updater disabled (source build). DO NOT commit this file.",
   "",
   `export const UPDATE_CHANNEL_KEY = "${escape(key ?? "")}";`,
-  `export const UPDATE_BASE_URL = "${escape(url ?? "https://updates.nestbrain.app")}";`,
+  `export const UPDATE_BASE_URL = "${escape(url ?? "https://updates.skipper.app")}";`,
   "",
 ].join("\n");
 

@@ -1,24 +1,24 @@
 ---
 name: start_session
-description: Start a new work session in the NestBrain workspace. Triggered when the user says "Buongiorno, Claude" or "Good morning, Claude". Creates a timestamped session file in Daily/, shows a recap of the previous session, and begins logging macro-tasks across the Projects touched during the session.
+description: Start a new work session in the Skipper workspace. Triggered when the user says "Buongiorno, Claude" or "Good morning, Claude". Creates a timestamped session file in Daily/, shows a recap of the previous session, and begins logging macro-tasks across the Projects touched during the session.
 ---
 
 # start_session
 
 You run this skill when the user greets you with **"Buongiorno, Claude"** or **"Good morning, Claude"** (case-insensitive, comma optional).
 
-**Path resolution:** every path in this skill (`Daily/`, `Projects/<name>/.nest/STATE.md`, etc.) resolves against `<nestbrain_root>`, not your current working directory. See the "Finding the NestBrain root" section of `<nestbrain_root>/CLAUDE.md`. Use absolute paths when reading/writing.
+**Path resolution:** every path in this skill (`Daily/`, `Projects/<name>/.nest/STATE.md`, etc.) resolves against `<skipper_root>`, not your current working directory. See the "Finding the Skipper root" section of `<skipper_root>/CLAUDE.md`. Use absolute paths when reading/writing.
 
 ## Step 1 — Check for an already-open session
 
-List `<nestbrain_root>/Daily/*.md`. Find the most recent by filename (they are sorted lexicographically by `YYYY-MM-DD_HH-mm-ss.md`). Read its frontmatter.
+List `<skipper_root>/Daily/*.md`. Find the most recent by filename (they are sorted lexicographically by `YYYY-MM-DD_HH-mm-ss.md`). Read its frontmatter.
 
 - **If `status: open`** → the user already has an active session. **Do not open a new one.** Respond: *"There's already an open session from [time] — close it with 'Arrivederci, Claude' before starting a new one."* Stop here.
 - **If `status: closed` or `Daily/` is empty** → proceed to Step 2.
 
 ## Step 2 — Show a recap of the previous session
 
-Find the most recent **closed** session in `<nestbrain_root>/Daily/` (skip the one you are about to create). Read its `## Summary` section.
+Find the most recent **closed** session in `<skipper_root>/Daily/` (skip the one you are about to create). Read its `## Summary` section.
 
 - If the previous session is from **today** → open with *"In your previous session today you..."*
 - If the previous session is from **yesterday** → open with *"Yesterday you..."*
@@ -29,7 +29,7 @@ Then print **3–5 short bullets** distilled from the previous session's Summary
 
 ## Step 3 — Create the new session file
 
-Create `<nestbrain_root>/Daily/YYYY-MM-DD_HH-mm-ss.md` using the current local time. Format:
+Create `<skipper_root>/Daily/YYYY-MM-DD_HH-mm-ss.md` using the current local time. Format:
 
 ```markdown
 ---

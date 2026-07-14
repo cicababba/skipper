@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Issue, LifecycleState } from "@nestbrain/shared";
+import type { Issue, LifecycleState } from "@skipper/shared";
 import {
   TRANSITIONS,
   TERMINAL_STATES,

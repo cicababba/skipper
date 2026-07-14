@@ -75,7 +75,7 @@ export function registerTerminalHandlers(deps: TerminalDeps): TerminalApi {
   };
 
   handle(
-    "nestbrain:terminal:create",
+    "skipper:terminal:create",
     (_e, opts: { cwd: string; cols?: number; rows?: number }): { id: string; cwd: string } => {
       const pty = loadPty();
       if (!pty) throw new Error("terminal unavailable: node-pty failed to load");
@@ -91,26 +91,26 @@ export function registerTerminalHandlers(deps: TerminalDeps): TerminalApi {
       sessions.set(id, proc);
 
       proc.onData((data) => {
-        getMainWindow()?.webContents.send(`nestbrain:terminal:data:${id}`, data);
+        getMainWindow()?.webContents.send(`skipper:terminal:data:${id}`, data);
       });
       proc.onExit(({ exitCode }) => {
         sessions.delete(id);
-        getMainWindow()?.webContents.send(`nestbrain:terminal:exit:${id}`, exitCode);
+        getMainWindow()?.webContents.send(`skipper:terminal:exit:${id}`, exitCode);
       });
 
       return { id, cwd: opts.cwd };
     },
   );
 
-  on("nestbrain:terminal:write", (_e, msg: { id: string; data: string }) => {
+  on("skipper:terminal:write", (_e, msg: { id: string; data: string }) => {
     sessions.get(msg.id)?.write(msg.data);
   });
 
-  on("nestbrain:terminal:resize", (_e, msg: { id: string; cols: number; rows: number }) => {
+  on("skipper:terminal:resize", (_e, msg: { id: string; cols: number; rows: number }) => {
     if (msg.cols > 0 && msg.rows > 0) sessions.get(msg.id)?.resize(msg.cols, msg.rows);
   });
 
-  on("nestbrain:terminal:kill", (_e, msg: { id: string }) => {
+  on("skipper:terminal:kill", (_e, msg: { id: string }) => {
     sessions.get(msg.id)?.kill();
     sessions.delete(msg.id);
   });

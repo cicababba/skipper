@@ -1,17 +1,17 @@
 ---
 name: end_session
-description: Close the current work session in the NestBrain workspace. Triggered when the user says "Arrivederci, Claude" or "Goodbye, Claude". Writes the session Summary, Next steps, Git snapshot, and updates per-project STATE.md files for every project touched during the session.
+description: Close the current work session in the Skipper workspace. Triggered when the user says "Arrivederci, Claude" or "Goodbye, Claude". Writes the session Summary, Next steps, Git snapshot, and updates per-project STATE.md files for every project touched during the session.
 ---
 
 # end_session
 
 You run this skill when the user says **"Arrivederci, Claude"** or **"Goodbye, Claude"** (case-insensitive, comma optional).
 
-**Path resolution:** every path in this skill (`Daily/`, `Projects/<name>/.nest/STATE.md`, etc.) resolves against `<nestbrain_root>`, not your current working directory. See the "Finding the NestBrain root" section of `<nestbrain_root>/CLAUDE.md`. Use absolute paths when reading/writing. For git commands, use `git -C <nestbrain_root>/Projects/<name>` so you don't depend on cwd.
+**Path resolution:** every path in this skill (`Daily/`, `Projects/<name>/.nest/STATE.md`, etc.) resolves against `<skipper_root>`, not your current working directory. See the "Finding the Skipper root" section of `<skipper_root>/CLAUDE.md`. Use absolute paths when reading/writing. For git commands, use `git -C <skipper_root>/Projects/<name>` so you don't depend on cwd.
 
 ## Step 1 — Find the active session
 
-List `<nestbrain_root>/Daily/*.md`, take the most recent by filename, read its frontmatter.
+List `<skipper_root>/Daily/*.md`, take the most recent by filename, read its frontmatter.
 
 - **If `status: open`** → this is the session to close. Proceed.
 - **If `status: closed` or `Daily/` is empty** → respond *"No active session to close."* and stop.
@@ -51,7 +51,7 @@ Example:
 
 ## Step 4 — Write the Git section
 
-For each project listed in the frontmatter `projects:` array, if `<nestbrain_root>/Projects/<name>/.git/` exists, run `git -C <nestbrain_root>/Projects/<name> status --porcelain` and `git -C <nestbrain_root>/Projects/<name> rev-parse --short HEAD` (plus `symbolic-ref --short HEAD` for the branch) and add **one compact line** with its current state. Format:
+For each project listed in the frontmatter `projects:` array, if `<skipper_root>/Projects/<name>/.git/` exists, run `git -C <skipper_root>/Projects/<name> status --porcelain` and `git -C <skipper_root>/Projects/<name> rev-parse --short HEAD` (plus `symbolic-ref --short HEAD` for the branch) and add **one compact line** with its current state. Format:
 
 ```markdown
 ## Git
@@ -64,7 +64,7 @@ Fields: current branch, short commit hash (7 chars), dirty status. If dirty, inc
 
 ## Step 5 — Update per-project STATE.md files
 
-For every project in the frontmatter `projects:` array, update `<nestbrain_root>/Projects/<name>/.nest/STATE.md`. Create the `.nest/` directory and the file if they don't exist.
+For every project in the frontmatter `projects:` array, update `<skipper_root>/Projects/<name>/.nest/STATE.md`. Create the `.nest/` directory and the file if they don't exist.
 
 **STATE.md schema:**
 

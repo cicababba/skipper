@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Brain, Github, Globe, X } from "lucide-react";
 import { useT } from "@/lib/app-i18n";
 
-// Custom About dialog — opened by the macOS "About NestBrain" menu item via
-// the nestbrain:show-about IPC. Replaces the cramped native panel.
+// Custom About dialog — opened by the macOS "About Skipper" menu item via
+// the skipper:show-about IPC. Replaces the cramped native panel.
 
 export function AboutModal() {
   const { t } = useT();
@@ -13,7 +13,7 @@ export function AboutModal() {
   const version = process.env.NEXT_PUBLIC_APP_VERSION ?? "";
 
   useEffect(() => {
-    const mn = typeof window !== "undefined" ? window.nestbrain : undefined;
+    const mn = typeof window !== "undefined" ? window.skipper : undefined;
     if (!mn?.onShowAbout) return;
     return mn.onShowAbout(() => setOpen(true));
   }, []);
@@ -29,7 +29,7 @@ export function AboutModal() {
 
   if (!open) return null;
 
-  const ext = (url: string) => () => void window.nestbrain?.openExternal(url);
+  const ext = (url: string) => () => void window.skipper?.openExternal(url);
 
   return (
     <div
@@ -46,7 +46,7 @@ export function AboutModal() {
             <button
               onClick={() => setOpen(false)}
               className="absolute top-3.5 right-3.5 p-1.5 rounded-lg text-muted/50 hover:text-foreground hover:bg-card transition-colors"
-              aria-label={t.modules.about.close}
+              aria-label={t.about.close}
             >
               <X size={15} />
             </button>
@@ -56,9 +56,9 @@ export function AboutModal() {
             </div>
 
             <h2 className="text-2xl font-bold tracking-tight mb-1">
-              <span className="text-accent">Nest</span>Brain
+              <span className="text-accent">Skipper</span>
             </h2>
-            <p className="text-[13px] text-muted mb-3">{t.modules.about.tagline}</p>
+            <p className="text-[13px] text-muted mb-3">{t.about.tagline}</p>
 
             <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-[11px] font-mono text-muted mb-6">
               v{version}
@@ -66,14 +66,14 @@ export function AboutModal() {
 
             <div className="flex items-center justify-center gap-2.5 mb-7">
               <button
-                onClick={ext("https://nestbrain.app")}
+                onClick={ext("https://skipper.app")}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card hover:bg-card-hover px-3 py-1.5 text-[12px] font-medium transition-colors"
               >
                 <Globe size={13} className="text-accent" />
-                nestbrain.app
+                skipper.app
               </button>
               <button
-                onClick={ext("https://github.com/mikegazzaruso/NestBrain")}
+                onClick={ext("https://github.com/cicababba/skipper")}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card hover:bg-card-hover px-3 py-1.5 text-[12px] font-medium transition-colors"
               >
                 <Github size={13} className="text-accent" />
@@ -83,8 +83,8 @@ export function AboutModal() {
 
             <div className="pt-4 border-t border-border/60">
               <p className="text-[11px] text-muted/60 leading-relaxed">
-                {t.modules.about.createdBy}
-                <br />{t.modules.about.rights}
+                {t.about.createdBy}
+                <br />{t.about.rights}
               </p>
             </div>
           </div>

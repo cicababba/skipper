@@ -18,7 +18,7 @@ import type {
   UpdatePlanResult,
   WorktreeChangesResult,
   WorktreeFileResult,
-} from "@nestbrain/shared";
+} from "@skipper/shared";
 
 interface GitOpResult {
   ok: boolean;
@@ -45,155 +45,143 @@ interface CreateTerminalResult {
   cwd: string;
 }
 
-contextBridge.exposeInMainWorld("nestbrain", {
+contextBridge.exposeInMainWorld("skipper", {
   isElectron: true,
   platform: process.platform,
 
-  getBootstrap: () => ipcRenderer.invoke("nestbrain:getBootstrap"),
-  selectDirectory: () => ipcRenderer.invoke("nestbrain:selectDirectory"),
+  getBootstrap: () => ipcRenderer.invoke("skipper:getBootstrap"),
+  selectDirectory: () => ipcRenderer.invoke("skipper:selectDirectory"),
 
-  projects: {
-    import: (): Promise<{ projectPath: string; name: string } | null> =>
-      ipcRenderer.invoke("nestbrain:projects:import"),
-    makeReady: (projectPath: string): Promise<{ ready: boolean }> =>
-      ipcRenderer.invoke("nestbrain:projects:makeReady", projectPath),
-    status: (projectPath: string): Promise<{ ready: boolean }> =>
-      ipcRenderer.invoke("nestbrain:projects:status", projectPath),
-  },
   session: {
     run: (mode: "save" | "resume", projectDir: string): Promise<{ ok: boolean; output: string }> =>
-      ipcRenderer.invoke("nestbrain:session:run", mode, projectDir),
+      ipcRenderer.invoke("skipper:session:run", mode, projectDir),
   },
-  setupNestBrain: (parentPath: string) =>
-    ipcRenderer.invoke("nestbrain:setupNestBrain", parentPath),
-  moveOrCreateNestBrain: (parentPath: string) =>
-    ipcRenderer.invoke("nestbrain:moveOrCreateNestBrain", parentPath),
-  onNestBrainMoved: (callback: (info: { nestBrainPath: string }) => void) => {
-    const handler = (_e: unknown, info: { nestBrainPath: string }) =>
+  setupSkipper: (parentPath: string) =>
+    ipcRenderer.invoke("skipper:setupSkipper", parentPath),
+  moveOrCreateSkipper: (parentPath: string) =>
+    ipcRenderer.invoke("skipper:moveOrCreateSkipper", parentPath),
+  onSkipperMoved: (callback: (info: { skipperPath: string }) => void) => {
+    const handler = (_e: unknown, info: { skipperPath: string }) =>
       callback(info);
-    ipcRenderer.on("nestbrain:nestBrainMoved", handler);
-    return () => ipcRenderer.off("nestbrain:nestBrainMoved", handler);
+    ipcRenderer.on("skipper:skipperMoved", handler);
+    return () => ipcRenderer.off("skipper:skipperMoved", handler);
   },
 
   // File system
   fs: {
     list: (dirPath: string): Promise<FsEntry[]> =>
-      ipcRenderer.invoke("nestbrain:fs:list", dirPath),
+      ipcRenderer.invoke("skipper:fs:list", dirPath),
     createDir: (dirPath: string): Promise<{ ok: true; path: string }> =>
-      ipcRenderer.invoke("nestbrain:fs:createDir", dirPath),
+      ipcRenderer.invoke("skipper:fs:createDir", dirPath),
     readFile: (filePath: string): Promise<{
       content: string;
       size: number;
       binary: boolean;
       tooLarge: boolean;
-    }> => ipcRenderer.invoke("nestbrain:fs:readFile", filePath),
+    }> => ipcRenderer.invoke("skipper:fs:readFile", filePath),
     writeFile: (
       filePath: string,
       content: string,
     ): Promise<{ ok: true; size: number }> =>
-      ipcRenderer.invoke("nestbrain:fs:writeFile", filePath, content),
+      ipcRenderer.invoke("skipper:fs:writeFile", filePath, content),
     delete: (targetPath: string): Promise<{ ok: true }> =>
-      ipcRenderer.invoke("nestbrain:fs:delete", targetPath),
+      ipcRenderer.invoke("skipper:fs:delete", targetPath),
     rename: (
       oldPath: string,
       newName: string,
     ): Promise<{ ok: true; newPath: string }> =>
-      ipcRenderer.invoke("nestbrain:fs:rename", oldPath, newName),
+      ipcRenderer.invoke("skipper:fs:rename", oldPath, newName),
     onChange: (callback: () => void) => {
       const handler = () => callback();
-      ipcRenderer.on("nestbrain:fs:changed", handler);
-      return () => ipcRenderer.off("nestbrain:fs:changed", handler);
+      ipcRenderer.on("skipper:fs:changed", handler);
+      return () => ipcRenderer.off("skipper:fs:changed", handler);
     },
   },
 
   // Auth (multi-provider OAuth)
   auth: {
     getState: (): Promise<AuthState> =>
-      ipcRenderer.invoke("nestbrain:auth:getState"),
+      ipcRenderer.invoke("skipper:auth:getState"),
     signIn: (provider: AuthProviderId): Promise<void> =>
-      ipcRenderer.invoke(`nestbrain:auth:${provider}:signIn`),
+      ipcRenderer.invoke(`skipper:auth:${provider}:signIn`),
     signOut: (provider: AuthProviderId, accountId?: string): Promise<void> =>
-      ipcRenderer.invoke(`nestbrain:auth:${provider}:signOut`, accountId),
+      ipcRenderer.invoke(`skipper:auth:${provider}:signOut`, accountId),
     cancelSignIn: (provider: AuthProviderId): Promise<void> =>
-      ipcRenderer.invoke(`nestbrain:auth:${provider}:cancelSignIn`),
+      ipcRenderer.invoke(`skipper:auth:${provider}:cancelSignIn`),
     onStateChanged: (callback: (state: AuthState) => void) => {
       const handler = (_e: unknown, state: AuthState) => callback(state);
-      ipcRenderer.on("nestbrain:auth:stateChanged", handler);
-      return () => ipcRenderer.off("nestbrain:auth:stateChanged", handler);
+      ipcRenderer.on("skipper:auth:stateChanged", handler);
+      return () => ipcRenderer.off("skipper:auth:stateChanged", handler);
     },
-  },
-
-  modules: {
-    get: (): Promise<string[]> => ipcRenderer.invoke("nestbrain:modules:get"),
   },
 
   // Orchestrator (issue #6 wiring; typed surface consumed by the inbox UI, #12)
   orchestrator: {
     getState: (): Promise<OrchestratorState> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:getState"),
-    refresh: (): Promise<OrchestratorState> => ipcRenderer.invoke("nestbrain:orchestrator:refresh"),
+      ipcRenderer.invoke("skipper:orchestrator:getState"),
+    refresh: (): Promise<OrchestratorState> => ipcRenderer.invoke("skipper:orchestrator:refresh"),
     requestTransition: (
       itemId: string,
       to: LifecycleState,
       reason?: string,
     ): Promise<OrchestratorTransitionResult> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:requestTransition", itemId, to, reason),
+      ipcRenderer.invoke("skipper:orchestrator:requestTransition", itemId, to, reason),
     setIntakePaused: (paused: boolean): Promise<OrchestratorState> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:setIntakePaused", paused),
+      ipcRenderer.invoke("skipper:orchestrator:setIntakePaused", paused),
     updateSettings: (patch: { codingWipPerRepo?: number }): Promise<OrchestratorState> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:updateSettings", patch),
+      ipcRenderer.invoke("skipper:orchestrator:updateSettings", patch),
     setRepoSettings: (
       owner: string,
       name: string,
       patch: Partial<RepoIntakeSettings>,
     ): Promise<OrchestratorState> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:setRepoSettings", owner, name, patch),
+      ipcRenderer.invoke("skipper:orchestrator:setRepoSettings", owner, name, patch),
     listRepoSettings: (): Promise<RepoSettingsRow[]> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:listRepoSettings"),
+      ipcRenderer.invoke("skipper:orchestrator:listRepoSettings"),
     listFollowCandidates: (accountId?: string): Promise<FollowCandidatesResult> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:listFollowCandidates", accountId),
+      ipcRenderer.invoke("skipper:orchestrator:listFollowCandidates", accountId),
     resolveResumeRite: (action: ResumeRiteAction, itemIds?: string[]): Promise<OrchestratorState> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:resolveResumeRite", action, itemIds),
+      ipcRenderer.invoke("skipper:orchestrator:resolveResumeRite", action, itemIds),
     setPinned: (itemId: string, pinned: boolean): Promise<OrchestratorTransitionResult> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:setPinned", itemId, pinned),
+      ipcRenderer.invoke("skipper:orchestrator:setPinned", itemId, pinned),
     linkRepo: (owner: string, name: string, localPath: string): Promise<RepoLinkResult> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:linkRepo", owner, name, localPath),
+      ipcRenderer.invoke("skipper:orchestrator:linkRepo", owner, name, localPath),
     cloneRepo: (
       owner: string,
       name: string,
       destParent: string,
       accountId?: string,
     ): Promise<RepoLinkResult> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:cloneRepo", owner, name, destParent, accountId),
+      ipcRenderer.invoke("skipper:orchestrator:cloneRepo", owner, name, destParent, accountId),
     unlinkRepo: (owner: string, name: string): Promise<RepoUnlinkResult> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:unlinkRepo", owner, name),
+      ipcRenderer.invoke("skipper:orchestrator:unlinkRepo", owner, name),
     listRepos: (): Promise<ListReposResult> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:listRepos"),
+      ipcRenderer.invoke("skipper:orchestrator:listRepos"),
     getPlan: (itemId: string): Promise<StoredPlan | null> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:getPlan", itemId),
+      ipcRenderer.invoke("skipper:orchestrator:getPlan", itemId),
     updatePlan: (itemId: string, plan: IssuePlan): Promise<UpdatePlanResult> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:updatePlan", itemId, plan),
+      ipcRenderer.invoke("skipper:orchestrator:updatePlan", itemId, plan),
     openPr: (itemId: string): Promise<OrchestratorTransitionResult> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:openPr", itemId),
+      ipcRenderer.invoke("skipper:orchestrator:openPr", itemId),
     getWorktreeChanges: (itemId: string): Promise<WorktreeChangesResult> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:getWorktreeChanges", itemId),
+      ipcRenderer.invoke("skipper:orchestrator:getWorktreeChanges", itemId),
     readWorktreeFile: (itemId: string, path: string, oldPath?: string): Promise<WorktreeFileResult> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:readWorktreeFile", itemId, path, oldPath),
+      ipcRenderer.invoke("skipper:orchestrator:readWorktreeFile", itemId, path, oldPath),
     saveWorktreeFile: (itemId: string, path: string, content: string): Promise<SaveWorktreeFileResult> =>
-      ipcRenderer.invoke("nestbrain:orchestrator:saveWorktreeFile", itemId, path, content),
+      ipcRenderer.invoke("skipper:orchestrator:saveWorktreeFile", itemId, path, content),
     onStateChanged: (callback: (state: OrchestratorState) => void) => {
       const handler = (_e: unknown, state: OrchestratorState) => callback(state);
-      ipcRenderer.on("nestbrain:orchestrator:stateChanged", handler);
-      return () => ipcRenderer.off("nestbrain:orchestrator:stateChanged", handler);
+      ipcRenderer.on("skipper:orchestrator:stateChanged", handler);
+      return () => ipcRenderer.off("skipper:orchestrator:stateChanged", handler);
     },
   },
 
   // Coding runner (issue #9): per-item progress stream + replay buffer.
   coding: {
     getEvents: (itemId: string): Promise<unknown[]> =>
-      ipcRenderer.invoke("nestbrain:coding:getEvents", itemId),
+      ipcRenderer.invoke("skipper:coding:getEvents", itemId),
     onEvent: (itemId: string, callback: (envelope: unknown) => void) => {
-      const channel = `nestbrain:coding:event:${itemId}`;
+      const channel = `skipper:coding:event:${itemId}`;
       const handler = (_e: unknown, envelope: unknown) => callback(envelope);
       ipcRenderer.on(channel, handler);
       return () => ipcRenderer.off(channel, handler);
@@ -203,20 +191,20 @@ contextBridge.exposeInMainWorld("nestbrain", {
   // Planner console (issue #32): same shape as coding, own channel pair.
   planning: {
     getEvents: (itemId: string): Promise<unknown[]> =>
-      ipcRenderer.invoke("nestbrain:planning:getEvents", itemId),
+      ipcRenderer.invoke("skipper:planning:getEvents", itemId),
     onEvent: (itemId: string, callback: (envelope: unknown) => void) => {
-      const channel = `nestbrain:planning:event:${itemId}`;
+      const channel = `skipper:planning:event:${itemId}`;
       const handler = (_e: unknown, envelope: unknown) => callback(envelope);
       ipcRenderer.on(channel, handler);
       return () => ipcRenderer.off(channel, handler);
     },
   },
 
-  openExternal: (url: string): Promise<void> => ipcRenderer.invoke("nestbrain:openExternal", url),
+  openExternal: (url: string): Promise<void> => ipcRenderer.invoke("skipper:openExternal", url),
   onShowAbout: (callback: () => void) => {
     const handler = () => callback();
-    ipcRenderer.on("nestbrain:show-about", handler);
-    return () => ipcRenderer.off("nestbrain:show-about", handler);
+    ipcRenderer.on("skipper:show-about", handler);
+    return () => ipcRenderer.off("skipper:show-about", handler);
   },
 
   // Resolve a renderer-side File object to its absolute filesystem path.
@@ -237,7 +225,7 @@ contextBridge.exposeInMainWorld("nestbrain", {
       behind: number;
       files: Record<string, { index: string; worktree: string }>;
       hasUpstream: boolean;
-    } | null> => ipcRenderer.invoke("nestbrain:git:status", repoPath),
+    } | null> => ipcRenderer.invoke("skipper:git:status", repoPath),
     findRepo: (
       anyPath: string,
     ): Promise<{
@@ -249,44 +237,44 @@ contextBridge.exposeInMainWorld("nestbrain", {
         files: Record<string, { index: string; worktree: string }>;
         hasUpstream: boolean;
       };
-    } | null> => ipcRenderer.invoke("nestbrain:git:findRepo", anyPath),
+    } | null> => ipcRenderer.invoke("skipper:git:findRepo", anyPath),
     stage: (repoPath: string, paths: string[]): Promise<GitOpResult> =>
-      ipcRenderer.invoke("nestbrain:git:stage", repoPath, paths),
+      ipcRenderer.invoke("skipper:git:stage", repoPath, paths),
     unstage: (repoPath: string, paths: string[]): Promise<GitOpResult> =>
-      ipcRenderer.invoke("nestbrain:git:unstage", repoPath, paths),
+      ipcRenderer.invoke("skipper:git:unstage", repoPath, paths),
     discard: (repoPath: string, paths: string[]): Promise<GitOpResult> =>
-      ipcRenderer.invoke("nestbrain:git:discard", repoPath, paths),
+      ipcRenderer.invoke("skipper:git:discard", repoPath, paths),
     commit: (repoPath: string, message: string): Promise<GitOpResult> =>
-      ipcRenderer.invoke("nestbrain:git:commit", repoPath, message),
+      ipcRenderer.invoke("skipper:git:commit", repoPath, message),
     push: (repoPath: string): Promise<GitOpResult> =>
-      ipcRenderer.invoke("nestbrain:git:push", repoPath),
+      ipcRenderer.invoke("skipper:git:push", repoPath),
     pull: (repoPath: string): Promise<GitOpResult> =>
-      ipcRenderer.invoke("nestbrain:git:pull", repoPath),
+      ipcRenderer.invoke("skipper:git:pull", repoPath),
     stashList: (
       repoPath: string,
     ): Promise<GitOpResult & { stashes: { ref: string; message: string }[] }> =>
-      ipcRenderer.invoke("nestbrain:git:stashList", repoPath),
+      ipcRenderer.invoke("skipper:git:stashList", repoPath),
     stashPush: (
       repoPath: string,
       message?: string,
       includeUntracked?: boolean,
     ): Promise<GitOpResult> =>
-      ipcRenderer.invoke("nestbrain:git:stashPush", repoPath, message, includeUntracked),
+      ipcRenderer.invoke("skipper:git:stashPush", repoPath, message, includeUntracked),
     stashPop: (repoPath: string, ref?: string): Promise<GitOpResult> =>
-      ipcRenderer.invoke("nestbrain:git:stashPop", repoPath, ref),
+      ipcRenderer.invoke("skipper:git:stashPop", repoPath, ref),
     stashDrop: (repoPath: string, ref: string): Promise<GitOpResult> =>
-      ipcRenderer.invoke("nestbrain:git:stashDrop", repoPath, ref),
+      ipcRenderer.invoke("skipper:git:stashDrop", repoPath, ref),
   },
 
   // Auto-update (official builds; inert in source builds)
   updates: {
-    getState: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:updates:getState"),
-    check: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:updates:check"),
-    restart: (): Promise<void> => ipcRenderer.invoke("nestbrain:updates:restart"),
+    getState: (): Promise<unknown> => ipcRenderer.invoke("skipper:updates:getState"),
+    check: (): Promise<unknown> => ipcRenderer.invoke("skipper:updates:check"),
+    restart: (): Promise<void> => ipcRenderer.invoke("skipper:updates:restart"),
     onStateChanged: (callback: (state: unknown) => void) => {
       const handler = (_e: unknown, state: unknown) => callback(state);
-      ipcRenderer.on("nestbrain:updates:stateChanged", handler);
-      return () => ipcRenderer.off("nestbrain:updates:stateChanged", handler);
+      ipcRenderer.on("skipper:updates:stateChanged", handler);
+      return () => ipcRenderer.off("skipper:updates:stateChanged", handler);
     },
   },
 
@@ -298,28 +286,28 @@ contextBridge.exposeInMainWorld("nestbrain", {
       source: string;
       installed: boolean;
       stale: boolean;
-    }> => ipcRenderer.invoke("nestbrain:cli:status"),
-    install: () => ipcRenderer.invoke("nestbrain:cli:install"),
-    uninstall: () => ipcRenderer.invoke("nestbrain:cli:uninstall"),
+    }> => ipcRenderer.invoke("skipper:cli:status"),
+    install: () => ipcRenderer.invoke("skipper:cli:install"),
+    uninstall: () => ipcRenderer.invoke("skipper:cli:uninstall"),
   },
 
   // Terminal
   terminal: {
     create: (opts: { cwd: string; cols?: number; rows?: number }): Promise<CreateTerminalResult> =>
-      ipcRenderer.invoke("nestbrain:terminal:create", opts),
+      ipcRenderer.invoke("skipper:terminal:create", opts),
     write: (id: string, data: string) =>
-      ipcRenderer.send("nestbrain:terminal:write", { id, data }),
+      ipcRenderer.send("skipper:terminal:write", { id, data }),
     resize: (id: string, cols: number, rows: number) =>
-      ipcRenderer.send("nestbrain:terminal:resize", { id, cols, rows }),
-    kill: (id: string) => ipcRenderer.send("nestbrain:terminal:kill", { id }),
+      ipcRenderer.send("skipper:terminal:resize", { id, cols, rows }),
+    kill: (id: string) => ipcRenderer.send("skipper:terminal:kill", { id }),
     onData: (id: string, callback: (data: string) => void) => {
-      const channel = `nestbrain:terminal:data:${id}`;
+      const channel = `skipper:terminal:data:${id}`;
       const handler = (_e: unknown, data: string) => callback(data);
       ipcRenderer.on(channel, handler);
       return () => ipcRenderer.off(channel, handler);
     },
     onExit: (id: string, callback: (code: number) => void) => {
-      const channel = `nestbrain:terminal:exit:${id}`;
+      const channel = `skipper:terminal:exit:${id}`;
       const handler = (_e: unknown, code: number) => callback(code);
       ipcRenderer.on(channel, handler);
       return () => ipcRenderer.off(channel, handler);

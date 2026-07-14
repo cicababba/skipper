@@ -13,7 +13,7 @@ interface CliStatus {
 }
 
 /**
- * Settings section that lets the user install the `nestbrain` CLI shim on
+ * Settings section that lets the user install the `skipper` CLI shim on
  * their PATH. Hidden entirely on web (non-Electron) because there's no main
  * process to do the symlink. On macOS the install triggers an admin-password
  * prompt via osascript; on Windows it's user-scoped and silent.
@@ -25,9 +25,9 @@ export function CliInstallSection() {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (typeof window === "undefined" || !window.nestbrain?.cli) return;
+    if (typeof window === "undefined" || !window.skipper?.cli) return;
     try {
-      const next = await window.nestbrain.cli.status();
+      const next = await window.skipper.cli.status();
       setStatus(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -39,15 +39,15 @@ export function CliInstallSection() {
   }, [refresh]);
 
   // Not running inside Electron, or platform doesn't support PATH install.
-  if (typeof window !== "undefined" && !window.nestbrain) return null;
+  if (typeof window !== "undefined" && !window.skipper) return null;
   if (status && !status.supported) return null;
 
   const install = async () => {
-    if (!window.nestbrain?.cli) return;
+    if (!window.skipper?.cli) return;
     setBusy(true);
     setError(null);
     try {
-      const next = await window.nestbrain.cli.install();
+      const next = await window.skipper.cli.install();
       setStatus(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -57,11 +57,11 @@ export function CliInstallSection() {
   };
 
   const uninstall = async () => {
-    if (!window.nestbrain?.cli) return;
+    if (!window.skipper?.cli) return;
     setBusy(true);
     setError(null);
     try {
-      const next = await window.nestbrain.cli.uninstall();
+      const next = await window.skipper.cli.uninstall();
       setStatus(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -80,10 +80,10 @@ export function CliInstallSection() {
           <Terminal size={18} className="text-accent mt-0.5 shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium">
-              {t.settings.cli.installBefore} <code className="px-1 py-0.5 rounded bg-muted/10 font-mono text-[12px]">nestbrain</code> {t.settings.cli.installAfter}
+              {t.settings.cli.installBefore} <code className="px-1 py-0.5 rounded bg-muted/10 font-mono text-[12px]">skipper</code> {t.settings.cli.installAfter}
             </p>
             <p className="text-[11px] text-muted/60 leading-relaxed mt-1">
-              {t.settings.cli.descBefore} <code className="font-mono">nestbrain</code> {t.settings.cli.descAfter}
+              {t.settings.cli.descBefore} <code className="font-mono">skipper</code> {t.settings.cli.descAfter}
               {status?.target && (
                 <>
                   {" "}{t.settings.cli.installsTo}{" "}

@@ -1,4 +1,4 @@
-import type { Issue, LifecycleState, PullRequest, TrackedItem } from "@nestbrain/shared";
+import type { Issue, LifecycleState, PullRequest, TrackedItem } from "@skipper/shared";
 import { admitItem, applyTransition } from "./machine";
 import type { OrchestratorManifest } from "./manifest";
 import { canTransition } from "./states";

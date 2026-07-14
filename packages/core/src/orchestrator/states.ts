@@ -1,1 +1,1 @@
-export { TRANSITIONS, TERMINAL_STATES, canTransition } from "@nestbrain/shared";
+export { TRANSITIONS, TERMINAL_STATES, canTransition } from "@skipper/shared";

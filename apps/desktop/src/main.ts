@@ -26,11 +26,9 @@ import {
   watch,
   type FSWatcher,
 } from "node:fs";
-import { execFileSync, execSync, spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { AuthManager } from "./auth";
-import type { AuthState } from "@nestbrain/shared";
-import { enabledModules } from "./modules";
-import { loadDevModule, type DevModuleApi } from "./dev-module";
+import type { AuthState } from "@skipper/shared";
 import { registerGitHandlers } from "./git";
 import { registerTerminalHandlers, type TerminalApi } from "./terminal";
 
@@ -119,12 +117,12 @@ function fixWinPath(): void {
 }
 fixWinPath();
 
-const isDev = !!process.env.NESTBRAIN_DEV;
+const isDev = !!process.env.SKIPPER_DEV;
 // Overridable for when :3000 is taken by something else on the dev machine.
-const DEV_URL = process.env.NESTBRAIN_DEV_URL || "http://localhost:3000";
+const DEV_URL = process.env.SKIPPER_DEV_URL || "http://localhost:3000";
 
-// Must be set before app is ready so the menu bar shows "NestBrain" not "Electron"
-app.setName("NestBrain");
+// Must be set before app is ready so the menu bar shows "Skipper" not "Electron"
+app.setName("Skipper");
 
 // Dev-only: Linux boxes without a Secret Service (e.g. WSL) have no
 // safeStorage backend, so token persistence is refused and every restart
@@ -151,7 +149,7 @@ let mainWindow: BrowserWindow | null = null;
 
 // Hard single-instance guarantee: whatever launches the binary again (CLI
 // wrappers, git hooks, OS file associations, a double-click), the second
-// process exits immediately and the existing window comes to front. NestBrain
+// process exits immediately and the existing window comes to front. Skipper
 // must never run twice against the same workspace.
 const gotInstanceLock = app.requestSingleInstanceLock();
 if (!gotInstanceLock) {
@@ -182,10 +180,10 @@ const CORE_SUBDIRS = [
   "Library",
   "Skills",
 ];
-const NESTBRAIN_SUBDIRS = [...CORE_SUBDIRS, "Projects"];
+const SKIPPER_SUBDIRS = [...CORE_SUBDIRS, "Projects"];
 
 interface Bootstrap {
-  nestBrainPath?: string;
+  skipperPath?: string;
 }
 
 function getBootstrapPath(): string {
@@ -207,28 +205,10 @@ function writeBootstrap(b: Bootstrap): void {
   writeFileSync(p, JSON.stringify(b, null, 2), "utf-8");
 }
 
-// One-time migration from the legacy `.mindnest/` internal state dir to
-// the new `.nestbrain/` (post-rebrand from MindNest → NestBrain). Only
-// renames if the legacy dir exists and the new one doesn't, so it's safe
-// to call repeatedly.
-function migrateLegacyInternalDir(nestBrainPath: string): void {
-  const legacy = join(nestBrainPath, ".mindnest");
-  const current = join(nestBrainPath, ".nestbrain");
-  if (existsSync(legacy) && !existsSync(current)) {
-    try {
-      renameSync(legacy, current);
-      console.log(`[migrate] renamed ${legacy} → ${current}`);
-    } catch (err) {
-      console.warn(`[migrate] failed to rename internal dir:`, err);
-    }
-  }
-}
-
 function getDataDir(): string {
   const bootstrap = readBootstrap();
-  if (bootstrap.nestBrainPath && existsSync(bootstrap.nestBrainPath)) {
-    migrateLegacyInternalDir(bootstrap.nestBrainPath);
-    const dir = join(bootstrap.nestBrainPath, ".nestbrain");
+  if (bootstrap.skipperPath && existsSync(bootstrap.skipperPath)) {
+    const dir = join(bootstrap.skipperPath, ".skipper");
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     return dir;
   }
@@ -240,8 +220,8 @@ function getDataDir(): string {
 
 function getWikiDir(): string | null {
   const bootstrap = readBootstrap();
-  if (bootstrap.nestBrainPath && existsSync(bootstrap.nestBrainPath)) {
-    const dir = join(bootstrap.nestBrainPath, "Library", "Knowledge");
+  if (bootstrap.skipperPath && existsSync(bootstrap.skipperPath)) {
+    const dir = join(bootstrap.skipperPath, "Library", "Knowledge");
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     return dir;
   }
@@ -287,15 +267,15 @@ async function startNextServer(reusePort = false): Promise<string> {
       ...process.env,
       PORT: String(port),
       HOSTNAME: "127.0.0.1",
-      NESTBRAIN_DATA_DIR: dataDir,
-      ...(wikiDir ? { NESTBRAIN_WIKI_DIR: wikiDir } : {}),
+      SKIPPER_DATA_DIR: dataDir,
+      ...(wikiDir ? { SKIPPER_WIKI_DIR: wikiDir } : {}),
       // Writable, update-surviving cache for the local embedding model
       // (downloaded from huggingface.co on first use).
-      NESTBRAIN_HF_CACHE: join(app.getPath("userData"), "hf-cache"),
+      SKIPPER_HF_CACHE: join(app.getPath("userData"), "hf-cache"),
       NODE_ENV: "production",
     },
     stdio: "pipe",
-    serviceName: "nestbrain-next-server",
+    serviceName: "skipper-next-server",
   });
 
   lastServerOutput = "";
@@ -388,12 +368,12 @@ function killNextServer(): Promise<void> {
 }
 
 async function restartNextServer(): Promise<void> {
-  // In dev the Next.js server is run externally (`pnpm --filter @nestbrain/web dev`)
-  // and we don't manage its lifecycle from here. A NestBrain location change
+  // In dev the Next.js server is run externally (`pnpm --filter @skipper/web dev`)
+  // and we don't manage its lifecycle from here. A Skipper location change
   // means the dev server is now pointing at a stale data dir, but a hard
   // restart of that external process is outside our control — log and move on.
   if (isDev) {
-    console.warn("[dev] NestBrain location changed; restart `pnpm --filter @nestbrain/web dev` manually to pick up the new data dir");
+    console.warn("[dev] Skipper location changed; restart `pnpm --filter @skipper/web dev` manually to pick up the new data dir");
     return;
   }
   await killNextServer();
@@ -502,10 +482,10 @@ function createWindow(): void {
       e.preventDefault();
       const choice = dialog.showMessageBoxSync(mainWindow!, {
         type: "question",
-        buttons: ["Quit NestBrain", "Cancel"],
+        buttons: ["Quit Skipper", "Cancel"],
         defaultId: 0,
         cancelId: 1,
-        message: "Quit NestBrain?",
+        message: "Quit Skipper?",
         detail: "This closes the app completely.",
       });
       if (choice === 0) {
@@ -536,11 +516,11 @@ function setupMenu(): void {
       label: app.name,
       submenu: [
         {
-          label: "About NestBrain",
+          label: "About Skipper",
           click: () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.show();
-              mainWindow.webContents.send("nestbrain:show-about");
+              mainWindow.webContents.send("skipper:show-about");
             }
           },
         },
@@ -562,11 +542,11 @@ function setupMenu(): void {
 }
 
 // === IPC handlers ===
-ipcMain.handle("nestbrain:openExternal", (_e, url: string) => {
+ipcMain.handle("skipper:openExternal", (_e, url: string) => {
   if (typeof url === "string" && /^https?:\/\//.test(url)) void shell.openExternal(url);
 });
 
-ipcMain.handle("nestbrain:getBootstrap", () => {
+ipcMain.handle("skipper:getBootstrap", () => {
   return {
     ...readBootstrap(),
     isElectron: true,
@@ -574,10 +554,10 @@ ipcMain.handle("nestbrain:getBootstrap", () => {
   };
 });
 
-ipcMain.handle("nestbrain:selectDirectory", async () => {
+ipcMain.handle("skipper:selectDirectory", async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: "Choose where to create NestBrain",
+    title: "Choose where to create Skipper",
     properties: ["openDirectory", "createDirectory"],
     buttonLabel: "Select",
   });
@@ -585,53 +565,13 @@ ipcMain.handle("nestbrain:selectDirectory", async () => {
   return result.filePaths[0];
 });
 
-// ====== CLI plumbing shared with the Dev module ======
-
-/** Command the installed hook should invoke at commit time. */
-function hookCliCommand(): string {
-  const target = cliInstallTarget();
-  if (target && existsSync(target)) return "nestbrain"; // installed on PATH → survives moves
-  return cliWrapperSource(); // bundled wrapper (absolute path)
-}
-
-/** Run the bundled (or PATH) nestbrain CLI. */
-function runNestbrainCli(args: string[]): void {
-  let onPath = false;
-  try {
-    execSync(process.platform === "win32" ? "where nestbrain" : "command -v nestbrain", { stdio: "ignore" });
-    onPath = true;
-  } catch {
-    /* not on PATH */
-  }
-  const cmd = onPath ? "nestbrain" : cliWrapperSource();
-  execFileSync(cmd, args, { stdio: "ignore", timeout: 60_000, shell: process.platform === "win32" });
-}
-
-// ====== Dev module (Enterprise add-on) ======
-// The Projects backend lives in the private nestbrain-modules repo
-// (open-core). Public source builds have no impl → that surface stays off.
-const devModule: DevModuleApi | null = loadDevModule({
-  ipcMain,
-  dialog,
-  getMainWindow: () => mainWindow,
-  getNestBrainPath: () => readBootstrap().nestBrainPath ?? null,
-  runNestbrainCli,
-  hookCliCommand,
-});
-
-// Git and terminal are product core (#1, #18) — registered unconditionally,
-// in the public tree. Must run AFTER loadDevModule: overlaid builds still
-// ship their backends, and the overlay keeps winning until the private repo
-// drops them.
 registerGitHandlers(ipcMain);
 const publicTerminal: TerminalApi = registerTerminalHandlers({
   ipcMain,
   getMainWindow: () => mainWindow,
 });
 
-// Both backends may hold live pty children during the transition; kill both.
 function killAllPtySessions(): void {
-  devModule?.killAllPtySessions();
   publicTerminal.killAllPtySessions();
 }
 
@@ -646,12 +586,12 @@ function isHiddenOrIgnored(name: string): boolean {
   return (
     name.startsWith(".") ||
     name === "node_modules" ||
-    name === ".nestbrain"
+    name === ".skipper"
   );
 }
 
 ipcMain.handle(
-  "nestbrain:fs:list",
+  "skipper:fs:list",
   (_e, dirPath: string): FsEntry[] => {
     if (!existsSync(dirPath)) return [];
     try {
@@ -674,11 +614,11 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
-  "nestbrain:fs:createDir",
+  "skipper:fs:createDir",
   (_e, dirPath: string): { ok: true; path: string } => {
-    // Containment check — createDir must stay within the active NestBrain
+    // Containment check — createDir must stay within the active Skipper
     // (used for New Project and for the in-tree new-folder action).
-    const abs = assertInsideNestBrain(dirPath);
+    const abs = assertInsideSkipper(dirPath);
     mkdirSync(abs, { recursive: true });
     return { ok: true, path: abs };
   },
@@ -686,7 +626,7 @@ ipcMain.handle(
 
 // ===== File read/write for the in-app editor =====
 // Both handlers enforce that the target path is inside the active
-// NestBrain root, so the renderer cannot read or write arbitrary files
+// Skipper root, so the renderer cannot read or write arbitrary files
 // elsewhere on the user's disk even if the preload is compromised.
 const MAX_EDITABLE_BYTES = 1024 * 1024; // 1 MiB hard cap for the editor
 
@@ -697,16 +637,16 @@ interface ReadFileResult {
   tooLarge: boolean;
 }
 
-function assertInsideNestBrain(targetPath: string): string {
+function assertInsideSkipper(targetPath: string): string {
   const bootstrap = readBootstrap();
-  if (!bootstrap.nestBrainPath) {
-    throw new Error("No NestBrain configured");
+  if (!bootstrap.skipperPath) {
+    throw new Error("No Skipper configured");
   }
-  const root = resolve(bootstrap.nestBrainPath);
+  const root = resolve(bootstrap.skipperPath);
   const abs = resolve(targetPath);
   if (abs !== root && !abs.startsWith(root + sep)) {
     throw new Error(
-      `Refusing to access path outside NestBrain: ${abs}`,
+      `Refusing to access path outside Skipper: ${abs}`,
     );
   }
   return abs;
@@ -722,9 +662,9 @@ function looksBinary(buf: Buffer): boolean {
 }
 
 ipcMain.handle(
-  "nestbrain:fs:readFile",
+  "skipper:fs:readFile",
   (_e, filePath: string): ReadFileResult => {
-    const abs = assertInsideNestBrain(filePath);
+    const abs = assertInsideSkipper(filePath);
     const stat = statSync(abs);
     if (!stat.isFile()) {
       throw new Error(`Not a file: ${abs}`);
@@ -746,15 +686,15 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
-  "nestbrain:fs:writeFile",
+  "skipper:fs:writeFile",
   (_e, filePath: string, content: string): { ok: true; size: number } => {
-    const abs = assertInsideNestBrain(filePath);
-    // Refuse to write into .nestbrain/ — that's internal state the user
+    const abs = assertInsideSkipper(filePath);
+    // Refuse to write into .skipper/ — that's internal state the user
     // should never hand-edit through the app's editor.
     const bootstrap = readBootstrap();
-    const internal = resolve(bootstrap.nestBrainPath!, ".nestbrain");
+    const internal = resolve(bootstrap.skipperPath!, ".skipper");
     if (abs === internal || abs.startsWith(internal + sep)) {
-      throw new Error("Cannot write into .nestbrain/ — internal state");
+      throw new Error("Cannot write into .skipper/ — internal state");
     }
     // Ensure parent directory exists
     const parent = join(abs, "..");
@@ -766,19 +706,19 @@ ipcMain.handle(
   },
 );
 
-// Paths inside NestBrain that cannot be deleted or renamed — these are
+// Paths inside Skipper that cannot be deleted or renamed — these are
 // either workspace-structural (top-level skeleton dirs) or internal state.
 const PROTECTED_TOP_LEVEL_NAMES = new Set([
-  ...NESTBRAIN_SUBDIRS,
-  ".nestbrain",
+  ...SKIPPER_SUBDIRS,
+  ".skipper",
 ]);
 
 function isProtectedPath(abs: string): boolean {
   const bootstrap = readBootstrap();
-  if (!bootstrap.nestBrainPath) return true;
-  const root = resolve(bootstrap.nestBrainPath);
+  if (!bootstrap.skipperPath) return true;
+  const root = resolve(bootstrap.skipperPath);
   if (abs === root) return true;
-  const internal = resolve(root, ".nestbrain");
+  const internal = resolve(root, ".skipper");
   if (abs === internal || abs.startsWith(internal + sep)) return true;
   const rel = abs.slice(root.length + 1);
   if (!rel.includes(sep) && PROTECTED_TOP_LEVEL_NAMES.has(rel)) return true;
@@ -786,12 +726,12 @@ function isProtectedPath(abs: string): boolean {
 }
 
 ipcMain.handle(
-  "nestbrain:fs:delete",
+  "skipper:fs:delete",
   (_e, targetPath: string): { ok: true } => {
-    const abs = assertInsideNestBrain(targetPath);
+    const abs = assertInsideSkipper(targetPath);
     if (isProtectedPath(abs)) {
       throw new Error(
-        "This path is protected by NestBrain and cannot be deleted.",
+        "This path is protected by Skipper and cannot be deleted.",
       );
     }
     if (!existsSync(abs)) {
@@ -803,16 +743,16 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
-  "nestbrain:fs:rename",
+  "skipper:fs:rename",
   (
     _e,
     oldPath: string,
     newName: string,
   ): { ok: true; newPath: string } => {
-    const absOld = assertInsideNestBrain(oldPath);
+    const absOld = assertInsideSkipper(oldPath);
     if (isProtectedPath(absOld)) {
       throw new Error(
-        "This path is protected by NestBrain and cannot be renamed.",
+        "This path is protected by Skipper and cannot be renamed.",
       );
     }
     const trimmed = (newName ?? "").trim();
@@ -827,8 +767,8 @@ ipcMain.handle(
     }
     const parent = join(absOld, "..");
     const absNew = join(parent, trimmed);
-    // Must still end up inside NestBrain (extra safety)
-    assertInsideNestBrain(absNew);
+    // Must still end up inside Skipper (extra safety)
+    assertInsideSkipper(absNew);
     if (existsSync(absNew)) {
       throw new Error(`A file or folder named "${trimmed}" already exists`);
     }
@@ -837,19 +777,19 @@ ipcMain.handle(
   },
 );
 
-// ===== Session handoff: run the bundled `nestbrain session` CLI, capture output =====
+// ===== Session handoff: run the bundled `skipper session` CLI, capture output =====
 ipcMain.handle(
-  "nestbrain:session:run",
+  "skipper:session:run",
   (_e, mode: "save" | "resume", projectDir: string): Promise<{ ok: boolean; output: string }> => {
     if (mode !== "save" && mode !== "resume") throw new Error("invalid mode");
-    const abs = assertInsideNestBrain(projectDir);
+    const abs = assertInsideSkipper(projectDir);
     return new Promise((resolveP) => {
       let onPath = false;
       try {
-        execSync(process.platform === "win32" ? "where nestbrain" : "command -v nestbrain", { stdio: "ignore" });
+        execSync(process.platform === "win32" ? "where skipper" : "command -v skipper", { stdio: "ignore" });
         onPath = true;
       } catch { /* not on PATH → use bundled wrapper */ }
-      const cmd = onPath ? "nestbrain" : cliWrapperSource();
+      const cmd = onPath ? "skipper" : cliWrapperSource();
       const proc = spawn(cmd, ["session", mode, "-p", abs], { shell: process.platform === "win32", env: process.env });
       let out = "", err = "";
       proc.stdout.on("data", (d) => (out += d.toString()));
@@ -870,20 +810,20 @@ function getSkeletonPath(): string {
   return resolve(__dirname, "../../../skeleton");
 }
 
-function copySkeletonToNestBrain(nestBrainPath: string): void {
+function copySkeletonToSkipper(skipperPath: string): void {
   const skeletonPath = getSkeletonPath();
   if (!existsSync(skeletonPath)) return;
 
-  // CLAUDE.md in the NestBrain root — only write if missing (preserve user edits on re-setup)
+  // CLAUDE.md in the Skipper root — only write if missing (preserve user edits on re-setup)
   const claudeSrc = join(skeletonPath, "CLAUDE.md");
-  const claudeDst = join(nestBrainPath, "CLAUDE.md");
+  const claudeDst = join(skipperPath, "CLAUDE.md");
   if (existsSync(claudeSrc) && !existsSync(claudeDst)) {
     cpSync(claudeSrc, claudeDst);
   }
 
-  // Skills — copy each skill folder into NestBrain/Skills/ only if missing
+  // Skills — copy each skill folder into Skipper/Skills/ only if missing
   const skillsSrc = join(skeletonPath, "Skills");
-  const skillsDst = join(nestBrainPath, "Skills");
+  const skillsDst = join(skipperPath, "Skills");
   if (existsSync(skillsSrc)) {
     mkdirSync(skillsDst, { recursive: true });
     for (const entry of readdirSync(skillsSrc)) {
@@ -896,17 +836,17 @@ function copySkeletonToNestBrain(nestBrainPath: string): void {
   }
 }
 
-function createFreshNestBrain(nestBrainPath: string): void {
-  mkdirSync(nestBrainPath, { recursive: true });
+function createFreshSkipper(skipperPath: string): void {
+  mkdirSync(skipperPath, { recursive: true });
   for (const sub of CORE_SUBDIRS) {
-    mkdirSync(join(nestBrainPath, sub), { recursive: true });
+    mkdirSync(join(skipperPath, sub), { recursive: true });
   }
-  // NestBrain-generated wiki lives inside the user-visible Library folder
-  mkdirSync(join(nestBrainPath, "Library", "Knowledge"), { recursive: true });
-  // .nestbrain holds internal state (raw sources, settings, vector index)
-  mkdirSync(join(nestBrainPath, ".nestbrain"), { recursive: true });
+  // Skipper-generated wiki lives inside the user-visible Library folder
+  mkdirSync(join(skipperPath, "Library", "Knowledge"), { recursive: true });
+  // .skipper holds internal state (raw sources, settings, vector index)
+  mkdirSync(join(skipperPath, ".skipper"), { recursive: true });
   // Seed CLAUDE.md and Skills from the bundled skeleton (non-destructive)
-  copySkeletonToNestBrain(nestBrainPath);
+  copySkeletonToSkipper(skipperPath);
 }
 
 function moveDir(src: string, dst: string): void {
@@ -924,16 +864,16 @@ function moveDir(src: string, dst: string): void {
   }
 }
 
-// ===== NestBrain auto-refresh watcher =====
-// Recursively watches the NestBrain directory and emits a debounced
-// `nestbrain:fs:changed` event to the renderer so the file tree refreshes
+// ===== Skipper auto-refresh watcher =====
+// Recursively watches the Skipper directory and emits a debounced
+// `skipper:fs:changed` event to the renderer so the file tree refreshes
 // automatically when files are added/modified/removed from Finder, the
 // terminal, or any other source.
 //
 // Uses fs.watch with { recursive: true } which is supported on macOS and
 // Windows (our target platforms). Debounced at 500ms so bursts of events
 // (e.g. npm install, git operations) collapse into a single refresh.
-// Noise from .nestbrain/, .git/, node_modules/, and temp files is filtered
+// Noise from .skipper/, .git/, node_modules/, and temp files is filtered
 // in-process so the IPC channel stays quiet.
 let fsWatcher: FSWatcher | null = null;
 let fsWatchDebounce: NodeJS.Timeout | null = null;
@@ -943,7 +883,7 @@ function shouldIgnoreFsChange(filename: string | null): boolean {
   if (!filename) return false;
   const f = filename.replace(/\\/g, "/");
   // Hidden / internal directories
-  if (f === ".nestbrain" || f.startsWith(".nestbrain/")) return true;
+  if (f === ".skipper" || f.startsWith(".skipper/")) return true;
   if (f === ".git" || f.startsWith(".git/") || f.includes("/.git/")) return true;
   if (
     f === "node_modules" ||
@@ -969,12 +909,12 @@ function shouldIgnoreFsChange(filename: string | null): boolean {
   return false;
 }
 
-function startNestBrainWatcher(nestBrainPath: string): void {
-  stopNestBrainWatcher();
-  if (!existsSync(nestBrainPath)) return;
+function startSkipperWatcher(skipperPath: string): void {
+  stopSkipperWatcher();
+  if (!existsSync(skipperPath)) return;
   try {
     fsWatcher = watch(
-      nestBrainPath,
+      skipperPath,
       { recursive: true, persistent: false },
       (_eventType, filename) => {
         if (shouldIgnoreFsChange(filename)) return;
@@ -982,7 +922,7 @@ function startNestBrainWatcher(nestBrainPath: string): void {
         fsWatchDebounce = setTimeout(() => {
           fsWatchDebounce = null;
           if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send("nestbrain:fs:changed");
+            mainWindow.webContents.send("skipper:fs:changed");
           }
         }, FS_WATCH_DEBOUNCE_MS);
       },
@@ -990,13 +930,13 @@ function startNestBrainWatcher(nestBrainPath: string): void {
     fsWatcher.on("error", (err) => {
       console.error("[watcher] error:", err);
     });
-    console.log(`[watcher] watching ${nestBrainPath}`);
+    console.log(`[watcher] watching ${skipperPath}`);
   } catch (err) {
     console.error("[watcher] failed to start:", err);
   }
 }
 
-function stopNestBrainWatcher(): void {
+function stopSkipperWatcher(): void {
   if (fsWatchDebounce) {
     clearTimeout(fsWatchDebounce);
     fsWatchDebounce = null;
@@ -1011,50 +951,50 @@ function stopNestBrainWatcher(): void {
   }
 }
 
-ipcMain.handle("nestbrain:setupNestBrain", async (_e, parentPath: string) => {
+ipcMain.handle("skipper:setupSkipper", async (_e, parentPath: string) => {
   if (!parentPath || typeof parentPath !== "string") {
     throw new Error("Invalid parent path");
   }
-  const nestBrainPath = join(parentPath, "NestBrain");
-  createFreshNestBrain(nestBrainPath);
+  const skipperPath = join(parentPath, "Skipper");
+  createFreshSkipper(skipperPath);
 
-  writeBootstrap({ nestBrainPath });
+  writeBootstrap({ skipperPath });
   // Restart Next.js server so it picks up the new data dir
   await restartNextServer();
-  // Start watching the freshly created NestBrain for file tree auto-refresh
-  startNestBrainWatcher(nestBrainPath);
+  // Start watching the freshly created Skipper for file tree auto-refresh
+  startSkipperWatcher(skipperPath);
 
   // Notify the renderer so the sidebar / file tree pick up the new
   // workspace path immediately at the end of onboarding (without needing
   // an app restart). Reuses the same channel as the move handler.
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("nestbrain:nestBrainMoved", {
-      nestBrainPath,
+    mainWindow.webContents.send("skipper:skipperMoved", {
+      skipperPath,
     });
   }
 
-  return { nestBrainPath };
+  return { skipperPath };
 });
 
 ipcMain.handle(
-  "nestbrain:moveOrCreateNestBrain",
+  "skipper:moveOrCreateSkipper",
   async (_e, parentPath: string) => {
     if (!parentPath || typeof parentPath !== "string") {
       throw new Error("Invalid parent path");
     }
-    const newPath = join(parentPath, "NestBrain");
+    const newPath = join(parentPath, "Skipper");
     const bootstrap = readBootstrap();
-    const oldPath = bootstrap.nestBrainPath;
+    const oldPath = bootstrap.skipperPath;
 
     // Same destination as current → no-op
     if (oldPath && resolve(oldPath) === resolve(newPath)) {
-      return { nestBrainPath: newPath, moved: false, created: false };
+      return { skipperPath: newPath, moved: false, created: false };
     }
 
     // Refuse if something is already at the destination
     if (existsSync(newPath)) {
       throw new Error(
-        `A folder named "NestBrain" already exists at ${parentPath}. Choose a different location or remove it first.`,
+        `A folder named "Skipper" already exists at ${parentPath}. Choose a different location or remove it first.`,
       );
     }
 
@@ -1062,26 +1002,26 @@ ipcMain.handle(
     // they all hold references to the old data dir (terminal cwd, watch
     // handles, open file handles, env vars). In dev the Next server is
     // external (next dev), so we skip the kill+restart dance — the user
-    // will need to restart `pnpm --filter @nestbrain/web dev` manually.
+    // will need to restart `pnpm --filter @skipper/web dev` manually.
     killAllPtySessions();
-    stopNestBrainWatcher();
+    stopSkipperWatcher();
     if (!isDev) await killNextServer();
 
     let moved = false;
     let created = false;
 
     if (oldPath && existsSync(oldPath)) {
-      // Move existing NestBrain to the new location
+      // Move existing Skipper to the new location
       mkdirSync(parentPath, { recursive: true });
       moveDir(oldPath, newPath);
       moved = true;
     } else {
-      // No existing NestBrain — create fresh at the new location
-      createFreshNestBrain(newPath);
+      // No existing Skipper — create fresh at the new location
+      createFreshSkipper(newPath);
       created = true;
     }
 
-    writeBootstrap({ nestBrainPath: newPath });
+    writeBootstrap({ skipperPath: newPath });
 
     // Give the OS a moment to release the port, then restart Next.js
     // reusing the same port so the renderer's fetch calls transparently
@@ -1101,86 +1041,69 @@ ipcMain.handle(
       }
     }
 
-    // Restart the file watcher on the new NestBrain location
-    startNestBrainWatcher(newPath);
+    // Restart the file watcher on the new Skipper location
+    startSkipperWatcher(newPath);
 
     // Notify the renderer so it can refresh file tree, terminal state, etc.
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("nestbrain:nestBrainMoved", {
-        nestBrainPath: newPath,
+      mainWindow.webContents.send("skipper:skipperMoved", {
+        skipperPath: newPath,
       });
     }
 
-    return { nestBrainPath: newPath, moved, created };
+    return { skipperPath: newPath, moved, created };
   },
 );
 
 // === Auth (multi-provider OAuth) ===
-ipcMain.handle("nestbrain:auth:getState", (): AuthState => {
+ipcMain.handle("skipper:auth:getState", (): AuthState => {
   return authManager?.getState() ?? { accounts: [], active: {}, flows: {} };
 });
 
 for (const provider of ["google", "github"] as const) {
-  ipcMain.handle(`nestbrain:auth:${provider}:signIn`, async () => {
+  ipcMain.handle(`skipper:auth:${provider}:signIn`, async () => {
     if (!authManager) throw new Error("Auth not initialized");
     await authManager.signIn(provider);
   });
 
-  ipcMain.handle(`nestbrain:auth:${provider}:signOut`, async (_e, accountId?: string) => {
+  ipcMain.handle(`skipper:auth:${provider}:signOut`, async (_e, accountId?: string) => {
     if (!authManager) throw new Error("Auth not initialized");
     await authManager.signOut(provider, accountId);
   });
 
-  ipcMain.handle(`nestbrain:auth:${provider}:cancelSignIn`, () => {
+  ipcMain.handle(`skipper:auth:${provider}:cancelSignIn`, () => {
     authManager?.cancelSignIn(provider);
   });
 }
 
-// ====== Modules (add-ons) ======
-// Enabled = built into this binary. License-based entitlement will return
-// with the pivot's licensing model (Polar keys); until then the build is
-// the entitlement.
-ipcMain.handle("nestbrain:modules:get", async (): Promise<string[]> => {
-  const mods = enabledModules();
-  // Module dirs are created lazily, on entitlement: Projects/ exists only
-  // where the Dev module does.
-  if (mods.includes("dev")) {
-    const b = readBootstrap();
-    if (b.nestBrainPath) {
-      try { mkdirSync(join(b.nestBrainPath, "Projects"), { recursive: true }); } catch { /* ignore */ }
-    }
-  }
-  return mods;
-});
-
 // ====== CLI on PATH (macOS / Windows) ======
 
 /**
- * Where the user's PATH-installed `nestbrain` symlink/wrapper lives.
- * - macOS: /usr/local/bin/nestbrain (matches Homebrew's bin and VS Code's
+ * Where the user's PATH-installed `skipper` symlink/wrapper lives.
+ * - macOS: /usr/local/bin/skipper (matches Homebrew's bin and VS Code's
  *   `code` command convention). Requires sudo to write.
- * - Windows: %LOCALAPPDATA%/NestBrain/cli/nestbrain.bat — user-scoped so
+ * - Windows: %LOCALAPPDATA%/Skipper/cli/skipper.bat — user-scoped so
  *   no admin prompt is needed; the install also appends that dir to the
  *   user-level PATH via setx.
  */
 function cliInstallTarget(): string | null {
-  if (process.platform === "darwin") return "/usr/local/bin/nestbrain";
+  if (process.platform === "darwin") return "/usr/local/bin/skipper";
   if (process.platform === "win32") {
     const local = process.env.LOCALAPPDATA;
     if (!local) return null;
-    return join(local, "NestBrain", "cli", "nestbrain.bat");
+    return join(local, "Skipper", "cli", "skipper.bat");
   }
   return null;
 }
 
 /**
  * Absolute path of the CLI wrapper shipped with the running app.
- * In packaged mode: <App>/Contents/Resources/cli/nestbrain (macOS) or
- * <install-dir>/resources/cli/nestbrain.bat (Windows). In dev we point at
+ * In packaged mode: <App>/Contents/Resources/cli/skipper (macOS) or
+ * <install-dir>/resources/cli/skipper.bat (Windows). In dev we point at
  * the source dir so install-on-PATH can be tested without packaging.
  */
 function cliWrapperSource(): string {
-  const wrapperName = process.platform === "win32" ? "nestbrain.bat" : "nestbrain";
+  const wrapperName = process.platform === "win32" ? "skipper.bat" : "skipper";
   if (app.isPackaged) {
     return join(process.resourcesPath, "cli", wrapperName);
   }
@@ -1235,9 +1158,9 @@ async function getCliStatus(): Promise<CliStatus> {
   }
 }
 
-ipcMain.handle("nestbrain:cli:status", async () => getCliStatus());
+ipcMain.handle("skipper:cli:status", async () => getCliStatus());
 
-ipcMain.handle("nestbrain:cli:install", async () => {
+ipcMain.handle("skipper:cli:install", async () => {
   const status = await getCliStatus();
   if (!status.supported || !status.target) {
     throw new Error("CLI install not supported on this platform.");
@@ -1250,19 +1173,19 @@ ipcMain.handle("nestbrain:cli:install", async () => {
     // keeps working across updates, dev/packaged switches and app moves.
     const launcher = [
       "#!/bin/sh",
-      "# NestBrain CLI launcher (managed by NestBrain — Settings → Command line)",
+      "# Skipper CLI launcher (managed by Skipper — Settings → Command line)",
       "for w in \\",
       `  "${status.source}" \\`,
-      '  "/Applications/NestBrain.app/Contents/Resources/cli/nestbrain" \\',
-      '  "$HOME/Applications/NestBrain.app/Contents/Resources/cli/nestbrain"',
+      '  "/Applications/Skipper.app/Contents/Resources/cli/skipper" \\',
+      '  "$HOME/Applications/Skipper.app/Contents/Resources/cli/skipper"',
       "do",
       '  [ -x "$w" ] && exec "$w" "$@"',
       "done",
-      'echo "nestbrain: NestBrain.app not found. Re-install the CLI from NestBrain → Settings → Command line." >&2',
+      'echo "skipper: Skipper.app not found. Re-install the CLI from Skipper → Settings → Command line." >&2',
       "exit 127",
       "",
     ].join("\n");
-    const tmpLauncher = join(app.getPath("temp"), "nestbrain-cli-launcher");
+    const tmpLauncher = join(app.getPath("temp"), "skipper-cli-launcher");
     writeFileSync(tmpLauncher, launcher, { mode: 0o755 });
     // /usr/local/bin needs sudo. osascript surfaces the native admin prompt.
     const escape = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -1281,7 +1204,7 @@ ipcMain.handle("nestbrain:cli:install", async () => {
     return getCliStatus();
   }
   if (process.platform === "win32") {
-    // User-scoped install into %LOCALAPPDATA%/NestBrain/cli + user PATH.
+    // User-scoped install into %LOCALAPPDATA%/Skipper/cli + user PATH.
     // Generate a launcher that CALLS the wrapper inside the install dir by
     // absolute path — copying the .bat broke it: its %~dp0-relative bundle
     // lookup resolved against the copy's location, where nothing exists.
@@ -1289,12 +1212,12 @@ ipcMain.handle("nestbrain:cli:install", async () => {
     if (!existsSync(targetDir)) mkdirSync(targetDir, { recursive: true });
     const launcher = [
       "@echo off",
-      "REM NestBrain CLI launcher (managed by NestBrain - Settings > Command line)",
+      "REM Skipper CLI launcher (managed by Skipper - Settings > Command line)",
       `if exist "${status.source}" (`,
       `  call "${status.source}" %*`,
       "  exit /b %errorlevel%",
       ")",
-      "echo nestbrain: NestBrain installation not found. Re-install the CLI from Settings ^> Command line. 1>&2",
+      "echo skipper: Skipper installation not found. Re-install the CLI from Settings ^> Command line. 1>&2",
       "exit /b 127",
       "",
     ].join("\r\n");
@@ -1314,7 +1237,7 @@ ipcMain.handle("nestbrain:cli:install", async () => {
   throw new Error("Unsupported platform");
 });
 
-ipcMain.handle("nestbrain:cli:uninstall", async () => {
+ipcMain.handle("skipper:cli:uninstall", async () => {
   const status = await getCliStatus();
   if (!status.supported || !status.target || !status.installed) return getCliStatus();
   if (process.platform === "darwin") {
@@ -1341,7 +1264,7 @@ ipcMain.handle("nestbrain:cli:uninstall", async () => {
 // Supporter ($29): the in-app Google sign-in proves the email; the licensing
 // service confirms the Polar purchase and mints a 30-day signed entitlement we
 // cache on disk.
-const LICENSING_BASE = "https://license.nestbrain.app";
+const LICENSING_BASE = "https://license.skipper.app";
 const ENTITLEMENT_FILE = () => join(app.getPath("userData"), "update-entitlement.json");
 
 async function getSupporterEntitlement(): Promise<string | null> {
@@ -1393,12 +1316,12 @@ app.whenReady().then(async () => {
     }
   }
 
-  // About panel (shown by the "About NestBrain" menu item on macOS)
+  // About panel (shown by the "About Skipper" menu item on macOS)
   const aboutIconPath = app.isPackaged
     ? join(process.resourcesPath, "icon.png")
     : join(__dirname, "../build/icon.png");
   app.setAboutPanelOptions({
-    applicationName: "NestBrain",
+    applicationName: "Skipper",
     applicationVersion: app.getVersion(),
     copyright: "© 2026 NextEpochs",
     credits: "Your AI-powered second brain.",
@@ -1419,7 +1342,7 @@ app.whenReady().then(async () => {
   authManager = new AuthManager();
   authManager.onChange((state) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("nestbrain:auth:stateChanged", state);
+      mainWindow.webContents.send("skipper:auth:stateChanged", state);
     }
     // Sign-in/out changes the supporter entitlement → refresh the update
     // credentials and the "via" label instead of waiting for the next
@@ -1453,7 +1376,7 @@ app.whenReady().then(async () => {
         async () => {
           // Everything that could hold the install hostage dies BEFORE
           // quitAndInstall: pty shells (conhost children) and the Next
-          // utilityProcess (a second NestBrain.exe that blocks the NSIS
+          // utilityProcess (a second Skipper.exe that blocks the NSIS
           // file replacement on Windows).
           shuttingDown = true;
           coderKillAll?.();
@@ -1467,7 +1390,7 @@ app.whenReady().then(async () => {
       console.warn("[updates] updater bundle unavailable:", e instanceof Error ? e.message : e);
     }
     // Orchestrator (issue #6). Bundled like the updater because it pulls in
-    // the ESM @nestbrain/core; a broken bundle must never block startup.
+    // the ESM @skipper/core; a broken bundle must never block startup.
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { initOrchestrator, pokeOrchestrator, killAllCodingRuns } = require("./orchestrator.cjs") as typeof import("./orchestrator");
@@ -1487,18 +1410,18 @@ app.whenReady().then(async () => {
     } catch (e) {
       console.warn("[orchestrator] bundle unavailable:", e instanceof Error ? e.message : e);
     }
-    // Start watching NestBrain for file-tree auto-refresh if we already
+    // Start watching Skipper for file-tree auto-refresh if we already
     // have a bootstrap from a previous run. Fresh installs start it from
-    // inside setupNestBrain after onboarding.
+    // inside setupSkipper after onboarding.
     const bootstrap = readBootstrap();
-    if (bootstrap.nestBrainPath && existsSync(bootstrap.nestBrainPath)) {
-      startNestBrainWatcher(bootstrap.nestBrainPath);
+    if (bootstrap.skipperPath && existsSync(bootstrap.skipperPath)) {
+      startSkipperWatcher(bootstrap.skipperPath);
     }
   } catch (err) {
     console.error("Failed to start:", err);
     dialog.showErrorBox(
-      "NestBrain failed to start",
-      `${err instanceof Error ? err.message : String(err)}\n\nPlease report this at github.com/mikegazzaruso/nestbrain/issues`,
+      "Skipper failed to start",
+      `${err instanceof Error ? err.message : String(err)}\n\nPlease report this at github.com/cicababba/skipper/issues`,
     );
     app.quit();
   }
@@ -1522,7 +1445,7 @@ app.on("before-quit", () => {
   // Drop the dock icon immediately: while the (bounded) teardown runs, a
   // still-clickable icon could relaunch into a black window.
   if (process.platform === "darwin") app.dock?.hide();
-  stopNestBrainWatcher();
+  stopSkipperWatcher();
   killNextServer();
   // Live node-pty children (integrated terminals) and coding agents keep the
   // process alive past app.quit() — the classic "window gone, app still in
@@ -1534,8 +1457,8 @@ app.on("before-quit", () => {
 
 // Force-exit that takes the WHOLE TREE down. On Windows a plain SIGKILL
 // (TerminateProcess) leaves children alive — and our Next server is a
-// utilityProcess, i.e. a second NestBrain.exe: orphaned, it blocks the NSIS
-// updater with "NestBrain non può essere chiuso" until killed manually.
+// utilityProcess, i.e. a second Skipper.exe: orphaned, it blocks the NSIS
+// updater with "Skipper non può essere chiuso" until killed manually.
 // taskkill /T terminates the tree (utility process, pty conhosts and all).
 function forceExitNow(): void {
   if (process.platform === "win32") {

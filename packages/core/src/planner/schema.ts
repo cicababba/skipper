@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { IssuePlan } from "@nestbrain/shared";
+import type { IssuePlan } from "@skipper/shared";
 
 export const IssuePlanSchema = z.object({
   summary: z.string().min(1),

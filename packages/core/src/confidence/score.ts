@@ -2,7 +2,7 @@ import type {
   ConfidenceReport,
   ConfidenceWeights,
   IssuePlan,
-} from "@nestbrain/shared";
+} from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm";
 import { generatePlan as realGeneratePlan, type PlanIssueInput } from "../planner";
 import { scoreClarity } from "./clarity";

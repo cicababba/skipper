@@ -1,4 +1,4 @@
-import { GITHUB_API_BASE_URL } from "@nestbrain/shared";
+import { GITHUB_API_BASE_URL } from "@skipper/shared";
 import { githubGet, type GitHubResponse } from "./client";
 import type { GitHubTokenProvider } from "./types";
 

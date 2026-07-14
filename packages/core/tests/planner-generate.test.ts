@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import type { IssuePlan } from "@nestbrain/shared";
+import type { IssuePlan } from "@skipper/shared";
 import type { AgentOptions, LLMProviderInterface, LLMResponse } from "../src/llm/provider";
 import { generatePlan, PlanGenerationError, type PlanIssueInput } from "../src/planner";
 

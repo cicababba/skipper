@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadRepoLinks, saveRepoLinks, repoKey, validateRepoOrigin } from "./repo-links";
 import { planFileName, readStoredPlan, updateStoredPlan, writeStoredPlan } from "./plan-store";
-import type { StoredPlan } from "@nestbrain/shared";
+import type { StoredPlan } from "@skipper/shared";
 
 let dir: string;
 

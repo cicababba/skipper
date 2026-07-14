@@ -29,8 +29,8 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 function getSettingsPath(): string {
-  const base = process.env.NESTBRAIN_DATA_DIR
-    ? resolve(process.env.NESTBRAIN_DATA_DIR)
+  const base = process.env.SKIPPER_DATA_DIR
+    ? resolve(process.env.SKIPPER_DATA_DIR)
     : resolve(process.cwd(), "../../data");
   return join(base, "settings.json");
 }

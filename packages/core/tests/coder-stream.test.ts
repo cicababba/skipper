@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { CodingEvent } from "@nestbrain/shared";
+import type { CodingEvent } from "@skipper/shared";
 import { mapStreamLine, createStreamJsonParser } from "../src/coder";
 
 const initLine = {

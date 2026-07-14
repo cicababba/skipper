@@ -1,4 +1,4 @@
-import type { ConfidenceThresholds } from "@nestbrain/shared";
+import type { ConfidenceThresholds } from "@skipper/shared";
 
 export const DEFAULT_CONFIDENCE_THRESHOLDS: ConfidenceThresholds = { high: 0.85, low: 0.4 };
 

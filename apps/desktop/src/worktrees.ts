@@ -3,8 +3,8 @@
 
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve, normalize, sep } from "node:path";
-import type { RepoRef, WorktreeFileChange, WorktreeFileContents } from "@nestbrain/shared";
-import type { DiffStats } from "@nestbrain/core";
+import type { RepoRef, WorktreeFileChange, WorktreeFileContents } from "@skipper/shared";
+import type { DiffStats } from "@skipper/core";
 import { runGit } from "./git";
 import { withAskpass } from "./repo-links";
 
@@ -332,9 +332,9 @@ export async function commitWorktree(
   if (commit.code !== 0 && /tell me who you are|user\.(name|email)/i.test(commit.stderr + commit.stdout)) {
     commit = await runGit(worktreePath, [
       "-c",
-      "user.name=NestBrain",
+      "user.name=Skipper",
       "-c",
-      "user.email=nestbrain@localhost",
+      "user.email=skipper@localhost",
       "commit",
       "-m",
       message,

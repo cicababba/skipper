@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { RepoIntakeSettings, TrackedItem } from "@nestbrain/shared";
+import type { RepoIntakeSettings, TrackedItem } from "@skipper/shared";
 
 export interface OrchestratorSettings {
   intakePaused: boolean;

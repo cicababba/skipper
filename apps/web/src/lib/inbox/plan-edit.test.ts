@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { IssuePlan } from "@nestbrain/shared";
+import type { IssuePlan } from "@skipper/shared";
 import { applySection, draftFor, sectionIsValid, splitLines } from "./plan-edit";
 
 const plan: IssuePlan = {

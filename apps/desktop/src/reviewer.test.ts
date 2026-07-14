@@ -6,9 +6,9 @@ import type {
   LifecycleState,
   StoredPlan,
   TrackedItem,
-} from "@nestbrain/shared";
-import type { critiqueDiff, OrchestratorSettings } from "@nestbrain/core";
-import { DEFAULT_ORCHESTRATOR_SETTINGS } from "@nestbrain/core";
+} from "@skipper/shared";
+import type { critiqueDiff, OrchestratorSettings } from "@skipper/core";
+import { DEFAULT_ORCHESTRATOR_SETTINGS } from "@skipper/core";
 import { initReviewer, pokeReviewer, type ReviewerDeps } from "./reviewer";
 import type { WorktreeDiff } from "./worktrees";
 

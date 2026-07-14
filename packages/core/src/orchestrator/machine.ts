@@ -1,4 +1,4 @@
-import type { Issue, LifecycleState, TrackedItem, TransitionActor } from "@nestbrain/shared";
+import type { Issue, LifecycleState, TrackedItem, TransitionActor } from "@skipper/shared";
 import { canTransition } from "./states";
 
 export class IllegalTransitionError extends Error {

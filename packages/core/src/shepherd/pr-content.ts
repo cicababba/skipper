@@ -1,4 +1,4 @@
-import type { IssuePlan } from "@nestbrain/shared";
+import type { IssuePlan } from "@skipper/shared";
 
 export function buildCommitMessage(item: { title: string; number: number }): string {
   return `${item.title} (#${item.number})`;
@@ -19,6 +19,6 @@ export function buildPrBody(input: { issueNumber: number; plan?: IssuePlan }): s
       );
     }
   }
-  sections.push(`---\n\n🤖 Implemented by a coding agent via NestBrain.`);
+  sections.push(`---\n\n🤖 Implemented by a coding agent via Skipper.`);
   return sections.join("\n\n");
 }

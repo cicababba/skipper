@@ -1,5 +1,5 @@
 // ============================================================
-// NestBrain — Solutions memory types (issue #11)
+// Skipper — Solutions memory types (issue #11)
 // ============================================================
 
 import type { RepoRef } from "./inbox";

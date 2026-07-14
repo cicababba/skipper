@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, ExternalLink, Github, Loader2, X } from "lucide-react";
-import type { FollowCandidatesResult } from "@nestbrain/shared";
+import type { FollowCandidatesResult } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 
 // Follow-repos picker (#15): shown after a GitHub connect and from the
@@ -19,8 +19,8 @@ export function FollowPickerModal({ onClose }: { onClose: () => void }) {
 
   const load = useCallback(async () => {
     setResult(null);
-    if (!window.nestbrain) return;
-    const res = await window.nestbrain.orchestrator.listFollowCandidates();
+    if (!window.skipper) return;
+    const res = await window.skipper.orchestrator.listFollowCandidates();
     setResult(res);
     if (res.ok) {
       setSelected(
@@ -50,14 +50,14 @@ export function FollowPickerModal({ onClose }: { onClose: () => void }) {
   };
 
   const save = async () => {
-    if (!window.nestbrain || !result?.ok) return;
+    if (!window.skipper || !result?.ok) return;
     setSaving(true);
     try {
       for (const candidate of result.repos) {
         const key = keyOf(candidate);
         const wanted = selected.has(key);
         if (wanted !== candidate.followed) {
-          await window.nestbrain.orchestrator.setRepoSettings(
+          await window.skipper.orchestrator.setRepoSettings(
             candidate.repo.owner,
             candidate.repo.name,
             { followed: wanted ? undefined : false },
@@ -120,7 +120,7 @@ export function FollowPickerModal({ onClose }: { onClose: () => void }) {
                   <p className="mt-1 text-amber-200/70">{p.noInstallationsBody}</p>
                   <div className="mt-2 flex items-center gap-3">
                     <button
-                      onClick={() => window.nestbrain?.openExternal(result.installUrl)}
+                      onClick={() => window.skipper?.openExternal(result.installUrl)}
                       className="flex items-center gap-1.5 h-7 px-2.5 rounded-md bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 transition-colors font-medium"
                     >
                       <ExternalLink size={11} />

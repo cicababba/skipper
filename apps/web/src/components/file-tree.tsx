@@ -12,8 +12,6 @@ import {
   Trash2,
   ExternalLink,
   GitBranch,
-  FolderInput,
-  Sparkles,
   Share2,
   Download,
   Loader2,
@@ -22,7 +20,6 @@ import {
   X,
 } from "lucide-react";
 import { useT } from "@/lib/app-i18n";
-import { useModules } from "@/lib/modules-context";
 import { FileIcon } from "./file-icon";
 import { useGitStatus, pickMarker, markerClass } from "@/lib/git-status-context";
 import { useTerminal } from "@/lib/terminal-context";
@@ -42,8 +39,6 @@ type CreateKind = "file" | "dir";
 export function FileTree({ rootPath }: FileTreeProps) {
   const router = useRouter();
   const { t } = useT();
-  const { has: hasModule } = useModules();
-  const devModule = hasModule("dev");
 
   const [expanded, setExpanded] = useState<Set<string>>(
     new Set([rootPath, `${rootPath}/Projects`]),
@@ -75,10 +70,10 @@ export function FileTree({ rootPath }: FileTreeProps) {
   } | null>(null);
 
   async function runSession(mode: "save" | "resume", path: string, name: string) {
-    if (typeof window === "undefined" || !window.nestbrain?.session) return;
+    if (typeof window === "undefined" || !window.skipper?.session) return;
     setSession({ mode, project: name, busy: true, output: "" });
     try {
-      const r = await window.nestbrain.session.run(mode, path);
+      const r = await window.skipper.session.run(mode, path);
       setSession({ mode, project: name, busy: false, output: r.output });
     } catch (e) {
       setSession({ mode, project: name, busy: false, output: e instanceof Error ? e.message : "Failed" });
@@ -108,20 +103,6 @@ export function FileTree({ rootPath }: FileTreeProps) {
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  // Import an external folder into Projects/ and make it knowledge-ready.
-  const importProject = useCallback(async () => {
-    if (!window.nestbrain?.projects) return;
-    try {
-      const res = await window.nestbrain.projects.import();
-      if (res) {
-        setExpanded((s) => new Set(s).add(`${rootPath}/Projects`));
-        refresh();
-      }
-    } catch (e) {
-      window.alert(e instanceof Error ? e.message : t.tree.projects.importFailed);
-    }
-  }, [refresh, rootPath, t.tree.projects]);
-
   // A directory that's a direct child of Projects/ (a project root).
   const isProjectDir = useCallback(
     (p: string): boolean => {
@@ -134,15 +115,6 @@ export function FileTree({ rootPath }: FileTreeProps) {
     [rootPath],
   );
 
-  async function handleMakeReady(targetPath: string) {
-    if (!window.nestbrain?.projects) return;
-    try {
-      await window.nestbrain.projects.makeReady(targetPath);
-      window.alert(t.tree.projects.makeReadyDone);
-    } catch (e) {
-      window.alert(e instanceof Error ? e.message : t.tree.projects.makeReadyFailed);
-    }
-  }
 
   // Auto refresh when window gains focus
   useEffect(() => {
@@ -155,10 +127,10 @@ export function FileTree({ rootPath }: FileTreeProps) {
 
   // Auto refresh when the native file watcher reports a change
   useEffect(() => {
-    if (typeof window === "undefined" || !window.nestbrain?.fs?.onChange) {
+    if (typeof window === "undefined" || !window.skipper?.fs?.onChange) {
       return;
     }
-    const off = window.nestbrain.fs.onChange(refresh);
+    const off = window.skipper.fs.onChange(refresh);
     return off;
   }, [refresh]);
 
@@ -189,7 +161,7 @@ export function FileTree({ rootPath }: FileTreeProps) {
   );
 
   async function handleRename(oldPath: string, newName: string) {
-    if (!window.nestbrain?.fs?.rename) return;
+    if (!window.skipper?.fs?.rename) return;
     const oldBase = oldPath.slice(oldPath.lastIndexOf("/") + 1);
     // Same name (or blur/esc) → just close the rename input, don't hit IPC
     if (!newName || newName === oldBase) {
@@ -197,7 +169,7 @@ export function FileTree({ rootPath }: FileTreeProps) {
       return;
     }
     try {
-      await window.nestbrain.fs.rename(oldPath, newName);
+      await window.skipper.fs.rename(oldPath, newName);
       setRenamingPath(null);
       // Clear stale selection (path changed under us)
       if (selectedPath === oldPath) setSelectedPath(null);
@@ -208,7 +180,7 @@ export function FileTree({ rootPath }: FileTreeProps) {
   }
 
   async function handleDelete(targetPath: string, name: string, isDir: boolean) {
-    if (!window.nestbrain) return;
+    if (!window.skipper) return;
     const kind = isDir ? t.tree.files.folderWord : t.tree.files.fileWord;
     const extraMsg = isDir ? `\n${t.tree.files.deleteFolderNote}` : "";
     const ok = window.confirm(
@@ -216,7 +188,7 @@ export function FileTree({ rootPath }: FileTreeProps) {
     );
     if (!ok) return;
     try {
-      await window.nestbrain.fs.delete(targetPath);
+      await window.skipper.fs.delete(targetPath);
       if (selectedPath === targetPath) setSelectedPath(null);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : t.tree.files.deleteFailed);
@@ -240,7 +212,7 @@ export function FileTree({ rootPath }: FileTreeProps) {
   }
 
   async function confirmCreate(name: string) {
-    if (!creating || !window.nestbrain?.fs) return;
+    if (!creating || !window.skipper?.fs) return;
     const trimmed = name.trim();
     if (!trimmed) {
       setCreating(null);
@@ -253,9 +225,9 @@ export function FileTree({ rootPath }: FileTreeProps) {
     const fullPath = `${creating.parent}/${trimmed}`;
     try {
       if (creating.kind === "dir") {
-        await window.nestbrain.fs.createDir(fullPath);
+        await window.skipper.fs.createDir(fullPath);
       } else {
-        await window.nestbrain.fs.writeFile(fullPath, "");
+        await window.skipper.fs.writeFile(fullPath, "");
       }
       setCreating(null);
       setCreateError(null);
@@ -272,30 +244,15 @@ export function FileTree({ rootPath }: FileTreeProps) {
 
   const parentLabel = creating
     ? creating.parent === rootPath
-      ? "NestBrain"
+      ? "Skipper"
       : creating.parent.replace(rootPath + "/", "")
     : "";
 
   return (
     <div className="flex-shrink-0 border-b border-sidebar-border">
-      {/* Import project (Dev module only) — the "New project" flow was
-          retired with #2; projects arrive by importing existing repos. */}
-      {devModule && (
-      <div className="px-3 pt-3 pb-2 flex items-stretch">
-        <button
-          onClick={importProject}
-          title={t.tree.projects.importTitle}
-          className="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[11px] text-muted/70 hover:text-foreground bg-card/50 hover:bg-card border border-border/60 hover:border-border transition-colors"
-        >
-          <FolderInput size={12} className="shrink-0 text-muted/50" />
-          <span>{t.tree.projects.import}</span>
-        </button>
-      </div>
-      )}
-
       <div className="px-4 py-2 flex items-center justify-between">
         <span className="text-[10px] font-semibold text-muted/60 uppercase tracking-wider">
-          NestBrain
+          Skipper
         </span>
         <div className="flex items-center gap-0.5">
           <button
@@ -331,7 +288,7 @@ export function FileTree({ rootPath }: FileTreeProps) {
       <div className="max-h-[300px] overflow-y-auto pb-2 pr-1">
         <TreeNode
           path={rootPath}
-          name="NestBrain"
+          name="Skipper"
           depth={0}
           expanded={expanded}
           onToggle={toggle}
@@ -369,15 +326,6 @@ export function FileTree({ rootPath }: FileTreeProps) {
             setContextMenu(null);
             handleDelete(path, name, isDir);
           }}
-          onMakeReady={
-            contextMenu.isDir && isProjectDir(contextMenu.path)
-              ? () => {
-                  const { path } = contextMenu;
-                  setContextMenu(null);
-                  handleMakeReady(path);
-                }
-              : undefined
-          }
           onSessionSave={
             contextMenu.isDir && isProjectDir(contextMenu.path)
               ? () => {
@@ -475,7 +423,6 @@ interface ContextMenuProps {
   onOpen?: () => void;
   onRename: () => void;
   onDelete: () => void;
-  onMakeReady?: () => void;
   onSessionSave?: () => void;
   onSessionResume?: () => void;
 }
@@ -486,7 +433,6 @@ function ContextMenu({
   onOpen,
   onRename,
   onDelete,
-  onMakeReady,
   onSessionSave,
   onSessionResume,
 }: ContextMenuProps) {
@@ -509,16 +455,6 @@ function ContextMenu({
             icon={<ExternalLink size={12} />}
             label={t.tree.files.open}
             onClick={onOpen}
-          />
-          <div className="my-1 h-px bg-border/60" />
-        </>
-      )}
-      {onMakeReady && (
-        <>
-          <MenuItem
-            icon={<Sparkles size={12} />}
-            label={t.tree.projects.makeReady}
-            onClick={onMakeReady}
           />
           <div className="my-1 h-px bg-border/60" />
         </>
@@ -748,8 +684,6 @@ function TreeNode({
   refreshKey,
 }: TreeNodeProps) {
   const { t } = useT();
-  const { has: hasModule } = useModules();
-  const devModule = hasModule("dev");
   const isOpen = expanded.has(path);
   const isSelected = selectedPath === path;
   const isRenaming = renamingPath === path;
@@ -765,9 +699,9 @@ function TreeNode({
   const [isRepoTop, setIsRepoTop] = useState(false);
   useEffect(() => {
     if (!isDir) return;
-    if (typeof window === "undefined" || !window.nestbrain?.git) return;
+    if (typeof window === "undefined" || !window.skipper?.git) return;
     let cancelled = false;
-    void window.nestbrain.git.findRepo(path).then((res) => {
+    void window.skipper.git.findRepo(path).then((res) => {
       if (cancelled) return;
       if (res && res.repoPath === path) {
         setIsRepoTop(true);
@@ -809,9 +743,9 @@ function TreeNode({
 
   useEffect(() => {
     if (!isDir || !isOpen) return;
-    if (typeof window === "undefined" || !window.nestbrain) return;
+    if (typeof window === "undefined" || !window.skipper) return;
     let cancelled = false;
-    window.nestbrain.fs.list(path).then((list) => {
+    window.skipper.fs.list(path).then((list) => {
       // Update children in place — React reconciles by entry.path, so
       // unchanged rows don't remount (no flash) and open folders stay open.
       if (!cancelled) setChildren(list);
@@ -845,7 +779,7 @@ function TreeNode({
           // implicitly via React's batched updates — see status-bar.tsx).
           if (ancestor) {
             window.dispatchEvent(
-              new CustomEvent("nestbrain:focus-project", {
+              new CustomEvent("skipper:focus-project", {
                 detail: { repoPath: ancestor.repoPath },
               }),
             );
@@ -925,13 +859,7 @@ function TreeNode({
       </div>
       {isOpen && children && (
         <div>
-          {children
-            .filter((entry) => {
-              if (!isRoot || !entry.isDirectory) return true;
-              if (entry.name === "Projects" && !devModule) return false;
-              return true;
-            })
-            .map((entry) => (
+          {children.map((entry) => (
             <TreeNode
               key={entry.path}
               path={entry.path}

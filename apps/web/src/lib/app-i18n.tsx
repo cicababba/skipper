@@ -7,10 +7,8 @@ import { settings } from "./i18n/settings";
 import { knowledge } from "./i18n/knowledge";
 import { inbox } from "./i18n/inbox";
 import { wiki } from "./i18n/wiki";
-import { modules } from "./i18n/modules";
+import { about } from "./i18n/about";
 import { tree } from "./i18n/tree";
-import { dev } from "./i18n/dev";
-import { anatomize } from "./i18n/anatomize";
 
 // App-wide localization (EN/IT/FR/ES). Resolution order: the language chosen
 // in Settings (localStorage) wins; otherwise the OS/browser language;
@@ -33,16 +31,14 @@ function buildDict(lang: AppLang) {
     knowledge: knowledge[lang],
     inbox: inbox[lang],
     wiki: wiki[lang],
-    modules: modules[lang],
+    about: about[lang],
     tree: tree[lang],
-    dev: dev[lang],
-    anatomize: anatomize[lang],
   };
 }
 
 export type AppDict = ReturnType<typeof buildDict>;
 
-const STORAGE_KEY = "nestbrain-lang";
+const STORAGE_KEY = "skipper-lang";
 
 function asAppLang(value: string): AppLang | null {
   return value === "en" || value === "it" || value === "fr" || value === "es" ? value : null;

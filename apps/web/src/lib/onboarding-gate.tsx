@@ -11,18 +11,18 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function checkOnboarding() {
       // Only Electron triggers the onboarding flow
-      if (typeof window === "undefined" || !window.nestbrain) {
+      if (typeof window === "undefined" || !window.skipper) {
         setState("done");
         return;
       }
       try {
         const [bootstrap, settingsRes] = await Promise.all([
-          window.nestbrain.getBootstrap(),
+          window.skipper.getBootstrap(),
           fetch("/api/settings").then((r) => r.json()),
         ]);
-        const hasNestBrain = !!bootstrap?.nestBrainPath;
+        const hasSkipper = !!bootstrap?.skipperPath;
         const completed = settingsRes?.onboardingCompleted === true;
-        setState(hasNestBrain && completed ? "done" : "needed");
+        setState(hasSkipper && completed ? "done" : "needed");
       } catch {
         // If anything fails, show the onboarding to be safe
         setState("needed");
