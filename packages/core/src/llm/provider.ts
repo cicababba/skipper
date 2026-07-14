@@ -1,4 +1,5 @@
 import type { CodingEvent, LLMProvider } from "@skipper/shared";
+import type { MemoryMcp } from "./memory-mcp";
 
 export interface LLMResponse {
   text: string;
@@ -13,6 +14,8 @@ export interface AgentOptions {
   maxTurns?: number;
   /** Stream agent progress (text, tool use, result). Providers without streaming ignore it. */
   onEvent?: (event: CodingEvent) => void;
+  /** Inject the skipper-memory MCP server, scoped to this repo (#45). */
+  memory?: MemoryMcp;
 }
 
 export interface LLMProviderInterface {

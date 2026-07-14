@@ -1,5 +1,6 @@
 import type { CodingEvent, IssuePlan } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
+import type { MemoryMcp } from "../llm/memory-mcp";
 import { parseJsonReply } from "../llm/json";
 import { IssuePlanSchema, planJsonSchema } from "./schema";
 import { PLANNER_SYSTEM_PROMPT, buildPlannerPrompt, buildRepairPrompt } from "./prompt";
@@ -20,6 +21,8 @@ export interface GeneratePlanOptions {
   maxTurns?: number;
   /** Streams progress from the primary agent run only (repair round stays silent). */
   onEvent?: (event: CodingEvent) => void;
+  /** Inject the skipper-memory MCP server, scoped to the item's repo (#45). */
+  memory?: MemoryMcp;
 }
 
 export class PlanGenerationError extends Error {
@@ -67,6 +70,7 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
     cwd: opts.repoPath,
     maxTurns: opts.maxTurns ?? 24,
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+    ...(opts.memory ? { memory: opts.memory } : {}),
   });
 
   const first = tryParsePlan(reply.text);

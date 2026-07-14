@@ -82,6 +82,9 @@ export interface OrchestratorDeps {
   plansDir: string;
   worktreesDir: string;
   memoryDir: string;
+  /** Absolute path to the CLI bundle for the skipper-memory MCP server (#45),
+   * or null when it isn't shipped (dev before a CLI build). */
+  cliBundlePath: string | null;
 }
 
 const FIRST_POLL_DELAY_MS = 10_000;
@@ -1010,6 +1013,10 @@ export function initOrchestrator(
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     emitEvent: emitPlanningEvent,
     plansDir: orchestratorDeps.plansDir,
+    getMemoryMcp: (item) =>
+      orchestratorDeps.cliBundlePath
+        ? { cliBundlePath: orchestratorDeps.cliBundlePath, repo: item.repo }
+        : undefined,
   });
 
   initCoder({
@@ -1041,6 +1048,10 @@ export function initOrchestrator(
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getRepoPriority: (repo) => repoIntake(repo).priority,
     emitEvent: emitCodingEvent,
+    getMemoryMcp: (item) =>
+      orchestratorDeps.cliBundlePath
+        ? { cliBundlePath: orchestratorDeps.cliBundlePath, repo: item.repo }
+        : undefined,
   });
 
   initReviewer({

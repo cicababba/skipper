@@ -1,6 +1,8 @@
 export type { LLMProviderInterface, LLMResponse } from "./llm";
 export { createProvider, ClaudeCLIProvider } from "./llm";
 export { PROMPTS } from "./llm";
+export { MEMORY_TOOLS, buildMemoryMcpArgs } from "./llm";
+export type { MemoryMcp } from "./llm";
 export { OLLAMA_DEFAULT_HOST, ollamaHost } from "./llm";
 
 export { VectorStore } from "./vectorstore";

@@ -739,6 +739,21 @@ function cliWrapperSource(): string {
   return join(__dirname, "../../desktop/build/cli", wrapperName);
 }
 
+/**
+ * Absolute path of the CLI JS bundle shipped with the running app, or null when
+ * it isn't present (dev before `pnpm --filter @skipper/cli build`). The
+ * orchestrator hands this to planner/coder runs so they can spawn the
+ * skipper-memory MCP server (#45). NOT next to the wrapper: prepare-cli-bundle
+ * drops the bundle INSIDE the Next.js standalone tree (next to server.js) so it
+ * sits with its externalized node_modules (@huggingface/transformers, onnx).
+ */
+function cliBundlePath(): string | null {
+  const bundle = app.isPackaged
+    ? join(process.resourcesPath, "web", "apps", "web", "skipper.bundle.cjs")
+    : join(__dirname, "../../../packages/cli/dist/skipper.bundle.cjs");
+  return existsSync(bundle) ? bundle : null;
+}
+
 interface CliStatus {
   supported: boolean;
   target: string | null;
@@ -1033,6 +1048,7 @@ app.whenReady().then(async () => {
         plansDir: join(app.getPath("userData"), "plans"),
         worktreesDir: join(app.getPath("userData"), "worktrees"),
         memoryDir: join(app.getPath("userData"), "memory"),
+        cliBundlePath: cliBundlePath(),
       });
       orchestratorPoke = pokeOrchestrator;
       coderKillAll = killAllCodingRuns;

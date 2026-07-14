@@ -3,6 +3,7 @@ import {
   generatePlan,
   ClaudeCLIProvider,
   type LLMProviderInterface,
+  type MemoryMcp,
   type OrchestratorSettings,
 } from "@skipper/core";
 import type {
@@ -46,6 +47,8 @@ export interface PlannerDeps {
   /** Planner console stream (#32): per-item envelopes over skipper:planning:*. */
   emitEvent: (itemId: string, event: CodingEvent) => void;
   plansDir: string;
+  /** skipper-memory MCP for this item's repo (#45); undefined = no CLI bundle. */
+  getMemoryMcp?: (item: TrackedItem) => MemoryMcp | undefined;
 }
 
 const PLANNING_CONCURRENCY = 2;
@@ -155,11 +158,13 @@ async function run(itemId: string): Promise<void> {
     };
     // agent-start marks a fresh run — it also resets the replay buffer upstream.
     deps.emitEvent(itemId, { kind: "status", phase: "agent-start" });
+    const memory = deps.getMemoryMcp?.(item);
     const plan = await generatePlan({
       issue,
       repoPath,
       llm: provider,
       onEvent: (event) => deps?.emitEvent(itemId, event),
+      ...(memory ? { memory } : {}),
     });
     const ref = planFileName(itemId);
     const stored: StoredPlan = {

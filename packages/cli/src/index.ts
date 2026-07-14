@@ -27,6 +27,7 @@ import {
 import type { LLMProviderInterface } from "@skipper/core";
 import { readFile } from "node:fs/promises";
 import { saveSession, resumeSession } from "./session.js";
+import { serveMemory } from "./memory-serve.js";
 
 const program = new Command();
 
@@ -498,6 +499,23 @@ memory
         }
       }
     } catch (error) {
+      console.error(`✗ ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+  });
+
+memory
+  .command("serve")
+  .description("Run the skipper-memory MCP server (stdio) scoped to one repo — used by planner/coder runs")
+  .requiredOption("-r, --repo <owner/name>", "Repo scope")
+  .action(async (options) => {
+    try {
+      ensureEmbedderRegistered();
+      const repo = parseRepoRef(options.repo);
+      // Blocks: the stdio transport keeps the process alive on stdin.
+      await serveMemory({ repo, memoryDir: memoryRoot() });
+    } catch (error) {
+      // stdout is the MCP channel — diagnostics go to stderr.
       console.error(`✗ ${error instanceof Error ? error.message : error}`);
       process.exit(1);
     }

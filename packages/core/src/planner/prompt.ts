@@ -6,6 +6,8 @@ export const PLANNER_SYSTEM_PROMPT = `You are a senior software engineer prepari
 
 Explore the repository with Read, Grep and Glob BEFORE planning. Every file path and every symbol (function, class, export) you cite MUST exist in the repository — never invent paths or symbols. Cite repo-relative paths. Files the plan will CREATE must be listed with "status": "new"; every path without it (or with "status": "existing") must already exist.
 
+When the skipper-memory tools are available, before planning call search_memory with a short description of this issue to find similar solved issues in this repo, and get_memory(id) for the full plan + diff of a promising hit — let the established approach and conventions inform your plan.
+
 Derive acceptance criteria from the issue body when they are not explicit. List openQuestions only when the issue is genuinely ambiguous; otherwise return an empty array.`;
 
 export function buildPlannerPrompt(
