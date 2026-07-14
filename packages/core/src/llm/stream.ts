@@ -47,9 +47,15 @@ function mapAssistantLine(line: Record<string, unknown>): CodingEvent[] {
       events.push({ kind: "text", text: b.text });
     } else if (b.type === "tool_use" && typeof b.name === "string") {
       const input = (b.input ?? {}) as Record<string, unknown>;
-      const detail = [input.file_path, input.command, input.pattern].find(
-        (v) => typeof v === "string" && v,
-      ) as string | undefined;
+      // query/id carry the skipper-memory tool payloads (search_memory/get_memory);
+      // the get_memory id is the ground truth for the "memories used" card (#46).
+      const detail = [
+        input.file_path,
+        input.command,
+        input.pattern,
+        input.query,
+        input.id,
+      ].find((v) => typeof v === "string" && v) as string | undefined;
       events.push({
         kind: "tool-use",
         tool: b.name,

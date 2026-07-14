@@ -21,3 +21,22 @@ export function feedbackWeight(feedback: SolutionRecord["feedback"]): number {
   const { up, down } = feedback;
   return (2 * (up + 1)) / (up + down + 2);
 }
+
+/**
+ * Move the aggregate 👍/👎 counters by the delta between a user's old and new
+ * vote (#46). Three-state: null clears. Idempotent — same vote is a no-op — and
+ * never drops a counter below zero.
+ */
+export function applyFeedbackVote(
+  feedback: SolutionRecord["feedback"],
+  oldVote: "up" | "down" | undefined,
+  newVote: "up" | "down" | null,
+): { up: number; down: number } {
+  const next = { up: feedback?.up ?? 0, down: feedback?.down ?? 0 };
+  if (oldVote === (newVote ?? undefined)) return next;
+  if (oldVote === "up") next.up = Math.max(0, next.up - 1);
+  if (oldVote === "down") next.down = Math.max(0, next.down - 1);
+  if (newVote === "up") next.up += 1;
+  if (newVote === "down") next.down += 1;
+  return next;
+}

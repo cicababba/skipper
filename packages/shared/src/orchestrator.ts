@@ -144,6 +144,16 @@ export interface TrackedItem {
   pr?: { id: string; number: number; url: string };
   /** PR shepherding overlay (#11). */
   shepherd?: ShepherdState;
+  /** Solutions memory fetched via get_memory during each run (#46). Reset per run; vote is the local 👍/👎 anchor. */
+  usedMemory?: { planning?: UsedMemoryRef[]; coding?: UsedMemoryRef[] };
+}
+
+/** One memory a run consulted, with the user's local 👍/👎 (#46). */
+export interface UsedMemoryRef {
+  /** SolutionRecord id (the fetched memory's itemId). */
+  id: string;
+  /** Local vote — the idempotency anchor; maps to a delta on SolutionRecord.feedback. */
+  vote?: "up" | "down";
 }
 
 const ACTIVE_STATES: readonly LifecycleState[] = [

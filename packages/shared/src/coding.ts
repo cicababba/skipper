@@ -14,7 +14,7 @@ export type CodingEvent =
   | {
       kind: "tool-use";
       tool: string;
-      /** Best-effort: file path, command, or pattern from the tool input. */
+      /** Best-effort: file path, command, pattern, or memory query/id from the tool input. */
       detail?: string;
     }
   | {
