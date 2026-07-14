@@ -11,7 +11,6 @@ import { OrchestratorProvider } from "@/lib/orchestrator-context";
 import { GitStatusProvider } from "@/lib/git-status-context";
 import { EditorTabsProvider } from "@/lib/editor-tabs-context";
 import { OnboardingGate } from "@/lib/onboarding-gate";
-import { ModulesProvider } from "@/lib/modules-context";
 import { AppLangProvider } from "@/lib/app-i18n";
 import { UpdateToast } from "@/components/update-toast";
 import { AboutModal } from "@/components/about-modal";
@@ -47,7 +46,6 @@ export default function RootLayout({
       <body className="h-screen overflow-hidden flex bg-background text-foreground">
         <ThemeProvider>
          <AppLangProvider>
-         <ModulesProvider>
           <AuthProvider>
             <OrchestratorProvider>
               <TerminalProvider>
@@ -72,7 +70,6 @@ export default function RootLayout({
               </TerminalProvider>
             </OrchestratorProvider>
           </AuthProvider>
-         </ModulesProvider>
          </AppLangProvider>
         </ThemeProvider>
       </body>

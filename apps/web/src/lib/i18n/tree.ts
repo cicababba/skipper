@@ -27,16 +27,6 @@ const en = {
     empty: "empty",
   },
   projects: {
-    newProject: "New project",
-    newProjectTitle: "Create a new project in NestBrain/Projects",
-    import: "Import",
-    importTitle:
-      "Import an existing folder into Projects — made knowledge-ready automatically",
-    importFailed: "Import failed",
-    makeReady: "Make knowledge-ready",
-    makeReadyDone:
-      "Project is now knowledge-ready — commits will feed the knowledge base.",
-    makeReadyFailed: "Failed to make knowledge-ready",
     openTerminalTitle: (name: string) =>
       `Open terminal here · focus branch indicator on ${name}`,
   },
@@ -108,16 +98,6 @@ const it: typeof en = {
     empty: "vuota",
   },
   projects: {
-    newProject: "Nuovo progetto",
-    newProjectTitle: "Crea un nuovo progetto in NestBrain/Projects",
-    import: "Importa",
-    importTitle:
-      "Importa una cartella esistente in Projects — resa knowledge-ready automaticamente",
-    importFailed: "Importazione non riuscita",
-    makeReady: "Rendi knowledge-ready",
-    makeReadyDone:
-      "Il progetto ora è knowledge-ready — i commit alimenteranno la knowledge base.",
-    makeReadyFailed: "Impossibile rendere il progetto knowledge-ready",
     openTerminalTitle: (name: string) =>
       `Apri un terminale qui · indicatore branch su ${name}`,
   },
@@ -189,16 +169,6 @@ const fr: typeof en = {
     empty: "vide",
   },
   projects: {
-    newProject: "Nouveau projet",
-    newProjectTitle: "Créer un nouveau projet dans NestBrain/Projects",
-    import: "Importer",
-    importTitle:
-      "Importer un dossier existant dans Projects — rendu knowledge-ready automatiquement",
-    importFailed: "Échec de l'import",
-    makeReady: "Rendre knowledge-ready",
-    makeReadyDone:
-      "Le projet est désormais knowledge-ready — les commits alimenteront la base de connaissances.",
-    makeReadyFailed: "Impossible de rendre le projet knowledge-ready",
     openTerminalTitle: (name: string) =>
       `Ouvrir un terminal ici · indicateur de branch sur ${name}`,
   },
@@ -271,16 +241,6 @@ const es: typeof en = {
     empty: "vacía",
   },
   projects: {
-    newProject: "Nuevo proyecto",
-    newProjectTitle: "Crea un nuevo proyecto en NestBrain/Projects",
-    import: "Importar",
-    importTitle:
-      "Importa una carpeta existente en Projects — se vuelve knowledge-ready automáticamente",
-    importFailed: "Error al importar",
-    makeReady: "Hacer knowledge-ready",
-    makeReadyDone:
-      "El proyecto ya es knowledge-ready — los commits alimentarán la base de conocimiento.",
-    makeReadyFailed: "No se pudo hacer knowledge-ready el proyecto",
     openTerminalTitle: (name: string) =>
       `Abrir una terminal aquí · indicador de branch en ${name}`,
   },

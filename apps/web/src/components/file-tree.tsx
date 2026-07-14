@@ -12,8 +12,6 @@ import {
   Trash2,
   ExternalLink,
   GitBranch,
-  FolderInput,
-  Sparkles,
   Share2,
   Download,
   Loader2,
@@ -22,7 +20,6 @@ import {
   X,
 } from "lucide-react";
 import { useT } from "@/lib/app-i18n";
-import { useModules } from "@/lib/modules-context";
 import { FileIcon } from "./file-icon";
 import { useGitStatus, pickMarker, markerClass } from "@/lib/git-status-context";
 import { useTerminal } from "@/lib/terminal-context";
@@ -42,8 +39,6 @@ type CreateKind = "file" | "dir";
 export function FileTree({ rootPath }: FileTreeProps) {
   const router = useRouter();
   const { t } = useT();
-  const { has: hasModule } = useModules();
-  const devModule = hasModule("dev");
 
   const [expanded, setExpanded] = useState<Set<string>>(
     new Set([rootPath, `${rootPath}/Projects`]),
@@ -108,20 +103,6 @@ export function FileTree({ rootPath }: FileTreeProps) {
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  // Import an external folder into Projects/ and make it knowledge-ready.
-  const importProject = useCallback(async () => {
-    if (!window.nestbrain?.projects) return;
-    try {
-      const res = await window.nestbrain.projects.import();
-      if (res) {
-        setExpanded((s) => new Set(s).add(`${rootPath}/Projects`));
-        refresh();
-      }
-    } catch (e) {
-      window.alert(e instanceof Error ? e.message : t.tree.projects.importFailed);
-    }
-  }, [refresh, rootPath, t.tree.projects]);
-
   // A directory that's a direct child of Projects/ (a project root).
   const isProjectDir = useCallback(
     (p: string): boolean => {
@@ -134,15 +115,6 @@ export function FileTree({ rootPath }: FileTreeProps) {
     [rootPath],
   );
 
-  async function handleMakeReady(targetPath: string) {
-    if (!window.nestbrain?.projects) return;
-    try {
-      await window.nestbrain.projects.makeReady(targetPath);
-      window.alert(t.tree.projects.makeReadyDone);
-    } catch (e) {
-      window.alert(e instanceof Error ? e.message : t.tree.projects.makeReadyFailed);
-    }
-  }
 
   // Auto refresh when window gains focus
   useEffect(() => {
@@ -278,21 +250,6 @@ export function FileTree({ rootPath }: FileTreeProps) {
 
   return (
     <div className="flex-shrink-0 border-b border-sidebar-border">
-      {/* Import project (Dev module only) — the "New project" flow was
-          retired with #2; projects arrive by importing existing repos. */}
-      {devModule && (
-      <div className="px-3 pt-3 pb-2 flex items-stretch">
-        <button
-          onClick={importProject}
-          title={t.tree.projects.importTitle}
-          className="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[11px] text-muted/70 hover:text-foreground bg-card/50 hover:bg-card border border-border/60 hover:border-border transition-colors"
-        >
-          <FolderInput size={12} className="shrink-0 text-muted/50" />
-          <span>{t.tree.projects.import}</span>
-        </button>
-      </div>
-      )}
-
       <div className="px-4 py-2 flex items-center justify-between">
         <span className="text-[10px] font-semibold text-muted/60 uppercase tracking-wider">
           NestBrain
@@ -369,15 +326,6 @@ export function FileTree({ rootPath }: FileTreeProps) {
             setContextMenu(null);
             handleDelete(path, name, isDir);
           }}
-          onMakeReady={
-            contextMenu.isDir && isProjectDir(contextMenu.path)
-              ? () => {
-                  const { path } = contextMenu;
-                  setContextMenu(null);
-                  handleMakeReady(path);
-                }
-              : undefined
-          }
           onSessionSave={
             contextMenu.isDir && isProjectDir(contextMenu.path)
               ? () => {
@@ -475,7 +423,6 @@ interface ContextMenuProps {
   onOpen?: () => void;
   onRename: () => void;
   onDelete: () => void;
-  onMakeReady?: () => void;
   onSessionSave?: () => void;
   onSessionResume?: () => void;
 }
@@ -486,7 +433,6 @@ function ContextMenu({
   onOpen,
   onRename,
   onDelete,
-  onMakeReady,
   onSessionSave,
   onSessionResume,
 }: ContextMenuProps) {
@@ -509,16 +455,6 @@ function ContextMenu({
             icon={<ExternalLink size={12} />}
             label={t.tree.files.open}
             onClick={onOpen}
-          />
-          <div className="my-1 h-px bg-border/60" />
-        </>
-      )}
-      {onMakeReady && (
-        <>
-          <MenuItem
-            icon={<Sparkles size={12} />}
-            label={t.tree.projects.makeReady}
-            onClick={onMakeReady}
           />
           <div className="my-1 h-px bg-border/60" />
         </>
@@ -748,8 +684,6 @@ function TreeNode({
   refreshKey,
 }: TreeNodeProps) {
   const { t } = useT();
-  const { has: hasModule } = useModules();
-  const devModule = hasModule("dev");
   const isOpen = expanded.has(path);
   const isSelected = selectedPath === path;
   const isRenaming = renamingPath === path;
@@ -925,13 +859,7 @@ function TreeNode({
       </div>
       {isOpen && children && (
         <div>
-          {children
-            .filter((entry) => {
-              if (!isRoot || !entry.isDirectory) return true;
-              if (entry.name === "Projects" && !devModule) return false;
-              return true;
-            })
-            .map((entry) => (
+          {children.map((entry) => (
             <TreeNode
               key={entry.path}
               path={entry.path}

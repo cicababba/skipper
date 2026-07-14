@@ -60,22 +60,3 @@ DEVELOPMENT_CONTRACT.md
 
 # Auto-update channel key — injected at build time (CI secret / .env.local)
 apps/desktop/src/update-config.ts
-apps/desktop/src/dev-impl/
-apps/web/src/components/integrated-terminal.tsx
-apps/web/src/components/source-control-panel.tsx
-apps/web/src/lib/anatomize-impl/
-apps/web/src/app/api/anatomize/
-apps/web/src/app/insights/
-# dev module overlay (merge tool, dev API routes)
-apps/web/src/app/api/dev/
-apps/web/src/app/dev-merge/
-apps/web/src/lib/dev-merge/
-# dev-besidetech module overlay (skills + graphify; ping route is a public stub)
-apps/web/public/_skills-bundle/
-apps/web/src/app/api/dev-besidetech/graphify/
-apps/web/src/app/api/dev-besidetech/skills/
-apps/web/src/components/dev-besidetech-settings.tsx
-apps/web/src/lib/dev-besidetech-impl/
-apps/web/src/lib/i18n/dev-besidetech.ts
-apps/web/src/lib/i18n/dev-merge.ts
-apps/desktop/src/built-in-modules.generated.ts

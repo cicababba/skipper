@@ -59,11 +59,6 @@ declare global {
         platform: NodeJS.Platform;
       }>;
       selectDirectory: () => Promise<string | null>;
-      projects: {
-        import: () => Promise<{ projectPath: string; name: string } | null>;
-        makeReady: (projectPath: string) => Promise<{ ready: boolean }>;
-        status: (projectPath: string) => Promise<{ ready: boolean }>;
-      };
       session: {
         run: (
           mode: "save" | "resume",
@@ -105,9 +100,6 @@ declare global {
         signOut: (provider: AuthProviderId, accountId?: string) => Promise<void>;
         cancelSignIn: (provider: AuthProviderId) => Promise<void>;
         onStateChanged: (callback: (state: AuthState) => void) => () => void;
-      };
-      modules: {
-        get: () => Promise<string[]>;
       };
       openExternal: (url: string) => Promise<void>;
       onShowAbout: (callback: () => void) => () => void;

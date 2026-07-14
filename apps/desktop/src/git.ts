@@ -134,25 +134,13 @@ async function readStatus(repoPath: string): Promise<GitStatus | null> {
 }
 
 export function registerGitHandlers(ipcMain: IpcMain): void {
-  // Official builds may still overlay the Dev module, which registers these
-  // same channels first (loadDevModule runs before us). Until the private
-  // repo drops its git backend, the overlay wins and we skip — a second
-  // ipcMain.handle on the same channel throws.
-  const handle = (channel: string, fn: (...args: never[]) => unknown): void => {
-    try {
-      ipcMain.handle(channel, fn as Parameters<IpcMain["handle"]>[1]);
-    } catch {
-      /* overlay already owns this channel */
-    }
-  };
-
-  handle("nestbrain:git:status", async (_e, repoPath: string): Promise<GitStatus | null> => {
+  ipcMain.handle("nestbrain:git:status", async (_e, repoPath: string): Promise<GitStatus | null> => {
     const top = await repoTop(repoPath);
     if (!top || !samePath(top, repoPath)) return null;
     return readStatus(repoPath);
   });
 
-  handle(
+  ipcMain.handle(
     "nestbrain:git:findRepo",
     async (_e, anyPath: string): Promise<{ repoPath: string; status: GitStatus } | null> => {
       if (!existsSync(anyPath)) return null;
@@ -164,11 +152,11 @@ export function registerGitHandlers(ipcMain: IpcMain): void {
     },
   );
 
-  handle("nestbrain:git:stage", async (_e, repoPath: string, paths: string[]) =>
+  ipcMain.handle("nestbrain:git:stage", async (_e, repoPath: string, paths: string[]) =>
     toOp(await runGit(repoPath, ["add", "--", ...paths])),
   );
 
-  handle("nestbrain:git:unstage", async (_e, repoPath: string, paths: string[]) => {
+  ipcMain.handle("nestbrain:git:unstage", async (_e, repoPath: string, paths: string[]) => {
     const r = await runGit(repoPath, ["reset", "-q", "--", ...paths]);
     // Unborn branch (no commit yet): reset can't resolve HEAD — drop the
     // paths from the index instead.
@@ -178,7 +166,7 @@ export function registerGitHandlers(ipcMain: IpcMain): void {
     return toOp(r);
   });
 
-  handle("nestbrain:git:discard", async (_e, repoPath: string, paths: string[]) => {
+  ipcMain.handle("nestbrain:git:discard", async (_e, repoPath: string, paths: string[]) => {
     // Untracked files are deleted, tracked ones restored from the index.
     // checkout legitimately fails when every path was untracked — clean
     // already handled those.
@@ -192,11 +180,11 @@ export function registerGitHandlers(ipcMain: IpcMain): void {
     };
   });
 
-  handle("nestbrain:git:commit", async (_e, repoPath: string, message: string) =>
+  ipcMain.handle("nestbrain:git:commit", async (_e, repoPath: string, message: string) =>
     toOp(await runGit(repoPath, ["commit", "-m", message])),
   );
 
-  handle("nestbrain:git:push", async (_e, repoPath: string) => {
+  ipcMain.handle("nestbrain:git:push", async (_e, repoPath: string) => {
     const r = await runGit(repoPath, ["push"], 120_000);
     if (r.code !== 0 && /no upstream|set-upstream/i.test(r.stderr)) {
       return toOp(await runGit(repoPath, ["push", "-u", "origin", "HEAD"], 120_000));
@@ -204,11 +192,11 @@ export function registerGitHandlers(ipcMain: IpcMain): void {
     return toOp(r);
   });
 
-  handle("nestbrain:git:pull", async (_e, repoPath: string) =>
+  ipcMain.handle("nestbrain:git:pull", async (_e, repoPath: string) =>
     toOp(await runGit(repoPath, ["pull", "--no-edit"], 120_000)),
   );
 
-  handle("nestbrain:git:stashList", async (_e, repoPath: string) => {
+  ipcMain.handle("nestbrain:git:stashList", async (_e, repoPath: string) => {
     const r = await runGit(repoPath, ["stash", "list", "--format=%gd%x09%gs"]);
     const stashes = r.stdout
       .split("\n")
@@ -222,7 +210,7 @@ export function registerGitHandlers(ipcMain: IpcMain): void {
     return { ...toOp(r), stashes };
   });
 
-  handle(
+  ipcMain.handle(
     "nestbrain:git:stashPush",
     async (_e, repoPath: string, message?: string, includeUntracked?: boolean) => {
       const args = ["stash", "push"];
@@ -232,11 +220,11 @@ export function registerGitHandlers(ipcMain: IpcMain): void {
     },
   );
 
-  handle("nestbrain:git:stashPop", async (_e, repoPath: string, ref?: string) =>
+  ipcMain.handle("nestbrain:git:stashPop", async (_e, repoPath: string, ref?: string) =>
     toOp(await runGit(repoPath, ref ? ["stash", "pop", ref] : ["stash", "pop"])),
   );
 
-  handle("nestbrain:git:stashDrop", async (_e, repoPath: string, ref: string) =>
+  ipcMain.handle("nestbrain:git:stashDrop", async (_e, repoPath: string, ref: string) =>
     toOp(await runGit(repoPath, ["stash", "drop", ref])),
   );
 }

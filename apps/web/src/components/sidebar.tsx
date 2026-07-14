@@ -8,8 +8,6 @@ import {
   Settings,
   Sun,
   Moon,
-  Blocks,
-  Boxes,
   Inbox,
   ChevronDown,
   Plus,
@@ -17,13 +15,11 @@ import {
 import { FileTree } from "./file-tree";
 import { RepoManagerModal } from "./repo-manager-modal";
 import { BranchIndicator } from "./branch-indicator";
-import { useModules } from "@/lib/modules-context";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { attentionCounts, repoKey, reposOf } from "@/lib/inbox/model";
 import { useT } from "@/lib/app-i18n";
 import { useTheme } from "@/lib/theme-context";
 import { useStoredState } from "@/lib/use-stored-state";
-import { moduleSettings } from "@/lib/module-settings";
 
 const navItems = [
   { href: "/knowledge", icon: Lightbulb, key: "knowledge" as const },
@@ -35,14 +31,6 @@ const MAX_WIDTH = 400;
 const DEFAULT_WIDTH = 256;
 const STORAGE_KEY = "nestbrain-sidebar-width";
 
-/** Human label for a module id with no i18n entry: "dev-besidetech" → "Dev · Besidetech". */
-function prettyModule(id: string): string {
-  return id
-    .split("-")
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-    .join(" · ");
-}
-
 function clampWidth(raw: string): number {
   const parsed = parseInt(raw, 10);
   if (Number.isNaN(parsed)) return DEFAULT_WIDTH;
@@ -51,7 +39,6 @@ function clampWidth(raw: string): number {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { modules } = useModules();
   const { t } = useT();
   const [storedWidth, setStoredWidth] = useStoredState(STORAGE_KEY, String(DEFAULT_WIDTH));
   // Live value during a drag; storage is only written on mouse-up.
@@ -184,24 +171,12 @@ export function Sidebar() {
 
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-0.5 overflow-auto">
-          {[
-            ...navItems.slice(0, -1),
-            // Generic entry for any active module without a dedicated surface
-            // (dev and anatomize integrate into the existing UI; modules that
-            // register a settings panel live in /modules instead).
-            // A surface-less third-party module's page lives at /<id> — this
-            // makes it reachable without editing the sidebar.
-            ...modules
-              .filter((m) => m !== "dev" && m !== "anatomize" && !moduleSettings[m])
-              .map((m) => ({ href: `/${m}`, icon: Boxes, label: prettyModule(m) })),
-            ...(modules.length > 0 ? [{ href: "/modules", icon: Blocks, key: "modules" as const }] : []),
-            navItems[navItems.length - 1],
-          ].map((item) => {
+          {navItems.map((item) => {
             const isActive =
               pathname === item.href || pathname.startsWith(item.href + "/");
             const Icon = item.icon;
             const isKnowledge = item.href === "/knowledge";
-            const label = "key" in item ? t.common.nav[item.key] : item.label;
+            const label = t.common.nav[item.key];
             return (
               <Link
                 key={item.href}

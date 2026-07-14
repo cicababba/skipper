@@ -26,11 +26,9 @@ import {
   watch,
   type FSWatcher,
 } from "node:fs";
-import { execFileSync, execSync, spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { AuthManager } from "./auth";
 import type { AuthState } from "@nestbrain/shared";
-import { enabledModules } from "./modules";
-import { loadDevModule, type DevModuleApi } from "./dev-module";
 import { registerGitHandlers } from "./git";
 import { registerTerminalHandlers, type TerminalApi } from "./terminal";
 
@@ -585,53 +583,13 @@ ipcMain.handle("nestbrain:selectDirectory", async () => {
   return result.filePaths[0];
 });
 
-// ====== CLI plumbing shared with the Dev module ======
-
-/** Command the installed hook should invoke at commit time. */
-function hookCliCommand(): string {
-  const target = cliInstallTarget();
-  if (target && existsSync(target)) return "nestbrain"; // installed on PATH → survives moves
-  return cliWrapperSource(); // bundled wrapper (absolute path)
-}
-
-/** Run the bundled (or PATH) nestbrain CLI. */
-function runNestbrainCli(args: string[]): void {
-  let onPath = false;
-  try {
-    execSync(process.platform === "win32" ? "where nestbrain" : "command -v nestbrain", { stdio: "ignore" });
-    onPath = true;
-  } catch {
-    /* not on PATH */
-  }
-  const cmd = onPath ? "nestbrain" : cliWrapperSource();
-  execFileSync(cmd, args, { stdio: "ignore", timeout: 60_000, shell: process.platform === "win32" });
-}
-
-// ====== Dev module (Enterprise add-on) ======
-// The Projects backend lives in the private nestbrain-modules repo
-// (open-core). Public source builds have no impl → that surface stays off.
-const devModule: DevModuleApi | null = loadDevModule({
-  ipcMain,
-  dialog,
-  getMainWindow: () => mainWindow,
-  getNestBrainPath: () => readBootstrap().nestBrainPath ?? null,
-  runNestbrainCli,
-  hookCliCommand,
-});
-
-// Git and terminal are product core (#1, #18) — registered unconditionally,
-// in the public tree. Must run AFTER loadDevModule: overlaid builds still
-// ship their backends, and the overlay keeps winning until the private repo
-// drops them.
 registerGitHandlers(ipcMain);
 const publicTerminal: TerminalApi = registerTerminalHandlers({
   ipcMain,
   getMainWindow: () => mainWindow,
 });
 
-// Both backends may hold live pty children during the transition; kill both.
 function killAllPtySessions(): void {
-  devModule?.killAllPtySessions();
   publicTerminal.killAllPtySessions();
 }
 
@@ -1135,23 +1093,6 @@ for (const provider of ["google", "github"] as const) {
     authManager?.cancelSignIn(provider);
   });
 }
-
-// ====== Modules (add-ons) ======
-// Enabled = built into this binary. License-based entitlement will return
-// with the pivot's licensing model (Polar keys); until then the build is
-// the entitlement.
-ipcMain.handle("nestbrain:modules:get", async (): Promise<string[]> => {
-  const mods = enabledModules();
-  // Module dirs are created lazily, on entitlement: Projects/ exists only
-  // where the Dev module does.
-  if (mods.includes("dev")) {
-    const b = readBootstrap();
-    if (b.nestBrainPath) {
-      try { mkdirSync(join(b.nestBrainPath, "Projects"), { recursive: true }); } catch { /* ignore */ }
-    }
-  }
-  return mods;
-});
 
 // ====== CLI on PATH (macOS / Windows) ======
 

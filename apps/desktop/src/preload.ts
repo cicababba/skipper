@@ -52,14 +52,6 @@ contextBridge.exposeInMainWorld("nestbrain", {
   getBootstrap: () => ipcRenderer.invoke("nestbrain:getBootstrap"),
   selectDirectory: () => ipcRenderer.invoke("nestbrain:selectDirectory"),
 
-  projects: {
-    import: (): Promise<{ projectPath: string; name: string } | null> =>
-      ipcRenderer.invoke("nestbrain:projects:import"),
-    makeReady: (projectPath: string): Promise<{ ready: boolean }> =>
-      ipcRenderer.invoke("nestbrain:projects:makeReady", projectPath),
-    status: (projectPath: string): Promise<{ ready: boolean }> =>
-      ipcRenderer.invoke("nestbrain:projects:status", projectPath),
-  },
   session: {
     run: (mode: "save" | "resume", projectDir: string): Promise<{ ok: boolean; output: string }> =>
       ipcRenderer.invoke("nestbrain:session:run", mode, projectDir),
@@ -121,10 +113,6 @@ contextBridge.exposeInMainWorld("nestbrain", {
       ipcRenderer.on("nestbrain:auth:stateChanged", handler);
       return () => ipcRenderer.off("nestbrain:auth:stateChanged", handler);
     },
-  },
-
-  modules: {
-    get: (): Promise<string[]> => ipcRenderer.invoke("nestbrain:modules:get"),
   },
 
   // Orchestrator (issue #6 wiring; typed surface consumed by the inbox UI, #12)
