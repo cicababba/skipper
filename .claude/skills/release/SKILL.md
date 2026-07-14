@@ -128,6 +128,6 @@ develop is synced with main and ready for continued development.
 
 - **NEVER delete develop branch** - this is the most critical rule
 - Version is bumped in root `package.json` **and** `apps/desktop/package.json` (keep aligned)
-- The push to `main` runs the whole pipeline automatically: build, sign, notarize, upload to Polar, publish update feed, create the release on the private `nestbrain-releases` repo
+- The push to `main` runs the whole pipeline automatically: build, sign, notarize, upload to Polar, publish update feed, create the release on the private `skipper-releases` repo (placeholder until the #17 cutover)
 - Version bumping is **manual only** (no CI automation) - this skill is the only way to bump versions
 - If the pipeline has CI failures, fix on develop first, then release again

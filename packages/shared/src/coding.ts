@@ -1,5 +1,5 @@
 // ============================================================
-// NestBrain — Agent event types, shared by the coding runner (#9)
+// Skipper — Agent event types, shared by the coding runner (#9)
 // and the planner console (#32)
 // ============================================================
 

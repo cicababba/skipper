@@ -32,7 +32,7 @@ const en = {
   },
   topbar: {
     syncUnavailableTitle:
-      "Drive sync requires the official build from nestbrain.app — or wire your own Google OAuth client (see README).",
+      "Drive sync requires the official build from skipper.app — or wire your own Google OAuth client (see README).",
     syncUnavailable: "Sync — not available in the free build",
     signInGoogle: "Sign in with Google",
     waitingBrowser: "Waiting for browser…",
@@ -45,7 +45,7 @@ const en = {
   updates: {
     ready: "Update ready",
     downloaded: (version: string) =>
-      `NestBrain ${version} has been downloaded. Restart to apply it now, or it will install automatically the next time you quit.`,
+      `Skipper ${version} has been downloaded. Restart to apply it now, or it will install automatically the next time you quit.`,
     restartNow: "Restart now",
     later: "Later",
   },
@@ -103,7 +103,7 @@ const it: typeof en = {
   },
   topbar: {
     syncUnavailableTitle:
-      "La sincronizzazione Drive richiede la build ufficiale da nestbrain.app — oppure configura il tuo client Google OAuth (vedi README).",
+      "La sincronizzazione Drive richiede la build ufficiale da skipper.app — oppure configura il tuo client Google OAuth (vedi README).",
     syncUnavailable: "Sync — non disponibile nella build gratuita",
     signInGoogle: "Accedi con Google",
     waitingBrowser: "In attesa del browser…",
@@ -116,7 +116,7 @@ const it: typeof en = {
   updates: {
     ready: "Aggiornamento pronto",
     downloaded: (version: string) =>
-      `NestBrain ${version} è stato scaricato. Riavvia per applicarlo subito, oppure verrà installato automaticamente alla prossima chiusura.`,
+      `Skipper ${version} è stato scaricato. Riavvia per applicarlo subito, oppure verrà installato automaticamente alla prossima chiusura.`,
     restartNow: "Riavvia ora",
     later: "Più tardi",
   },
@@ -174,7 +174,7 @@ const fr: typeof en = {
   },
   topbar: {
     syncUnavailableTitle:
-      "La synchronisation Drive nécessite la build officielle de nestbrain.app — ou configurez votre propre client Google OAuth (voir README).",
+      "La synchronisation Drive nécessite la build officielle de skipper.app — ou configurez votre propre client Google OAuth (voir README).",
     syncUnavailable: "Sync — indisponible dans la version gratuite",
     signInGoogle: "Se connecter avec Google",
     waitingBrowser: "En attente du navigateur…",
@@ -187,7 +187,7 @@ const fr: typeof en = {
   updates: {
     ready: "Mise à jour prête",
     downloaded: (version: string) =>
-      `NestBrain ${version} a été téléchargé. Redémarrez pour l'appliquer maintenant, sinon il s'installera automatiquement à la prochaine fermeture.`,
+      `Skipper ${version} a été téléchargé. Redémarrez pour l'appliquer maintenant, sinon il s'installera automatiquement à la prochaine fermeture.`,
     restartNow: "Redémarrer maintenant",
     later: "Plus tard",
   },
@@ -246,7 +246,7 @@ const es: typeof en = {
   },
   topbar: {
     syncUnavailableTitle:
-      "La sincronización con Drive requiere la build oficial de nestbrain.app — o configura tu propio cliente Google OAuth (ver README).",
+      "La sincronización con Drive requiere la build oficial de skipper.app — o configura tu propio cliente Google OAuth (ver README).",
     syncUnavailable: "Sync — no disponible en la versión gratuita",
     signInGoogle: "Iniciar sesión con Google",
     waitingBrowser: "Esperando al navegador…",
@@ -259,7 +259,7 @@ const es: typeof en = {
   updates: {
     ready: "Actualización lista",
     downloaded: (version: string) =>
-      `NestBrain ${version} se ha descargado. Reinicia para aplicarla ahora, o se instalará automáticamente la próxima vez que cierres la app.`,
+      `Skipper ${version} se ha descargado. Reinicia para aplicarla ahora, o se instalará automáticamente la próxima vez que cierres la app.`,
     restartNow: "Reiniciar ahora",
     later: "Más tarde",
   },

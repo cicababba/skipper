@@ -36,8 +36,8 @@ describe("listUserInstallationRepos", () => {
         return jsonResponse({
           total_count: 2,
           installations: [
-            { id: 11, app_slug: "nestbrain-app" },
-            { id: 12, app_slug: "nestbrain-app" },
+            { id: 11, app_slug: "skipper-app" },
+            { id: 12, app_slug: "skipper-app" },
           ],
         });
       }
@@ -60,7 +60,7 @@ describe("listUserInstallationRepos", () => {
 
     const result = await listUserInstallationRepos(token);
     expect(result.installationCount).toBe(2);
-    expect(result.appSlug).toBe("nestbrain-app");
+    expect(result.appSlug).toBe("skipper-app");
     expect(result.repos).toEqual([
       { owner: "o", name: "alpha", private: false },
       { owner: "o", name: "beta", private: true },

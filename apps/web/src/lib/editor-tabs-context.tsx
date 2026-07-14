@@ -28,7 +28,7 @@ const EditorTabsContext = createContext<EditorTabsState>({
   closeAll: () => {},
 });
 
-const STORAGE_KEY = "nestbrain-editor-tabs";
+const STORAGE_KEY = "skipper-editor-tabs";
 
 interface Persisted {
   tabs: string[];

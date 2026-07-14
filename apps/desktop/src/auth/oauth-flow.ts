@@ -13,7 +13,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { shell } from "electron";
-import type { Account } from "@nestbrain/shared";
+import type { Account } from "@skipper/shared";
 import { OAuthError, type ProviderConfig, type ProviderTokens, type RefreshedTokens } from "./provider";
 import { SUCCESS_HTML, errorHtml } from "./callback-pages";
 

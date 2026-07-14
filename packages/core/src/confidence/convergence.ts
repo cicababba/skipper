@@ -1,4 +1,4 @@
-import type { ConvergenceSignal, IssuePlan } from "@nestbrain/shared";
+import type { ConvergenceSignal, IssuePlan } from "@skipper/shared";
 
 export const DIVERGENCE_THRESHOLD = 0.4;
 

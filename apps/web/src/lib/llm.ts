@@ -1,5 +1,5 @@
-import { createProvider } from "@nestbrain/core";
-import type { LLMProviderInterface } from "@nestbrain/core";
+import { createProvider } from "@skipper/core";
+import type { LLMProviderInterface } from "@skipper/core";
 import { loadSettings } from "./settings";
 import { ensureNativeLoadersRegistered } from "./native-loader";
 

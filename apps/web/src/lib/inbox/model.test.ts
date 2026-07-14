@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { LifecycleState, TrackedItem } from "@nestbrain/shared";
-import { TRANSITIONS } from "@nestbrain/shared";
+import type { LifecycleState, TrackedItem } from "@skipper/shared";
+import { TRANSITIONS } from "@skipper/shared";
 import {
   ATTENTION_SECTION_STATES,
   ATTENTION_STATES,

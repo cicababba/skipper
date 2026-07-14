@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
-import { parseAtom, updatePendingAtom, type KnowledgeAtom } from "@nestbrain/core";
+import { parseAtom, updatePendingAtom, type KnowledgeAtom } from "@skipper/core";
 import { getWorkspacePath } from "@/lib/config";
 import { assertSafePendingPath } from "../safe-path";
 

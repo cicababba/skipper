@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { FolderGit2, Loader2, X } from "lucide-react";
-import type { ListReposResult } from "@nestbrain/shared";
+import type { ListReposResult } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 
 export function RepoManagerModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -13,9 +13,9 @@ export function RepoManagerModal({ isOpen, onClose }: { isOpen: boolean; onClose
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!window.nestbrain) return;
+    if (!window.skipper) return;
     try {
-      setRepos(await window.nestbrain.orchestrator.listRepos());
+      setRepos(await window.skipper.orchestrator.listRepos());
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -49,24 +49,24 @@ export function RepoManagerModal({ isOpen, onClose }: { isOpen: boolean; onClose
 
   const link = (key: string) =>
     run(key, async () => {
-      const localPath = await window.nestbrain!.selectDirectory();
+      const localPath = await window.skipper!.selectDirectory();
       if (!localPath) return { ok: true };
       const [owner, name] = splitKey(key);
-      return window.nestbrain!.orchestrator.linkRepo(owner, name, localPath);
+      return window.skipper!.orchestrator.linkRepo(owner, name, localPath);
     });
 
   const clone = (key: string) =>
     run(key, async () => {
-      const destParent = await window.nestbrain!.selectDirectory();
+      const destParent = await window.skipper!.selectDirectory();
       if (!destParent) return { ok: true };
       const [owner, name] = splitKey(key);
-      return window.nestbrain!.orchestrator.cloneRepo(owner, name, destParent);
+      return window.skipper!.orchestrator.cloneRepo(owner, name, destParent);
     });
 
   const unlink = (key: string) =>
     run(key, () => {
       const [owner, name] = splitKey(key);
-      return window.nestbrain!.orchestrator.unlinkRepo(owner, name);
+      return window.skipper!.orchestrator.unlinkRepo(owner, name);
     });
 
   const actionButton = (label: string, key: string, onClick: () => void, primary = false) => (

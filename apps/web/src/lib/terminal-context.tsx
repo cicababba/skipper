@@ -46,7 +46,7 @@ const TerminalContext = createContext<TerminalState>({
 
 function terminalApi() {
   if (typeof window === "undefined") return null;
-  return window.nestbrain?.terminal ?? null;
+  return window.skipper?.terminal ?? null;
 }
 
 export function TerminalProvider({ children }: { children: ReactNode }) {
@@ -84,9 +84,9 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
   );
 
   const newTerminal = useCallback(async () => {
-    if (typeof window === "undefined" || !window.nestbrain) return;
-    const bootstrap = await window.nestbrain.getBootstrap();
-    const cwd = bootstrap.nestBrainPath;
+    if (typeof window === "undefined" || !window.skipper) return;
+    const bootstrap = await window.skipper.getBootstrap();
+    const cwd = bootstrap.skipperPath;
     if (!cwd) return;
     await openTerminal(cwd, cwd.split(/[/\\]/).pop() || "shell");
   }, [openTerminal]);

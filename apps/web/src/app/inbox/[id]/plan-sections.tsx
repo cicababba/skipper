@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Edit2, Loader2, Plus, Trash2, X } from "lucide-react";
-import type { PlanAcceptance, PlanFileRef, PlanStep } from "@nestbrain/shared";
+import type { PlanAcceptance, PlanFileRef, PlanStep } from "@skipper/shared";
 import type { StepDraft } from "@/lib/inbox/plan-edit";
 import { useT } from "@/lib/app-i18n";
 

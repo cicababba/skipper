@@ -134,14 +134,14 @@ async function readStatus(repoPath: string): Promise<GitStatus | null> {
 }
 
 export function registerGitHandlers(ipcMain: IpcMain): void {
-  ipcMain.handle("nestbrain:git:status", async (_e, repoPath: string): Promise<GitStatus | null> => {
+  ipcMain.handle("skipper:git:status", async (_e, repoPath: string): Promise<GitStatus | null> => {
     const top = await repoTop(repoPath);
     if (!top || !samePath(top, repoPath)) return null;
     return readStatus(repoPath);
   });
 
   ipcMain.handle(
-    "nestbrain:git:findRepo",
+    "skipper:git:findRepo",
     async (_e, anyPath: string): Promise<{ repoPath: string; status: GitStatus } | null> => {
       if (!existsSync(anyPath)) return null;
       const dir = statSync(anyPath).isDirectory() ? anyPath : dirname(anyPath);
@@ -152,11 +152,11 @@ export function registerGitHandlers(ipcMain: IpcMain): void {
     },
   );
 
-  ipcMain.handle("nestbrain:git:stage", async (_e, repoPath: string, paths: string[]) =>
+  ipcMain.handle("skipper:git:stage", async (_e, repoPath: string, paths: string[]) =>
     toOp(await runGit(repoPath, ["add", "--", ...paths])),
   );
 
-  ipcMain.handle("nestbrain:git:unstage", async (_e, repoPath: string, paths: string[]) => {
+  ipcMain.handle("skipper:git:unstage", async (_e, repoPath: string, paths: string[]) => {
     const r = await runGit(repoPath, ["reset", "-q", "--", ...paths]);
     // Unborn branch (no commit yet): reset can't resolve HEAD — drop the
     // paths from the index instead.
@@ -166,7 +166,7 @@ export function registerGitHandlers(ipcMain: IpcMain): void {
     return toOp(r);
   });
 
-  ipcMain.handle("nestbrain:git:discard", async (_e, repoPath: string, paths: string[]) => {
+  ipcMain.handle("skipper:git:discard", async (_e, repoPath: string, paths: string[]) => {
     // Untracked files are deleted, tracked ones restored from the index.
     // checkout legitimately fails when every path was untracked — clean
     // already handled those.
@@ -180,11 +180,11 @@ export function registerGitHandlers(ipcMain: IpcMain): void {
     };
   });
 
-  ipcMain.handle("nestbrain:git:commit", async (_e, repoPath: string, message: string) =>
+  ipcMain.handle("skipper:git:commit", async (_e, repoPath: string, message: string) =>
     toOp(await runGit(repoPath, ["commit", "-m", message])),
   );
 
-  ipcMain.handle("nestbrain:git:push", async (_e, repoPath: string) => {
+  ipcMain.handle("skipper:git:push", async (_e, repoPath: string) => {
     const r = await runGit(repoPath, ["push"], 120_000);
     if (r.code !== 0 && /no upstream|set-upstream/i.test(r.stderr)) {
       return toOp(await runGit(repoPath, ["push", "-u", "origin", "HEAD"], 120_000));
@@ -192,11 +192,11 @@ export function registerGitHandlers(ipcMain: IpcMain): void {
     return toOp(r);
   });
 
-  ipcMain.handle("nestbrain:git:pull", async (_e, repoPath: string) =>
+  ipcMain.handle("skipper:git:pull", async (_e, repoPath: string) =>
     toOp(await runGit(repoPath, ["pull", "--no-edit"], 120_000)),
   );
 
-  ipcMain.handle("nestbrain:git:stashList", async (_e, repoPath: string) => {
+  ipcMain.handle("skipper:git:stashList", async (_e, repoPath: string) => {
     const r = await runGit(repoPath, ["stash", "list", "--format=%gd%x09%gs"]);
     const stashes = r.stdout
       .split("\n")
@@ -211,7 +211,7 @@ export function registerGitHandlers(ipcMain: IpcMain): void {
   });
 
   ipcMain.handle(
-    "nestbrain:git:stashPush",
+    "skipper:git:stashPush",
     async (_e, repoPath: string, message?: string, includeUntracked?: boolean) => {
       const args = ["stash", "push"];
       if (includeUntracked) args.push("-u");
@@ -220,11 +220,11 @@ export function registerGitHandlers(ipcMain: IpcMain): void {
     },
   );
 
-  ipcMain.handle("nestbrain:git:stashPop", async (_e, repoPath: string, ref?: string) =>
+  ipcMain.handle("skipper:git:stashPop", async (_e, repoPath: string, ref?: string) =>
     toOp(await runGit(repoPath, ref ? ["stash", "pop", ref] : ["stash", "pop"])),
   );
 
-  ipcMain.handle("nestbrain:git:stashDrop", async (_e, repoPath: string, ref: string) =>
+  ipcMain.handle("skipper:git:stashDrop", async (_e, repoPath: string, ref: string) =>
     toOp(await runGit(repoPath, ["stash", "drop", ref])),
   );
 }

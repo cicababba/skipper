@@ -1,6 +1,6 @@
 "use client";
 
-import type { LifecycleState, TrackedItem } from "@nestbrain/shared";
+import type { LifecycleState, TrackedItem } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 
 function stateClasses(state: LifecycleState): string {

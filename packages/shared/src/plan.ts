@@ -1,5 +1,5 @@
 // ============================================================
-// NestBrain — Issue plan types (issue #7; scored by #8, rendered by #13)
+// Skipper — Issue plan types (issue #7; scored by #8, rendered by #13)
 // ============================================================
 
 import type { ConfidenceReport } from "./confidence";

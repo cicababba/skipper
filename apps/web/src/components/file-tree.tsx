@@ -70,10 +70,10 @@ export function FileTree({ rootPath }: FileTreeProps) {
   } | null>(null);
 
   async function runSession(mode: "save" | "resume", path: string, name: string) {
-    if (typeof window === "undefined" || !window.nestbrain?.session) return;
+    if (typeof window === "undefined" || !window.skipper?.session) return;
     setSession({ mode, project: name, busy: true, output: "" });
     try {
-      const r = await window.nestbrain.session.run(mode, path);
+      const r = await window.skipper.session.run(mode, path);
       setSession({ mode, project: name, busy: false, output: r.output });
     } catch (e) {
       setSession({ mode, project: name, busy: false, output: e instanceof Error ? e.message : "Failed" });
@@ -127,10 +127,10 @@ export function FileTree({ rootPath }: FileTreeProps) {
 
   // Auto refresh when the native file watcher reports a change
   useEffect(() => {
-    if (typeof window === "undefined" || !window.nestbrain?.fs?.onChange) {
+    if (typeof window === "undefined" || !window.skipper?.fs?.onChange) {
       return;
     }
-    const off = window.nestbrain.fs.onChange(refresh);
+    const off = window.skipper.fs.onChange(refresh);
     return off;
   }, [refresh]);
 
@@ -161,7 +161,7 @@ export function FileTree({ rootPath }: FileTreeProps) {
   );
 
   async function handleRename(oldPath: string, newName: string) {
-    if (!window.nestbrain?.fs?.rename) return;
+    if (!window.skipper?.fs?.rename) return;
     const oldBase = oldPath.slice(oldPath.lastIndexOf("/") + 1);
     // Same name (or blur/esc) → just close the rename input, don't hit IPC
     if (!newName || newName === oldBase) {
@@ -169,7 +169,7 @@ export function FileTree({ rootPath }: FileTreeProps) {
       return;
     }
     try {
-      await window.nestbrain.fs.rename(oldPath, newName);
+      await window.skipper.fs.rename(oldPath, newName);
       setRenamingPath(null);
       // Clear stale selection (path changed under us)
       if (selectedPath === oldPath) setSelectedPath(null);
@@ -180,7 +180,7 @@ export function FileTree({ rootPath }: FileTreeProps) {
   }
 
   async function handleDelete(targetPath: string, name: string, isDir: boolean) {
-    if (!window.nestbrain) return;
+    if (!window.skipper) return;
     const kind = isDir ? t.tree.files.folderWord : t.tree.files.fileWord;
     const extraMsg = isDir ? `\n${t.tree.files.deleteFolderNote}` : "";
     const ok = window.confirm(
@@ -188,7 +188,7 @@ export function FileTree({ rootPath }: FileTreeProps) {
     );
     if (!ok) return;
     try {
-      await window.nestbrain.fs.delete(targetPath);
+      await window.skipper.fs.delete(targetPath);
       if (selectedPath === targetPath) setSelectedPath(null);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : t.tree.files.deleteFailed);
@@ -212,7 +212,7 @@ export function FileTree({ rootPath }: FileTreeProps) {
   }
 
   async function confirmCreate(name: string) {
-    if (!creating || !window.nestbrain?.fs) return;
+    if (!creating || !window.skipper?.fs) return;
     const trimmed = name.trim();
     if (!trimmed) {
       setCreating(null);
@@ -225,9 +225,9 @@ export function FileTree({ rootPath }: FileTreeProps) {
     const fullPath = `${creating.parent}/${trimmed}`;
     try {
       if (creating.kind === "dir") {
-        await window.nestbrain.fs.createDir(fullPath);
+        await window.skipper.fs.createDir(fullPath);
       } else {
-        await window.nestbrain.fs.writeFile(fullPath, "");
+        await window.skipper.fs.writeFile(fullPath, "");
       }
       setCreating(null);
       setCreateError(null);
@@ -244,7 +244,7 @@ export function FileTree({ rootPath }: FileTreeProps) {
 
   const parentLabel = creating
     ? creating.parent === rootPath
-      ? "NestBrain"
+      ? "Skipper"
       : creating.parent.replace(rootPath + "/", "")
     : "";
 
@@ -252,7 +252,7 @@ export function FileTree({ rootPath }: FileTreeProps) {
     <div className="flex-shrink-0 border-b border-sidebar-border">
       <div className="px-4 py-2 flex items-center justify-between">
         <span className="text-[10px] font-semibold text-muted/60 uppercase tracking-wider">
-          NestBrain
+          Skipper
         </span>
         <div className="flex items-center gap-0.5">
           <button
@@ -288,7 +288,7 @@ export function FileTree({ rootPath }: FileTreeProps) {
       <div className="max-h-[300px] overflow-y-auto pb-2 pr-1">
         <TreeNode
           path={rootPath}
-          name="NestBrain"
+          name="Skipper"
           depth={0}
           expanded={expanded}
           onToggle={toggle}
@@ -699,9 +699,9 @@ function TreeNode({
   const [isRepoTop, setIsRepoTop] = useState(false);
   useEffect(() => {
     if (!isDir) return;
-    if (typeof window === "undefined" || !window.nestbrain?.git) return;
+    if (typeof window === "undefined" || !window.skipper?.git) return;
     let cancelled = false;
-    void window.nestbrain.git.findRepo(path).then((res) => {
+    void window.skipper.git.findRepo(path).then((res) => {
       if (cancelled) return;
       if (res && res.repoPath === path) {
         setIsRepoTop(true);
@@ -743,9 +743,9 @@ function TreeNode({
 
   useEffect(() => {
     if (!isDir || !isOpen) return;
-    if (typeof window === "undefined" || !window.nestbrain) return;
+    if (typeof window === "undefined" || !window.skipper) return;
     let cancelled = false;
-    window.nestbrain.fs.list(path).then((list) => {
+    window.skipper.fs.list(path).then((list) => {
       // Update children in place — React reconciles by entry.path, so
       // unchanged rows don't remount (no flash) and open folders stay open.
       if (!cancelled) setChildren(list);
@@ -779,7 +779,7 @@ function TreeNode({
           // implicitly via React's batched updates — see status-bar.tsx).
           if (ancestor) {
             window.dispatchEvent(
-              new CustomEvent("nestbrain:focus-project", {
+              new CustomEvent("skipper:focus-project", {
                 detail: { repoPath: ancestor.repoPath },
               }),
             );

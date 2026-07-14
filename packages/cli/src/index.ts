@@ -19,8 +19,8 @@ import {
   uninstallHook,
   getHookStatus,
   slugify,
-} from "@nestbrain/core";
-import type { LLMProviderInterface } from "@nestbrain/core";
+} from "@skipper/core";
+import type { LLMProviderInterface } from "@skipper/core";
 import { readFile } from "node:fs/promises";
 import { saveSession, resumeSession } from "./session.js";
 
@@ -29,39 +29,39 @@ const program = new Command();
 // Injected at bundle time by build/bundle.mjs via esbuild's `define`.
 // In a non-bundled `tsc`-built run we fall back to a sentinel so the
 // command still works in dev.
-declare const __NESTBRAIN_CLI_VERSION__: string;
-const CLI_VERSION = typeof __NESTBRAIN_CLI_VERSION__ !== "undefined" ? __NESTBRAIN_CLI_VERSION__ : "dev";
+declare const __SKIPPER_CLI_VERSION__: string;
+const CLI_VERSION = typeof __SKIPPER_CLI_VERSION__ !== "undefined" ? __SKIPPER_CLI_VERSION__ : "dev";
 
 /**
- * Look up the NestBrain workspace path the Electron app persists in its
+ * Look up the Skipper workspace path the Electron app persists in its
  * bootstrap file. This is the canonical "where is my workspace" pointer
  * for installed users — set once during onboarding and updated whenever
- * the user moves their NestBrain folder via Settings.
+ * the user moves their Skipper folder via Settings.
  *
- * On macOS: ~/Library/Application Support/NestBrain/bootstrap.json
- * On Windows: %APPDATA%/NestBrain/bootstrap.json
- * On Linux: ~/.config/NestBrain/bootstrap.json
+ * On macOS: ~/Library/Application Support/Skipper/bootstrap.json
+ * On Windows: %APPDATA%/Skipper/bootstrap.json
+ * On Linux: ~/.config/Skipper/bootstrap.json
  */
 function readElectronBootstrapWorkspace(): string | null {
   const home = process.env.HOME || process.env.USERPROFILE;
   if (!home) return null;
   const candidates: string[] = [];
   if (process.platform === "darwin") {
-    candidates.push(resolve(home, "Library/Application Support/NestBrain/bootstrap.json"));
+    candidates.push(resolve(home, "Library/Application Support/Skipper/bootstrap.json"));
   } else if (process.platform === "win32") {
     const appData = process.env.APPDATA;
-    if (appData) candidates.push(resolve(appData, "NestBrain/bootstrap.json"));
+    if (appData) candidates.push(resolve(appData, "Skipper/bootstrap.json"));
   } else {
     const xdg = process.env.XDG_CONFIG_HOME || resolve(home, ".config");
-    candidates.push(resolve(xdg, "NestBrain/bootstrap.json"));
+    candidates.push(resolve(xdg, "Skipper/bootstrap.json"));
   }
   for (const p of candidates) {
     try {
       if (!existsSync(p)) continue;
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const data = require(p) as { nestBrainPath?: string };
-      if (data.nestBrainPath && existsSync(resolve(data.nestBrainPath, ".nestbrain"))) {
-        return data.nestBrainPath;
+      const data = require(p) as { skipperPath?: string };
+      if (data.skipperPath && existsSync(resolve(data.skipperPath, ".skipper"))) {
+        return data.skipperPath;
       }
     } catch {
       /* skip unreadable */
@@ -71,13 +71,13 @@ function readElectronBootstrapWorkspace(): string | null {
 }
 
 /**
- * Walk up from `start` looking for a `.nestbrain/` directory. Returns the
+ * Walk up from `start` looking for a `.skipper/` directory. Returns the
  * containing dir (the workspace root) or null.
  */
 function findWorkspaceAbove(start: string): string | null {
   let dir = start;
   for (let i = 0; i < 20; i++) {
-    if (existsSync(resolve(dir, ".nestbrain"))) return dir;
+    if (existsSync(resolve(dir, ".skipper"))) return dir;
     const parent = resolve(dir, "..");
     if (parent === dir) return null;
     dir = parent;
@@ -100,7 +100,7 @@ interface WorkspaceSettings {
 function loadWorkspaceSettings(workspace?: string): WorkspaceSettings | null {
   try {
     const ws = workspace ?? resolveWorkspace();
-    const p = resolve(ws, ".nestbrain", "settings.json");
+    const p = resolve(ws, ".skipper", "settings.json");
     if (!existsSync(p)) return null;
     return JSON.parse(readFileSync(p, "utf-8")) as WorkspaceSettings;
   } catch {
@@ -116,7 +116,7 @@ function getLLM(workspace?: string): LLMProviderInterface {
   if (llm?.provider) {
     const model =
       llm.provider === "claude-cli"
-        ? llm.claudeModel || process.env.NESTBRAIN_MODEL || "sonnet"
+        ? llm.claudeModel || process.env.SKIPPER_MODEL || "sonnet"
         : llm.provider === "ollama"
           ? llm.ollamaModel || ""
           : llm.openaiModel || "gpt-4o";
@@ -129,15 +129,15 @@ function getLLM(workspace?: string): LLMProviderInterface {
   }
   return createProvider({
     provider: "claude-cli",
-    model: process.env.NESTBRAIN_MODEL ?? "sonnet",
+    model: process.env.SKIPPER_MODEL ?? "sonnet",
     maxTurns: 5,
     apiKey: process.env.OPENAI_API_KEY,
   });
 }
 
 program
-  .name("nestbrain")
-  .description("LLM-powered personal knowledge base")
+  .name("skipper")
+  .description("Skipper — issue inbox + orchestration layer on top of coding agents")
   .version(CLI_VERSION);
 
 // ---------- knowledge subcommands ----------
@@ -152,7 +152,7 @@ function resolveWorkspace(opt?: string): string {
   if (walked) return walked;
   const fromBootstrap = readElectronBootstrapWorkspace();
   if (fromBootstrap) return fromBootstrap;
-  // Last resort — ensureQueueDirs will populate `.nestbrain/` under cwd.
+  // Last resort — ensureQueueDirs will populate `.skipper/` under cwd.
   return process.cwd();
 }
 
@@ -172,7 +172,7 @@ knowledge
   .command("extract <sha>")
   .description("Extract knowledge atoms from a git commit into the pending queue")
   .option("-r, --repo <path>", "Repository path (default: current dir)", process.cwd())
-  .option("-w, --workspace <path>", "NestBrain workspace path (default: auto-detect via .nestbrain)")
+  .option("-w, --workspace <path>", "Skipper workspace path (default: auto-detect via .skipper)")
   .option("-p, --project <name>", "Project tag (default: git repo basename)")
   .action(async (sha, options) => {
     try {
@@ -201,7 +201,7 @@ knowledge
         console.log(`  ${marker} [score ${atom.score}] ${atom.title}`);
         console.log(`         → ${file}`);
       }
-      console.log(`\n✓ ${atoms.length} atom(s) in pending queue. Run \`nestbrain knowledge review\` to triage.`);
+      console.log(`\n✓ ${atoms.length} atom(s) in pending queue. Run \`skipper knowledge review\` to triage.`);
     } catch (error) {
       console.error(`✗ ${error instanceof Error ? error.message : error}`);
       process.exit(1);
@@ -211,7 +211,7 @@ knowledge
 knowledge
   .command("list")
   .description("List atoms in the pending queue")
-  .option("-w, --workspace <path>", "NestBrain workspace path (default: auto-detect)")
+  .option("-w, --workspace <path>", "Skipper workspace path (default: auto-detect)")
   .action(async (options) => {
     try {
       const workspace = resolveWorkspace(options.workspace);
@@ -235,7 +235,7 @@ knowledge
 knowledge
   .command("review")
   .description("Interactively triage pending atoms (a accept · r reject · e edit · s skip · q quit)")
-  .option("-w, --workspace <path>", "NestBrain workspace path (default: auto-detect)")
+  .option("-w, --workspace <path>", "Skipper workspace path (default: auto-detect)")
   .option("--min-score <n>", "Only show atoms with score >= n", "0")
   .action(async (options) => {
     try {
@@ -326,7 +326,7 @@ knowledge
       "Used by the promote-knowledge skill as the escape hatch for insights that " +
       "aren't tied to a git commit.",
   )
-  .option("-w, --workspace <path>", "NestBrain workspace path (default: auto-detect)")
+  .option("-w, --workspace <path>", "Skipper workspace path (default: auto-detect)")
   .action(async (options) => {
     try {
       const workspace = resolveWorkspace(options.workspace);
@@ -375,7 +375,7 @@ knowledge
       });
       console.log(`✓ ${title}`);
       console.log(`  → ${file}`);
-      console.log(`  Open NestBrain → Knowledge to accept it.`);
+      console.log(`  Open Skipper → Knowledge to accept it.`);
     } catch (error) {
       console.error(`✗ ${error instanceof Error ? error.message : error}`);
       process.exit(1);
@@ -390,11 +390,11 @@ const projects = program
 
 function detectCliCommand(override?: string): string {
   if (override) return override;
-  // Prefer a globally-installed `nestbrain` on PATH so hooks survive working-
+  // Prefer a globally-installed `skipper` on PATH so hooks survive working-
   // tree moves / dev sources being deleted.
   try {
-    execSync("command -v nestbrain", { stdio: "pipe" });
-    return "nestbrain";
+    execSync("command -v skipper", { stdio: "pipe" });
+    return "skipper";
   } catch {
     // Dev fallback: invoke this very source file via tsx.
     const devEntry = resolve(__dirname, "../src/index.ts");
@@ -402,7 +402,7 @@ function detectCliCommand(override?: string): string {
       return `npx tsx ${devEntry}`;
     }
     throw new Error(
-      "No `nestbrain` on PATH and no dev source detected. Pass --cli '<command>' explicitly.",
+      "No `skipper` on PATH and no dev source detected. Pass --cli '<command>' explicitly.",
     );
   }
 }
@@ -419,8 +419,8 @@ projects
       const result = installHook({ repoPath, cliCommand });
       console.log(`${result.replaced ? "✓ Updated" : "✓ Installed"}: ${result.hookPath}`);
       console.log(`  CLI: ${cliCommand}`);
-      console.log("  Atoms will land in <workspace>/.nestbrain/knowledge-pending/ after every commit.");
-      console.log("  Run `nestbrain knowledge review` to triage.");
+      console.log("  Atoms will land in <workspace>/.skipper/knowledge-pending/ after every commit.");
+      console.log("  Run `skipper knowledge review` to triage.");
     } catch (error) {
       console.error(`✗ ${error instanceof Error ? error.message : error}`);
       process.exit(1);
@@ -436,9 +436,9 @@ projects
       const repoPath = resolve(options.repo);
       const result = uninstallHook(repoPath);
       if (result.removed) {
-        console.log(`✓ Removed nestbrain snippet from ${result.hookPath}`);
+        console.log(`✓ Removed skipper snippet from ${result.hookPath}`);
       } else {
-        console.log(`(no nestbrain snippet found in ${result.hookPath})`);
+        console.log(`(no skipper snippet found in ${result.hookPath})`);
       }
     } catch (error) {
       console.error(`✗ ${error instanceof Error ? error.message : error}`);

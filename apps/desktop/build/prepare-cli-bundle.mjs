@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Drop the bundled `nestbrain` CLI into the standalone tree so it ships with
+// Drop the bundled `skipper` CLI into the standalone tree so it ships with
 // the desktop app. We place the actual bundle INSIDE the Next.js standalone
 // (next to apps/web/server.js) because that tree already has every runtime
 // dep we externalized (@huggingface/transformers, onnxruntime-node,
@@ -14,12 +14,12 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../..");
 
-const SRC = join(REPO_ROOT, "packages/cli/dist/nestbrain.bundle.cjs");
+const SRC = join(REPO_ROOT, "packages/cli/dist/skipper.bundle.cjs");
 const DEST_DIR = join(REPO_ROOT, "apps/web/.next/standalone/apps/web");
-const DEST = join(DEST_DIR, "nestbrain.bundle.cjs");
+const DEST = join(DEST_DIR, "skipper.bundle.cjs");
 
 if (!existsSync(SRC)) {
-  console.error(`[prepare-cli-bundle] missing ${SRC} — run \`pnpm --filter @nestbrain/cli bundle\` first.`);
+  console.error(`[prepare-cli-bundle] missing ${SRC} — run \`pnpm --filter @skipper/cli bundle\` first.`);
   process.exit(1);
 }
 if (!existsSync(DEST_DIR)) {

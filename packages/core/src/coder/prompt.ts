@@ -1,4 +1,4 @@
-import type { CriticObjection, IssuePlan, PrReviewComment } from "@nestbrain/shared";
+import type { CriticObjection, IssuePlan, PrReviewComment } from "@skipper/shared";
 import type { PlanIssueInput } from "../planner/generate";
 
 const MAX_BODY_CHARS = 20_000;

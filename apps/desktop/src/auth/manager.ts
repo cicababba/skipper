@@ -2,7 +2,7 @@
 // process. Owns the OAuth flows, the persisted multi-account store, in-memory
 // state, and broadcasts state changes to subscribers (typically the renderer).
 
-import type { AuthProviderId, AuthState } from "@nestbrain/shared";
+import type { AuthProviderId, AuthState } from "@skipper/shared";
 import { OAuthError, applyRefreshedTokens, type ProviderConfig } from "./provider";
 import { runOAuthFlow, refreshTokens } from "./oauth-flow";
 import { PROVIDERS } from "./providers";

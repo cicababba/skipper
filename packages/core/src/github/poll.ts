@@ -1,5 +1,5 @@
-import { GITHUB_API_BASE_URL } from "@nestbrain/shared";
-import type { Issue, PullRequest } from "@nestbrain/shared";
+import { GITHUB_API_BASE_URL } from "@skipper/shared";
+import type { Issue, PullRequest } from "@skipper/shared";
 import { githubGet } from "./client";
 import {
   applyPullDetails,

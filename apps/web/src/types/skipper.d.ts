@@ -20,7 +20,7 @@ import type {
   UpdatePlanResult,
   WorktreeChangesResult,
   WorktreeFileResult,
-} from "@nestbrain/shared";
+} from "@skipper/shared";
 
 interface FsEntry {
   name: string;
@@ -50,11 +50,11 @@ declare global {
   }
 
   interface Window {
-    nestbrain?: {
+    skipper?: {
       isElectron: true;
       platform: NodeJS.Platform;
       getBootstrap: () => Promise<{
-        nestBrainPath?: string;
+        skipperPath?: string;
         isElectron: true;
         platform: NodeJS.Platform;
       }>;
@@ -65,12 +65,12 @@ declare global {
           projectDir: string,
         ) => Promise<{ ok: boolean; output: string }>;
       };
-      setupNestBrain: (parentPath: string) => Promise<{ nestBrainPath: string }>;
-      moveOrCreateNestBrain: (
+      setupSkipper: (parentPath: string) => Promise<{ skipperPath: string }>;
+      moveOrCreateSkipper: (
         parentPath: string,
-      ) => Promise<{ nestBrainPath: string; moved: boolean; created: boolean }>;
-      onNestBrainMoved: (
-        callback: (info: { nestBrainPath: string }) => void,
+      ) => Promise<{ skipperPath: string; moved: boolean; created: boolean }>;
+      onSkipperMoved: (
+        callback: (info: { skipperPath: string }) => void,
       ) => () => void;
       /** Resolve a DOM File to its absolute filesystem path (drag-drop). */
       getPathForFile: (file: File) => string;

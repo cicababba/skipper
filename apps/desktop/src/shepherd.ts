@@ -15,7 +15,7 @@ import {
   mapReviewFeedback,
   type GitHubTokenProvider,
   type OrchestratorSettings,
-} from "@nestbrain/core";
+} from "@skipper/core";
 import type {
   LifecycleState,
   PrReviewComment,
@@ -24,7 +24,7 @@ import type {
   StoredPlan,
   TrackedItem,
   TransitionActor,
-} from "@nestbrain/shared";
+} from "@skipper/shared";
 import { writeSolutionRecord } from "./memory-store";
 import { captureBranchDiff, commitWorktree, pushWorktreeBranch, removeWorktree } from "./worktrees";
 

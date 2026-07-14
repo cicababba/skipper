@@ -115,7 +115,7 @@ function runClaude(
             'To fix this:\n' +
             '  1. Install Claude Code: npm install -g @anthropic-ai/claude-code\n' +
             '  2. Authenticate: claude auth login\n' +
-            '  3. Restart NestBrain (on Windows, a fresh install only lands on the PATH of NEW processes)\n\n' +
+            '  3. Restart Skipper (on Windows, a fresh install only lands on the PATH of NEW processes)\n\n' +
             'Alternatively, switch to the OpenAI provider in Settings.',
           ),
         );

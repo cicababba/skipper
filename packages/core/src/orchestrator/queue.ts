@@ -1,4 +1,4 @@
-import type { RepoPriority } from "@nestbrain/shared";
+import type { RepoPriority } from "@skipper/shared";
 
 export interface QueueCandidate {
   pinned: boolean;

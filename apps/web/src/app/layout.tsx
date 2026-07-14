@@ -28,8 +28,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NestBrain",
-  description: "LLM-powered personal knowledge base",
+  title: "Skipper",
+  description: "Issue inbox + orchestration layer on top of coding agents",
 };
 
 export default function RootLayout({

@@ -1,5 +1,5 @@
 // ============================================================
-// NestBrain — Platform-neutral inbox items (Issue / PullRequest)
+// Skipper — Platform-neutral inbox items (Issue / PullRequest)
 // ============================================================
 
 /** Read-side platforms. Bitbucket/Jira arrive in v3. */

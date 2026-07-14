@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2 } from "lucide-react";
-import type { ConfidenceReport, TrackedItem } from "@nestbrain/shared";
+import type { ConfidenceReport, TrackedItem } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 
 export function bandClasses(score: number): string {
@@ -42,7 +42,7 @@ export function ConfidenceBadge({ item }: { item: TrackedItem }) {
     setReport(null);
     try {
       // Always refetch: a replan rewrites the stored plan under the same ref.
-      const stored = await window.nestbrain?.orchestrator.getPlan(item.id);
+      const stored = await window.skipper?.orchestrator.getPlan(item.id);
       setReport(stored?.confidence ?? null);
     } catch {
       setLoadError(true);

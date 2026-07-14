@@ -38,7 +38,7 @@ function buildDict(lang: AppLang) {
 
 export type AppDict = ReturnType<typeof buildDict>;
 
-const STORAGE_KEY = "nestbrain-lang";
+const STORAGE_KEY = "skipper-lang";
 
 function asAppLang(value: string): AppLang | null {
   return value === "en" || value === "it" || value === "fr" || value === "es" ? value : null;

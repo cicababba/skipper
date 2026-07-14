@@ -38,7 +38,7 @@ async function getEmbedder() {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(
-          `Embedding model unavailable (${msg}). NestBrain downloads the embedding model ` +
+          `Embedding model unavailable (${msg}). Skipper downloads the embedding model ` +
             `(Xenova/all-MiniLM-L6-v2, ~30 MB) once from huggingface.co on first use — ` +
             `check your network/proxy/antivirus and retry the ingest.`,
         );

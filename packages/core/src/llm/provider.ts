@@ -1,4 +1,4 @@
-import type { CodingEvent, LLMProvider } from "@nestbrain/shared";
+import type { CodingEvent, LLMProvider } from "@skipper/shared";
 
 export interface LLMResponse {
   text: string;

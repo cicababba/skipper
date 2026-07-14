@@ -13,7 +13,7 @@ interface ThemeState {
 const ThemeContext = createContext<ThemeState>({ theme: "dark", toggle: () => {} });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [stored, setStored] = useStoredState("nestbrain-theme", "dark");
+  const [stored, setStored] = useStoredState("skipper-theme", "dark");
   const theme: Theme = stored === "light" ? "light" : "dark";
 
   useEffect(() => {

@@ -1,5 +1,5 @@
 // ============================================================
-// NestBrain — Confidence report types (issue #8; rendered by #13)
+// Skipper — Confidence report types (issue #8; rendered by #13)
 // ============================================================
 
 export interface GroundednessSignal {

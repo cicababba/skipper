@@ -1,4 +1,4 @@
-import { GOOGLE_OAUTH_ENDPOINTS, type Account } from "@nestbrain/shared";
+import { GOOGLE_OAUTH_ENDPOINTS, type Account } from "@skipper/shared";
 import { OAuthError, type ProviderConfig, type ProviderTokens } from "../provider";
 import { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET } from "../oauth-config";
 

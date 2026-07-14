@@ -2,7 +2,7 @@
 // one IssuePlan section; validity mirrors IssuePlanSchema so the IPC backstop
 // rarely fires. Pure module — no React.
 
-import type { IssuePlan, PlanAcceptance, PlanFileRef } from "@nestbrain/shared";
+import type { IssuePlan, PlanAcceptance, PlanFileRef } from "@skipper/shared";
 
 export type SectionId =
   | "summary"

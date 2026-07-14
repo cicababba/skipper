@@ -1,4 +1,4 @@
-import type { ClaritySignal, IssuePlan } from "@nestbrain/shared";
+import type { ClaritySignal, IssuePlan } from "@skipper/shared";
 
 const ACCEPTANCE_RE = /(^|\n)\s*(-\s*\[[ x]\]|acceptance criteria|acceptance:|\bAC:|expected behav)/i;
 const REPRO_RE = /(steps to reproduce|how to reproduce|\brepro\b|reproduction)/i;

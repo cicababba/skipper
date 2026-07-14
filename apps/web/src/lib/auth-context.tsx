@@ -8,8 +8,8 @@ import {
   useMemo,
   useState,
 } from "react";
-import { deriveProviderView } from "@nestbrain/shared";
-import type { AuthProviderId, AuthState, ProviderAuthView } from "@nestbrain/shared";
+import { deriveProviderView } from "@skipper/shared";
+import type { AuthProviderId, AuthState, ProviderAuthView } from "@skipper/shared";
 
 interface AuthContextValue {
   /** Google view — what the current account UI renders. */
@@ -34,8 +34,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authState, setAuthState] = useState<AuthState>(DEFAULT_STATE);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !window.nestbrain) return;
-    const auth = window.nestbrain.auth;
+    if (typeof window === "undefined" || !window.skipper) return;
+    const auth = window.skipper.auth;
     let cancelled = false;
 
     auth.getState()
@@ -48,33 +48,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = useCallback(async () => {
-    if (!window.nestbrain) return;
-    await window.nestbrain.auth.signIn("google");
+    if (!window.skipper) return;
+    await window.skipper.auth.signIn("google");
   }, []);
 
   const signOut = useCallback(async () => {
-    if (!window.nestbrain) return;
-    await window.nestbrain.auth.signOut("google");
+    if (!window.skipper) return;
+    await window.skipper.auth.signOut("google");
   }, []);
 
   const cancelSignIn = useCallback(async () => {
-    if (!window.nestbrain) return;
-    await window.nestbrain.auth.cancelSignIn("google");
+    if (!window.skipper) return;
+    await window.skipper.auth.cancelSignIn("google");
   }, []);
 
   const signInProvider = useCallback(async (provider: AuthProviderId) => {
-    if (!window.nestbrain) return;
-    await window.nestbrain.auth.signIn(provider);
+    if (!window.skipper) return;
+    await window.skipper.auth.signIn(provider);
   }, []);
 
   const signOutProvider = useCallback(async (provider: AuthProviderId) => {
-    if (!window.nestbrain) return;
-    await window.nestbrain.auth.signOut(provider);
+    if (!window.skipper) return;
+    await window.skipper.auth.signOut(provider);
   }, []);
 
   const cancelSignInProvider = useCallback(async (provider: AuthProviderId) => {
-    if (!window.nestbrain) return;
-    await window.nestbrain.auth.cancelSignIn(provider);
+    if (!window.skipper) return;
+    await window.skipper.auth.cancelSignIn(provider);
   }, []);
 
   const value = useMemo<AuthContextValue>(

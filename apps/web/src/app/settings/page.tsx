@@ -517,8 +517,8 @@ export default function SettingsPage() {
           )}
         </div>
 
-        {/* NestBrain Location */}
-        <NestBrainLocation />
+        {/* Skipper Location */}
+        <SkipperLocation />
 
         {/* Danger Zone */}
       </div>
@@ -608,7 +608,7 @@ function OllamaErrorModal({
   );
 }
 
-function NestBrainLocation() {
+function SkipperLocation() {
   const { t } = useT();
   const [currentPath, setCurrentPath] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -617,12 +617,12 @@ function NestBrainLocation() {
   const [confirmParent, setConfirmParent] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !window.nestbrain) return;
-    window.nestbrain.getBootstrap().then((b) => {
-      setCurrentPath(b?.nestBrainPath ?? null);
+    if (typeof window === "undefined" || !window.skipper) return;
+    window.skipper.getBootstrap().then((b) => {
+      setCurrentPath(b?.skipperPath ?? null);
     });
-    const off = window.nestbrain.onNestBrainMoved?.((info) => {
-      setCurrentPath(info.nestBrainPath);
+    const off = window.skipper.onSkipperMoved?.((info) => {
+      setCurrentPath(info.skipperPath);
     });
     return () => {
       if (off) off();
@@ -630,24 +630,24 @@ function NestBrainLocation() {
   }, []);
 
   // Only render in Electron — moving the workspace is a native-only feature
-  if (typeof window !== "undefined" && !window.nestbrain) return null;
+  if (typeof window !== "undefined" && !window.skipper) return null;
 
   async function handlePickLocation() {
     setError(null);
     setNotice(null);
-    if (!window.nestbrain) return;
-    const parent = await window.nestbrain.selectDirectory();
+    if (!window.skipper) return;
+    const parent = await window.skipper.selectDirectory();
     if (!parent) return;
     setConfirmParent(parent);
   }
 
   async function handleConfirm() {
-    if (!confirmParent || !window.nestbrain) return;
+    if (!confirmParent || !window.skipper) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await window.nestbrain.moveOrCreateNestBrain(confirmParent);
-      setCurrentPath(result.nestBrainPath);
+      const result = await window.skipper.moveOrCreateSkipper(confirmParent);
+      setCurrentPath(result.skipperPath);
       setNotice(
         result.moved
           ? t.settings.location.moved
@@ -721,8 +721,8 @@ function NestBrainLocation() {
                   <ArrowRight size={12} className="shrink-0 text-muted/40" />
                 </>
               )}
-              <span className="truncate text-foreground/80" title={`${confirmParent}/NestBrain`}>
-                {confirmParent}/NestBrain
+              <span className="truncate text-foreground/80" title={`${confirmParent}/Skipper`}>
+                {confirmParent}/Skipper
               </span>
             </div>
             <div className="flex items-center gap-2">

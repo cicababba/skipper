@@ -1,37 +1,33 @@
-# Skipper (pivoting from NestBrain)
+# Skipper (pivoted from NestBrain)
 
 **This codebase is pivoting.** It was born as NestBrain (LLM-powered personal knowledge base, sold at [nestbrain.app](https://nestbrain.app)); it is becoming a **cross-platform issue inbox + orchestration layer on top of coding agents**: assigned issues arrive with an eager plan and a verifiable confidence score, coding runs in isolated worktrees behind a human gate, PRs are shepherded to merge. Vision, decisions, and phasing live in [`docs/DIRECTION.md`](docs/DIRECTION.md) (authoritative, in Italian). Work is mapped on GitHub: epic #3 (v1 loop) with sub-issues #4–#15, plus #1 (open-core boundary) and #2 (demolition of the old product surface).
 
-"Skipper" is the repo codename — the product name is undecided, so **all naming still says nestbrain** (package scopes, IPC channels, appId, CLI, env vars). Don't rename opportunistically; the coordinated rename is tracked in issue #16.
+**Skipper is the product name** (decided 2026-07-14; the repo codename was promoted). The coordinated rename landed with #16: package scopes are `@skipper/*`, the IPC prefix is `skipper:*`, the CLI is `skipper`, env vars are `SKIPPER_*`, appId is `com.nextepochs.skipper`. Historical NestBrain references in docs are intentional. Skipper is a **clean break** for installs: no migration from NestBrain userData/workspaces — both apps can coexist on one machine.
 
-The old product surface (wiki ingest/compile pipeline, Google Drive sync, Team Server client, `packages/db`) was demolished in #2. What survives from NestBrain: the Electron shell (PATH fixes, embedded server), editor + file tree + terminal, the Google OAuth desktop flow, the LLM provider layer, embeddings + vectorstore (future solutions memory), the knowledge-atom pipeline (structured extraction prototype), and the `SyncBackend`/manifest seams the orchestrator builds on. NestBrain 1.16.x remains sold and maintained **from its own upstream repo** — this repo's release pipeline is intentionally **disarmed** (zero Actions secrets, publishes nothing) until the distribution cutover (#17). Don't add release secrets here before that cutover is intentional.
+The old product surface (wiki ingest/compile pipeline, Google Drive sync, Team Server client, `packages/db`) was demolished in #2; the private-modules overlay machinery (open-core gating seam) was removed with #16 — feature gating gets redesigned if/when monetization needs it. What survives from NestBrain: the Electron shell (PATH fixes, embedded server), editor + file tree + terminal, the Google OAuth desktop flow, the LLM provider layer, embeddings + vectorstore (future solutions memory), the knowledge-atom pipeline (structured extraction prototype), and the `SyncBackend`/manifest seams the orchestrator builds on. NestBrain 1.16.x remains sold and maintained **from its own upstream repo** — this repo's release pipeline is intentionally **disarmed** (zero Actions secrets, publishes nothing) until the distribution cutover (#17), and external identifiers in it (update-feed domain, Polar product, private releases repo) are placeholders to be provisioned at that cutover. Don't add release secrets here before that cutover is intentional.
 
 ## Repo Layout (pnpm monorepo)
 
 ```
-nestbrain/
+skipper/
 ├── apps/
 │   ├── desktop/                # Electron 33 shell (main + preload + builder config)
 │   │   ├── src/main.ts         # Electron main: PATH fix, IPC, embedded server
 │   │   ├── src/git.ts          # Git backend (public core, #1)
 │   │   ├── src/terminal.ts     # PTY session manager (public core, #18)
 │   │   ├── src/auth/           # Multi-provider OAuth desktop flow (Google PKCE, GitHub App; loopback)
-│   │   ├── src/modules.ts      # Module registry (build = entitlement)
-│   │   ├── src/dev-module.ts   # Open-core seam: guarded require of src/dev-impl/ (gitignored,
-│   │   │                       #   lives in the PRIVATE nestbrain-modules repo; CI overlays it,
-│   │   │                       #   local dev uses scripts/sync-modules.sh)
 │   │   ├── src/preload.ts      # Renderer-safe IPC bridge
 │   │   └── build/              # electron-builder hooks, icons, NSIS installer
 │   └── web/                    # Next.js 16 + React 19 UI (runs as standalone inside Electron)
 │       └── src/{app,components,lib,types}
 ├── packages/
-│   ├── cli/                    # `nestbrain` CLI (commander): knowledge, projects, session
+│   ├── cli/                    # `skipper` CLI (commander): knowledge, projects, session
 │   ├── core/                   # Domain logic
 │   │   └── src/{llm,vectorstore,knowledge}
 │   ├── shared/                 # Types and constants (auth types live here so main + renderer share them)
 │   └── sync/                   # Orchestrator seams kept from the retired Drive engine
 │       └── src/{backend,manifest,types}   # diffFiles + SyncBackend contract, local manifest
-├── skeleton/                   # Workspace template copied to NestBrain/ on first run
+├── skeleton/                   # Workspace template copied to Skipper/ on first run
 │   ├── CLAUDE.md
 │   └── Skills/{start_session,end_session,promote-knowledge}/SKILL.md
 ├── data/                       # Local-dev workspace (legacy artifacts; untouched by the build)
@@ -70,7 +66,7 @@ pnpm format                        # prettier write
 ### Desktop app
 
 ```bash
-pnpm desktop:dev                   # build TS + launch Electron with NESTBRAIN_DEV=1
+pnpm desktop:dev                   # build TS + launch Electron with SKIPPER_DEV=1
 pnpm desktop:build                 # build web standalone + copy assets + build desktop TS
 pnpm desktop:package:mac           # DMG into apps/desktop/release/
 pnpm desktop:package:win           # NSIS .exe into apps/desktop/release/
@@ -81,11 +77,11 @@ pnpm desktop:package:win           # NSIS .exe into apps/desktop/release/
 ### CLI (after `pnpm build`)
 
 ```bash
-nestbrain knowledge extract <sha>  # Extract knowledge atoms from a git commit
-nestbrain knowledge list|review    # Triage the pending-atom queue
-nestbrain knowledge promote        # Add a curated atom from stdin
-nestbrain projects register        # Install the post-commit extraction hook
-nestbrain session save|resume      # Cross-machine session handoff
+skipper knowledge extract <sha>    # Extract knowledge atoms from a git commit
+skipper knowledge list|review      # Triage the pending-atom queue
+skipper knowledge promote          # Add a curated atom from stdin
+skipper projects register          # Install the post-commit extraction hook
+skipper session save|resume        # Cross-machine session handoff
 ```
 
 ## Git Workflow
@@ -105,10 +101,10 @@ Gitflow: `main` is release-only (**every push to `main` fires `.github/workflows
 
 ## Important Notes
 
-- In user workspaces, `<NestBrain>/.nestbrain/raw/` holds captured knowledge atoms — user data, never modify or delete it.
+- In user workspaces, `<Skipper>/.skipper/raw/` holds captured knowledge atoms — user data, never modify or delete it.
 - LLM credentials come from the user's `claude` CLI auth (default) or the OpenAI key in Settings. Never hardcode keys, never log them.
 - The Electron main on macOS does **not** inherit the user's shell PATH — `apps/desktop/src/main.ts` runs an inline `fix-path` equivalent so that spawning `claude` works regardless of where it's installed. Don't remove it.
 - `node-pty` is loaded with a `try/catch require` because a native-binding load failure must not crash the app — the terminal is optional.
-- **Modules (open-core)**: git + terminal are public core (decision #18); the Dev module (Projects) and Anatomize stay gated. The gate is build-time only since #2: implementation lives in the private `nestbrain-modules` repo, overlaid into `apps/desktop/src/dev-impl/` by CI or `scripts/sync-modules.sh`, and `enabledModules()` (`apps/desktop/src/modules.ts`) reports what's compiled in. The renderer reads entitlement via `useModules()` (`apps/web/src/lib/modules-context.tsx`). License-based entitlement returns with the pivot's licensing model (Polar keys). Public source builds compile green without the overlay.
+- **Open-core**: git + terminal are public core (decision #18). The private-modules overlay machinery (module registry, dev-impl seam, `useModules()`) was removed with #16 — there is currently **no feature gating in the code**; it gets redesigned when monetization returns (Polar keys). The supporter update-entitlement path in `main.ts` is separate and still present.
 - `packages/sync` now contains only the orchestrator seams: `backend.ts` (`diffFiles` three-way reconcile + the `SyncBackend` versioned-commit contract) and `manifest.ts`. They are intentionally consumerless until the new loop lands — don't delete them as dead code.
 - The Google OAuth Client ID + non-confidential Desktop client secret live in `apps/desktop/src/auth/oauth-config.ts` (gitignored; see `oauth-config.example.ts`). For OAuth client type "Desktop app" Google considers the secret non-confidential (PKCE is what actually secures the flow).

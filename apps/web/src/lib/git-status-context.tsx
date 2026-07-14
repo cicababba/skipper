@@ -47,8 +47,8 @@ export function GitStatusProvider({ children }: { children: ReactNode }) {
   const tracked = useRef<Set<string>>(new Set());
 
   const fetchOne = useCallback((repoPath: string) => {
-    if (typeof window === "undefined" || !window.nestbrain?.git) return;
-    void window.nestbrain.git.status(repoPath).then((status) => {
+    if (typeof window === "undefined" || !window.skipper?.git) return;
+    void window.skipper.git.status(repoPath).then((status) => {
       setRepos((prev) => ({ ...prev, [repoPath]: status }));
     });
   }, []);
@@ -67,7 +67,7 @@ export function GitStatusProvider({ children }: { children: ReactNode }) {
   }, [fetchOne]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !window.nestbrain?.git) return;
+    if (typeof window === "undefined" || !window.skipper?.git) return;
     const interval = setInterval(refresh, POLL_MS);
     window.addEventListener("focus", refresh);
     return () => {

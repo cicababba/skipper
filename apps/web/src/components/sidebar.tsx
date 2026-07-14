@@ -29,7 +29,7 @@ const navItems = [
 const MIN_WIDTH = 200;
 const MAX_WIDTH = 400;
 const DEFAULT_WIDTH = 256;
-const STORAGE_KEY = "nestbrain-sidebar-width";
+const STORAGE_KEY = "skipper-sidebar-width";
 
 function clampWidth(raw: string): number {
   const parsed = parseInt(raw, 10);
@@ -45,23 +45,23 @@ export function Sidebar() {
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const width = dragWidth ?? clampWidth(storedWidth);
   const isDragging = useRef(false);
-  const [nestBrainPath, setNestBrainPath] = useState<string | null>(null);
+  const [skipperPath, setSkipperPath] = useState<string | null>(null);
 
-  // Load NestBrain path (Electron only). Subscribes to onNestBrainMoved
+  // Load Skipper path (Electron only). Subscribes to onSkipperMoved
   // so the file tree appears as soon as onboarding completes (and updates
   // when the user moves the workspace from Settings).
   useEffect(() => {
-    if (typeof window === "undefined" || !window.nestbrain) return;
+    if (typeof window === "undefined" || !window.skipper) return;
     function refetch() {
-      window.nestbrain!
+      window.skipper!
         .getBootstrap()
         .then((b) => {
-          if (b.nestBrainPath) setNestBrainPath(b.nestBrainPath);
+          if (b.skipperPath) setSkipperPath(b.skipperPath);
         })
         .catch(() => { /* ignore */ });
     }
     refetch();
-    const off = window.nestbrain.onNestBrainMoved?.(() => refetch());
+    const off = window.skipper.onSkipperMoved?.(() => refetch());
     return off;
   }, []);
 
@@ -152,7 +152,7 @@ export function Sidebar() {
           >
             <div className="flex items-baseline gap-2">
               <h1 className="text-lg font-semibold tracking-tight">
-                <span className="text-accent">Nest</span>Brain
+                <span className="text-accent">Skipper</span>
               </h1>
             </div>
             <p className="text-[11px] text-muted/60 mt-0.5">v{process.env.NEXT_PUBLIC_APP_VERSION}</p>
@@ -166,8 +166,8 @@ export function Sidebar() {
           <InboxNav />
         </Suspense>
 
-        {/* NestBrain file tree (Electron only, after onboarding) */}
-        {nestBrainPath && <FileTree rootPath={nestBrainPath} />}
+        {/* Skipper file tree (Electron only, after onboarding) */}
+        {skipperPath && <FileTree rootPath={skipperPath} />}
 
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-0.5 overflow-auto">
@@ -205,7 +205,7 @@ export function Sidebar() {
         {/* Footer — the BranchIndicator slot is height-reserved so the
             footer doesn't bob whenever the chip appears or disappears */}
         <div className="h-9 px-4 border-t border-sidebar-border flex items-center gap-2">
-          <p className="text-[10px] text-muted/30 shrink-0">NestBrain</p>
+          <p className="text-[10px] text-muted/30 shrink-0">Skipper</p>
           <div className="flex-1 min-w-0 flex justify-center">
             <BranchIndicator />
           </div>
@@ -222,7 +222,7 @@ export function Sidebar() {
   );
 }
 
-const INBOX_COLLAPSE_KEY = "nestbrain-inbox-nav-collapsed";
+const INBOX_COLLAPSE_KEY = "skipper-inbox-nav-collapsed";
 
 function AttentionBadge({ count, title }: { count: number; title?: string }) {
   if (count === 0) return null;

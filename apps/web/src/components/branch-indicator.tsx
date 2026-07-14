@@ -6,7 +6,7 @@ import { useGitStatus } from "@/lib/git-status-context";
 
 // Branch chip (public core — issue #1). Shows the active repo's branch and
 // ahead/behind counts. The file tree broadcasts the active repo via the
-// "nestbrain:focus-project" event; with a single tracked repo we don't wait
+// "skipper:focus-project" event; with a single tracked repo we don't wait
 // for a click.
 
 export function BranchIndicator() {
@@ -18,8 +18,8 @@ export function BranchIndicator() {
       const detail = (e as CustomEvent<{ repoPath?: string }>).detail;
       if (detail?.repoPath) setFocusedRepo(detail.repoPath);
     };
-    window.addEventListener("nestbrain:focus-project", handler);
-    return () => window.removeEventListener("nestbrain:focus-project", handler);
+    window.addEventListener("skipper:focus-project", handler);
+    return () => window.removeEventListener("skipper:focus-project", handler);
   }, []);
 
   const active = useMemo(() => {

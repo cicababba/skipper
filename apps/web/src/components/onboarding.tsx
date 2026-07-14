@@ -73,24 +73,24 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
 
   async function handlePickDirectory() {
     setDirError(null);
-    if (!window.nestbrain) {
+    if (!window.skipper) {
       setDirError(to.pickerUnavailable);
       return;
     }
     try {
-      const picked = await window.nestbrain.selectDirectory();
+      const picked = await window.skipper.selectDirectory();
       if (picked) setParentPath(picked);
     } catch (err) {
       setDirError(err instanceof Error ? err.message : to.pickerFailed);
     }
   }
 
-  async function handleCreateNestBrain() {
-    if (!parentPath || !window.nestbrain) return;
+  async function handleCreateSkipper() {
+    if (!parentPath || !window.skipper) return;
     setCreatingDir(true);
     setDirError(null);
     try {
-      await window.nestbrain.setupNestBrain(parentPath);
+      await window.skipper.setupSkipper(parentPath);
       // Give the restarted Next server a moment before moving on
       await new Promise((r) => setTimeout(r, 600));
       next("settings");
@@ -179,7 +179,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
             </div>
             <div className="space-y-3">
               <h1 className="text-5xl font-bold tracking-tight">
-                {to.welcomeTitle} <span className="text-accent">NestBrain</span>
+                {to.welcomeTitle} <span className="text-accent">Skipper</span>
               </h1>
               <p className="text-lg text-muted/80 max-w-lg mx-auto leading-relaxed">
                 {to.welcomeDesc}
@@ -207,7 +207,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
               <p className="text-muted/80 max-w-md mx-auto">
                 {to.dirDescBefore}{" "}
                 <code className="text-accent/90 bg-accent/5 px-1.5 py-0.5 rounded text-xs">
-                  NestBrain/
+                  Skipper/
                 </code>{" "}
                 {to.dirDescAfter}
               </p>
@@ -233,7 +233,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                     {to.willBeCreated}
                   </p>
                   <p className="text-xs font-mono text-accent break-all">
-                    {parentPath}/NestBrain
+                    {parentPath}/Skipper
                   </p>
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {["Business", "Context", "Daily", "Library", "Projects", "Skills"].map(
@@ -263,7 +263,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                 {to.back}
               </button>
               <button
-                onClick={handleCreateNestBrain}
+                onClick={handleCreateSkipper}
                 disabled={!parentPath || creatingDir}
                 className="inline-flex items-center gap-2 px-7 py-3.5 bg-accent text-background font-semibold rounded-2xl hover:bg-accent-hover transition-all hover:scale-105 shadow-xl shadow-accent/20 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
@@ -274,7 +274,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                   </>
                 ) : (
                   <>
-                    {to.createNestBrain}
+                    {to.createSkipper}
                     <ArrowRight size={18} />
                   </>
                 )}

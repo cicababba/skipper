@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { VectorStore } from "@nestbrain/core";
+import { VectorStore } from "@skipper/core";
 import { getDataPaths } from "@/lib/config";
 
 /**

@@ -283,7 +283,7 @@ async function webFetch(url: string): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15_000);
   try {
-    const res = await fetch(url, { signal: controller.signal, headers: { "User-Agent": "NestBrain/1.6 (+ollama-agent)" } });
+    const res = await fetch(url, { signal: controller.signal, headers: { "User-Agent": "Skipper/1.6 (+ollama-agent)" } });
     if (!res.ok) return `HTTP ${res.status} fetching ${url}`;
     const raw = await res.text();
     // Crude HTML → text: drop scripts/styles/tags, collapse whitespace.

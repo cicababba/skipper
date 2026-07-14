@@ -4,7 +4,7 @@ import {
   ClaudeCLIProvider,
   type LLMProviderInterface,
   type OrchestratorSettings,
-} from "@nestbrain/core";
+} from "@skipper/core";
 import type {
   CodingEvent,
   ConfidenceReport,
@@ -15,7 +15,7 @@ import type {
   StoredPlan,
   TrackedItem,
   TransitionActor,
-} from "@nestbrain/shared";
+} from "@skipper/shared";
 import { planFileName, writeStoredPlan } from "./plan-store";
 
 // Eager planner loop (issue #7): watches the orchestrator manifest for triage
@@ -43,7 +43,7 @@ export interface PlannerDeps {
   completePlan: (itemId: string, ref: string, confidence?: ConfidenceReport) => Promise<void>;
   /** Live orchestrator settings — planner model + confidence knobs. */
   getSettings: () => OrchestratorSettings;
-  /** Planner console stream (#32): per-item envelopes over nestbrain:planning:*. */
+  /** Planner console stream (#32): per-item envelopes over skipper:planning:*. */
   emitEvent: (itemId: string, event: CodingEvent) => void;
   plansDir: string;
 }

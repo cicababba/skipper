@@ -1,4 +1,4 @@
-import type { CodingEvent } from "@nestbrain/shared";
+import type { CodingEvent } from "@skipper/shared";
 
 const SUMMARY_MAX = 2000;
 const DETAIL_MAX = 120;

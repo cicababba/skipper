@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ExternalLink, Inbox, Loader2, X } from "lucide-react";
-import type { IssuePlan, StoredPlan } from "@nestbrain/shared";
+import type { IssuePlan, StoredPlan } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { repoKey } from "@/lib/inbox/model";
@@ -53,7 +53,7 @@ export function PlanDetailView() {
   const planRef = item?.plan?.ref;
   const composite = item?.plan?.confidence;
   useEffect(() => {
-    if (!window.nestbrain || !planRef) {
+    if (!window.skipper || !planRef) {
       setStored(null);
       setLoading(false);
       return;
@@ -61,7 +61,7 @@ export function PlanDetailView() {
     let cancelled = false;
     setLoading(true);
     setLoadError(false);
-    window.nestbrain.orchestrator
+    window.skipper.orchestrator
       .getPlan(id)
       .then((s) => {
         if (!cancelled) setStored(s);
@@ -102,11 +102,11 @@ export function PlanDetailView() {
   };
 
   const persist = async (next: IssuePlan): Promise<boolean> => {
-    if (!window.nestbrain) return false;
+    if (!window.skipper) return false;
     setSaving(true);
     setSaveError(null);
     try {
-      const result = await window.nestbrain.orchestrator.updatePlan(id, next);
+      const result = await window.skipper.orchestrator.updatePlan(id, next);
       if (result.ok) {
         setStored(result.stored);
         return true;
@@ -142,7 +142,7 @@ export function PlanDetailView() {
     }
   };
 
-  const isElectron = typeof window !== "undefined" && !!window.nestbrain;
+  const isElectron = typeof window !== "undefined" && !!window.skipper;
 
   if (!isElectron) {
     return (
@@ -219,7 +219,7 @@ export function PlanDetailView() {
           <span className="font-mono text-[13px] text-muted shrink-0">#{item.number}</span>
           <h1 className="text-xl font-semibold tracking-tight min-w-0">{item.title}</h1>
           <button
-            onClick={() => void window.nestbrain?.openExternal(item.url)}
+            onClick={() => void window.skipper?.openExternal(item.url)}
             className="p-1 rounded text-muted hover:text-accent transition-colors shrink-0 self-center"
             title={item.url}
           >
@@ -343,8 +343,8 @@ export function PlanDetailView() {
           </div>
           <EventConsole
             itemId={id}
-            getEvents={window.nestbrain!.planning.getEvents}
-            onEvent={window.nestbrain!.planning.onEvent}
+            getEvents={window.skipper!.planning.getEvents}
+            onEvent={window.skipper!.planning.onEvent}
           />
         </div>
       ) : loading ? (

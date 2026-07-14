@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type { CodingEvent } from "@nestbrain/shared";
+import type { CodingEvent } from "@skipper/shared";
 import { invalidateResolvedClaude, resolveClaude } from "../llm/claude-cli";
 import { createStreamJsonParser } from "../llm/stream";
 

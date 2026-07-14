@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { FolderGit2, Loader2, Minus, Plus } from "lucide-react";
-import type { AutoPlanMode, RepoIntakeSettings, RepoPriority, RepoSettingsRow } from "@nestbrain/shared";
-import { DEFAULT_AUTO_PLAN_LABEL } from "@nestbrain/shared";
+import type { AutoPlanMode, RepoIntakeSettings, RepoPriority, RepoSettingsRow } from "@skipper/shared";
+import { DEFAULT_AUTO_PLAN_LABEL } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { FollowPickerModal } from "@/components/follow-picker-modal";
@@ -18,11 +18,11 @@ export function RepositoriesSection() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
-  const isElectron = typeof window !== "undefined" && !!window.nestbrain;
+  const isElectron = typeof window !== "undefined" && !!window.skipper;
 
   const load = useCallback(async () => {
-    if (!window.nestbrain) return;
-    setRows(await window.nestbrain.orchestrator.listRepoSettings());
+    if (!window.skipper) return;
+    setRows(await window.skipper.orchestrator.listRepoSettings());
   }, []);
 
   useEffect(() => {
@@ -30,10 +30,10 @@ export function RepositoriesSection() {
   }, [load]);
 
   const patchRepo = async (row: RepoSettingsRow, patch: Partial<RepoIntakeSettings>) => {
-    if (!window.nestbrain) return;
+    if (!window.skipper) return;
     setBusyKey(row.key);
     try {
-      await window.nestbrain.orchestrator.setRepoSettings(row.repo.owner, row.repo.name, patch);
+      await window.skipper.orchestrator.setRepoSettings(row.repo.owner, row.repo.name, patch);
       await load();
     } finally {
       setBusyKey(null);
@@ -41,8 +41,8 @@ export function RepositoriesSection() {
   };
 
   const setWipLimit = async (value: number) => {
-    if (!window.nestbrain) return;
-    await window.nestbrain.orchestrator.updateSettings({ codingWipPerRepo: value });
+    if (!window.skipper) return;
+    await window.skipper.orchestrator.updateSettings({ codingWipPerRepo: value });
   };
 
   if (!isElectron) return null;

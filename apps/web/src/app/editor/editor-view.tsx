@@ -97,13 +97,13 @@ export function EditorView() {
       setState({ kind: "error", code: "noPath" });
       return;
     }
-    if (typeof window === "undefined" || !window.nestbrain?.fs?.readFile) {
+    if (typeof window === "undefined" || !window.skipper?.fs?.readFile) {
       setState({ kind: "error", code: "desktopOnly" });
       return;
     }
     let cancelled = false;
     setState({ kind: "loading" });
-    window.nestbrain.fs
+    window.skipper.fs
       .readFile(filePath)
       .then((res) => {
         if (cancelled) return;
@@ -132,12 +132,12 @@ export function EditorView() {
 
   const handleSave = useCallback(async () => {
     if (state.kind !== "ready") return;
-    if (!window.nestbrain?.fs?.writeFile) return;
+    if (!window.skipper?.fs?.writeFile) return;
     if (content === originalContent) return;
     setSaving(true);
     setError(null);
     try {
-      await window.nestbrain.fs.writeFile(filePath, content);
+      await window.skipper.fs.writeFile(filePath, content);
       setOriginalContent(content);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);

@@ -1,5 +1,5 @@
 // ============================================================
-// NestBrain — Orchestrator lifecycle types (issue #6)
+// Skipper — Orchestrator lifecycle types (issue #6)
 // ============================================================
 
 import type { CriticObjection, CriticVerdict } from "./confidence";
@@ -183,7 +183,7 @@ export function canTransition(from: LifecycleState, to: LifecycleState): boolean
   return TRANSITIONS[from].includes(to);
 }
 
-// Renderer-facing orchestrator snapshot (pushed on nestbrain:orchestrator:stateChanged).
+// Renderer-facing orchestrator snapshot (pushed on skipper:orchestrator:stateChanged).
 
 export interface OrchestratorAccountState {
   accountId: string;

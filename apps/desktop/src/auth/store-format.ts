@@ -1,7 +1,7 @@
 // Auth store schema + (de)serialization. Pure — no electron imports — so the
 // format and the legacy migration stay unit-testable.
 
-import type { Account, AuthProviderId } from "@nestbrain/shared";
+import type { Account, AuthProviderId } from "@skipper/shared";
 import type { ProviderTokens } from "./provider";
 
 export interface StoredAccount {

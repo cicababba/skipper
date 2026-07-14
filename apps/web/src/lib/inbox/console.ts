@@ -1,4 +1,4 @@
-import type { CodingEventEnvelope } from "@nestbrain/shared";
+import type { CodingEventEnvelope } from "@skipper/shared";
 
 // Pure merge helpers for the event console (#32): live events can arrive
 // before the replay buffer resolves, so both paths dedup by seq.

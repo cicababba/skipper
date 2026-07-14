@@ -13,8 +13,8 @@ import {
   DEFAULT_ORCHESTRATOR_SETTINGS,
   IssuePlanSchema,
   type OrchestratorManifest,
-} from "@nestbrain/core";
-import { resolveRepoIntakeSettings } from "@nestbrain/shared";
+} from "@skipper/core";
+import { resolveRepoIntakeSettings } from "@skipper/shared";
 import type {
   Account,
   AgentReview,
@@ -36,7 +36,7 @@ import type {
   ResumeRiteAction,
   TrackedItem,
   TransitionActor,
-} from "@nestbrain/shared";
+} from "@skipper/shared";
 import { loadCursors, saveCursors, type InboxCursorFile } from "./inbox-cursor-store";
 import {
   cloneGitHubRepo,
@@ -70,7 +70,7 @@ export { killAllCodingRuns };
 // GitHub adapter, reconciles every poll into the lifecycle manifest, and
 // pushes state to the renderer.
 
-export type { OrchestratorAccountState, OrchestratorState } from "@nestbrain/shared";
+export type { OrchestratorAccountState, OrchestratorState } from "@skipper/shared";
 
 export interface OrchestratorDeps {
   getAccounts: () => Account[];
@@ -121,7 +121,7 @@ function snapshot(): OrchestratorState {
 function broadcast(): void {
   const win = getWindow();
   if (win && !win.isDestroyed()) {
-    win.webContents.send("nestbrain:orchestrator:stateChanged", snapshot());
+    win.webContents.send("skipper:orchestrator:stateChanged", snapshot());
   }
 }
 
@@ -146,7 +146,7 @@ function emitCodingEvent(itemId: string, event: CodingEvent): void {
   codingEvents.set(itemId, buffer);
   const win = getWindow();
   if (win && !win.isDestroyed()) {
-    win.webContents.send(`nestbrain:coding:event:${itemId}`, envelope);
+    win.webContents.send(`skipper:coding:event:${itemId}`, envelope);
   }
 }
 
@@ -170,7 +170,7 @@ function emitPlanningEvent(itemId: string, event: CodingEvent): void {
   planningEvents.set(itemId, buffer);
   const win = getWindow();
   if (win && !win.isDestroyed()) {
-    win.webContents.send(`nestbrain:planning:event:${itemId}`, envelope);
+    win.webContents.send(`skipper:planning:event:${itemId}`, envelope);
   }
 }
 
@@ -664,16 +664,16 @@ export function initOrchestrator(
   getWindow = windowGetter;
   deps = orchestratorDeps;
 
-  ipcMain.handle("nestbrain:orchestrator:getState", async () => {
+  ipcMain.handle("skipper:orchestrator:getState", async () => {
     await ensureManifest();
     return snapshot();
   });
-  ipcMain.handle("nestbrain:orchestrator:refresh", async () => {
+  ipcMain.handle("skipper:orchestrator:refresh", async () => {
     await pollNow(true);
     return snapshot();
   });
   ipcMain.handle(
-    "nestbrain:orchestrator:requestTransition",
+    "skipper:orchestrator:requestTransition",
     async (_e, itemId: string, to: LifecycleState, reason?: string) => {
       try {
         const item = await requestTransition(itemId, to, "user", reason);
@@ -683,13 +683,13 @@ export function initOrchestrator(
       }
     },
   );
-  ipcMain.handle("nestbrain:orchestrator:setIntakePaused", async (_e, paused: boolean) => {
+  ipcMain.handle("skipper:orchestrator:setIntakePaused", async (_e, paused: boolean) => {
     await setIntakePaused(Boolean(paused));
     return snapshot();
   });
   // Queue + intake controls (#15). Narrow whitelist — not a generic settings writer.
   ipcMain.handle(
-    "nestbrain:orchestrator:updateSettings",
+    "skipper:orchestrator:updateSettings",
     async (_e, patch: { codingWipPerRepo?: number }) => {
       const m = await ensureManifest();
       if (typeof patch?.codingWipPerRepo === "number" && Number.isInteger(patch.codingWipPerRepo)) {
@@ -702,7 +702,7 @@ export function initOrchestrator(
     },
   );
   ipcMain.handle(
-    "nestbrain:orchestrator:setRepoSettings",
+    "skipper:orchestrator:setRepoSettings",
     async (_e, owner: string, name: string, patch: Partial<RepoIntakeSettings>) => {
       const m = await ensureManifest();
       const key = repoKey(owner, name);
@@ -725,7 +725,7 @@ export function initOrchestrator(
       return snapshot();
     },
   );
-  ipcMain.handle("nestbrain:orchestrator:listRepoSettings", async (): Promise<RepoSettingsRow[]> => {
+  ipcMain.handle("skipper:orchestrator:listRepoSettings", async (): Promise<RepoSettingsRow[]> => {
     const m = await ensureManifest();
     const links = await ensureRepoLinks();
     const repos = new Map<string, RepoRef>();
@@ -756,7 +756,7 @@ export function initOrchestrator(
       }));
   });
   ipcMain.handle(
-    "nestbrain:orchestrator:listFollowCandidates",
+    "skipper:orchestrator:listFollowCandidates",
     async (_e, accountId?: string): Promise<FollowCandidatesResult> => {
       try {
         const account = accountId
@@ -815,13 +815,13 @@ export function initOrchestrator(
     },
   );
   ipcMain.handle(
-    "nestbrain:orchestrator:resolveResumeRite",
+    "skipper:orchestrator:resolveResumeRite",
     async (_e, action: ResumeRiteAction, itemIds?: string[]) => {
       await resolveResumeRite(action, itemIds);
       return snapshot();
     },
   );
-  ipcMain.handle("nestbrain:orchestrator:setPinned", async (_e, itemId: string, pinned: boolean) => {
+  ipcMain.handle("skipper:orchestrator:setPinned", async (_e, itemId: string, pinned: boolean) => {
     const m = await ensureManifest();
     const item = m.items[itemId];
     if (!item) return { ok: false as const, error: `unknown item ${itemId}` };
@@ -836,7 +836,7 @@ export function initOrchestrator(
     return { ok: true as const, item: m.items[itemId] };
   });
   ipcMain.handle(
-    "nestbrain:orchestrator:linkRepo",
+    "skipper:orchestrator:linkRepo",
     async (_e, owner: string, name: string, localPath: string) => {
       try {
         await validateRepoOrigin(localPath, owner, name);
@@ -851,7 +851,7 @@ export function initOrchestrator(
     },
   );
   ipcMain.handle(
-    "nestbrain:orchestrator:cloneRepo",
+    "skipper:orchestrator:cloneRepo",
     async (_e, owner: string, name: string, destParent: string, accountId?: string) => {
       try {
         const token = await tokenForRepo(owner, name, accountId);
@@ -867,7 +867,7 @@ export function initOrchestrator(
       }
     },
   );
-  ipcMain.handle("nestbrain:orchestrator:unlinkRepo", async (_e, owner: string, name: string) => {
+  ipcMain.handle("skipper:orchestrator:unlinkRepo", async (_e, owner: string, name: string) => {
     try {
       const links = await ensureRepoLinks();
       delete links.repos[repoKey(owner, name)];
@@ -877,7 +877,7 @@ export function initOrchestrator(
       return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
     }
   });
-  ipcMain.handle("nestbrain:orchestrator:listRepos", async () => {
+  ipcMain.handle("skipper:orchestrator:listRepos", async () => {
     const links = await ensureRepoLinks();
     const seen = new Map<string, RepoRef>();
     for (const map of items.values()) {
@@ -896,7 +896,7 @@ export function initOrchestrator(
       .map(([key, repo]) => ({ key, repo, linked: false as const }));
     return { linked, unlinked };
   });
-  ipcMain.handle("nestbrain:orchestrator:getPlan", async (_e, itemId: string) => {
+  ipcMain.handle("skipper:orchestrator:getPlan", async (_e, itemId: string) => {
     const m = await ensureManifest();
     const ref = m.items[itemId]?.plan?.ref;
     if (!ref) return null;
@@ -904,7 +904,7 @@ export function initOrchestrator(
   });
   // Persist a user-edited plan at the gate (#13). Only legal while the item sits
   // in plan-gate — during a replan the item is back in planning, so stale saves lose.
-  ipcMain.handle("nestbrain:orchestrator:updatePlan", async (_e, itemId: string, plan: unknown) => {
+  ipcMain.handle("skipper:orchestrator:updatePlan", async (_e, itemId: string, plan: unknown) => {
     const m = await ensureManifest();
     const item = m.items[itemId];
     if (!item) return { ok: false as const, error: `unknown item ${itemId}` };
@@ -922,10 +922,10 @@ export function initOrchestrator(
     return { ok: true as const, stored };
   });
   // Replay for renderers that mount mid-run; live events ride the per-item channel.
-  ipcMain.handle("nestbrain:coding:getEvents", (_e, itemId: string) => {
+  ipcMain.handle("skipper:coding:getEvents", (_e, itemId: string) => {
     return codingEvents.get(itemId) ?? [];
   });
-  ipcMain.handle("nestbrain:planning:getEvents", (_e, itemId: string) => {
+  ipcMain.handle("skipper:planning:getEvents", (_e, itemId: string) => {
     return planningEvents.get(itemId) ?? [];
   });
   // Pre-PR diff review (#14). The human-review gate bounds what the renderer
@@ -946,7 +946,7 @@ export function initOrchestrator(
     return { ok: true, path: item.worktree.path };
   }
 
-  ipcMain.handle("nestbrain:orchestrator:getWorktreeChanges", async (_e, itemId: string) => {
+  ipcMain.handle("skipper:orchestrator:getWorktreeChanges", async (_e, itemId: string) => {
     const wt = await reviewableWorktree(itemId);
     if (!wt.ok) return wt;
     try {
@@ -956,7 +956,7 @@ export function initOrchestrator(
     }
   });
   ipcMain.handle(
-    "nestbrain:orchestrator:readWorktreeFile",
+    "skipper:orchestrator:readWorktreeFile",
     async (_e, itemId: string, path: string, oldPath?: string) => {
       const wt = await reviewableWorktree(itemId);
       if (!wt.ok) return wt;
@@ -968,7 +968,7 @@ export function initOrchestrator(
     },
   );
   ipcMain.handle(
-    "nestbrain:orchestrator:saveWorktreeFile",
+    "skipper:orchestrator:saveWorktreeFile",
     async (_e, itemId: string, path: string, content: string) => {
       const wt = await reviewableWorktree(itemId);
       if (!wt.ok) return wt;
@@ -981,7 +981,7 @@ export function initOrchestrator(
     },
   );
   // Open the draft PR from human-review, or push a fix round's updates (#11).
-  ipcMain.handle("nestbrain:orchestrator:openPr", async (_e, itemId: string) => {
+  ipcMain.handle("skipper:orchestrator:openPr", async (_e, itemId: string) => {
     await ensureManifest();
     await ensureRepoLinks();
     return openOrPushPr(itemId, "user");

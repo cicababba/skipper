@@ -1,4 +1,4 @@
-import type { Issue, PullRequest } from "@nestbrain/shared";
+import type { Issue, PullRequest } from "@skipper/shared";
 
 /** Returns a valid access token, or null when no account is available.
  *  `forceRefresh` bypasses the cached token — used after a 401. */

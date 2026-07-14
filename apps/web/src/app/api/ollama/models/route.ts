@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ollamaHost } from "@nestbrain/core";
+import { ollamaHost } from "@skipper/core";
 
 /**
  * Probe the local Ollama server and list installed models in one call.

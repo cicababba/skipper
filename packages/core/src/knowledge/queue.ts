@@ -8,7 +8,7 @@
 //   ▼     ▼
 // accepted  rejected
 //
-// "accepted" lives under .nestbrain/raw/projects/<project>/ — the curated
+// "accepted" lives under .skipper/raw/projects/<project>/ — the curated
 // per-project archive the solutions memory builds on. "rejected" is kept
 // (not deleted) so the user can re-pickup if they change their mind.
 
@@ -24,11 +24,11 @@ export interface QueuePaths {
 }
 
 /**
- * Resolve the queue paths for a NestBrain workspace.
- * `workspacePath` is the user's NestBrain root (the dir that holds .nestbrain).
+ * Resolve the queue paths for a Skipper workspace.
+ * `workspacePath` is the user's Skipper root (the dir that holds .skipper).
  */
 export function queuePaths(workspacePath: string): QueuePaths {
-  const dot = join(workspacePath, ".nestbrain");
+  const dot = join(workspacePath, ".skipper");
   return {
     pending: join(dot, "knowledge-pending"),
     rejected: join(dot, "knowledge-rejected"),

@@ -90,7 +90,7 @@ function truncateDiff(diff: string): string {
   return kept.join("");
 }
 
-const SYSTEM_PROMPT = `You are NestBrain's knowledge extractor. You read a single git commit and identify REUSABLE INSIGHTS that would be worth recalling on a different project months from now.
+const SYSTEM_PROMPT = `You are Skipper's knowledge extractor. You read a single git commit and identify REUSABLE INSIGHTS that would be worth recalling on a different project months from now.
 
 Reusable means: a pattern, a workaround, a non-obvious decision, a constraint you discovered, a gotcha, an architectural rationale. Examples: "Drive 'desktop app' OAuth secrets are non-confidential — PKCE is the real security", "chokidar 3 stays on CJS, 4+ are ESM-only", "Google Drive Changes API + page token replaces O(N) walks".
 

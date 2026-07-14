@@ -1,4 +1,4 @@
-import type { AuthProviderId } from "@nestbrain/shared";
+import type { AuthProviderId } from "@skipper/shared";
 import type { ProviderConfig } from "../provider";
 import { googleProvider } from "./google";
 import { githubProvider } from "./github";

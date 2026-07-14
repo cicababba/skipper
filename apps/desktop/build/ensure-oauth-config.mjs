@@ -4,8 +4,8 @@
 //
 // Sources, merged per provider in priority order:
 //
-//   1. Env vars NESTBRAIN_GOOGLE_CLIENT_ID + NESTBRAIN_GOOGLE_CLIENT_SECRET
-//      and/or NESTBRAIN_GITHUB_CLIENT_ID + NESTBRAIN_GITHUB_CLIENT_SECRET.
+//   1. Env vars SKIPPER_GOOGLE_CLIENT_ID + SKIPPER_GOOGLE_CLIENT_SECRET
+//      and/or SKIPPER_GITHUB_CLIENT_ID + SKIPPER_GITHUB_CLIENT_SECRET.
 //      This is the CI / release-build path: GitHub Actions exports the
 //      secrets before `pnpm desktop:build` runs.
 //
@@ -63,8 +63,8 @@ const envVar = (name) => process.env[name] || fileVars[name];
 
 // A pair only counts when both halves are present.
 function envPair(provider) {
-  const id = envVar(`NESTBRAIN_${provider}_CLIENT_ID`);
-  const secret = envVar(`NESTBRAIN_${provider}_CLIENT_SECRET`);
+  const id = envVar(`SKIPPER_${provider}_CLIENT_ID`);
+  const secret = envVar(`SKIPPER_${provider}_CLIENT_SECRET`);
   return id && secret ? { id, secret } : null;
 }
 
@@ -104,7 +104,7 @@ if (!existsSync(example)) {
 const escape = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 const contents = [
   "// OAuth client credentials — written by build/ensure-oauth-config.mjs.",
-  "// Sources: NESTBRAIN_GOOGLE_CLIENT_ID / NESTBRAIN_GITHUB_CLIENT_ID (+ *_SECRET)",
+  "// Sources: SKIPPER_GOOGLE_CLIENT_ID / SKIPPER_GITHUB_CLIENT_ID (+ *_SECRET)",
   "// env vars or apps/desktop/.env.local, else values carried over from the",
   "// previous oauth-config.ts, else placeholders. DO NOT commit this file.",
   "",

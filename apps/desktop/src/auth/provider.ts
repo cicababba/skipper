@@ -1,7 +1,7 @@
 // Provider abstraction for the desktop OAuth flow. Each provider supplies a
 // ProviderConfig; the generic flow in oauth-flow.ts consumes it.
 
-import type { Account, AuthProviderId } from "@nestbrain/shared";
+import type { Account, AuthProviderId } from "@skipper/shared";
 
 export interface ProviderTokens {
   accessToken: string;

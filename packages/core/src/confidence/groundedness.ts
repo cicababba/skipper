@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { isAbsolute, join, normalize, sep } from "node:path";
-import type { GroundednessSignal, IssuePlan } from "@nestbrain/shared";
+import type { GroundednessSignal, IssuePlan } from "@skipper/shared";
 
 const SKIP_DIRS = new Set([".git", "node_modules", "dist", "release", ".next", "out", "coverage"]);
 const MAX_FILE_BYTES = 1024 * 1024;

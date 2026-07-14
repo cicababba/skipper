@@ -13,7 +13,7 @@ import type {
   OrchestratorState,
   OrchestratorTransitionResult,
   ResumeRiteAction,
-} from "@nestbrain/shared";
+} from "@skipper/shared";
 
 interface OrchestratorContextValue {
   /** null = not loaded yet, or running outside Electron. */
@@ -41,8 +41,8 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !window.nestbrain) return;
-    const orchestrator = window.nestbrain.orchestrator;
+    if (typeof window === "undefined" || !window.skipper) return;
+    const orchestrator = window.skipper.orchestrator;
     let cancelled = false;
 
     orchestrator
@@ -56,10 +56,10 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!window.nestbrain) return;
+    if (!window.skipper) return;
     setRefreshing(true);
     try {
-      setState(await window.nestbrain.orchestrator.refresh());
+      setState(await window.skipper.orchestrator.refresh());
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -73,8 +73,8 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
       to: LifecycleState,
       reason?: string,
     ): Promise<OrchestratorTransitionResult> => {
-      if (!window.nestbrain) return { ok: false, error: "desktop only" };
-      const result = await window.nestbrain.orchestrator.requestTransition(itemId, to, reason);
+      if (!window.skipper) return { ok: false, error: "desktop only" };
+      const result = await window.skipper.orchestrator.requestTransition(itemId, to, reason);
       if (!result.ok) setError(result.error);
       return result;
     },
@@ -82,16 +82,16 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
   );
 
   const openPr = useCallback(async (itemId: string): Promise<OrchestratorTransitionResult> => {
-    if (!window.nestbrain) return { ok: false, error: "desktop only" };
-    const result = await window.nestbrain.orchestrator.openPr(itemId);
+    if (!window.skipper) return { ok: false, error: "desktop only" };
+    const result = await window.skipper.orchestrator.openPr(itemId);
     if (!result.ok) setError(result.error);
     return result;
   }, []);
 
   const setIntakePaused = useCallback(async (paused: boolean) => {
-    if (!window.nestbrain) return;
+    if (!window.skipper) return;
     try {
-      setState(await window.nestbrain.orchestrator.setIntakePaused(paused));
+      setState(await window.skipper.orchestrator.setIntakePaused(paused));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -99,9 +99,9 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
 
   const resolveResumeRite = useCallback(
     async (action: ResumeRiteAction, itemIds?: string[]) => {
-      if (!window.nestbrain) return;
+      if (!window.skipper) return;
       try {
-        setState(await window.nestbrain.orchestrator.resolveResumeRite(action, itemIds));
+        setState(await window.skipper.orchestrator.resolveResumeRite(action, itemIds));
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -111,8 +111,8 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
 
   const setPinned = useCallback(
     async (itemId: string, pinned: boolean): Promise<OrchestratorTransitionResult> => {
-      if (!window.nestbrain) return { ok: false, error: "desktop only" };
-      const result = await window.nestbrain.orchestrator.setPinned(itemId, pinned);
+      if (!window.skipper) return { ok: false, error: "desktop only" };
+      const result = await window.skipper.orchestrator.setPinned(itemId, pinned);
       if (!result.ok) setError(result.error);
       return result;
     },

@@ -1,4 +1,4 @@
-import type { CodingEvent, IssuePlan } from "@nestbrain/shared";
+import type { CodingEvent, IssuePlan } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
 import { parseJsonReply } from "../llm/json";
 import { IssuePlanSchema, planJsonSchema } from "./schema";

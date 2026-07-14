@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { IssuePlan } from "@nestbrain/shared";
+import type { IssuePlan } from "@skipper/shared";
 import {
   CODER_SYSTEM_PROMPT,
   buildCoderPrompt,

@@ -1,4 +1,4 @@
-import type { Issue, PullRequest, RepoRef } from "@nestbrain/shared";
+import type { Issue, PullRequest, RepoRef } from "@skipper/shared";
 
 export interface GitHubIssuePayload {
   id: number;

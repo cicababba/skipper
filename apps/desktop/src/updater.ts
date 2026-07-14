@@ -40,7 +40,7 @@ function set(patch: Partial<UpdateState>): void {
   state = { ...state, ...patch };
   const win = getWindow();
   if (win && !win.isDestroyed()) {
-    win.webContents.send("nestbrain:updates:stateChanged", state);
+    win.webContents.send("skipper:updates:stateChanged", state);
   }
 }
 
@@ -53,19 +53,19 @@ export function initUpdater(
   if (onBeforeQuit) prepareQuit = onBeforeQuit;
   if (credentialsProvider) getCredentials = credentialsProvider;
 
-  ipcMain.handle("nestbrain:updates:getState", () => state);
+  ipcMain.handle("skipper:updates:getState", () => state);
 
   if (!UPDATE_CHANNEL_KEY) {
     // Source build — no entitlement, updater stays off.
-    ipcMain.handle("nestbrain:updates:check", () => state);
-    ipcMain.handle("nestbrain:updates:restart", () => undefined);
+    ipcMain.handle("skipper:updates:check", () => state);
+    ipcMain.handle("skipper:updates:restart", () => undefined);
     return;
   }
   if (!app.isPackaged) {
     // Dev run of an entitled tree: don't try to self-update the electron shell.
     state = { ...state, status: "dev" };
-    ipcMain.handle("nestbrain:updates:check", () => state);
-    ipcMain.handle("nestbrain:updates:restart", () => undefined);
+    ipcMain.handle("skipper:updates:check", () => state);
+    ipcMain.handle("skipper:updates:restart", () => undefined);
     return;
   }
 
@@ -118,7 +118,7 @@ export function initUpdater(
     set({ status: "error", error: err.message });
   });
 
-  ipcMain.handle("nestbrain:updates:check", async () => {
+  ipcMain.handle("skipper:updates:check", async () => {
     try {
       await checkWithCredentials();
     } catch {
@@ -126,7 +126,7 @@ export function initUpdater(
     }
     return state;
   });
-  ipcMain.handle("nestbrain:updates:restart", async () => {
+  ipcMain.handle("skipper:updates:restart", async () => {
     // Dispose the watchers BEFORE quitAndInstall: the main process's will-quit
     // handler defers quits to close them, and a deferred quit cancels
     // Squirrel's install — window gone, app stuck in the dock, still on the
@@ -140,7 +140,7 @@ export function initUpdater(
       // abort → no crash report — and the install still applies.
       setTimeout(() => {
         // Windows: SIGKILL leaves children (the Next utilityProcess is a
-        // second NestBrain.exe) alive and they block the NSIS installer —
+        // second Skipper.exe) alive and they block the NSIS installer —
         // take the whole tree down.
         if (process.platform === "win32") {
           try {

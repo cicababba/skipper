@@ -12,7 +12,7 @@ export function UpdatesSection() {
   const [checking, setChecking] = useState(false);
 
   useEffect(() => {
-    const updates = typeof window !== "undefined" ? window.nestbrain?.updates : null;
+    const updates = typeof window !== "undefined" ? window.skipper?.updates : null;
     if (!updates) return;
     updates.getState().then(setState).catch(() => {});
     const off = updates.onStateChanged(setState);
@@ -23,7 +23,7 @@ export function UpdatesSection() {
 
   async function checkNow() {
     setChecking(true);
-    try { setState(await window.nestbrain!.updates.check()); } catch { /* state event covers it */ }
+    try { setState(await window.skipper!.updates.check()); } catch { /* state event covers it */ }
     setChecking(false);
   }
 
@@ -55,7 +55,7 @@ export function UpdatesSection() {
         </div>
         {state.status === "ready" ? (
           <button
-            onClick={() => void window.nestbrain!.updates.restart()}
+            onClick={() => void window.skipper!.updates.restart()}
             className="shrink-0 px-3 h-8 rounded-md bg-accent text-background text-xs font-medium hover:bg-accent-hover transition-colors"
           >
             {t.settings.updates.restartNow}

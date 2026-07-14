@@ -4,7 +4,7 @@
 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { IssuePlan, StoredPlan } from "@nestbrain/shared";
+import type { IssuePlan, StoredPlan } from "@skipper/shared";
 
 /** Item ids contain ":" which is illegal on Windows filenames. */
 export function planFileName(itemId: string): string {
