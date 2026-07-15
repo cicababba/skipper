@@ -269,6 +269,26 @@ Due regole per non ricadere nel vecchio prodotto:
   all'inizio l'archivio è vuoto (cold start), quindi la plumbing va messa presto ma
   non ci si aspetta magia subito.
 
+### Forma v2 — decisioni operative (#41)
+
+La forma della memoria v2 è fissata nell'epic #41. In sintesi:
+
+- **Retrieval solo via MCP.** Gli agenti (planner e coder) recuperano dalla memoria
+  tramite un server MCP `skipper-memory` (`search_memory` / `get_memory`). La
+  pre-iniezione lato Skipper nel prompt del planner è stata **scartata**: niente campo
+  `memoriesUsed` nello schema del piano — le "memorie usate" si derivano dagli eventi di
+  tool-use osservati (verità a terra, niente auto-dichiarazione). Si rivaluta solo se
+  l'uso reale mostra che il planner non cerca mai.
+- **Server MCP come subcomando CLI** (`skipper memory serve`), lanciato dal bundle CLI
+  impacchettato col runtime dell'app (`ELECTRON_RUN_AS_NODE`) — nessuna dipendenza dal PATH.
+- **I knowledge atoms restano un canale separato.** L'indice v2 contiene solo
+  `SolutionRecord`; l'eventuale fusione si riconsidera dopo che il retrieval funziona.
+- **Loop di feedback.** 👍/👎 al punto d'uso persiste sul record e pesa nel ranking
+  (coseno × recency × feedback); la curatela deliberata vive nel memory browser del
+  dettaglio repo.
+- **Superficie dettaglio repo.** I repo diventano first-class nella navigazione; alle
+  impostazioni di intake si aggiunge un override del WIP per-repo.
+
 ---
 
 ## Decisioni prese
@@ -293,6 +313,7 @@ Due regole per non ricadere nel vecchio prodotto:
 | 16 | **Confidence "cheap" (groundedness, convergenza, critic) già in v1** | Non dipendono dalla memoria, disponibili dal giorno zero — è ciò che distingue v1 da un wrapper. |
 | 17 | **Pricing early access: $29 one-time "founder"** (binari firmati, updates inclusi) | Playbook NestBrain già rodato (Polar merchant of record + upload CI + repo releases privato), zero infra licenze. Benefit license-key di Polar attivo dal giorno 1 per riconoscere i founder quando arriverà il modello definitivo. Il modello a regime (subscription con perpetual fallback? free/paid sul confine dell'aggregazione?) si decide con calma entro la v3. |
 | 18 | **Confine open-core ridisegnato: git + terminale = core pubblico** (issue #1) | Il loop git (worktree, diff, stage, commit, push) e il terminale (finestra sull'agente + intervento manuale) sono il cuore del prodotto — non possono stare dietro il modulo Dev privato. Il git backend è riscritto nel tree pubblico (`apps/desktop/src/git.ts`); il terminale segue in un issue dedicato. Restano gated: Projects, team, metriche, multi-agent parallelism. |
+| 19 | **Retrieval memoria solo via MCP** (server `skipper-memory`, no pre-iniezione nel prompt) — epic #41 | Gli agenti cercano da sé (`search_memory`/`get_memory`); niente campo `memoriesUsed` nel piano, le "memorie usate" si derivano dagli eventi di tool-use osservati (verità a terra, no auto-dichiarazione). Il server gira come subcomando CLI (`skipper memory serve`) col runtime dell'app (`ELECTRON_RUN_AS_NODE`) — nessuna dipendenza dal PATH. |
 
 ---
 
@@ -339,7 +360,8 @@ giudizio si può mostrare fin da v1.
   altro ti dice *prima di partire, in modo verificabile* quali issue affidare
   all'AI.
 - **v2 — la memoria:** cattura `problema → piano → diff → esito` a regime, retrieval
-  nel planning, segnale memoria nella confidence, assist alla creazione issue.
+  in planning solo via MCP (server `skipper-memory`, no pre-iniezione), segnale memoria
+  nella confidence, assist alla creazione issue. Forma fissata in #41.
 - **v3 — l'aggregazione:** Bitbucket + Jira/Linear, inbox davvero cross-org +
   binding issue→repo per i tracker. Qui nasce il moat vendibile.
 - **v4 — il team:** più agenti in parallelo, coda condivisa, metriche (confidence
