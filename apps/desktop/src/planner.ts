@@ -1,7 +1,7 @@
 import {
   computeConfidence,
+  createProvider,
   generatePlan,
-  ClaudeCLIProvider,
   type LLMProviderInterface,
   type MemoryMcp,
   type OrchestratorSettings,
@@ -11,12 +11,14 @@ import type {
   ConfidenceReport,
   Issue,
   LifecycleState,
+  LlmSettings,
   RepoRef,
   ResolvedRepoOrchestratorSettings,
   StoredPlan,
   TrackedItem,
   TransitionActor,
 } from "@skipper/shared";
+import { modelForRole, providerCacheKey } from "./llm-settings";
 import { planFileName, writeStoredPlan } from "./plan-store";
 
 // Eager planner loop (issue #7): watches the orchestrator manifest for triage
@@ -44,6 +46,8 @@ export interface PlannerDeps {
   completePlan: (itemId: string, ref: string, confidence?: ConfidenceReport) => Promise<void>;
   /** Live orchestrator settings — planner model + confidence knobs. */
   getSettings: () => OrchestratorSettings;
+  /** settings.json llm block (#59) — which provider the planner runs on. */
+  getLlmSettings: () => Promise<LlmSettings>;
   /** Planner console stream (#32): per-item envelopes over skipper:planning:*. */
   emitEvent: (itemId: string, event: CodingEvent) => void;
   plansDir: string;
@@ -55,7 +59,7 @@ const PLANNING_CONCURRENCY = 2;
 
 let deps: PlannerDeps | null = null;
 let llm: LLMProviderInterface | null = null;
-let llmModel: string | null = null;
+let llmKey: string | null = null;
 let llmInjected = false;
 const queue: string[] = [];
 const queued = new Set<string>();
@@ -67,15 +71,27 @@ export function initPlanner(plannerDeps: PlannerDeps, provider?: LLMProviderInte
   deps = plannerDeps;
   llmInjected = provider !== undefined;
   llm = provider ?? null;
-  llmModel = null;
+  llmKey = null;
 }
 
-/** Injected provider (tests) wins; otherwise a CLI provider cached per model. */
-function resolveProvider(model: string): { llm: LLMProviderInterface; model: string } {
-  if (llmInjected && llm) return { llm, model };
-  if (!llm || llmModel !== model) {
-    llm = new ClaudeCLIProvider(model);
-    llmModel = model;
+/**
+ * Injected provider (tests) wins; otherwise the provider picked in Settings (#59),
+ * cached per provider+model. The role model only applies to claude-cli — the other
+ * providers carry their own model in settings.json.
+ */
+async function resolveProvider(roleModel: string): Promise<{ llm: LLMProviderInterface; model: string }> {
+  if (llmInjected && llm) return { llm, model: roleModel };
+  const settings = await deps!.getLlmSettings();
+  const model = modelForRole(settings, roleModel);
+  const key = providerCacheKey(settings, model);
+  if (!llm || llmKey !== key) {
+    llm = createProvider({
+      provider: settings.provider,
+      model,
+      maxTurns: 5,
+      apiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
+    });
+    llmKey = key;
   }
   return { llm, model };
 }
@@ -150,7 +166,9 @@ async function run(itemId: string): Promise<void> {
       return;
     }
     const settings = deps.getSettings();
-    const { llm: provider, model } = resolveProvider(deps.getRepoSettings(item.repo).plannerModel);
+    const { llm: provider, model } = await resolveProvider(
+      deps.getRepoSettings(item.repo).plannerModel,
+    );
     const cached = deps.getIssue(item);
     const issue = {
       number: item.number,
