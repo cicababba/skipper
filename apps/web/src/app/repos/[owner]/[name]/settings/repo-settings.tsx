@@ -1,0 +1,70 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { ArrowLeft, Settings as SettingsIcon } from "lucide-react";
+import type { RepoIntakeSettings, RepoSettingsRow } from "@skipper/shared";
+import { useOrchestrator } from "@/lib/orchestrator-context";
+import { useT } from "@/lib/app-i18n";
+import { Section } from "@/app/inbox/[id]/plan-sections";
+import { useRepoParams } from "../use-repo-params";
+import { RepoIntakeControls } from "./repo-intake-controls";
+
+export function RepoSettingsView() {
+  const { t } = useT();
+  const { state } = useOrchestrator();
+  const { owner, name, key } = useRepoParams();
+
+  const [rows, setRows] = useState<RepoSettingsRow[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    if (!window.skipper) return;
+    return window.skipper.orchestrator.listRepoSettings().then(setRows);
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const row = rows.find((r) => r.key === key);
+  const globalWip = state?.queue.wipLimitPerRepo ?? 1;
+
+  const patch = async (p: Partial<RepoIntakeSettings>) => {
+    if (!window.skipper) return;
+    setBusy(true);
+    try {
+      await window.skipper.orchestrator.setRepoSettings(owner, name, p);
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rp = t.inbox.repoPage;
+  const isElectron = typeof window !== "undefined" && !!window.skipper;
+
+  return (
+    <div className="min-h-full p-6 space-y-6">
+      <div>
+        <Link
+          href={`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`}
+          className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground transition-colors"
+        >
+          <ArrowLeft size={14} />
+          {key}
+        </Link>
+        <div className="flex items-center gap-3 mt-2">
+          <SettingsIcon size={20} className="text-accent shrink-0" />
+          <h1 className="text-2xl font-semibold tracking-tight">{rp.settings}</h1>
+        </div>
+      </div>
+
+      {isElectron && row && (
+        <Section title={rp.intake} editable={false} editing={false}>
+          <RepoIntakeControls row={row} globalWip={globalWip} busy={busy} onPatch={(p) => void patch(p)} />
+        </Section>
+      )}
+    </div>
+  );
+}
