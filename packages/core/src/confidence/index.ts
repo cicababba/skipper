@@ -9,7 +9,7 @@ export {
   CriticVerdictSchema,
 } from "./critic";
 export type { CriticInput } from "./critic";
-export { computeConfidence, DEFAULT_CONFIDENCE_WEIGHTS } from "./score";
+export { computeConfidence, reachableBand, DEFAULT_CONFIDENCE_WEIGHTS } from "./score";
 export type { ComputeConfidenceOptions } from "./score";
 export { resolveGate, DEFAULT_CONFIDENCE_THRESHOLDS } from "./gate";
 export type { GateTarget } from "./gate";

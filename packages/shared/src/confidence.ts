@@ -80,6 +80,15 @@ export interface ConfidenceReport {
     critic?: CriticSignal;
     clarity?: ClaritySignal;
   };
+  /**
+   * Set when the extra plan runs were skipped and convergence is absent from
+   * signals — the weights renormalize over what remains (#50).
+   */
+  convergenceSkipped?: {
+    reason: "decisive" | "disabled";
+    /** e.g. "composite in [0.87, 0.91] → queued for any convergence value". */
+    detail: string;
+  };
   /** Per-signal failures, e.g. "convergence: only 1 plan generated". */
   errors: string[];
   computedAt: string; // ISO 8601

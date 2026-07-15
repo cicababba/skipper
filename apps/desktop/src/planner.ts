@@ -190,6 +190,7 @@ async function run(itemId: string): Promise<void> {
         repoPath,
         llm: provider,
         extraPlanRuns: settings.confidence.extraPlanRuns,
+        thresholds: { high: settings.confidence.high, low: settings.confidence.low },
       });
       if (Object.keys(report.signals).length === 0) report = undefined;
     } catch {
