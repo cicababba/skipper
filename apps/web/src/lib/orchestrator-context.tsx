@@ -10,6 +10,7 @@ import {
 } from "react";
 import type {
   LifecycleState,
+  OrchestratorSettings,
   OrchestratorState,
   OrchestratorTransitionResult,
   ResumeRiteAction,
@@ -28,6 +29,8 @@ interface OrchestratorContextValue {
   ) => Promise<OrchestratorTransitionResult>;
   openPr: (itemId: string) => Promise<OrchestratorTransitionResult>;
   setIntakePaused: (paused: boolean) => Promise<void>;
+  /** Global settings writer (#62); the handler validates each key. */
+  updateSettings: (patch: Partial<OrchestratorSettings>) => Promise<void>;
   resolveResumeRite: (action: ResumeRiteAction, itemIds?: string[]) => Promise<void>;
   setPinned: (itemId: string, pinned: boolean) => Promise<OrchestratorTransitionResult>;
   clearError: () => void;
@@ -97,6 +100,15 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
+  const updateSettings = useCallback(async (patch: Partial<OrchestratorSettings>) => {
+    if (!window.skipper) return;
+    try {
+      setState(await window.skipper.orchestrator.updateSettings(patch));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
   const resolveResumeRite = useCallback(
     async (action: ResumeRiteAction, itemIds?: string[]) => {
       if (!window.skipper) return;
@@ -130,6 +142,7 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
       requestTransition,
       openPr,
       setIntakePaused,
+      updateSettings,
       resolveResumeRite,
       setPinned,
       clearError,
@@ -142,6 +155,7 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
       requestTransition,
       openPr,
       setIntakePaused,
+      updateSettings,
       resolveResumeRite,
       setPinned,
       clearError,

@@ -48,11 +48,14 @@ describe("orchestrator manifest", () => {
       version: 1,
       settings: {
         intakePaused: false,
+        autoPlanPaused: false,
         plannerModel: "opus",
         confidence: { high: 0.85, low: 0.4, extraPlanRuns: 2 },
         coderModel: "opus",
         coderMaxTurns: 60,
-        reviewMode: "auto",
+        autoCoding: "auto",
+        review: "auto",
+        reviewMaxRounds: 2,
         reviewerModel: "opus",
         shepherdRepush: "human",
         codingWipPerRepo: 1,
@@ -63,7 +66,7 @@ describe("orchestrator manifest", () => {
     });
   });
 
-  it("fills #8/#9/#10/#11 settings defaults into an older manifest", async () => {
+  it("fills #8/#9/#10/#11/#62 settings defaults into an older manifest", async () => {
     await writeFile(
       filePath,
       JSON.stringify({ version: 1, settings: { intakePaused: true }, items: {}, parked: {} }),
@@ -71,15 +74,66 @@ describe("orchestrator manifest", () => {
     );
     const manifest = await loadOrCreateOrchestratorManifest(filePath);
     expect(manifest.settings.intakePaused).toBe(true);
+    expect(manifest.settings.autoPlanPaused).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.autoPlanPaused);
     expect(manifest.settings.plannerModel).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.plannerModel);
     expect(manifest.settings.confidence).toEqual(DEFAULT_ORCHESTRATOR_SETTINGS.confidence);
     expect(manifest.settings.coderModel).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.coderModel);
     expect(manifest.settings.coderMaxTurns).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.coderMaxTurns);
-    expect(manifest.settings.reviewMode).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.reviewMode);
+    expect(manifest.settings.autoCoding).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.autoCoding);
+    expect(manifest.settings.review).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.review);
+    expect(manifest.settings.reviewMaxRounds).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.reviewMaxRounds);
     expect(manifest.settings.reviewerModel).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.reviewerModel);
     expect(manifest.settings.shepherdRepush).toBe("human");
     expect(manifest.settings.codingWipPerRepo).toBe(1);
     expect(manifest.repoSettings).toEqual({});
+  });
+
+  // #62. reviewMode was hand-edit-only but read for real, so a hand-set value must
+  // survive the rename — a plain ??= would silently reset "always" to "auto",
+  // i.e. quietly give the user less review than they asked for.
+  describe("reviewMode → review migration (#62)", () => {
+    const write = (settings: Record<string, unknown>) =>
+      writeFile(
+        filePath,
+        JSON.stringify({ version: 1, settings, items: {}, parked: {} }),
+        "utf-8",
+      );
+
+    it.each([
+      ["always", "on"],
+      ["never", "off"],
+      ["auto", "auto"],
+    ])("maps a legacy reviewMode %s to review %s", async (legacy, expected) => {
+      await write({ intakePaused: false, reviewMode: legacy });
+      const manifest = await loadOrCreateOrchestratorManifest(filePath);
+      expect(manifest.settings.review).toBe(expected);
+    });
+
+    it("consumes the legacy key so it cannot mislead a later hand-edit", async () => {
+      await write({ intakePaused: false, reviewMode: "never" });
+      const manifest = await loadOrCreateOrchestratorManifest(filePath);
+      expect("reviewMode" in manifest.settings).toBe(false);
+
+      await saveOrchestratorManifest(filePath, manifest);
+      const raw = JSON.parse(await readFile(filePath, "utf-8")) as {
+        settings: Record<string, unknown>;
+      };
+      expect("reviewMode" in raw.settings).toBe(false);
+      expect(raw.settings.review).toBe("off");
+    });
+
+    it("defaults to auto when neither key is present", async () => {
+      await write({ intakePaused: false });
+      const manifest = await loadOrCreateOrchestratorManifest(filePath);
+      expect(manifest.settings.review).toBe("auto");
+    });
+
+    it("lets the new field win when both are present", async () => {
+      await write({ intakePaused: false, review: "off", reviewMode: "always" });
+      const manifest = await loadOrCreateOrchestratorManifest(filePath);
+      expect(manifest.settings.review).toBe("off");
+      expect("reviewMode" in manifest.settings).toBe(false);
+    });
   });
 
   it("keeps explicit #15 fields on an existing manifest", async () => {

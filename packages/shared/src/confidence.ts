@@ -68,6 +68,11 @@ export interface ConfidenceThresholds {
   low: number;
 }
 
+export const DEFAULT_CONFIDENCE_THRESHOLDS: ConfidenceThresholds = { high: 0.85, low: 0.4 };
+
+/** Extra plan runs sampled for the convergence signal (#8). Needs 2+ to compare. */
+export const DEFAULT_EXTRA_PLAN_RUNS = 2;
+
 export interface ConfidenceReport {
   version: 1;
   /** 0..1 — weighted over the signals that succeeded. */

@@ -2,7 +2,13 @@
 // Skipper — Orchestrator lifecycle types (issue #6)
 // ============================================================
 
-import type { CriticObjection, CriticVerdict } from "./confidence";
+import {
+  DEFAULT_CONFIDENCE_THRESHOLDS,
+  DEFAULT_EXTRA_PLAN_RUNS,
+  type ConfidenceThresholds,
+  type CriticObjection,
+  type CriticVerdict,
+} from "./confidence";
 import type { Issue, PlatformId, PullRequest, RepoRef } from "./inbox";
 import type { StoredPlan } from "./plan";
 
@@ -85,6 +91,58 @@ export type RepoPriority = "high" | "normal" | "low";
 
 export type AutoPlanMode = "on" | "off" | "label";
 
+/**
+ * Shared vocabulary for the two gate axes (#62): autoCoding and review.
+ * "auto" means the same thing on both — the score/heuristic decides.
+ */
+export type GateMode = "on" | "off" | "auto";
+
+export interface OrchestratorSettings {
+  intakePaused: boolean;
+  /**
+   * Global auto-plan master switch (#62). true = nothing auto-plans anywhere,
+   * whatever a repo's autoPlan says. Deliberately a master switch, not a default:
+   * a topbar toggle cannot express the per-repo tri-state, and one that silently
+   * does nothing because a repo overrides it is worse than no toggle.
+   */
+  autoPlanPaused: boolean;
+  /** Model handed to the planner's LLM provider (also scores confidence, #8). */
+  plannerModel: string;
+  /** Gate thresholds + convergence sample count (#8). Hand-editable by design (#62). */
+  confidence: ConfidenceThresholds & { extraPlanRuns: number };
+  /** Model handed to the coding agent (#9). */
+  coderModel: string;
+  /** Max agent turns per coding run (#9). Not reviewMaxRounds. */
+  coderMaxTurns: number;
+  /** #62: on = always queue, off = always plan-gate, auto = composite >= confidence.high. */
+  autoCoding: GateMode;
+  /** #62 (was reviewMode): auto = the mechanical skip heuristic in core/reviewer/auto.ts. */
+  review: GateMode;
+  /** #62: review rounds per fix chain. Applies to on + auto, irrelevant under off. */
+  reviewMaxRounds: number;
+  /** Model handed to the diff critic (#10). */
+  reviewerModel: string;
+  /** After a change-request fix round (#11): hold at human-review or repush unattended. */
+  shepherdRepush: "human" | "auto";
+  /** Coding WIP limit per repo (#15); parallelism is across repos. */
+  codingWipPerRepo: number;
+}
+
+export const DEFAULT_ORCHESTRATOR_SETTINGS: OrchestratorSettings = {
+  intakePaused: false,
+  autoPlanPaused: false,
+  plannerModel: "opus",
+  confidence: { ...DEFAULT_CONFIDENCE_THRESHOLDS, extraPlanRuns: DEFAULT_EXTRA_PLAN_RUNS },
+  coderModel: "opus",
+  coderMaxTurns: 60,
+  autoCoding: "auto",
+  review: "auto",
+  reviewMaxRounds: 2,
+  reviewerModel: "opus",
+  shepherdRepush: "human",
+  codingWipPerRepo: 1,
+};
+
 export interface RepoIntakeSettings {
   /** false = ignored at admission. Absent/true = followed (default-all). */
   followed?: boolean;
@@ -94,6 +152,10 @@ export interface RepoIntakeSettings {
   autoPlanLabel?: string;
   /** Per-repo coding WIP override (#47). Absent = fall back to the global codingWipPerRepo. */
   wipLimit?: number;
+  /** #62 per-repo gate overrides. Absent = inherit the global setting. */
+  autoCoding?: GateMode;
+  review?: GateMode;
+  reviewMaxRounds?: number;
 }
 
 export const DEFAULT_AUTO_PLAN_LABEL = "ai-ready";
@@ -111,6 +173,35 @@ export function resolveRepoIntakeSettings(s?: RepoIntakeSettings): ResolvedRepoI
     priority: s?.priority ?? "normal",
     autoPlan: s?.autoPlan ?? "on",
     autoPlanLabel: s?.autoPlanLabel?.trim() || DEFAULT_AUTO_PLAN_LABEL,
+  };
+}
+
+export interface ResolvedRepoOrchestratorSettings extends ResolvedRepoIntakeSettings {
+  /** #47 — the override resolveRepoIntakeSettings never covered. */
+  wipLimit: number;
+  autoCoding: GateMode;
+  review: GateMode;
+  reviewMaxRounds: number;
+}
+
+/**
+ * Every global-overridable per-repo field, resolved in one place (#62).
+ *
+ * Deliberately does NOT fold in settings.autoPlanPaused: that master switch is
+ * applied at the planner's triage branch. Folding it in would make the repo
+ * settings <select> — which binds to resolved.autoPlan — render "off" and write
+ * autoPlan:"off" to the manifest on the next change, destroying the real setting.
+ */
+export function resolveRepoOrchestratorSettings(
+  repo: RepoIntakeSettings | undefined,
+  global: OrchestratorSettings,
+): ResolvedRepoOrchestratorSettings {
+  return {
+    ...resolveRepoIntakeSettings(repo),
+    wipLimit: repo?.wipLimit ?? global.codingWipPerRepo,
+    autoCoding: repo?.autoCoding ?? global.autoCoding,
+    review: repo?.review ?? global.review,
+    reviewMaxRounds: repo?.reviewMaxRounds ?? global.reviewMaxRounds,
   };
 }
 
@@ -211,11 +302,13 @@ export interface OrchestratorAccountState {
 export interface QueueStatus {
   coding: number;
   queued: number;
+  /** @deprecated (#62) mirrors settings.codingWipPerRepo — read that instead. */
   wipLimitPerRepo: number;
 }
 
 export interface OrchestratorState {
   status: "idle" | "polling";
+  /** @deprecated (#62) mirrors settings.intakePaused — read that instead. */
   intakePaused: boolean;
   parkedCount: number;
   queue: QueueStatus;
@@ -225,6 +318,8 @@ export interface OrchestratorState {
   repoSettings: Record<string, RepoIntakeSettings>;
   /** Pending resume-rite prompt (#15); null when none. */
   resumeRite: { itemIds: string[] } | null;
+  /** The global settings bag (#62), so the UI can read and write it. */
+  settings: OrchestratorSettings;
 }
 
 // IPC result shapes shared by the preload bridge and the renderer types.
@@ -291,7 +386,7 @@ export interface RepoSettingsRow {
   linked: boolean;
   localPath?: string;
   settings: RepoIntakeSettings;
-  resolved: ResolvedRepoIntakeSettings;
+  resolved: ResolvedRepoOrchestratorSettings;
 }
 
 export interface FollowCandidate {

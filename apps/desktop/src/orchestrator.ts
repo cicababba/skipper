@@ -20,8 +20,9 @@ import {
   memoryFileName,
   applyFeedbackVote,
   type OrchestratorManifest,
+  type OrchestratorSettings,
 } from "@skipper/core";
-import { resolveRepoIntakeSettings } from "@skipper/shared";
+import { resolveRepoIntakeSettings, resolveRepoOrchestratorSettings } from "@skipper/shared";
 import type {
   Account,
   AgentReview,
@@ -41,6 +42,7 @@ import type {
   RepoRef,
   RepoSettingsRow,
   ResolvedRepoIntakeSettings,
+  ResolvedRepoOrchestratorSettings,
   ResumeRiteAction,
   TrackedItem,
   TransitionActor,
@@ -127,6 +129,7 @@ function snapshot(): OrchestratorState {
     accounts: accountsState,
     repoSettings: manifest?.repoSettings ?? {},
     resumeRite: manifest?.resumeRite ? { itemIds: [...manifest.resumeRite.itemIds] } : null,
+    settings: manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
   };
 }
 
@@ -259,8 +262,55 @@ function repoPathFor(repo: RepoRef): string | undefined {
   return repoLinks?.repos[repoKey(repo.owner, repo.name)]?.localPath;
 }
 
+// Per-key validation for the two settings writers (#62). Each returns the value to
+// store, or undefined to reject the write.
+const asBool = (v: unknown): boolean | undefined => (typeof v === "boolean" ? v : undefined);
+const clampInt =
+  (min: number, max: number) =>
+  (v: unknown): number | undefined =>
+    typeof v === "number" && Number.isFinite(v)
+      ? Math.min(max, Math.max(min, Math.round(v)))
+      : undefined;
+const oneOf =
+  <T extends string>(...allowed: readonly T[]) =>
+  (v: unknown): T | undefined =>
+    (allowed as readonly unknown[]).includes(v) ? (v as T) : undefined;
+const nonEmptyString = (v: unknown): string | undefined =>
+  typeof v === "string" && v.trim() ? v.trim() : undefined;
+
+const SETTINGS_VALIDATORS: {
+  [K in keyof OrchestratorSettings]?: (v: unknown) => OrchestratorSettings[K] | undefined;
+} = {
+  autoPlanPaused: asBool,
+  autoCoding: oneOf("on", "off", "auto"),
+  review: oneOf("on", "off", "auto"),
+  reviewMaxRounds: clampInt(1, 5),
+  codingWipPerRepo: clampInt(1, 10),
+};
+
+const REPO_SETTINGS_VALIDATORS: {
+  [K in keyof RepoIntakeSettings]-?: (v: unknown) => RepoIntakeSettings[K] | undefined;
+} = {
+  followed: asBool,
+  priority: oneOf("high", "normal", "low"),
+  autoPlan: oneOf("on", "off", "label"),
+  autoPlanLabel: nonEmptyString,
+  wipLimit: clampInt(1, 10),
+  autoCoding: oneOf("on", "off", "auto"),
+  review: oneOf("on", "off", "auto"),
+  reviewMaxRounds: clampInt(1, 5),
+};
+
 function repoIntake(repo: RepoRef): ResolvedRepoIntakeSettings {
   return resolveRepoIntakeSettings(manifest?.repoSettings[repoKey(repo.owner, repo.name)]);
+}
+
+/** Intake settings plus every per-repo override of a global setting (#62). */
+function repoOrch(repo: RepoRef): ResolvedRepoOrchestratorSettings {
+  return resolveRepoOrchestratorSettings(
+    manifest?.repoSettings[repoKey(repo.owner, repo.name)],
+    manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
+  );
 }
 
 /** Token for cloning: explicit account, else the account that sees the repo, else the first one. */
@@ -488,8 +538,10 @@ async function completePlan(
   const m = await ensureManifest();
   const item = m.items[itemId];
   if (!item) throw new Error(`unknown item ${itemId}`);
+  // No score is a scoring *failure*, not a decision — #8's contract is the
+  // conservative gate, so autoCoding:"on" deliberately does not apply here.
   const target = confidence
-    ? resolveGate(confidence.composite, m.settings.confidence)
+    ? resolveGate(confidence.composite, m.settings.confidence, repoOrch(item.repo).autoCoding)
     : "plan-gate";
   let reason: string;
   if (confidence) {
@@ -741,17 +793,25 @@ export function initOrchestrator(
     await setIntakePaused(Boolean(paused));
     return snapshot();
   });
-  // Queue + intake controls (#15). Narrow whitelist — not a generic settings writer.
+  // Settings writer (#15, generalized in #62). The validator table IS the whitelist:
+  // a key absent from it is not writable over IPC. intakePaused keeps its own handler
+  // (it carries the parked/resume-rite rite); confidence.* and shepherdRepush are
+  // hand-edit by design.
   ipcMain.handle(
     "skipper:orchestrator:updateSettings",
-    async (_e, patch: { codingWipPerRepo?: number }) => {
+    async (_e, patch: Partial<OrchestratorSettings>) => {
       const m = await ensureManifest();
-      if (typeof patch?.codingWipPerRepo === "number" && Number.isInteger(patch.codingWipPerRepo)) {
-        m.settings.codingWipPerRepo = Math.min(10, Math.max(1, patch.codingWipPerRepo));
+      for (const key of Object.keys(SETTINGS_VALIDATORS) as (keyof OrchestratorSettings)[]) {
+        // `key in patch`, not a truthiness check: an absent key is not a clear.
+        if (!patch || !(key in patch)) continue;
+        const next = SETTINGS_VALIDATORS[key]!((patch as Record<string, unknown>)[key]);
+        if (next !== undefined) (m.settings as unknown as Record<string, unknown>)[key] = next;
       }
       await saveOrchestratorManifest(deps!.manifestFilePath, m);
       broadcast();
-      pokeCoder();
+      pokePlanner(); // autoPlanPaused — without this the topbar toggle reads as dead
+      pokeCoder(); // codingWipPerRepo, autoCoding
+      pokeReviewer(); // review, reviewMaxRounds
       return snapshot();
     },
   );
@@ -761,13 +821,18 @@ export function initOrchestrator(
       const m = await ensureManifest();
       const key = repoKey(owner, name);
       const followedBefore = resolveRepoIntakeSettings(m.repoSettings[key]).followed;
-      // Clamp the per-repo WIP override to the same 1..10 range as the global setter.
-      if (typeof patch.wipLimit === "number") {
-        patch = { ...patch, wipLimit: Math.min(10, Math.max(1, Math.round(patch.wipLimit))) };
-      }
-      const merged: RepoIntakeSettings = { ...m.repoSettings[key], ...patch };
-      for (const k of Object.keys(merged) as (keyof RepoIntakeSettings)[]) {
-        if (merged[k] === undefined) delete merged[k];
+      const merged: RepoIntakeSettings = { ...m.repoSettings[key] };
+      for (const k of Object.keys(REPO_SETTINGS_VALIDATORS) as (keyof RepoIntakeSettings)[]) {
+        if (!patch || !(k in patch)) continue;
+        // undefined is meaningful here — it clears the override back to the global.
+        if (patch[k] === undefined) {
+          delete merged[k];
+          continue;
+        }
+        const next = REPO_SETTINGS_VALIDATORS[k]!(patch[k]);
+        // Invalid values are dropped, never coerced to undefined: coercing would
+        // silently clear a working override instead of rejecting the write.
+        if (next !== undefined) (merged as Record<string, unknown>)[k] = next;
       }
       if (Object.keys(merged).length === 0) delete m.repoSettings[key];
       else m.repoSettings[key] = merged;
@@ -810,7 +875,7 @@ export function initOrchestrator(
         linked: Boolean(links.repos[key]),
         localPath: links.repos[key]?.localPath,
         settings: m.repoSettings[key] ?? {},
-        resolved: resolveRepoIntakeSettings(m.repoSettings[key]),
+        resolved: resolveRepoOrchestratorSettings(m.repoSettings[key], m.settings),
       }));
   });
   ipcMain.handle(
@@ -1112,7 +1177,7 @@ export function initOrchestrator(
       return cached?.kind === "issue" ? cached : undefined;
     },
     getRepoPath: repoPathFor,
-    getRepoSettings: repoIntake,
+    getRepoSettings: repoOrch,
     requestTransition,
     completePlan,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
@@ -1151,11 +1216,8 @@ export function initOrchestrator(
       });
     },
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
-    getRepoPriority: (repo) => repoIntake(repo).priority,
-    getRepoWipLimit: (repo) =>
-      manifest?.repoSettings[repoKey(repo.owner, repo.name)]?.wipLimit ??
-      (manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS).codingWipPerRepo ??
-      1,
+    getRepoPriority: (repo) => repoOrch(repo).priority,
+    getRepoWipLimit: (repo) => repoOrch(repo).wipLimit,
     emitEvent: emitCodingEvent,
     getMemoryMcp: (item) =>
       orchestratorDeps.cliBundlePath
@@ -1180,6 +1242,7 @@ export function initOrchestrator(
     },
     completeReview,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
+    getRepoSettings: repoOrch,
   });
 
   initShepherd({

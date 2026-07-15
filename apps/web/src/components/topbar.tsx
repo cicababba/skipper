@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { LogOut, Settings as SettingsIcon, Loader2, Pause, Play } from "lucide-react";
+import { LogOut, Settings as SettingsIcon, Loader2, Pause, Play, Sparkles } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
@@ -15,6 +15,7 @@ export function Topbar() {
       className="topbar h-10 shrink-0 border-b border-border bg-sidebar/60 backdrop-blur flex items-center justify-end gap-3 px-3"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
+      <AutoPlanChip />
       <OrchestratorChip />
       <AccountWidget />
     </div>
@@ -65,6 +66,44 @@ function OrchestratorChip() {
     >
       <Play size={11} />
       {`${state.queue.coding} ${t.inbox.intake.coding} · ${state.queue.queued} ${t.inbox.intake.inQueue}`}
+    </button>
+  );
+}
+
+// Auto-plan master switch (#62), the symmetric twin of the intake chip: intakePaused
+// means issues don't enter, autoPlanPaused means they enter but don't get planned.
+function AutoPlanChip() {
+  const { t } = useT();
+  const { state, updateSettings } = useOrchestrator();
+  const [busy, setBusy] = useState(false);
+  const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
+
+  if (!state || Object.keys(state.accounts).length === 0) return null;
+
+  const paused = state.settings.autoPlanPaused;
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      await updateSettings({ autoPlanPaused: !paused });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={toggle}
+      disabled={busy}
+      style={noDrag}
+      title={paused ? t.inbox.autoPlan.resumeTooltip : t.inbox.autoPlan.pauseTooltip}
+      className={
+        paused
+          ? "flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-amber-500/20 bg-amber-500/10 text-amber-300 text-[11px] font-medium hover:bg-amber-500/20 transition-colors"
+          : "flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border bg-card text-muted text-[11px] font-medium hover:bg-card-hover hover:text-foreground transition-colors"
+      }
+    >
+      <Sparkles size={11} />
+      {paused ? t.inbox.autoPlan.paused : t.inbox.autoPlan.on}
     </button>
   );
 }

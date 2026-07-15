@@ -1,8 +1,10 @@
-import type {
-  ConfidenceReport,
-  ConfidenceThresholds,
-  ConfidenceWeights,
-  IssuePlan,
+import {
+  DEFAULT_EXTRA_PLAN_RUNS,
+  type ConfidenceReport,
+  type ConfidenceThresholds,
+  type ConfidenceWeights,
+  type GateMode,
+  type IssuePlan,
 } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm";
 import { generatePlan as realGeneratePlan, type PlanIssueInput } from "../planner";
@@ -28,6 +30,13 @@ export interface ComputeConfidenceOptions {
   extraPlanRuns?: number;
   /** Gate bands used to decide whether the extra runs can change the outcome. */
   thresholds?: ConfidenceThresholds;
+  /**
+   * Repo-resolved autoCoding (#62), so the skip is computed for the gate that
+   * will actually run. Optional — unlike resolveGate's required param — because
+   * this is public core API where every knob defaults; "auto" is the conservative
+   * choice (it skips least).
+   */
+  autoCoding?: GateMode;
   deps?: { generatePlan?: typeof realGeneratePlan };
 }
 
@@ -67,8 +76,9 @@ function presentSignals(
 export async function computeConfidence(
   opts: ComputeConfidenceOptions,
 ): Promise<ConfidenceReport> {
-  const extraRuns = opts.extraPlanRuns ?? 2;
+  const extraRuns = opts.extraPlanRuns ?? DEFAULT_EXTRA_PLAN_RUNS;
   const thresholds = opts.thresholds ?? DEFAULT_CONFIDENCE_THRESHOLDS;
+  const autoCoding = opts.autoCoding ?? "auto";
   const generate = opts.deps?.generatePlan ?? realGeneratePlan;
 
   const report: ConfidenceReport = {
@@ -98,7 +108,7 @@ export async function computeConfidence(
       .catch((err) => void report.errors.push(`critic: ${message(err)}`)),
   ]);
 
-  const skip = shouldSkipConvergence(report.signals, extraRuns, thresholds);
+  const skip = shouldSkipConvergence(report.signals, extraRuns, thresholds, autoCoding);
   if (skip) {
     report.convergenceSkipped = skip;
   } else {
@@ -136,13 +146,14 @@ function shouldSkipConvergence(
   signals: ConfidenceReport["signals"],
   extraRuns: number,
   thresholds: ConfidenceThresholds,
+  mode: GateMode,
 ): ConfidenceReport["convergenceSkipped"] {
   if (extraRuns <= 0) {
     return { reason: "disabled", detail: "extraPlanRuns is 0 — convergence needs 2+ plans" };
   }
   const { min, max } = reachableBand(signals);
-  const gate = resolveGate(min, thresholds);
-  if (gate !== resolveGate(max, thresholds)) return undefined;
+  const gate = resolveGate(min, thresholds, mode);
+  if (gate !== resolveGate(max, thresholds, mode)) return undefined;
   return {
     reason: "decisive",
     detail: `composite in [${min.toFixed(2)}, ${max.toFixed(2)}] → ${gate} for any convergence value`,

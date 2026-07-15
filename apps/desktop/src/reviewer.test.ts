@@ -4,9 +4,11 @@ import type {
   CriticObjection,
   IssuePlan,
   LifecycleState,
+  RepoIntakeSettings,
   StoredPlan,
   TrackedItem,
 } from "@skipper/shared";
+import { resolveRepoOrchestratorSettings } from "@skipper/shared";
 import type { critiqueDiff, OrchestratorSettings } from "@skipper/core";
 import { DEFAULT_ORCHESTRATOR_SETTINGS } from "@skipper/core";
 import { initReviewer, pokeReviewer, type ReviewerDeps } from "./reviewer";
@@ -63,7 +65,11 @@ interface Harness {
   completions: { itemId: string; review: AgentReview; to: LifecycleState; reason: string }[];
 }
 
-function makeHarness(overrides: Partial<ReviewerDeps> = {}): Harness {
+function makeHarness(
+  overrides: Partial<ReviewerDeps> = {},
+  /** Per-repo overrides (#62); resolved against getSettings() like production does. */
+  repoSettings: RepoIntakeSettings = {},
+): Harness {
   const items = new Map<string, TrackedItem>();
   const completions: Harness["completions"] = [];
   const deps: ReviewerDeps = {
@@ -86,8 +92,8 @@ function makeHarness(overrides: Partial<ReviewerDeps> = {}): Harness {
       const item = items.get(itemId)!;
       items.set(itemId, { ...item, review, state: to });
     },
-    getSettings: () =>
-      ({ ...DEFAULT_ORCHESTRATOR_SETTINGS, reviewMode: "always" }) as OrchestratorSettings,
+    getSettings: () => ({ ...DEFAULT_ORCHESTRATOR_SETTINGS, review: "on" }) as OrchestratorSettings,
+    getRepoSettings: () => resolveRepoOrchestratorSettings(repoSettings, deps.getSettings()),
     ...overrides,
   };
   return { items, deps, completions };
@@ -114,8 +120,8 @@ beforeEach(() => {
 });
 
 describe("reviewer driver", () => {
-  it("never mode skips straight to human-review with the reason", async () => {
-    const h = makeHarness({ getSettings: settings({ reviewMode: "never" }) });
+  it("off mode skips straight to human-review with the reason", async () => {
+    const h = makeHarness({ getSettings: settings({ review: "off" }) });
     const critic = fakeCritic("approve");
     initReviewer(h.deps, critic);
     h.items.set("github:1", makeItem("agent-review"));
@@ -125,11 +131,54 @@ describe("reviewer driver", () => {
     expect(h.completions).toHaveLength(1);
     expect(h.completions[0].to).toBe("human-review");
     expect(h.completions[0].review).toMatchObject({ rounds: 0, outcome: "skipped" });
-    expect(h.completions[0].reason).toBe("review skipped (mode: never)");
+    expect(h.completions[0].reason).toBe("review skipped (mode: off)");
+  });
+
+  // #62: on bypasses the heuristic — this diff is exactly the one auto skips.
+  it("on mode reviews a small high-confidence diff that auto would skip", async () => {
+    const h = makeHarness({ getSettings: settings({ review: "on" }) });
+    const critic = fakeCritic("approve");
+    initReviewer(h.deps, critic);
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+    expect(critic).toHaveBeenCalledOnce();
+    expect(h.completions[0].review).toMatchObject({ rounds: 1, outcome: "approve" });
+  });
+
+  it("lets a per-repo review override beat the global default", async () => {
+    const h = makeHarness({ getSettings: settings({ review: "on" }) }, { review: "off" });
+    const critic = fakeCritic("approve");
+    initReviewer(h.deps, critic);
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+    expect(critic).not.toHaveBeenCalled();
+    expect(h.completions[0].review).toMatchObject({ outcome: "skipped" });
+  });
+
+  // The mode gate is first-round only, so a fix round re-reviews even under off —
+  // otherwise the fix loop would never verify its own fix.
+  it("re-reviews a chained fix round even when review is off", async () => {
+    const h = makeHarness({ getSettings: settings({ review: "off" }) });
+    const critic = fakeCritic("approve");
+    initReviewer(h.deps, critic);
+    h.items.set(
+      "github:1",
+      makeItem("agent-review", {
+        rounds: 1,
+        outcome: "reject",
+        pendingObjections: [blockingObjection],
+        at: "2026-07-13T00:00:00.000Z",
+      }),
+    );
+    pokeReviewer();
+    await settle();
+    expect(critic).toHaveBeenCalledOnce();
   });
 
   it("auto mode skips a small high-confidence diff with an explainable reason", async () => {
-    const h = makeHarness({ getSettings: settings({ reviewMode: "auto" }) });
+    const h = makeHarness({ getSettings: settings({ review: "auto" }) });
     const critic = fakeCritic("approve");
     initReviewer(h.deps, critic);
     h.items.set("github:1", makeItem("agent-review"));
@@ -143,7 +192,7 @@ describe("reviewer driver", () => {
 
   it("auto mode forces review on a big diff", async () => {
     const h = makeHarness({
-      getSettings: settings({ reviewMode: "auto" }),
+      getSettings: settings({ review: "auto" }),
       getDiff: async () => bigDiff,
     });
     const critic = fakeCritic("approve");
@@ -220,8 +269,39 @@ describe("reviewer driver", () => {
     expect(h.completions[0].reason).toContain("criterion not met");
   });
 
+  // #62: reviewMaxRounds was hardcoded at 2 (MAX_REVIEW_ROUNDS).
+  it("reviewMaxRounds 1 exits to needs-input on the first rejecting round", async () => {
+    const h = makeHarness({ getSettings: settings({ review: "on", reviewMaxRounds: 1 }) });
+    initReviewer(h.deps, fakeCritic("reject", [blockingObjection]));
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+    expect(h.completions[0].to).toBe("needs-input");
+    expect(h.completions[0].review.rounds).toBe(1);
+    expect(h.completions[0].reason).toContain("did not converge after 1 rounds");
+  });
+
+  it("reviewMaxRounds 3 lets a chained round 2 go back to coding", async () => {
+    const h = makeHarness({ getSettings: settings({ review: "on", reviewMaxRounds: 3 }) });
+    initReviewer(h.deps, fakeCritic("reject", [blockingObjection]));
+    h.items.set(
+      "github:1",
+      makeItem("agent-review", {
+        rounds: 1,
+        outcome: "reject",
+        pendingObjections: [blockingObjection],
+        at: "2026-07-13T00:00:00.000Z",
+      }),
+    );
+    pokeReviewer();
+    await settle();
+    // With the old hardcoded 2 this would have exited to needs-input.
+    expect(h.completions[0].to).toBe("coding");
+    expect(h.completions[0].review.rounds).toBe(2);
+  });
+
   it("a chained fix round bypasses the auto-skip gate", async () => {
-    const h = makeHarness({ getSettings: settings({ reviewMode: "auto" }) });
+    const h = makeHarness({ getSettings: settings({ review: "auto" }) });
     const critic = fakeCritic("approve");
     initReviewer(h.deps, critic);
     h.items.set(

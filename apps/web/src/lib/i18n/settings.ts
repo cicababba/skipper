@@ -116,6 +116,28 @@ const en = {
     chooseRepos: "Choose repositories…",
   },
 
+  orchestration: {
+    title: "Orchestration",
+    desc: "How far a plan travels on its own. Per-repo overrides live on each repo's settings page.",
+    autoPlanPaused: "Pause auto-planning everywhere",
+    autoPlanPausedDesc:
+      "A master switch over every repo's auto-plan setting. Issues still arrive; nothing plans until you resume.",
+    autoCoding: "Auto-coding",
+    autoCodingDesc: "Whether an approved plan starts coding without you.",
+    review: "Agent review",
+    reviewDesc: "Whether the diff is reviewed by the critic after coding.",
+    reviewMaxRounds: "Review rounds",
+    reviewMaxRoundsDesc:
+      "Fix rounds before the item stops at needs-input. Not the coding agent's turn limit.",
+    reviewOffNote: "Review is off, so rounds do not apply.",
+    on: "On",
+    off: "Off",
+    autoCodingAuto: (high: string) => `Auto — the confidence score decides (>= ${high})`,
+    reviewAuto: (high: string) =>
+      `Auto — skip only a small, low-risk diff from a plan scoring >= ${high}`,
+    floorNote: (low: string) =>
+      `A plan scoring below ${low} always stops at needs-input, in every mode — that means the plan is unclear, not that it needs approval.`,
+  },
   repositories: {
     title: "Repositories",
     desc: "Which repositories feed the inbox, and how their issues are planned and queued.",
@@ -269,6 +291,28 @@ const it: typeof en = {
     chooseRepos: "Scegli repository…",
   },
 
+  orchestration: {
+    title: "Orchestrazione",
+    desc: "Quanto lontano arriva un piano da solo. Le eccezioni per repo stanno nella pagina impostazioni del repo.",
+    autoPlanPaused: "Metti in pausa l'auto-plan ovunque",
+    autoPlanPausedDesc:
+      "Un interruttore generale sopra l'impostazione di ogni repo. Le issue continuano ad arrivare; nulla viene pianificato finché non riprendi.",
+    autoCoding: "Auto-coding",
+    autoCodingDesc: "Se un piano approvato avvia lo sviluppo senza di te.",
+    review: "Review dell'agente",
+    reviewDesc: "Se il diff viene revisionato dal critico dopo lo sviluppo.",
+    reviewMaxRounds: "Round di review",
+    reviewMaxRoundsDesc:
+      "Round di fix prima che l'item si fermi a needs-input. Non è il limite di turni dell'agente.",
+    reviewOffNote: "La review è disattivata, quindi i round non si applicano.",
+    on: "Attivo",
+    off: "Disattivo",
+    autoCodingAuto: (high: string) => `Auto — decide il punteggio di confidenza (>= ${high})`,
+    reviewAuto: (high: string) =>
+      `Auto — salta solo un diff piccolo e a basso rischio da un piano che segna >= ${high}`,
+    floorNote: (low: string) =>
+      `Un piano sotto ${low} si ferma sempre a needs-input, in ogni modalità — vuol dire che il piano non è chiaro, non che serve un'approvazione.`,
+  },
   repositories: {
     title: "Repository",
     desc: "Quali repository alimentano l'inbox e come le loro issue vengono pianificate e messe in coda.",
@@ -422,6 +466,28 @@ const fr: typeof en = {
     chooseRepos: "Choisir les dépôts…",
   },
 
+  orchestration: {
+    title: "Orchestration",
+    desc: "Jusqu'où un plan avance seul. Les exceptions par dépôt sont sur la page de réglages du dépôt.",
+    autoPlanPaused: "Suspendre l'auto-planification partout",
+    autoPlanPausedDesc:
+      "Un interrupteur général au-dessus du réglage de chaque dépôt. Les issues arrivent toujours ; rien n'est planifié tant que vous ne reprenez pas.",
+    autoCoding: "Auto-codage",
+    autoCodingDesc: "Si un plan approuvé lance le codage sans vous.",
+    review: "Revue de l'agent",
+    reviewDesc: "Si le diff est relu par le critique après le codage.",
+    reviewMaxRounds: "Tours de revue",
+    reviewMaxRoundsDesc:
+      "Tours de correction avant que l'item s'arrête à needs-input. Pas la limite de tours de l'agent.",
+    reviewOffNote: "La revue est désactivée, les tours ne s'appliquent pas.",
+    on: "Activé",
+    off: "Désactivé",
+    autoCodingAuto: (high: string) => `Auto — le score de confiance décide (>= ${high})`,
+    reviewAuto: (high: string) =>
+      `Auto — ne saute qu'un diff petit et peu risqué issu d'un plan à >= ${high}`,
+    floorNote: (low: string) =>
+      `Un plan sous ${low} s'arrête toujours à needs-input, dans tous les modes — cela veut dire que le plan n'est pas clair, pas qu'il faut l'approuver.`,
+  },
   repositories: {
     title: "Dépôts",
     desc: "Quels dépôts alimentent l'inbox, et comment leurs issues sont planifiées et mises en file.",
@@ -575,6 +641,28 @@ const es: typeof en = {
     chooseRepos: "Elegir repositorios…",
   },
 
+  orchestration: {
+    title: "Orquestación",
+    desc: "Hasta dónde llega un plan por su cuenta. Las excepciones por repo están en la página de ajustes del repo.",
+    autoPlanPaused: "Pausar la auto-planificación en todas partes",
+    autoPlanPausedDesc:
+      "Un interruptor general por encima del ajuste de cada repo. Las issues siguen llegando; nada se planifica hasta que reanudes.",
+    autoCoding: "Auto-codificación",
+    autoCodingDesc: "Si un plan aprobado inicia la codificación sin ti.",
+    review: "Revisión del agente",
+    reviewDesc: "Si el diff lo revisa el crítico después de codificar.",
+    reviewMaxRounds: "Rondas de revisión",
+    reviewMaxRoundsDesc:
+      "Rondas de corrección antes de que el item pare en needs-input. No es el límite de turnos del agente.",
+    reviewOffNote: "La revisión está desactivada, así que las rondas no aplican.",
+    on: "Activada",
+    off: "Desactivada",
+    autoCodingAuto: (high: string) => `Auto — decide la puntuación de confianza (>= ${high})`,
+    reviewAuto: (high: string) =>
+      `Auto — omite solo un diff pequeño y de bajo riesgo de un plan con >= ${high}`,
+    floorNote: (low: string) =>
+      `Un plan por debajo de ${low} siempre para en needs-input, en cualquier modo — significa que el plan no está claro, no que necesite aprobación.`,
+  },
   repositories: {
     title: "Repositorios",
     desc: "Qué repositorios alimentan el inbox y cómo se planifican y encolan sus issues.",

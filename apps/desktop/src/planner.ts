@@ -12,7 +12,7 @@ import type {
   Issue,
   LifecycleState,
   RepoRef,
-  ResolvedRepoIntakeSettings,
+  ResolvedRepoOrchestratorSettings,
   StoredPlan,
   TrackedItem,
   TransitionActor,
@@ -32,8 +32,8 @@ export interface PlannerDeps {
   /** Cached inbox issue for the item (labels + body), best-effort. */
   getIssue: (item: TrackedItem) => Issue | undefined;
   getRepoPath: (repo: RepoRef) => string | undefined;
-  /** Per-repo intake settings (#15) — gates auto-plan on admission. */
-  getRepoSettings: (repo: RepoRef) => ResolvedRepoIntakeSettings;
+  /** Per-repo settings (#15, #62) — gates auto-plan on admission; carries autoCoding. */
+  getRepoSettings: (repo: RepoRef) => ResolvedRepoOrchestratorSettings;
   requestTransition: (
     itemId: string,
     to: LifecycleState,
@@ -98,6 +98,9 @@ async function scan(): Promise<void> {
     if (inFlight.has(item.id) || queued.has(item.id)) continue;
     if (item.state === "triage") {
       if (item.holdAutoPlan) continue; // resume rite (#15): wait for the user
+      // #62 master switch. Gates auto-plan only — the "planning" branch below still
+      // has to run, or crash recovery and the user's manual Pianifica would strand.
+      if (deps.getSettings().autoPlanPaused) continue;
       if (!deps.getRepoPath(item.repo)) continue;
       const rs = deps.getRepoSettings(item.repo);
       if (rs.autoPlan === "off") continue;
@@ -191,6 +194,9 @@ async function run(itemId: string): Promise<void> {
         llm: provider,
         extraPlanRuns: settings.confidence.extraPlanRuns,
         thresholds: { high: settings.confidence.high, low: settings.confidence.low },
+        // #62: score for the gate that will actually run — under on/off the
+        // queued/plan-gate choice is pinned, so the extra runs often can't move it.
+        autoCoding: deps.getRepoSettings(item.repo).autoCoding,
       });
       if (Object.keys(report.signals).length === 0) report = undefined;
     } catch {
