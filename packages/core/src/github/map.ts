@@ -104,6 +104,7 @@ export function mapPullDetail(
     mergeable: payload.mergeable ?? undefined,
     headRef: payload.head.ref,
     baseRef: payload.base.ref,
+    headSha: payload.head.sha,
   };
 }
 
@@ -117,5 +118,6 @@ export function applyPullDetails(pr: PullRequest, details: GitHubPullPayload): P
     mergeable: details.mergeable ?? undefined,
     headRef: details.head.ref,
     baseRef: details.base.ref,
+    headSha: details.head.sha,
   };
 }

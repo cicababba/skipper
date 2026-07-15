@@ -157,7 +157,13 @@ export function mapReviewFeedback(
 }
 
 interface CheckRunsPayload {
-  check_runs?: Array<{ status?: string; conclusion?: string | null }>;
+  check_runs?: Array<{
+    status?: string;
+    conclusion?: string | null;
+    name?: string;
+    html_url?: string;
+    output?: { title?: string | null; summary?: string | null };
+  }>;
 }
 
 interface CombinedStatusPayload {
@@ -196,4 +202,29 @@ export async function fetchCiStatus(
   if (passing) return "passing";
 
   return undefined;
+}
+
+export interface FailingCheck {
+  name: string;
+  url?: string;
+  summary?: string;
+}
+
+/** The failed check runs on a commit — feeds the CI-fix re-entry prompt (name + summary). */
+export async function fetchFailingChecks(
+  repo: RepoRef,
+  sha: string,
+  getToken: GitHubTokenProvider,
+): Promise<FailingCheck[]> {
+  const checks = await githubGet<CheckRunsPayload>(
+    `${repoUrl(repo)}/commits/${sha}/check-runs?per_page=100`,
+    getToken,
+  );
+  return (checks.body?.check_runs ?? [])
+    .filter((r) => FAILING_CONCLUSIONS.has(r.conclusion ?? ""))
+    .map((r) => ({
+      name: r.name ?? "unnamed check",
+      url: r.html_url ?? undefined,
+      summary: r.output?.title ?? r.output?.summary ?? undefined,
+    }));
 }

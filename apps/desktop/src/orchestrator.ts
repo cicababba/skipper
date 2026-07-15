@@ -288,6 +288,7 @@ const SETTINGS_VALIDATORS: {
   autoCoding: oneOf("on", "off", "auto"),
   review: oneOf("on", "off", "auto"),
   reviewMaxRounds: clampInt(1, 5),
+  ciReentry: oneOf("off", "auto"),
   codingWipPerRepo: clampInt(1, 10),
   // #58: model strings stay opaque CLI aliases — no enum, so a manifest
   // hand-edited to a full model id survives a write from the UI.
@@ -308,6 +309,7 @@ const REPO_SETTINGS_VALIDATORS: {
   autoCoding: oneOf("on", "off", "auto"),
   review: oneOf("on", "off", "auto"),
   reviewMaxRounds: clampInt(1, 5),
+  ciReentry: oneOf("off", "auto"),
   plannerModel: nonEmptyString,
   coderModel: nonEmptyString,
   reviewerModel: nonEmptyString,

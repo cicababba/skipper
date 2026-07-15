@@ -80,6 +80,7 @@ export async function loadOrCreateOrchestratorManifest(
       parsed.settings.reviewMaxRounds ??= DEFAULT_ORCHESTRATOR_SETTINGS.reviewMaxRounds;
       parsed.settings.reviewerModel ??= DEFAULT_ORCHESTRATOR_SETTINGS.reviewerModel;
       parsed.settings.shepherdRepush ??= DEFAULT_ORCHESTRATOR_SETTINGS.shepherdRepush;
+      parsed.settings.ciReentry ??= DEFAULT_ORCHESTRATOR_SETTINGS.ciReentry;
       parsed.settings.codingWipPerRepo ??= DEFAULT_ORCHESTRATOR_SETTINGS.codingWipPerRepo;
       parsed.repoSettings ??= {};
       return parsed;
