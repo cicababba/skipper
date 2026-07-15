@@ -9,6 +9,7 @@ import type {
   FollowCandidatesResult,
   ListReposResult,
   MemoryPhase,
+  OrchestratorSettings,
   OrchestratorState,
   OrchestratorTransitionResult,
   RepoIntakeSettings,
@@ -151,7 +152,7 @@ declare global {
           reason?: string,
         ) => Promise<OrchestratorTransitionResult>;
         setIntakePaused: (paused: boolean) => Promise<OrchestratorState>;
-        updateSettings: (patch: { codingWipPerRepo?: number }) => Promise<OrchestratorState>;
+        updateSettings: (patch: Partial<OrchestratorSettings>) => Promise<OrchestratorState>;
         setRepoSettings: (
           owner: string,
           name: string,

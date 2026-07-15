@@ -9,6 +9,8 @@ import type {
   AgentReview,
   Issue,
   LifecycleState,
+  RepoRef,
+  ResolvedRepoOrchestratorSettings,
   StoredPlan,
   TrackedItem,
 } from "@skipper/shared";
@@ -16,7 +18,7 @@ import type { WorktreeDiff } from "./worktrees";
 
 // Agent review loop (issue #10): consumes "agent-review" items (the #9 coder's
 // output) with fresh context — the critic never sees the coder's session, only
-// the diff and the issue's acceptance criteria. Max 2 rounds per fix chain,
+// the diff and the issue's acceptance criteria. reviewMaxRounds per fix chain (#62),
 // then needs-input: non-convergence is a confidence signal, not an error.
 //
 // Unlike the coder there is no abort path: askStructured has no signal param,
@@ -41,10 +43,11 @@ export interface ReviewerDeps {
     reason: string,
   ) => Promise<void>;
   getSettings: () => OrchestratorSettings;
+  /** Per-repo overrides (#62): review mode + reviewMaxRounds. */
+  getRepoSettings: (repo: RepoRef) => ResolvedRepoOrchestratorSettings;
 }
 
 const REVIEW_CONCURRENCY = 2;
-const MAX_REVIEW_ROUNDS = 2;
 
 let deps: ReviewerDeps | null = null;
 let critic: typeof critiqueDiff = critiqueDiff;
@@ -147,11 +150,12 @@ async function run(itemId: string): Promise<void> {
     }
 
     const settings = deps.getSettings();
+    const repoSettings = deps.getRepoSettings(item.repo);
     // Mode gate only on the first round: a fix round is always re-reviewed,
     // otherwise the loop is pointless.
     if (!chained) {
       const decision = resolveReviewMode({
-        mode: settings.reviewMode,
+        mode: repoSettings.review,
         stats: diff.stats,
         planConfidence: item.plan?.confidence,
         highThreshold: settings.confidence.high,
@@ -208,7 +212,7 @@ async function run(itemId: string): Promise<void> {
         "human-review",
         `agent review round ${round}: ${signal.verdict}${note ? ` — ${note}` : ""}`.slice(0, 200),
       );
-    } else if (round >= MAX_REVIEW_ROUNDS) {
+    } else if (round >= repoSettings.reviewMaxRounds) {
       const blocking = signal.objections
         .filter((o) => o.blocking)
         .map((o) => o.detail)
@@ -217,7 +221,7 @@ async function run(itemId: string): Promise<void> {
         itemId,
         { rounds: round, outcome: signal.verdict, objections: signal.objections, at: now() },
         "needs-input",
-        `review did not converge after ${MAX_REVIEW_ROUNDS} rounds: ${blocking || signal.verdict}`.slice(
+        `review did not converge after ${repoSettings.reviewMaxRounds} rounds: ${blocking || signal.verdict}`.slice(
           0,
           500,
         ),

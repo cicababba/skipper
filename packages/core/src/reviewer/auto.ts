@@ -2,7 +2,10 @@
 // explainable by design — never "ask an LLM whether review is needed".
 // Hot-files and tests-green-on-first-try are v2 signals (memory).
 
-export type ReviewMode = "always" | "never" | "auto";
+import type { GateMode } from "@skipper/shared";
+
+/** #62: the review axis shares the gate vocabulary with autoCoding. */
+export type ReviewMode = GateMode;
 
 export interface DiffStats {
   filesChanged: number;
@@ -32,8 +35,8 @@ export const RISKY_FILE_PATTERNS: readonly RegExp[] = [
 ];
 
 export function resolveReviewMode(input: ReviewModeInput): { review: boolean; reason: string } {
-  if (input.mode === "always") return { review: true, reason: "reviewMode: always" };
-  if (input.mode === "never") return { review: false, reason: "review skipped (mode: never)" };
+  if (input.mode === "on") return { review: true, reason: "review: on" };
+  if (input.mode === "off") return { review: false, reason: "review skipped (mode: off)" };
 
   const { stats, planConfidence, highThreshold } = input;
   if (planConfidence === undefined) {

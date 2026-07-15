@@ -28,7 +28,7 @@ export function RepoSettingsView() {
   }, [load]);
 
   const row = rows.find((r) => r.key === key);
-  const globalWip = state?.queue.wipLimitPerRepo ?? 1;
+  const global = state?.settings;
 
   const patch = async (p: Partial<RepoIntakeSettings>) => {
     if (!window.skipper) return;
@@ -60,9 +60,9 @@ export function RepoSettingsView() {
         </div>
       </div>
 
-      {isElectron && row && (
+      {isElectron && row && global && (
         <Section title={rp.intake} editable={false} editing={false}>
-          <RepoIntakeControls row={row} globalWip={globalWip} busy={busy} onPatch={(p) => void patch(p)} />
+          <RepoIntakeControls row={row} global={global} busy={busy} onPatch={(p) => void patch(p)} />
         </Section>
       )}
     </div>

@@ -13,7 +13,7 @@ import { FollowPickerModal } from "@/components/follow-picker-modal";
 // the repo detail page (/repos/owner/name) — this section only delegates to it.
 export function RepositoriesSection() {
   const { t } = useT();
-  const { state } = useOrchestrator();
+  const { state, updateSettings } = useOrchestrator();
   const [rows, setRows] = useState<RepoSettingsRow[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -28,15 +28,12 @@ export function RepositoriesSection() {
     void load();
   }, [load]);
 
-  const setWipLimit = async (value: number) => {
-    if (!window.skipper) return;
-    await window.skipper.orchestrator.updateSettings({ codingWipPerRepo: value });
-  };
+  const setWipLimit = (value: number) => updateSettings({ codingWipPerRepo: value });
 
   if (!isElectron) return null;
 
   const r = t.settings.repositories;
-  const wipLimit = state?.queue.wipLimitPerRepo ?? 1;
+  const wipLimit = state?.settings.codingWipPerRepo ?? 1;
 
   return (
     <section className="mb-10">

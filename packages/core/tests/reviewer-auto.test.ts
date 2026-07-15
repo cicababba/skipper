@@ -23,18 +23,29 @@ function input(overrides: Partial<Parameters<typeof resolveReviewMode>[0]> = {})
 }
 
 describe("resolveReviewMode", () => {
-  it("always reviews in always mode", () => {
-    expect(resolveReviewMode(input({ mode: "always" }))).toEqual({
+  it("always reviews in on mode", () => {
+    expect(resolveReviewMode(input({ mode: "on" }))).toEqual({
       review: true,
-      reason: "reviewMode: always",
+      reason: "review: on",
     });
   });
 
-  it("never reviews in never mode", () => {
-    expect(resolveReviewMode(input({ mode: "never" }))).toEqual({
+  it("never reviews in off mode", () => {
+    expect(resolveReviewMode(input({ mode: "off" }))).toEqual({
       review: false,
-      reason: "review skipped (mode: never)",
+      reason: "review skipped (mode: off)",
     });
+  });
+
+  // on/off bypass the heuristic entirely — the small clean diff below would be
+  // skipped by auto, and the risky path would be reviewed by auto.
+  it("on reviews a diff that auto would skip", () => {
+    expect(resolveReviewMode(input({ mode: "on" })).review).toBe(true);
+  });
+
+  it("off skips a diff that auto would review", () => {
+    const risky = { filesChanged: 9, totalChangedLines: 412, files: [".github/workflows/ci.yml"] };
+    expect(resolveReviewMode(input({ mode: "off", stats: risky })).review).toBe(false);
   });
 
   it("auto skips when all conditions hold, with the numbers in the reason", () => {

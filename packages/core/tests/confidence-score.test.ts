@@ -263,6 +263,47 @@ describe("computeConfidence — adaptive convergence (#50)", () => {
     expect(report.signals.convergence?.score).toBeCloseTo(1);
   });
 
+  // #62: the skip is computed for the gate that will actually run. Under on/off the
+  // queued/plan-gate choice is pinned, so a band that only clears the low floor is
+  // already decisive — no reason to pay for two more agentic plan runs.
+  it.each([
+    ["on", "queued"],
+    ["off", "plan-gate"],
+  ] as const)("skips the extra runs when autoCoding is %s", async (autoCoding, target) => {
+    const generatePlan = vi.fn(async () => plan());
+    const report = await computeConfidence({
+      plan: plan(),
+      issue: ISSUE,
+      repoPath: repo,
+      llm: fakeLLM(APPROVE),
+      extraPlanRuns: 2,
+      // Default thresholds: the [0.75, 1] band straddles high, so auto would pay.
+      autoCoding,
+      deps: { generatePlan },
+    });
+    expect(generatePlan).not.toHaveBeenCalled();
+    expect(report.convergenceSkipped?.reason).toBe("decisive");
+    expect(report.convergenceSkipped?.detail).toContain(target);
+  });
+
+  it("still pays under on when the band straddles the low floor", async () => {
+    const generatePlan = vi.fn(async () => plan());
+    const report = await computeConfidence({
+      plan: plan(),
+      issue: ISSUE,
+      repoPath: repo,
+      llm: fakeLLM(APPROVE),
+      extraPlanRuns: 2,
+      // Band [0.75, 1] straddles low, so needs-input is still reachable — and the
+      // floor outranks the mode.
+      thresholds: { high: 0.99, low: 0.8 },
+      autoCoding: "on",
+      deps: { generatePlan },
+    });
+    expect(generatePlan).toHaveBeenCalledTimes(2);
+    expect(report.convergenceSkipped).toBeUndefined();
+  });
+
   it("runs convergence when every other signal failed", async () => {
     const generatePlan = vi.fn(async () => plan());
     const llm = {

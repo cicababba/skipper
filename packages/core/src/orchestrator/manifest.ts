@@ -1,26 +1,16 @@
 import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { RepoIntakeSettings, TrackedItem } from "@skipper/shared";
+import {
+  DEFAULT_ORCHESTRATOR_SETTINGS,
+  type OrchestratorSettings,
+  type RepoIntakeSettings,
+  type TrackedItem,
+} from "@skipper/shared";
 
-export interface OrchestratorSettings {
-  intakePaused: boolean;
-  /** Model handed to the planner's LLM provider (also scores confidence, #8). */
-  plannerModel: string;
-  /** Gate thresholds + convergence sample count (#8). Hand-editable; UI with #13. */
-  confidence: { high: number; low: number; extraPlanRuns: number };
-  /** Model handed to the coding agent (#9). */
-  coderModel: string;
-  /** Max agent turns per coding run (#9). */
-  coderMaxTurns: number;
-  /** Agent review policy (#10): always / never / auto (mechanical skip heuristic). */
-  reviewMode: "always" | "never" | "auto";
-  /** Model handed to the diff critic (#10). */
-  reviewerModel: string;
-  /** After a change-request fix round (#11): hold at human-review or repush unattended. */
-  shepherdRepush: "human" | "auto";
-  /** Coding WIP limit per repo (#15); parallelism is across repos. */
-  codingWipPerRepo: number;
-}
+// The settings model lives in @skipper/shared (#62) so the renderer can read it
+// without importing this package. Re-exported to keep the core surface intact.
+export { DEFAULT_ORCHESTRATOR_SETTINGS };
+export type { OrchestratorSettings };
 
 export interface OrchestratorManifest {
   version: 1;
@@ -35,17 +25,24 @@ export interface OrchestratorManifest {
   resumeRite?: { itemIds: string[]; createdAt: string };
 }
 
-export const DEFAULT_ORCHESTRATOR_SETTINGS: OrchestratorSettings = {
-  intakePaused: false,
-  plannerModel: "opus",
-  confidence: { high: 0.85, low: 0.4, extraPlanRuns: 2 },
-  coderModel: "opus",
-  coderMaxTurns: 60,
-  reviewMode: "auto",
-  reviewerModel: "opus",
-  shepherdRepush: "human",
-  codingWipPerRepo: 1,
-};
+/**
+ * #62: reviewMode: "always" | "never" | "auto" → review: "on" | "off" | "auto".
+ *
+ * The knob was hand-edit-only, never UI-writable — but hand-editing is exactly how
+ * it was used, so a plain `??=` would silently turn a hand-set "always" into "auto",
+ * i.e. less review than the user asked for. Consume the legacy key explicitly, then
+ * delete it: the whole object is reserialized on save, and a surviving reviewMode
+ * would lie to the next person who opens the file.
+ */
+function migrateReviewMode(settings: OrchestratorSettings): void {
+  const legacy = settings as unknown as { reviewMode?: string };
+  if (settings.review === undefined && legacy.reviewMode !== undefined) {
+    settings.review =
+      legacy.reviewMode === "always" ? "on" : legacy.reviewMode === "never" ? "off" : "auto";
+  }
+  delete legacy.reviewMode;
+  settings.review ??= DEFAULT_ORCHESTRATOR_SETTINGS.review;
+}
 
 function freshManifest(): OrchestratorManifest {
   return {
@@ -72,12 +69,15 @@ export async function loadOrCreateOrchestratorManifest(
       typeof parsed.parked === "object" &&
       parsed.parked !== null
     ) {
-      // Additive settings (#8, #9, #10): fill defaults into older manifests.
+      // Additive settings (#8, #9, #10, #62): fill defaults into older manifests.
+      parsed.settings.autoPlanPaused ??= DEFAULT_ORCHESTRATOR_SETTINGS.autoPlanPaused;
       parsed.settings.plannerModel ??= DEFAULT_ORCHESTRATOR_SETTINGS.plannerModel;
       parsed.settings.confidence ??= structuredClone(DEFAULT_ORCHESTRATOR_SETTINGS.confidence);
       parsed.settings.coderModel ??= DEFAULT_ORCHESTRATOR_SETTINGS.coderModel;
       parsed.settings.coderMaxTurns ??= DEFAULT_ORCHESTRATOR_SETTINGS.coderMaxTurns;
-      parsed.settings.reviewMode ??= DEFAULT_ORCHESTRATOR_SETTINGS.reviewMode;
+      parsed.settings.autoCoding ??= DEFAULT_ORCHESTRATOR_SETTINGS.autoCoding;
+      migrateReviewMode(parsed.settings);
+      parsed.settings.reviewMaxRounds ??= DEFAULT_ORCHESTRATOR_SETTINGS.reviewMaxRounds;
       parsed.settings.reviewerModel ??= DEFAULT_ORCHESTRATOR_SETTINGS.reviewerModel;
       parsed.settings.shepherdRepush ??= DEFAULT_ORCHESTRATOR_SETTINGS.shepherdRepush;
       parsed.settings.codingWipPerRepo ??= DEFAULT_ORCHESTRATOR_SETTINGS.codingWipPerRepo;

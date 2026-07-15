@@ -7,6 +7,7 @@ import type {
   FollowCandidatesResult,
   ListReposResult,
   MemoryPhase,
+  OrchestratorSettings,
   OrchestratorState,
   OrchestratorTransitionResult,
   RepoIntakeSettings,
@@ -122,7 +123,7 @@ contextBridge.exposeInMainWorld("skipper", {
       ipcRenderer.invoke("skipper:orchestrator:requestTransition", itemId, to, reason),
     setIntakePaused: (paused: boolean): Promise<OrchestratorState> =>
       ipcRenderer.invoke("skipper:orchestrator:setIntakePaused", paused),
-    updateSettings: (patch: { codingWipPerRepo?: number }): Promise<OrchestratorState> =>
+    updateSettings: (patch: Partial<OrchestratorSettings>): Promise<OrchestratorState> =>
       ipcRenderer.invoke("skipper:orchestrator:updateSettings", patch),
     setRepoSettings: (
       owner: string,

@@ -16,6 +16,7 @@ import {
 import { AccountSection } from "@/components/account-section";
 import { GithubAccountSection } from "@/components/github-account-section";
 import { RepositoriesSection } from "@/components/repositories-section";
+import { OrchestrationSection } from "@/components/orchestration-section";
 import { CliInstallSection } from "@/components/cli-install-section";
 import { UpdatesSection } from "@/components/updates-section";
 import { LanguageSection } from "@/components/language-section";
@@ -192,6 +193,7 @@ export default function SettingsPage() {
         <GithubAccountSection />
 
         <RepositoriesSection />
+        <OrchestrationSection />
 
         <UpdatesSection />
 
