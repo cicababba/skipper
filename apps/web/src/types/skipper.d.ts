@@ -210,6 +210,7 @@ declare global {
           id: string,
           vote: "up" | "down" | null,
         ) => Promise<{ ok: boolean; error?: string }>;
+        delete: (id: string) => Promise<{ ok: boolean; error?: string }>;
       };
       updates: {
         getState: () => Promise<UpdateState>;

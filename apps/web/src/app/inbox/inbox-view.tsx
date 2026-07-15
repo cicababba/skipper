@@ -8,7 +8,7 @@ import { useOrchestrator } from "@/lib/orchestrator-context";
 import { RepoManagerModal } from "@/components/repo-manager-modal";
 import { useT } from "@/lib/app-i18n";
 import { useStoredState } from "@/lib/use-stored-state";
-import { KANBAN_COLUMNS, type ColumnId } from "@/lib/inbox/model";
+import { KANBAN_COLUMNS, columnCounts, type ColumnId } from "@/lib/inbox/model";
 import { filterItems, sortItems, type SortDir, type SortKey } from "@/lib/inbox/table";
 import { InboxTable } from "./inbox-table";
 import { InboxKanban } from "./inbox-kanban";
@@ -20,12 +20,13 @@ type ColumnFilter = ColumnId | "attention";
 
 const CONFIDENCE_THRESHOLDS = [0.5, 0.75] as const;
 
-export function InboxView() {
+export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
   const { state, error, refreshing, refresh, clearError } = useOrchestrator();
   const { t } = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const repo = searchParams.get("repo");
+  // Embedded in a repo page (repoProp) the filter comes from the route, not the URL query.
+  const repo = repoProp ?? searchParams.get("repo");
 
   const [storedView, setStoredView] = useStoredState(VIEW_KEY, "table");
   const view: ViewMode = storedView === "kanban" ? "kanban" : "table";
@@ -64,17 +65,32 @@ export function InboxView() {
     return view === "table" ? sortItems(filtered, sortKey, sortDir) : filtered;
   }, [state, repo, view, columns, minConfidence, sortKey, sortDir]);
 
+  // Dashboard tiles reflect the whole (repo-scoped) queue, independent of the
+  // column/confidence filters — clicking a tile is what applies the filter.
+  const counts = useMemo(
+    () => columnCounts(state ? filterItems(state.items, { repo: repo ?? undefined }) : []),
+    [state, repo],
+  );
+
+  // Click a tile → drill into that bucket in the table view.
+  const drillTo = (id: ColumnFilter) => {
+    if (view !== "table") switchView("table");
+    toggleColumn(id);
+  };
+
   const isElectron = typeof window !== "undefined" && !!window.skipper;
 
   return (
     <div className="min-h-full p-6 space-y-4">
       {/* Header */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <Inbox size={22} className="text-accent" />
-          <h1 className="text-2xl font-semibold tracking-tight">{t.inbox.title}</h1>
-        </div>
-        {repo && (
+        {!repoProp && (
+          <div className="flex items-center gap-2">
+            <Inbox size={22} className="text-accent" />
+            <h1 className="text-2xl font-semibold tracking-tight">{t.inbox.title}</h1>
+          </div>
+        )}
+        {repo && !repoProp && (
           <button
             onClick={() => router.push("/inbox")}
             className="flex items-center gap-1 text-[12px] px-2 py-1 rounded-full border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
@@ -115,6 +131,40 @@ export function InboxView() {
           <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
         </button>
       </div>
+
+      {/* Dashboard tiles — one per bucket, click to drill into the table. */}
+      {state && state.items.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+          {(["attention", ...KANBAN_COLUMNS.map((c) => c.id)] as ColumnFilter[]).map((id) => {
+            const active = columns.has(id);
+            const isAttention = id === "attention";
+            return (
+              <button
+                key={id}
+                onClick={() => drillTo(id)}
+                className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors ${
+                  active
+                    ? isAttention
+                      ? "border-amber-500/40 bg-amber-500/10"
+                      : "border-accent/40 bg-accent/10"
+                    : "border-border bg-card/40 hover:bg-card"
+                }`}
+              >
+                <span
+                  className={`text-xl font-semibold tabular-nums ${
+                    isAttention && counts[id] > 0 ? "text-amber-300" : "text-foreground"
+                  }`}
+                >
+                  {counts[id]}
+                </span>
+                <span className="text-[11px] text-muted/70 truncate w-full">
+                  {t.inbox.columns[id]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Error strip */}
       {error && (

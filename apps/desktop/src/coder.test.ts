@@ -87,6 +87,9 @@ function makeHarness(overrides: Partial<CoderDeps> = {}): Harness {
     }),
     getSettings: () => DEFAULT_ORCHESTRATOR_SETTINGS as OrchestratorSettings,
     getRepoPriority: () => "normal",
+    // Defaults to the global setting so existing WIP tests (which override
+    // getSettings) keep working; a test can still override this directly.
+    getRepoWipLimit: () => Math.max(1, deps.getSettings().codingWipPerRepo ?? 1),
     emitEvent: (itemId, event) => events.push({ itemId, event }),
     ...overrides,
   };

@@ -28,6 +28,22 @@ export function attentionCounts(items: TrackedItem[]): {
   return { total, byRepo };
 }
 
+/** Item counts per kanban column plus the attention group — drives the dashboard tiles. */
+export function columnCounts(items: TrackedItem[]): Record<ColumnId | "attention", number> {
+  const counts: Record<ColumnId | "attention", number> = {
+    attention: 0,
+    triage: 0,
+    planning: 0,
+    planGate: 0,
+    queued: 0,
+    coding: 0,
+    review: 0,
+    done: 0,
+  };
+  for (const item of items) counts[columnFor(item.state)] += 1;
+  return counts;
+}
+
 export function reposOf(items: TrackedItem[]): RepoRef[] {
   const seen = new Map<string, RepoRef>();
   for (const item of items) seen.set(repoKey(item.repo), item.repo);

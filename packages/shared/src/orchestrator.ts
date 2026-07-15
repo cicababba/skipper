@@ -92,6 +92,8 @@ export interface RepoIntakeSettings {
   autoPlan?: AutoPlanMode;
   /** Only issues carrying this label auto-plan when autoPlan === "label". */
   autoPlanLabel?: string;
+  /** Per-repo coding WIP override (#47). Absent = fall back to the global codingWipPerRepo. */
+  wipLimit?: number;
 }
 
 export const DEFAULT_AUTO_PLAN_LABEL = "ai-ready";

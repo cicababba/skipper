@@ -209,6 +209,8 @@ contextBridge.exposeInMainWorld("skipper", {
       vote: "up" | "down" | null,
     ): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("skipper:memory:feedback", itemId, phase, id, vote),
+    delete: (id: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("skipper:memory:delete", id),
   },
 
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke("skipper:openExternal", url),

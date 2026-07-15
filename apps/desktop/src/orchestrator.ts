@@ -15,6 +15,8 @@ import {
   readSolutionRecord,
   writeSolutionRecord,
   listSolutionRecords,
+  deleteSolutionRecord,
+  reconcileMemoryIndex,
   memoryFileName,
   applyFeedbackVote,
   type OrchestratorManifest,
@@ -759,6 +761,10 @@ export function initOrchestrator(
       const m = await ensureManifest();
       const key = repoKey(owner, name);
       const followedBefore = resolveRepoIntakeSettings(m.repoSettings[key]).followed;
+      // Clamp the per-repo WIP override to the same 1..10 range as the global setter.
+      if (typeof patch.wipLimit === "number") {
+        patch = { ...patch, wipLimit: Math.min(10, Math.max(1, Math.round(patch.wipLimit))) };
+      }
       const merged: RepoIntakeSettings = { ...m.repoSettings[key], ...patch };
       for (const k of Object.keys(merged) as (keyof RepoIntakeSettings)[]) {
         if (merged[k] === undefined) delete merged[k];
@@ -1018,6 +1024,19 @@ export function initOrchestrator(
       return { ok: true as const };
     },
   );
+  // Delete a record from the browser (#47): drop the file, then reconcile the
+  // vector index so the removed record stops surfacing in retrieval.
+  ipcMain.handle("skipper:memory:delete", async (_e, id: string) => {
+    const removed = await deleteSolutionRecord(deps!.memoryDir, memoryFileName(id));
+    if (!removed) return { ok: false as const, error: `no memory record for id "${id}"` };
+    try {
+      await reconcileMemoryIndex(deps!.memoryDir);
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+    }
+    broadcast();
+    return { ok: true as const };
+  });
   // Pre-PR diff review (#14). The human-review gate bounds what the renderer
   // can reach: only worktrees of items the user is actively reviewing.
   async function reviewableWorktree(
@@ -1133,6 +1152,10 @@ export function initOrchestrator(
     },
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getRepoPriority: (repo) => repoIntake(repo).priority,
+    getRepoWipLimit: (repo) =>
+      manifest?.repoSettings[repoKey(repo.owner, repo.name)]?.wipLimit ??
+      (manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS).codingWipPerRepo ??
+      1,
     emitEvent: emitCodingEvent,
     getMemoryMcp: (item) =>
       orchestratorDeps.cliBundlePath

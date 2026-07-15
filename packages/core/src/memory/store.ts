@@ -3,13 +3,26 @@
 // TrackedItem.shepherd.memoryRef stores the filename. Promoted from the
 // desktop app with #44 so the CLI (indexing/retrieval host) can read it too.
 
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SolutionRecord } from "@skipper/shared";
 
 /** Item ids contain ":" which is illegal on Windows filenames. */
 export function memoryFileName(itemId: string): string {
   return `${itemId.replace(/[^A-Za-z0-9._-]/g, "_")}.json`;
+}
+
+/**
+ * Delete a record file. Returns true if a file was removed. The vector index
+ * entry is not touched here — callers reconcile the index afterwards.
+ */
+export async function deleteSolutionRecord(memoryDir: string, ref: string): Promise<boolean> {
+  try {
+    await rm(join(memoryDir, ref));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function writeSolutionRecord(

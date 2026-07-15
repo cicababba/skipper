@@ -8,6 +8,7 @@ export {
   writeSolutionRecord,
   readSolutionRecord,
   listSolutionRecords,
+  deleteSolutionRecord,
 } from "./store";
 export type { SolutionRecordEntry } from "./store";
 export { buildEmbedText, indexSolutionRecord, reconcileMemoryIndex } from "./indexer";
