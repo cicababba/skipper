@@ -2,7 +2,7 @@
 // Skipper — Platform-neutral inbox items (Issue / PullRequest)
 // ============================================================
 
-/** Read-side platforms. Bitbucket/Jira arrive in v3. */
+/** Issue-source platforms. Widens with the two-axis IssueSource/CodeHost split (epic #68): GitLab, Jira. */
 export type PlatformId = "github";
 
 export interface RepoRef {

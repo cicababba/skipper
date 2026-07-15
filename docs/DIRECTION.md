@@ -8,10 +8,10 @@
 
 ## In una riga
 
-**Una inbox unica per tutte le issue assegnate a te — su GitHub, Bitbucket, Jira,
-Linear — dove ogni issue arriva già con un piano, un punteggio di confidence e la
-possibilità di svilupparla con un agente che ti consegna una PR e la accompagna fino
-al merge.**
+**Una inbox unica per tutte le issue assegnate a te — su GitHub, GitLab, Jira —
+dove ogni issue arriva già con un piano, un punteggio di confidence e la
+possibilità di svilupparla con un agente che ti consegna una PR ovunque viva il
+codice (Bitbucket incluso) e la accompagna fino al merge.**
 
 Non è "un altro coding agent". È il **livello di triage e orchestrazione che sta
 sopra** gli agenti. Le mani (scrivere il codice) sono ormai commodity; il valore è il
@@ -99,7 +99,7 @@ Quattro principi guida:
 
 ## Cosa può fare l'utente
 
-- **Collegare più account** (GitHub, Bitbucket, e poi Jira/Linear).
+- **Collegare più account** (GitHub, poi GitLab, Jira, Bitbucket).
 - **Vedere in un colpo solo** tutte le issue assegnate, ovunque siano.
 - **Creare issue** dall'app stessa (vedi sezione dedicata).
 - **Approvare / editare i piani** quando la confidence lo richiede.
@@ -139,6 +139,45 @@ Quattro principi guida:
   - **Kanban** → flusso: "cosa c'è in volo adesso", dove si ingorga il lavoro.
 - **Gli stati di pausa e la coda sono sempre visibili in topbar/tray** e reversibili
   in un gesto. Chi pausa deve sapere di averlo fatto (pattern Dropbox/Syncthing).
+
+---
+
+## Provider: due assi (IssueSource / CodeHost)
+
+Una "piattaforma" per noi significava tre cose insieme: chi ti assegna l'issue, dove
+vive il codice, dove va la PR. GitHub le collassa in una; GitLab pure. Jira le separa —
+una issue Jira non ha un repo. E siccome Jira + GitHub è una combinazione più comune
+di Jira + Bitbucket, una issue Jira deve poter puntare a *qualsiasi* code host dal
+giorno uno: il disaccoppiamento non è opzionale. Da qui il modello a due assi
+(epic #68):
+
+- **IssueSource** — da dove arrivano le issue: polling delle issue assegnate,
+  cursore, delta sync. GitHub, GitLab, Jira.
+- **CodeHost** — dove vive il codice: base per il worktree, apertura PR/MR, polling
+  di review e CI. GitHub, GitLab, Bitbucket.
+- **WorkItem = issue + repo collegato.** Il legame è derivato automaticamente per
+  GitHub/GitLab (l'issue vive nel repo); per Jira è un mapping esplicito
+  project→repo, configurato una volta in settings.
+
+Le decisioni fissate in #68:
+
+- **Read-only v1.** Nessun write-back verso il tracker: niente transizioni Jira,
+  niente sync di stato, niente commenti. Per commentare si apre l'issue nel browser.
+  Tiene bassi lo scope e gli scope OAuth di scrittura.
+- **Il mapping project→repo vive in settings**, non al gate del piano:
+  deterministico, zero attrito a runtime, non rompe l'auto-coding sopra
+  `confidence.high`. L'ammissione scarta le issue dei progetti non mappati.
+- **Bitbucket entra solo come CodeHost.** Bitbucket Issues è fuori scope (non lo usa
+  quasi nessuno); il suo valore è completare la storia Jira.
+- **`repoKey` resta ancorata al repo, mai al tracker.** È l'asse di partizione della
+  memoria delle soluzioni; ancorarla a un progetto Jira spartirebbe la memoria nel
+  modo sbagliato.
+- **Target: GitLab, Jira, Bitbucket.** Linear e gli altri sono esplicitamente
+  rimandati.
+
+Per chi scrive un provider nuovo: gli adapter vivono in `packages/core` dietro i due
+port (estratti dall'attuale `github/` con #69–#71); gli account OAuth passano dal
+registro `PROVIDERS` in `apps/desktop/src/auth/`.
 
 ---
 
@@ -314,6 +353,10 @@ La forma della memoria v2 è fissata nell'epic #41. In sintesi:
 | 17 | **Pricing early access: $29 one-time "founder"** (binari firmati, updates inclusi) | Playbook NestBrain già rodato (Polar merchant of record + upload CI + repo releases privato), zero infra licenze. Benefit license-key di Polar attivo dal giorno 1 per riconoscere i founder quando arriverà il modello definitivo. Il modello a regime (subscription con perpetual fallback? free/paid sul confine dell'aggregazione?) si decide con calma entro la v3. |
 | 18 | **Confine open-core ridisegnato: git + terminale = core pubblico** (issue #1) | Il loop git (worktree, diff, stage, commit, push) e il terminale (finestra sull'agente + intervento manuale) sono il cuore del prodotto — non possono stare dietro il modulo Dev privato. Il git backend è riscritto nel tree pubblico (`apps/desktop/src/git.ts`); il terminale segue in un issue dedicato. Restano gated: Projects, team, metriche, multi-agent parallelism. |
 | 19 | **Retrieval memoria solo via MCP** (server `skipper-memory`, no pre-iniezione nel prompt) — epic #41 | Gli agenti cercano da sé (`search_memory`/`get_memory`); niente campo `memoriesUsed` nel piano, le "memorie usate" si derivano dagli eventi di tool-use osservati (verità a terra, no auto-dichiarazione). Il server gira come subcomando CLI (`skipper memory serve`) col runtime dell'app (`ELECTRON_RUN_AS_NODE`) — nessuna dipendenza dal PATH. |
+| 20 | **Modello provider a due assi: IssueSource / CodeHost** — epic #68 | "Piattaforma" conflava chi dà l'issue, dove vive il codice e dove va la PR. Jira le separa (una issue Jira non ha repo) e Jira+GitHub è più comune di Jira+Bitbucket: una issue deve poter puntare a qualsiasi code host. WorkItem = issue + repo collegato. |
+| 21 | **Read-only v1 verso i tracker** | Nessun write-back (transizioni, stato, commenti): si commenta aprendo l'issue nel browser. Tiene bassi lo scope e gli scope OAuth di scrittura. |
+| 22 | **Mapping project→repo in settings; Bitbucket solo CodeHost** | Mapping una tantum, deterministico, non rompe l'auto-coding sopra `confidence.high`; l'ammissione scarta i progetti non mappati. Bitbucket Issues fuori scope: il suo valore è completare la storia Jira. |
+| 23 | **`repoKey` ancorata al repo, mai al tracker** | È l'asse di partizione della memoria delle soluzioni; ancorarla al progetto Jira spartirebbe la memoria nel modo sbagliato. |
 
 ---
 
@@ -323,7 +366,7 @@ La forma della memoria v2 è fissata nell'epic #41. In sintesi:
 - Shell desktop che sa lanciare l'agente (con i fix di ambiente già risolti).
 - Terminale integrato + editor + file tree per vedere l'agente lavorare e rivedere i
   diff (è la review umana pre-PR).
-- Il flusso OAuth desktop (stesso schema per GitHub/Bitbucket).
+- Il flusso OAuth desktop (stesso schema per GitHub/GitLab/Jira/Bitbucket).
 - L'infra embeddings/retrieval → riconvertita in memoria delle soluzioni.
 - Il pattern "osserva → riconcilia → traccia stato" → riconvertito in orchestratore.
 - Il packaging firmato e lo schema open-core (utile per la parte vendibile).
@@ -362,8 +405,11 @@ giudizio si può mostrare fin da v1.
 - **v2 — la memoria:** cattura `problema → piano → diff → esito` a regime, retrieval
   in planning solo via MCP (server `skipper-memory`, no pre-iniezione), segnale memoria
   nella confidence, assist alla creazione issue. Forma fissata in #41.
-- **v3 — l'aggregazione:** Bitbucket + Jira/Linear, inbox davvero cross-org +
-  binding issue→repo per i tracker. Qui nasce il moat vendibile.
+- **v3 — l'aggregazione:** il modello provider a due assi (IssueSource / CodeHost,
+  epic #68): prima GitLab (valida l'asse code-host e il self-hosted), poi Jira +
+  Bitbucket (valida il tracker senza repo; Bitbucket solo come code host).
+  Read-only verso i tracker; Linear e gli altri esplicitamente rimandati. Qui
+  nasce il moat vendibile.
 - **v4 — il team:** più agenti in parallelo, coda condivisa, metriche (confidence
   media, PR accettate al primo giro), wiki di consultazione, gating enterprise.
 
@@ -386,5 +432,6 @@ giudizio si può mostrare fin da v1.
 - **Soglie di confidence**: cosa conta come "alta" (salta il gate) — fisso,
   configurabile, o adattivo sulla storia dell'utente.
 - **Criteri esatti della modalità "auto"** del reviewer (pesi dei segnali meccanici).
-- **Mappatura tracker→repo** per Jira/Linear (l'agente ha bisogno di un repo git
-  preciso su cui creare il worktree).
+- ~~**Mappatura tracker→repo** per Jira/Linear~~ — **deciso (#68/#79): mapping
+  project→repo in settings**, una tantum; l'ammissione scarta le issue dei progetti
+  non mappati.
