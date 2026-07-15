@@ -117,6 +117,8 @@ fixWinPath();
 const isDev = !!process.env.SKIPPER_DEV;
 // Overridable for when :3000 is taken by something else on the dev machine.
 const DEV_URL = process.env.SKIPPER_DEV_URL || "http://localhost:3000";
+/** Dev-only retry gap while waiting for the Next dev server to bind its port. */
+const DEV_RELOAD_DELAY_MS = 500;
 
 // Must be set before app is ready so the menu bar shows "Skipper" not "Electron"
 app.setName("Skipper");
@@ -418,7 +420,27 @@ function createWindow(): void {
   mainWindow.on("show", () => void ensureRendererAlive());
 
   const url = isDev ? DEV_URL : serverUrl;
-  if (url) mainWindow.loadURL(url);
+  if (!url) return;
+  if (!isDev) {
+    mainWindow.loadURL(url);
+    return;
+  }
+  // Dev only: `pnpm dev` starts the Next dev server and Electron in parallel
+  // (turbo runs both `dev` tasks at once), so this loadURL often lands before
+  // the server binds the port. The packaged path can't hit this — it awaits
+  // waitForServer first — and a failed load never retries on its own, leaving
+  // a black window forever. Retry until the server answers.
+  const loadDev = (): void => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.loadURL(url).catch(() => {
+      /* did-fail-load re-arms the retry */
+    });
+  };
+  mainWindow.webContents.on("did-fail-load", (_e, _code, _desc, _failedUrl, isMainFrame) => {
+    if (!isMainFrame || !mainWindow || mainWindow.isDestroyed()) return;
+    setTimeout(loadDev, DEV_RELOAD_DELAY_MS);
+  });
+  loadDev();
 }
 
 function setupMenu(): void {
