@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadSettings } from "@/lib/settings";
 
+// Parked: no caller since Settings dropped the provider picker and pinned
+// claude-cli. Kept for the same reason as the packages/sync seams — if OpenAI
+// ever returns to the picker, restoring this costs a re-import, not a rewrite.
+
 export async function GET(request: NextRequest) {
   try {
     // Check if API key was passed as query param (for testing) or use saved one

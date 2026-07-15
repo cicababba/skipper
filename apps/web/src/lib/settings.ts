@@ -40,7 +40,11 @@ export async function loadSettings(): Promise<AppSettings> {
     return {
       ...DEFAULT_SETTINGS,
       ...saved,
-      llm: { ...DEFAULT_SETTINGS.llm, ...saved.llm },
+      // Settings dropped the provider picker — claude-cli is the only backend
+      // whose agent() drives the planner. A settings.json written before that
+      // pin can still say "openai"/"ollama"; honouring it would park every item
+      // in needs-input with no UI left to change it back.
+      llm: { ...DEFAULT_SETTINGS.llm, ...saved.llm, provider: "claude-cli" },
       autoExtractAtoms: saved.autoExtractAtoms ?? DEFAULT_SETTINGS.autoExtractAtoms,
       onboardingCompleted: saved.onboardingCompleted ?? DEFAULT_SETTINGS.onboardingCompleted,
     };

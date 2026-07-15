@@ -30,23 +30,38 @@ describe("readLlmSettings (#59)", () => {
     const dir = await tempDir();
     await writeFile(
       join(dir, "settings.json"),
-      JSON.stringify({ llm: { provider: "ollama", ollamaModel: "llama3" }, onboardingCompleted: true }),
+      JSON.stringify({ llm: { claudeModel: "haiku" }, onboardingCompleted: true }),
       "utf-8",
     );
     const s = await readLlmSettings(dir);
-    expect(s.provider).toBe("ollama");
-    expect(s.ollamaModel).toBe("llama3");
-    expect(s.claudeModel).toBe(DEFAULT_LLM_SETTINGS.claudeModel);
+    expect(s.claudeModel).toBe("haiku");
+    expect(s.ollamaModel).toBe(DEFAULT_LLM_SETTINGS.ollamaModel);
   });
 
-  it("reads the provider written by the web layer", async () => {
+  it("reads the model written by the web layer", async () => {
     const dir = await tempDir();
     await writeFile(
       join(dir, "settings.json"),
-      JSON.stringify({ llm: settings({ provider: "openai", openaiModel: "gpt-4o", openaiApiKey: "sk-x" }) }),
+      JSON.stringify({ llm: settings({ provider: "claude-cli", claudeModel: "haiku" }) }),
       "utf-8",
     );
-    expect(await readLlmSettings(dir)).toMatchObject({ provider: "openai", openaiModel: "gpt-4o" });
+    expect(await readLlmSettings(dir)).toMatchObject({ provider: "claude-cli", claudeModel: "haiku" });
+  });
+
+  // Settings dropped the provider picker: a settings.json written before the
+  // pin would otherwise park every item in needs-input, with no UI left to
+  // change the provider back.
+  it.each(["openai", "ollama"])("coerces a stale %s provider to claude-cli", async (stale) => {
+    const dir = await tempDir();
+    await writeFile(
+      join(dir, "settings.json"),
+      JSON.stringify({ llm: settings({ provider: stale as "openai" | "ollama", claudeModel: "haiku" }) }),
+      "utf-8",
+    );
+    const read = await readLlmSettings(dir);
+    expect(read.provider).toBe("claude-cli");
+    // The rest of the bag survives — only the provider is overridden.
+    expect(read.claudeModel).toBe("haiku");
   });
 });
 

@@ -5,6 +5,10 @@ import { ollamaHost } from "@skipper/core";
  * Probe the local Ollama server and list installed models in one call.
  * `running: false` means the server isn't reachable (so the UI can show the
  * "Ollama not running" popup); otherwise `models` holds the installed tags.
+ *
+ * Parked: no caller since Settings dropped the provider picker and pinned
+ * claude-cli. Kept for the same reason as the packages/sync seams — if ollama
+ * ever returns to the picker, restoring this costs a re-import, not a rewrite.
  */
 export async function GET() {
   const host = ollamaHost();

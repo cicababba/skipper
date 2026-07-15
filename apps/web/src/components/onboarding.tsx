@@ -1,17 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import {
-  Sparkles,
-  Cpu,
-  Trophy,
-  ArrowRight,
-  Check,
-  Loader2,
-  Key,
-  Eye,
-  EyeOff,
-} from "lucide-react";
+import { Sparkles, Cpu, Trophy, ArrowRight, Loader2 } from "lucide-react";
 import { useT } from "@/lib/app-i18n";
 
 type Step =
@@ -22,10 +12,6 @@ type Step =
 const MODAL_STEPS: Step[] = ["welcome", "settings", "celebrate"];
 const PROGRESS_STEPS: Step[] = ["welcome", "settings"];
 
-interface OpenAIModel {
-  id: string;
-}
-
 export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
   const { t } = useT();
   const to = t.wiki.onboarding;
@@ -33,13 +19,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
   const [transitioning, setTransitioning] = useState(false);
 
   // Settings state
-  const [provider, setProvider] = useState<"claude-cli" | "openai">("claude-cli");
   const [claudeModel, setClaudeModel] = useState("sonnet");
-  const [openaiApiKey, setOpenaiApiKey] = useState("");
-  const [openaiModel, setOpenaiModel] = useState("gpt-4o");
-  const [showKey, setShowKey] = useState(false);
-  const [models, setModels] = useState<OpenAIModel[]>([]);
-  const [modelsLoading, setModelsLoading] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
 
   const next = useCallback((to: Step) => {
@@ -63,32 +43,13 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
     setTimeout(() => onFinish(), 3200);
   }
 
-  async function loadOpenAIModels() {
-    if (!openaiApiKey || openaiApiKey.startsWith("sk-...")) return;
-    setModelsLoading(true);
-    try {
-      const res = await fetch(
-        `/api/openai/models?key=${encodeURIComponent(openaiApiKey)}`,
-      );
-      const data = await res.json();
-      if (!data.error && Array.isArray(data.models)) {
-        setModels(data.models);
-      }
-    } catch {
-      /* ignore */
-    }
-    setModelsLoading(false);
-  }
-
   async function handleSaveSettings() {
     setSavingSettings(true);
     try {
       await fetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          llm: { provider, claudeModel, openaiApiKey, openaiModel },
-        }),
+        body: JSON.stringify({ llm: { provider: "claude-cli", claudeModel } }),
       });
       void finishOnboarding();
     } catch {
@@ -96,10 +57,6 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
     }
     setSavingSettings(false);
   }
-
-  const canSaveSettings =
-    provider === "claude-cli" ||
-    (provider === "openai" && openaiApiKey.length > 10);
 
   const isModal = MODAL_STEPS.includes(step);
 
@@ -172,133 +129,28 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
               </p>
             </div>
 
-            {/* Provider cards */}
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => setProvider("claude-cli")}
-                className={`p-5 rounded-2xl border-2 text-left transition-all ${
-                  provider === "claude-cli"
-                    ? "border-accent bg-accent/5 shadow-lg shadow-accent/10"
-                    : "border-border hover:border-border hover:bg-card"
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold">Claude Pro / Max</span>
-                  {provider === "claude-cli" && (
-                    <Check size={14} className="text-accent" />
-                  )}
-                </div>
-                <p className="text-[11px] text-muted/60 leading-relaxed">
-                  {to.claudeDesc1}<code className="text-accent/70">claude -p</code>{to.claudeDesc2}
-                </p>
-              </button>
-
-              <button
-                onClick={() => setProvider("openai")}
-                className={`p-5 rounded-2xl border-2 text-left transition-all ${
-                  provider === "openai"
-                    ? "border-accent bg-accent/5 shadow-lg shadow-accent/10"
-                    : "border-border hover:border-border hover:bg-card"
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold">OpenAI</span>
-                  {provider === "openai" && (
-                    <Check size={14} className="text-accent" />
-                  )}
-                </div>
-                <p className="text-[11px] text-muted/60 leading-relaxed">
-                  {to.openaiDesc}
-                </p>
-              </button>
-            </div>
-
-            {/* Model config */}
+            {/* No provider cards: claude-cli is the only backend that drives
+                the planner and the coder end-to-end. */}
             <div className="p-5 rounded-2xl bg-card border border-border space-y-4">
-              {provider === "claude-cli" ? (
-                <div>
-                  <label className="block text-[11px] text-muted/70 uppercase tracking-wider mb-2">
-                    {to.model}
-                  </label>
-                  <select
-                    value={claudeModel}
-                    onChange={(e) => setClaudeModel(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
-                  >
-                    <option value="sonnet">Claude Sonnet 4.6</option>
-                    <option value="opus">Claude Opus 4.6</option>
-                    <option value="haiku">Claude Haiku 4.5</option>
-                  </select>
-                  <p className="text-[10px] text-muted/40 mt-2">
-                    {to.claudeAuth1}{" "}
-                    <code className="text-accent/60">claude auth login</code>{" "}
-                    {to.claudeAuth2}
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-[11px] text-muted/70 uppercase tracking-wider mb-2">
-                      {to.apiKey}
-                    </label>
-                    <div className="relative">
-                      <Key
-                        size={14}
-                        className="absolute left-3 top-1/2 -translate-y-1/2 text-muted/40"
-                      />
-                      <input
-                        type={showKey ? "text" : "password"}
-                        value={openaiApiKey}
-                        onChange={(e) => {
-                          setOpenaiApiKey(e.target.value);
-                          setModels([]);
-                        }}
-                        onBlur={loadOpenAIModels}
-                        placeholder="sk-..."
-                        className="w-full pl-9 pr-10 py-2.5 bg-background border border-border rounded-lg text-sm placeholder:text-muted/30 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 font-mono"
-                      />
-                      <button
-                        onClick={() => setShowKey(!showKey)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted/40 hover:text-muted"
-                      >
-                        {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] text-muted/70 uppercase tracking-wider mb-2">
-                      {to.model}
-                    </label>
-                    {modelsLoading ? (
-                      <div className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted">
-                        <Loader2 size={12} className="animate-spin" />
-                        {to.loading}
-                      </div>
-                    ) : (
-                      <select
-                        value={openaiModel}
-                        onChange={(e) => setOpenaiModel(e.target.value)}
-                        className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
-                      >
-                        {models.length > 0 ? (
-                          models.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.id}
-                            </option>
-                          ))
-                        ) : (
-                          <>
-                            <option value="gpt-4o">gpt-4o</option>
-                            <option value="gpt-4o-mini">gpt-4o-mini</option>
-                            <option value="o4-mini">o4-mini</option>
-                          </>
-                        )}
-                      </select>
-                    )}
-                  </div>
-                </>
-              )}
+              <div>
+                <label className="block text-[11px] text-muted/70 uppercase tracking-wider mb-2">
+                  {to.model}
+                </label>
+                <select
+                  value={claudeModel}
+                  onChange={(e) => setClaudeModel(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
+                >
+                  <option value="sonnet">Claude Sonnet 4.6</option>
+                  <option value="opus">Claude Opus 4.6</option>
+                  <option value="haiku">Claude Haiku 4.5</option>
+                </select>
+                <p className="text-[10px] text-muted/40 mt-2">
+                  {to.claudeAuth1}{" "}
+                  <code className="text-accent/60">claude auth login</code>{" "}
+                  {to.claudeAuth2}
+                </p>
+              </div>
             </div>
 
             <div className="flex justify-between items-center">
@@ -310,7 +162,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
               </button>
               <button
                 onClick={handleSaveSettings}
-                disabled={!canSaveSettings || savingSettings}
+                disabled={savingSettings}
                 className="inline-flex items-center gap-2 px-7 py-3.5 bg-accent text-background font-semibold rounded-2xl hover:bg-accent-hover transition-all hover:scale-105 shadow-xl shadow-accent/20 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 {savingSettings ? (

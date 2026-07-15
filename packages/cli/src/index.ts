@@ -113,30 +113,16 @@ function loadSettings(): SkipperSettings | null {
   }
 }
 
-// Resolve the LLM from the app Settings — the provider + model the user
-// picked in the app. Falls back to the claude-cli default when there are no
-// settings (e.g. a bare CLI checkout where the app never ran).
+// Resolve the LLM from the app Settings. Settings no longer offers a provider
+// picker — claude-cli is the only backend whose agent() drives the planner — so
+// the saved provider is ignored: a settings.json written before that pin can
+// still say "openai"/"ollama", and honouring it here would leave the CLI on a
+// provider the app itself no longer runs.
 function getLLM(): LLMProviderInterface {
-  const llm = loadSettings()?.llm;
-  if (llm?.provider) {
-    const model =
-      llm.provider === "claude-cli"
-        ? llm.claudeModel || process.env.SKIPPER_MODEL || "sonnet"
-        : llm.provider === "ollama"
-          ? llm.ollamaModel || ""
-          : llm.openaiModel || "gpt-4o";
-    return createProvider({
-      provider: llm.provider,
-      model,
-      maxTurns: 5,
-      apiKey: llm.provider === "openai" ? llm.openaiApiKey || process.env.OPENAI_API_KEY : undefined,
-    });
-  }
   return createProvider({
     provider: "claude-cli",
-    model: process.env.SKIPPER_MODEL ?? "sonnet",
+    model: loadSettings()?.llm?.claudeModel || process.env.SKIPPER_MODEL || "sonnet",
     maxTurns: 5,
-    apiKey: process.env.OPENAI_API_KEY,
   });
 }
 
