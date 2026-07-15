@@ -286,6 +286,12 @@ const SETTINGS_VALIDATORS: {
   review: oneOf("on", "off", "auto"),
   reviewMaxRounds: clampInt(1, 5),
   codingWipPerRepo: clampInt(1, 10),
+  // #58: model strings stay opaque CLI aliases — no enum, so a manifest
+  // hand-edited to a full model id survives a write from the UI.
+  plannerModel: nonEmptyString,
+  coderModel: nonEmptyString,
+  reviewerModel: nonEmptyString,
+  coderMaxTurns: clampInt(10, 200),
 };
 
 const REPO_SETTINGS_VALIDATORS: {
@@ -299,6 +305,9 @@ const REPO_SETTINGS_VALIDATORS: {
   autoCoding: oneOf("on", "off", "auto"),
   review: oneOf("on", "off", "auto"),
   reviewMaxRounds: clampInt(1, 5),
+  plannerModel: nonEmptyString,
+  coderModel: nonEmptyString,
+  reviewerModel: nonEmptyString,
 };
 
 function repoIntake(repo: RepoRef): ResolvedRepoIntakeSettings {
@@ -812,6 +821,7 @@ export function initOrchestrator(
       pokePlanner(); // autoPlanPaused — without this the topbar toggle reads as dead
       pokeCoder(); // codingWipPerRepo, autoCoding
       pokeReviewer(); // review, reviewMaxRounds
+      // The model keys need no poke: each run reads its model at start (#58).
       return snapshot();
     },
   );
@@ -1218,6 +1228,7 @@ export function initOrchestrator(
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getRepoPriority: (repo) => repoOrch(repo).priority,
     getRepoWipLimit: (repo) => repoOrch(repo).wipLimit,
+    getRepoSettings: repoOrch,
     emitEvent: emitCodingEvent,
     getMemoryMcp: (item) =>
       orchestratorDeps.cliBundlePath

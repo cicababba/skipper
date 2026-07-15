@@ -21,12 +21,18 @@ describe("resolveRepoOrchestratorSettings", () => {
       autoCoding: "off",
       review: "on",
       reviewMaxRounds: 5,
+      plannerModel: "opus",
+      coderModel: "sonnet",
+      reviewerModel: "haiku",
     });
     expect(resolveRepoOrchestratorSettings(undefined, g)).toMatchObject({
       wipLimit: 4,
       autoCoding: "off",
       review: "on",
       reviewMaxRounds: 5,
+      plannerModel: "opus",
+      coderModel: "sonnet",
+      reviewerModel: "haiku",
     });
   });
 
@@ -44,6 +50,10 @@ describe("resolveRepoOrchestratorSettings", () => {
     ["autoCoding", { autoCoding: "on" }, { autoCoding: "off" }, "on"],
     ["review", { review: "off" }, { review: "on" }, "off"],
     ["reviewMaxRounds", { reviewMaxRounds: 1 }, { reviewMaxRounds: 4 }, 1],
+    // #58 — per-role model overrides.
+    ["plannerModel", { plannerModel: "sonnet" }, { plannerModel: "opus" }, "sonnet"],
+    ["coderModel", { coderModel: "haiku" }, { coderModel: "opus" }, "haiku"],
+    ["reviewerModel", { reviewerModel: "opus" }, { reviewerModel: "haiku" }, "opus"],
   ] as const)("lets a per-repo %s beat the global", (key, repo, overrides, expected) => {
     const resolved = resolve(repo, overrides) as unknown as Record<string, unknown>;
     expect(resolved[key]).toBe(expected);
@@ -53,6 +63,22 @@ describe("resolveRepoOrchestratorSettings", () => {
     const resolved = resolve({ review: "off" }, { autoCoding: "on", review: "on" });
     expect(resolved.review).toBe("off");
     expect(resolved.autoCoding).toBe("on");
+  });
+
+  // #58: each role resolves on its own — overriding one must not disturb the rest.
+  it("overrides one role's model while the others inherit", () => {
+    const resolved = resolve(
+      { coderModel: "haiku" },
+      { plannerModel: "opus", coderModel: "sonnet", reviewerModel: "sonnet" },
+    );
+    expect(resolved.coderModel).toBe("haiku");
+    expect(resolved.plannerModel).toBe("opus");
+    expect(resolved.reviewerModel).toBe("sonnet");
+  });
+
+  // #58: model strings are opaque CLI aliases — a hand-edited full id resolves as-is.
+  it("treats a model string as opaque", () => {
+    expect(resolve({ plannerModel: "claude-opus-4-8" }).plannerModel).toBe("claude-opus-4-8");
   });
 
   // #47: the gap resolveRepoIntakeSettings never covered — wipLimit falls back to

@@ -18,6 +18,7 @@ import type {
   LifecycleState,
   RepoPriority,
   RepoRef,
+  ResolvedRepoOrchestratorSettings,
   StoredPlan,
   TrackedItem,
   TransitionActor,
@@ -55,6 +56,8 @@ export interface CoderDeps {
   getRepoPriority: (repo: RepoRef) => RepoPriority;
   /** Effective per-repo coding WIP limit (#47) — override, else global default. */
   getRepoWipLimit: (repo: RepoRef) => number;
+  /** Every per-repo override resolved against the global bag (#58 reads coderModel). */
+  getRepoSettings: (repo: RepoRef) => ResolvedRepoOrchestratorSettings;
   /** Buffer + forward one progress event (orchestrator owns the IPC channel). */
   emitEvent: (itemId: string, event: CodingEvent) => void;
   /** skipper-memory MCP for this item's repo (#45); undefined = no CLI bundle. */
@@ -224,7 +227,7 @@ async function run(itemId: string, repoKey: string): Promise<void> {
     const baseOptions = {
       systemPrompt: CODER_SYSTEM_PROMPT,
       cwd: worktree.path,
-      model: settings.coderModel,
+      model: deps.getRepoSettings(item.repo).coderModel,
       maxTurns: settings.coderMaxTurns,
       onEvent: (event: CodingEvent) => deps?.emitEvent(itemId, event),
       signal: controller.signal,

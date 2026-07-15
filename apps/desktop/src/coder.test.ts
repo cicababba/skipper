@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type {
-  CodingEvent,
-  IssuePlan,
-  LifecycleState,
-  StoredPlan,
-  TrackedItem,
-  TransitionActor,
+import {
+  resolveRepoOrchestratorSettings,
+  type CodingEvent,
+  type IssuePlan,
+  type LifecycleState,
+  type RepoIntakeSettings,
+  type StoredPlan,
+  type TrackedItem,
+  type TransitionActor,
 } from "@skipper/shared";
 import type { RunCodingAgentOptions, CodingRunResult, OrchestratorSettings } from "@skipper/core";
 import { DEFAULT_ORCHESTRATOR_SETTINGS, CodingAbortError } from "@skipper/core";
@@ -59,7 +61,10 @@ interface Harness {
   events: { itemId: string; event: CodingEvent }[];
 }
 
-function makeHarness(overrides: Partial<CoderDeps> = {}): Harness {
+function makeHarness(
+  overrides: Partial<CoderDeps> = {},
+  repoSettings: RepoIntakeSettings = {},
+): Harness {
   const items = new Map<string, TrackedItem>();
   const transitions: Harness["transitions"] = [];
   const worktreeWrites: Harness["worktreeWrites"] = [];
@@ -90,6 +95,9 @@ function makeHarness(overrides: Partial<CoderDeps> = {}): Harness {
     // Defaults to the global setting so existing WIP tests (which override
     // getSettings) keep working; a test can still override this directly.
     getRepoWipLimit: () => Math.max(1, deps.getSettings().codingWipPerRepo ?? 1),
+    // Same reasoning: resolve against the live global bag, so a test that only
+    // overrides getSettings still sees its coderModel (#58).
+    getRepoSettings: () => resolveRepoOrchestratorSettings(repoSettings, deps.getSettings()),
     emitEvent: (itemId, event) => events.push({ itemId, event }),
     ...overrides,
   };
@@ -132,6 +140,40 @@ describe("coder driver", () => {
     expect(opts.cwd).toBe("/wt/repo/issue-1");
     expect(opts.sessionId).toBe(h.worktreeWrites[0].sessionId);
     expect(opts.resumeSessionId).toBeUndefined();
+  });
+
+  // #58: the model reaches the runner from the resolved per-repo bag.
+  it("hands the runner the global coderModel when the repo has no override", async () => {
+    const h = makeHarness({
+      getSettings: () =>
+        ({ ...DEFAULT_ORCHESTRATOR_SETTINGS, coderModel: "sonnet" }) as OrchestratorSettings,
+    });
+    const runner = okRunner();
+    initCoder(h.deps, runner);
+    h.items.set("github:1", makeItem(1, "queued"));
+
+    pokeCoder();
+    await settle();
+
+    expect(runner.mock.calls[0][0].model).toBe("sonnet");
+  });
+
+  it("lets a per-repo coderModel override the global", async () => {
+    const h = makeHarness(
+      {
+        getSettings: () =>
+          ({ ...DEFAULT_ORCHESTRATOR_SETTINGS, coderModel: "sonnet" }) as OrchestratorSettings,
+      },
+      { coderModel: "haiku" },
+    );
+    const runner = okRunner();
+    initCoder(h.deps, runner);
+    h.items.set("github:1", makeItem(1, "queued"));
+
+    pokeCoder();
+    await settle();
+
+    expect(runner.mock.calls[0][0].model).toBe("haiku");
   });
 
   it("enforces WIP 1 per repo, FIFO by queued time", async () => {

@@ -186,7 +186,7 @@ async function run(itemId: string): Promise<void> {
     try {
       signal = await critic(
         { diff: diff.diff, issue, acceptance: stored?.plan.acceptance ?? [] },
-        resolveProvider(settings.reviewerModel),
+        resolveProvider(repoSettings.reviewerModel),
       );
     } catch (err) {
       if (deps.getItem(itemId)?.state !== "agent-review") return;
