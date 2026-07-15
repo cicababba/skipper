@@ -1,5 +1,6 @@
 import type {
   ConfidenceReport,
+  ConfidenceThresholds,
   ConfidenceWeights,
   IssuePlan,
 } from "@skipper/shared";
@@ -8,6 +9,7 @@ import { generatePlan as realGeneratePlan, type PlanIssueInput } from "../planne
 import { scoreClarity } from "./clarity";
 import { scoreConvergence } from "./convergence";
 import { critiquePlan } from "./critic";
+import { DEFAULT_CONFIDENCE_THRESHOLDS, resolveGate } from "./gate";
 import { scoreGroundedness } from "./groundedness";
 
 export const DEFAULT_CONFIDENCE_WEIGHTS: ConfidenceWeights = {
@@ -24,7 +26,35 @@ export interface ComputeConfidenceOptions {
   llm: LLMProviderInterface;
   /** Extra generatePlan runs feeding convergence (N total = 1 + this). */
   extraPlanRuns?: number;
+  /** Gate bands used to decide whether the extra runs can change the outcome. */
+  thresholds?: ConfidenceThresholds;
   deps?: { generatePlan?: typeof realGeneratePlan };
+}
+
+/**
+ * Gate range still reachable once convergence lands anywhere in [0,1], given
+ * the signals already scored. composite(c) = (A + Wc·c) / (Wother + Wc) is
+ * monotone in c, so the endpoints bound it. The absent-convergence composite
+ * A/Wother also falls inside this band (A ≤ Wother, since every score ≤ 1),
+ * so a band that resolves to one gate resolves to it however we score.
+ */
+export function reachableBand(
+  signals: ConfidenceReport["signals"],
+): { min: number; max: number } {
+  const present = presentSignals(signals).filter(([k]) => k !== "convergence");
+  const raw = present.reduce((sum, [k, s]) => sum + DEFAULT_CONFIDENCE_WEIGHTS[k] * s.score, 0);
+  const other = present.reduce((sum, [k]) => sum + DEFAULT_CONFIDENCE_WEIGHTS[k], 0);
+  const wc = DEFAULT_CONFIDENCE_WEIGHTS.convergence;
+  return { min: raw / (other + wc), max: (raw + wc) / (other + wc) };
+}
+
+function presentSignals(
+  signals: ConfidenceReport["signals"],
+): [keyof ConfidenceWeights, { score: number }][] {
+  return Object.entries(signals).filter(([, s]) => s !== undefined) as [
+    keyof ConfidenceWeights,
+    { score: number },
+  ][];
 }
 
 /**
@@ -38,6 +68,7 @@ export async function computeConfidence(
   opts: ComputeConfidenceOptions,
 ): Promise<ConfidenceReport> {
   const extraRuns = opts.extraPlanRuns ?? 2;
+  const thresholds = opts.thresholds ?? DEFAULT_CONFIDENCE_THRESHOLDS;
   const generate = opts.deps?.generatePlan ?? realGeneratePlan;
 
   const report: ConfidenceReport = {
@@ -49,49 +80,48 @@ export async function computeConfidence(
     computedAt: new Date().toISOString(),
   };
 
-  const tasks: Promise<void>[] = [
-    scoreGroundedness(opts.plan, opts.repoPath)
-      .then((s) => void (report.signals.groundedness = s))
-      .catch((err) => void report.errors.push(`groundedness: ${message(err)}`)),
-    critiquePlan(opts.plan, opts.issue, opts.llm)
-      .then((s) => void (report.signals.critic = s))
-      .catch((err) => void report.errors.push(`critic: ${message(err)}`)),
-  ];
-
-  if (extraRuns > 0) {
-    tasks.push(
-      Promise.allSettled(
-        Array.from({ length: extraRuns }, () =>
-          generate({ issue: opts.issue, repoPath: opts.repoPath, llm: opts.llm }),
-        ),
-      ).then((settled) => {
-        const extra = settled
-          .filter((r): r is PromiseFulfilledResult<IssuePlan> => r.status === "fulfilled")
-          .map((r) => r.value);
-        const failed = settled.length - extra.length;
-        if (failed > 0) report.errors.push(`convergence: ${failed}/${settled.length} extra plan runs failed`);
-        if (extra.length === 0) return;
-        try {
-          report.signals.convergence = scoreConvergence([opts.plan, ...extra]);
-        } catch (err) {
-          report.errors.push(`convergence: ${message(err)}`);
-        }
-      }),
-    );
-  }
-
   try {
     report.signals.clarity = scoreClarity(opts.issue.body, opts.plan);
   } catch (err) {
     report.errors.push(`clarity: ${message(err)}`);
   }
 
-  await Promise.all(tasks);
+  // The cheap signals settle first: they decide whether the extra plan runs can
+  // still move the gate. Costs the critic's latency on the non-skip path, saves
+  // two full agentic runs whenever the outcome is already pinned (#50).
+  await Promise.all([
+    scoreGroundedness(opts.plan, opts.repoPath)
+      .then((s) => void (report.signals.groundedness = s))
+      .catch((err) => void report.errors.push(`groundedness: ${message(err)}`)),
+    critiquePlan(opts.plan, opts.issue, opts.llm)
+      .then((s) => void (report.signals.critic = s))
+      .catch((err) => void report.errors.push(`critic: ${message(err)}`)),
+  ]);
 
-  const present = Object.entries(report.signals).filter(([, s]) => s !== undefined) as [
-    keyof ConfidenceWeights,
-    { score: number },
-  ][];
+  const skip = shouldSkipConvergence(report.signals, extraRuns, thresholds);
+  if (skip) {
+    report.convergenceSkipped = skip;
+  } else {
+    const settled = await Promise.allSettled(
+      Array.from({ length: extraRuns }, () =>
+        generate({ issue: opts.issue, repoPath: opts.repoPath, llm: opts.llm }),
+      ),
+    );
+    const extra = settled
+      .filter((r): r is PromiseFulfilledResult<IssuePlan> => r.status === "fulfilled")
+      .map((r) => r.value);
+    const failed = settled.length - extra.length;
+    if (failed > 0) report.errors.push(`convergence: ${failed}/${settled.length} extra plan runs failed`);
+    if (extra.length > 0) {
+      try {
+        report.signals.convergence = scoreConvergence([opts.plan, ...extra]);
+      } catch (err) {
+        report.errors.push(`convergence: ${message(err)}`);
+      }
+    }
+  }
+
+  const present = presentSignals(report.signals);
   const totalWeight = present.reduce((sum, [k]) => sum + DEFAULT_CONFIDENCE_WEIGHTS[k], 0);
   if (totalWeight > 0) {
     for (const [k] of present) {
@@ -100,6 +130,23 @@ export async function computeConfidence(
     report.composite = present.reduce((sum, [k, s]) => sum + s.score * report.weights[k], 0);
   }
   return report;
+}
+
+function shouldSkipConvergence(
+  signals: ConfidenceReport["signals"],
+  extraRuns: number,
+  thresholds: ConfidenceThresholds,
+): ConfidenceReport["convergenceSkipped"] {
+  if (extraRuns <= 0) {
+    return { reason: "disabled", detail: "extraPlanRuns is 0 — convergence needs 2+ plans" };
+  }
+  const { min, max } = reachableBand(signals);
+  const gate = resolveGate(min, thresholds);
+  if (gate !== resolveGate(max, thresholds)) return undefined;
+  return {
+    reason: "decisive",
+    detail: `composite in [${min.toFixed(2)}, ${max.toFixed(2)}] → ${gate} for any convergence value`,
+  };
 }
 
 function message(err: unknown): string {

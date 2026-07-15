@@ -54,6 +54,36 @@ function fakeLLM(opts: FakeLLMOptions): {
   return { llm, agent, askStructured };
 }
 
+describe("generatePlan — deterministic repair (#50)", () => {
+  it("repairs a fenced reply without spending the LLM repair round", async () => {
+    const { llm, askStructured } = fakeLLM({
+      agentReply: "Here is the plan:\n\n```json\n" + JSON.stringify(VALID_PLAN) + "\n```\n\nHope that helps!",
+    });
+    const plan = await generatePlan({ issue: ISSUE, repoPath: "/repo", llm });
+    expect(plan).toEqual(VALID_PLAN);
+    expect(askStructured).not.toHaveBeenCalled();
+  });
+
+  it("repairs trailing commas without spending the LLM repair round", async () => {
+    const { llm, askStructured } = fakeLLM({
+      agentReply: JSON.stringify(VALID_PLAN).replace(/}$/, ",}"),
+    });
+    const plan = await generatePlan({ issue: ISSUE, repoPath: "/repo", llm });
+    expect(plan).toEqual(VALID_PLAN);
+    expect(askStructured).not.toHaveBeenCalled();
+  });
+
+  it("still pays for the repair round when the JSON is valid but the content is not", async () => {
+    const { llm, askStructured } = fakeLLM({
+      agentReply: '{"summary":"missing every other field"}',
+      structuredReply: VALID_PLAN,
+    });
+    const plan = await generatePlan({ issue: ISSUE, repoPath: "/repo", llm });
+    expect(plan).toEqual(VALID_PLAN);
+    expect(askStructured).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("generatePlan", () => {
   it("parses a clean JSON reply", async () => {
     const { llm, agent, askStructured } = fakeLLM({ agentReply: JSON.stringify(VALID_PLAN) });

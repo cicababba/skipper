@@ -182,6 +182,17 @@ export function ReportBody({ report }: { report: ConfidenceReport }) {
           <TruncatedList label={p.disputed} entries={convergence.disputedFiles} />
         </SignalSection>
       )}
+      {!convergence && report.convergenceSkipped && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="font-medium text-foreground/90">{p.convergence}</span>
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded border border-border text-muted">
+              {p.convergenceSkipped}
+            </span>
+          </div>
+          <p className="text-muted">{report.convergenceSkipped.detail}</p>
+        </div>
+      )}
       {critic && (
         <SignalSection title={p.critic} score={critic.score}>
           <p
