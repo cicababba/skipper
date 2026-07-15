@@ -21,6 +21,7 @@ import { CliInstallSection } from "@/components/cli-install-section";
 import { UpdatesSection } from "@/components/updates-section";
 import { LanguageSection } from "@/components/language-section";
 import { useT } from "@/lib/app-i18n";
+import type { LLMProvider } from "@skipper/shared";
 
 interface OpenAIModel {
   id: string;
@@ -32,7 +33,7 @@ interface OllamaModel {
   size?: number;
 }
 
-type Provider = "claude-cli" | "openai" | "ollama";
+type Provider = LLMProvider;
 
 export default function SettingsPage() {
   const { t } = useT();
@@ -48,6 +49,11 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Codex
+  const [codexModel, setCodexModel] = useState("gpt-5.6-sol");
+  const [codexApiKey, setCodexApiKey] = useState("");
+  const [showCodexKey, setShowCodexKey] = useState(false);
 
   // Ollama
   const [ollamaModel, setOllamaModel] = useState("");
@@ -66,6 +72,8 @@ export default function SettingsPage() {
           setClaudeModel(data.llm.claudeModel ?? "sonnet");
           setOpenaiApiKey(data.llm.openaiApiKey ?? "");
           setOpenaiModel(data.llm.openaiModel ?? "gpt-4o");
+          setCodexModel(data.llm.codexModel ?? "gpt-5.6-sol");
+          setCodexApiKey(data.llm.codexApiKey ?? "");
           setOllamaModel(data.llm.ollamaModel ?? "");
         }
         setAutoExtractAtoms(data.autoExtractAtoms ?? true);
@@ -152,6 +160,8 @@ export default function SettingsPage() {
             claudeModel,
             openaiApiKey,
             openaiModel,
+            codexApiKey,
+            codexModel,
             ollamaModel,
           },
           autoExtractAtoms,
@@ -203,7 +213,7 @@ export default function SettingsPage() {
             {t.settings.llm.title}
           </h2>
 
-          <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             {/* Claude option */}
             <button
               onClick={() => setProvider("claude-cli")}
@@ -221,6 +231,24 @@ export default function SettingsPage() {
               </div>
               <p className="text-[11px] text-muted/60 leading-relaxed">
                 {t.settings.llm.claudeDesc}
+              </p>
+            </button>
+
+            {/* Codex option */}
+            <button
+              onClick={() => setProvider("codex-cli")}
+              className={`p-4 rounded-xl border-2 text-left transition-all ${
+                provider === "codex-cli"
+                  ? "border-accent bg-accent/5"
+                  : "border-border hover:border-border hover:bg-card"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">Codex</span>
+                {provider === "codex-cli" && <Check size={14} className="text-accent" />}
+              </div>
+              <p className="text-[11px] text-muted/60 leading-relaxed">
+                {t.settings.llm.codexDesc}
               </p>
             </button>
 
@@ -285,6 +313,53 @@ export default function SettingsPage() {
                 <code className="text-accent/60 bg-accent/5 px-1 rounded">claude auth login</code>{" "}
                 {t.settings.llm.claudeAuthAfter}
               </p>
+            </div>
+          )}
+
+          {/* Codex settings */}
+          {provider === "codex-cli" && (
+            <div className="space-y-4 p-5 rounded-xl bg-card border border-border">
+              <div>
+                <label className="block text-xs text-muted/70 mb-2">{t.settings.llm.model}</label>
+                <input
+                  type="text"
+                  value={codexModel}
+                  onChange={(e) => setCodexModel(e.target.value)}
+                  placeholder="gpt-5.6-sol"
+                  className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted/30 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
+                />
+                <p className="mt-2 text-[11px] text-muted/40 leading-relaxed">
+                  {t.settings.llm.codexModelHint}
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs text-muted/70 mb-2">{t.settings.llm.apiKey}</label>
+                <input
+                  type={showCodexKey ? "text" : "password"}
+                  value={codexApiKey}
+                  onChange={(e) => setCodexApiKey(e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted/30 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCodexKey((v) => !v)}
+                  className="mt-2 text-[11px] text-muted/50 hover:text-muted inline-flex items-center gap-1"
+                >
+                  {showCodexKey ? <EyeOff size={11} /> : <Eye size={11} />}
+                </button>
+              </div>
+              <p className="text-[11px] text-muted/40 leading-relaxed">
+                {t.settings.llm.codexAuthBefore}{" "}
+                <code className="text-accent/60 bg-accent/5 px-1 rounded">codex login</code>{" "}
+                {t.settings.llm.codexAuthAfter}
+              </p>
+              <div className="flex gap-2 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+                <AlertTriangle size={13} className="text-amber-500/70 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-amber-500/70 leading-relaxed">
+                  {t.settings.llm.codexNoTurnCap}
+                </p>
+              </div>
             </div>
           )}
 

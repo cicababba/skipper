@@ -15,7 +15,7 @@ import type {
   StoredPlan,
   TrackedItem,
 } from "@skipper/shared";
-import { modelForRole, providerCacheKey } from "./llm-settings";
+import { apiKeyForProvider, modelForRole, providerCacheKey } from "./llm-settings";
 import type { WorktreeDiff } from "./worktrees";
 
 // Agent review loop (issue #10): consumes "agent-review" items (the #9 coder's
@@ -85,7 +85,7 @@ async function resolveProvider(roleModel: string): Promise<LLMProviderInterface>
       provider: settings.provider,
       model,
       maxTurns: 5,
-      apiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
+      apiKey: apiKeyForProvider(settings),
     });
     llmKey = key;
   }

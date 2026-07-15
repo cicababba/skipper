@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
+  DEFAULT_LLM_SETTINGS,
   resolveRepoOrchestratorSettings,
   type CodingEvent,
   type IssuePlan,
@@ -73,6 +74,7 @@ function makeHarness(
     listItems: () => [...items.values()],
     getItem: (id) => items.get(id),
     getIssue: () => undefined,
+    getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS }),
     getPlan: async (item) => storedPlanFor(item),
     requestTransition: async (itemId, to, actor, reason) => {
       transitions.push({ itemId, to, actor, reason });

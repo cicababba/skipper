@@ -7,12 +7,19 @@ const en = {
   llm: {
     title: "LLM Provider",
     claudeDesc: "Uses your Claude Max subscription via CLI. No API key needed.",
+    codexDesc: "OpenAI's coding agent via CLI. Plans, reviews and codes.",
     openaiDesc: "Uses OpenAI API. Requires an API key.",
     ollamaDesc: "Local models on your machine. Private, no API key.",
     model: "Model",
     latest: "latest",
     claudeAuthBefore: "Authenticated via your Claude CLI session. Run",
     claudeAuthAfter: "in terminal if needed.",
+    codexAuthBefore: "An API key is the supported path. You can also run",
+    codexAuthAfter: "to use your ChatGPT plan instead.",
+    codexModelHint:
+      "Pinned on purpose: left blank, codex picks its own default, which can change without notice. Clear it if you sign in with a ChatGPT plan — those accounts reject an explicit model.",
+    codexNoTurnCap:
+      "Codex has no turn limit, so the coder's \"max turns\" setting is ignored. Runs are bounded by time instead.",
     apiKey: "API Key",
     test: "Test",
     loadingModels: "Loading models...",
@@ -190,12 +197,19 @@ const it: typeof en = {
   llm: {
     title: "Provider LLM",
     claudeDesc: "Usa il tuo abbonamento Claude Max tramite CLI. Nessuna API key richiesta.",
+    codexDesc: "L'agente di coding di OpenAI via CLI. Pianifica, revisiona e programma.",
     openaiDesc: "Usa l'API di OpenAI. Richiede una API key.",
     ollamaDesc: "Modelli locali sulla tua macchina. Privato, senza API key.",
     model: "Modello",
     latest: "ultimo",
     claudeAuthBefore: "Autenticato tramite la tua sessione Claude CLI. Se necessario, esegui",
     claudeAuthAfter: "nel terminale.",
+    codexAuthBefore: "La API key è il metodo supportato. In alternativa puoi eseguire",
+    codexAuthAfter: "per usare il tuo piano ChatGPT.",
+    codexModelHint:
+      "Fissato di proposito: se lasciato vuoto, codex sceglie il proprio default, che può cambiare senza preavviso. Svuotalo se accedi con un piano ChatGPT — quegli account rifiutano un modello esplicito.",
+    codexNoTurnCap:
+      "Codex non ha un limite di turni, quindi l'impostazione \"turni massimi\" del coder viene ignorata. Le esecuzioni sono limitate dal tempo.",
     apiKey: "API Key",
     test: "Prova",
     loadingModels: "Caricamento modelli...",
@@ -373,12 +387,19 @@ const fr: typeof en = {
   llm: {
     title: "Fournisseur LLM",
     claudeDesc: "Utilise votre abonnement Claude Max via la CLI. Aucune clé API requise.",
+    codexDesc: "L'agent de code d'OpenAI via la CLI. Planifie, relit et code.",
     openaiDesc: "Utilise l'API OpenAI. Nécessite une clé API.",
     ollamaDesc: "Modèles locaux sur votre machine. Privé, sans clé API.",
     model: "Modèle",
     latest: "dernier",
     claudeAuthBefore: "Authentifié via votre session Claude CLI. Si besoin, exécutez",
     claudeAuthAfter: "dans le terminal.",
+    codexAuthBefore: "La clé API est la méthode prise en charge. Vous pouvez aussi exécuter",
+    codexAuthAfter: "pour utiliser votre abonnement ChatGPT.",
+    codexModelHint:
+      "Épinglé volontairement : laissé vide, codex choisit son propre modèle par défaut, qui peut changer sans préavis. Videz-le si vous vous connectez avec un abonnement ChatGPT — ces comptes refusent un modèle explicite.",
+    codexNoTurnCap:
+      "Codex n'a pas de limite de tours : le réglage « tours max » du codeur est ignoré. Les exécutions sont bornées par le temps.",
     apiKey: "Clé API",
     test: "Tester",
     loadingModels: "Chargement des modèles...",
@@ -556,12 +577,19 @@ const es: typeof en = {
   llm: {
     title: "Proveedor LLM",
     claudeDesc: "Usa tu suscripción Claude Max a través de la CLI. No requiere clave de API.",
+    codexDesc: "El agente de código de OpenAI vía CLI. Planifica, revisa y programa.",
     openaiDesc: "Usa la API de OpenAI. Requiere una clave de API.",
     ollamaDesc: "Modelos locales en tu máquina. Privado, sin clave de API.",
     model: "Modelo",
     latest: "último",
     claudeAuthBefore: "Autenticado mediante tu sesión de Claude CLI. Si es necesario, ejecuta",
     claudeAuthAfter: "en la terminal.",
+    codexAuthBefore: "La clave de API es la vía admitida. También puedes ejecutar",
+    codexAuthAfter: "para usar tu plan de ChatGPT.",
+    codexModelHint:
+      "Fijado a propósito: si se deja vacío, codex elige su propio modelo por defecto, que puede cambiar sin aviso. Vacíalo si inicias sesión con un plan de ChatGPT — esas cuentas rechazan un modelo explícito.",
+    codexNoTurnCap:
+      "Codex no tiene límite de turnos, así que se ignora el ajuste «turnos máx.» del coder. Las ejecuciones se limitan por tiempo.",
     apiKey: "Clave de API",
     test: "Probar",
     loadingModels: "Cargando modelos...",

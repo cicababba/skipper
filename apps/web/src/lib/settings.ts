@@ -1,27 +1,16 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname, resolve } from "node:path";
+import { DEFAULT_LLM_SETTINGS, type LlmSettings } from "@skipper/shared";
 
 export interface AppSettings {
-  llm: {
-    provider: "claude-cli" | "openai" | "ollama";
-    openaiApiKey: string;
-    openaiModel: string;
-    claudeModel: string;
-    ollamaModel: string;
-  };
+  llm: LlmSettings;
   /** Auto-generate knowledge atoms from git commits (post-commit hook). */
   autoExtractAtoms?: boolean;
   onboardingCompleted?: boolean;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
-  llm: {
-    provider: "claude-cli",
-    openaiApiKey: "",
-    openaiModel: "gpt-4o",
-    claudeModel: "sonnet",
-    ollamaModel: "",
-  },
+  llm: { ...DEFAULT_LLM_SETTINGS },
   autoExtractAtoms: true,
   onboardingCompleted: false,
 };

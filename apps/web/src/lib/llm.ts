@@ -1,5 +1,6 @@
 import { createProvider } from "@skipper/core";
 import type { LLMProviderInterface } from "@skipper/core";
+import type { LlmSettings } from "@skipper/shared";
 import { loadSettings } from "./settings";
 import { ensureNativeLoadersRegistered } from "./native-loader";
 
@@ -21,16 +22,31 @@ export async function getLLM(): Promise<LLMProviderInterface> {
 
   cachedProvider = createProvider({
     provider: settings.llm.provider,
-    model:
-      settings.llm.provider === "claude-cli"
-        ? settings.llm.claudeModel
-        : settings.llm.provider === "ollama"
-          ? settings.llm.ollamaModel
-          : settings.llm.openaiModel,
+    model: modelFor(settings.llm),
     maxTurns: 5,
-    apiKey: settings.llm.provider === "openai" ? settings.llm.openaiApiKey : undefined,
+    apiKey: apiKeyFor(settings.llm),
   });
 
   cachedConfig = configKey;
   return cachedProvider;
+}
+
+/** Role models are Claude aliases — every other provider carries its own. */
+function modelFor(llm: LlmSettings): string {
+  switch (llm.provider) {
+    case "claude-cli":
+      return llm.claudeModel;
+    case "codex-cli":
+      return llm.codexModel;
+    case "ollama":
+      return llm.ollamaModel;
+    case "openai":
+      return llm.openaiModel;
+  }
+}
+
+function apiKeyFor(llm: LlmSettings): string | undefined {
+  if (llm.provider === "openai") return llm.openaiApiKey || undefined;
+  if (llm.provider === "codex-cli") return llm.codexApiKey || undefined;
+  return undefined;
 }

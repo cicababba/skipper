@@ -8,7 +8,11 @@ import type {
   TrackedItem,
   TransitionActor,
 } from "@skipper/shared";
-import { DEFAULT_LLM_SETTINGS, resolveRepoOrchestratorSettings } from "@skipper/shared";
+import {
+  AGENTIC_PROVIDERS,
+  DEFAULT_LLM_SETTINGS,
+  resolveRepoOrchestratorSettings,
+} from "@skipper/shared";
 import type { OrchestratorSettings } from "@skipper/core";
 import { DEFAULT_ORCHESTRATOR_SETTINGS } from "@skipper/core";
 import { initPlanner, pokePlanner, type PlannerDeps } from "./planner";
@@ -156,8 +160,13 @@ describe("planner provider selection (#59)", () => {
     expect(h.transitions).toEqual([
       { to: "needs-input", reason: expect.stringContaining("planning needs a provider with agent mode") },
     ]);
-    // The message has to stand alone — it is what the user reads on the item.
-    expect(h.events.some((e) => e.kind === "error" && /claude-cli or ollama/.test(e.message))).toBe(true);
+    // The message has to stand alone — it is what the user reads on the item,
+    // and it must name every provider that would actually work.
+    const error = h.events.find((e) => e.kind === "error");
+    expect(error).toBeDefined();
+    for (const p of AGENTIC_PROVIDERS) {
+      expect(error!.message).toContain(p);
+    }
   });
 
   it("surfaces a missing OpenAI key rather than hanging", async () => {

@@ -1,4 +1,5 @@
 import type { CodingEvent } from "@skipper/shared";
+import { createNdjsonBuffer } from "./ndjson";
 
 const SUMMARY_MAX = 2000;
 const DETAIL_MAX = 120;
@@ -80,40 +81,13 @@ export function createStreamJsonParser(
   onEvent: (event: CodingEvent) => void,
   onLine?: (line: Record<string, unknown>) => void,
 ): StreamJsonParser {
-  let buffer = "";
-
-  const emitLine = (raw: string) => {
-    const trimmed = raw.trim();
-    if (!trimmed) return;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(trimmed);
-    } catch {
-      return;
-    }
-    const obj = parsed as Record<string, unknown>;
-    if (typeof obj === "object" && obj !== null) onLine?.(obj);
-    if (obj?.type === "assistant") {
+  return createNdjsonBuffer((obj) => {
+    onLine?.(obj);
+    if (obj.type === "assistant") {
       for (const event of mapAssistantLine(obj)) onEvent(event);
       return;
     }
-    const event = mapStreamLine(parsed);
+    const event = mapStreamLine(obj);
     if (event) onEvent(event);
-  };
-
-  return {
-    feed(chunk: string) {
-      buffer += chunk;
-      let newline = buffer.indexOf("\n");
-      while (newline !== -1) {
-        emitLine(buffer.slice(0, newline));
-        buffer = buffer.slice(newline + 1);
-        newline = buffer.indexOf("\n");
-      }
-    },
-    flush() {
-      emitLine(buffer);
-      buffer = "";
-    },
-  };
+  });
 }

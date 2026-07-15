@@ -1,4 +1,4 @@
-import type { CodingEvent, IssuePlan } from "@skipper/shared";
+import { AGENTIC_PROVIDERS, type CodingEvent, type IssuePlan } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import { parseJsonReply } from "../llm/json";
@@ -63,7 +63,7 @@ function tryParsePlan(text: string): { ok: true; plan: IssuePlan } | { ok: false
 export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan> {
   if (!opts.llm.agent) {
     throw new PlanGenerationError(
-      `planning needs a provider with agent mode (claude-cli or ollama) — "${opts.llm.name}" has none. Pick one in Settings.`,
+      `planning needs a provider with agent mode (${AGENTIC_PROVIDERS.join(", ")}) — "${opts.llm.name}" has none. Pick one in Settings.`,
     );
   }
   const schema = planJsonSchema();

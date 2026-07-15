@@ -18,7 +18,7 @@ import type {
   TrackedItem,
   TransitionActor,
 } from "@skipper/shared";
-import { modelForRole, providerCacheKey } from "./llm-settings";
+import { apiKeyForProvider, modelForRole, providerCacheKey } from "./llm-settings";
 import { planFileName, writeStoredPlan } from "./plan-store";
 
 // Eager planner loop (issue #7): watches the orchestrator manifest for triage
@@ -89,7 +89,7 @@ async function resolveProvider(roleModel: string): Promise<{ llm: LLMProviderInt
       provider: settings.provider,
       model,
       maxTurns: 5,
-      apiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
+      apiKey: apiKeyForProvider(settings),
     });
     llmKey = key;
   }

@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadSettings, saveSettings } from "@/lib/settings";
 
+const MASK_PREFIX = "sk-...";
+
+const mask = (key: string) => (key ? `${MASK_PREFIX}${key.slice(-4)}` : "");
+
+/** Keep the stored key when the client echoes the mask back. */
+const unmask = (sent: string | undefined, current: string) =>
+  sent && !sent.startsWith(MASK_PREFIX) ? sent : current;
+
 export async function GET() {
   try {
     const settings = await loadSettings();
@@ -9,9 +17,8 @@ export async function GET() {
       ...settings,
       llm: {
         ...settings.llm,
-        openaiApiKey: settings.llm.openaiApiKey
-          ? `sk-...${settings.llm.openaiApiKey.slice(-4)}`
-          : "",
+        openaiApiKey: mask(settings.llm.openaiApiKey),
+        codexApiKey: mask(settings.llm.codexApiKey),
       },
     });
   } catch (error) {
@@ -30,11 +37,9 @@ export async function PUT(request: NextRequest) {
       llm: {
         ...current.llm,
         ...body.llm,
-        // Only update API key if a real key was sent (not the masked one)
-        openaiApiKey:
-          body.llm?.openaiApiKey && !body.llm.openaiApiKey.startsWith("sk-...")
-            ? body.llm.openaiApiKey
-            : current.llm.openaiApiKey,
+        // Only update an API key if a real one was sent (not the masked echo)
+        openaiApiKey: unmask(body.llm?.openaiApiKey, current.llm.openaiApiKey),
+        codexApiKey: unmask(body.llm?.codexApiKey, current.llm.codexApiKey),
       },
       autoExtractAtoms:
         typeof body.autoExtractAtoms === "boolean"

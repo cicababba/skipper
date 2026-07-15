@@ -16,6 +16,7 @@ import type {
   CodingEvent,
   Issue,
   LifecycleState,
+  LlmSettings,
   RepoPriority,
   RepoRef,
   ResolvedRepoOrchestratorSettings,
@@ -23,6 +24,7 @@ import type {
   TrackedItem,
   TransitionActor,
 } from "@skipper/shared";
+import { apiKeyForProvider, modelForRole } from "./llm-settings";
 
 // Coding runner loop (issue #9): consumes "queued" items — the approval gate's
 // output — one at a time per repo. Creates/reuses an isolated git worktree,
@@ -52,6 +54,8 @@ export interface CoderDeps {
   /** Fetch + resolve base + ensure worktree; composed in orchestrator.ts. */
   prepareWorktree: (item: TrackedItem) => Promise<{ path: string; branch: string }>;
   getSettings: () => OrchestratorSettings;
+  /** Provider picked in Settings (#67) — the coder backend follows it. */
+  getLlmSettings: () => Promise<LlmSettings>;
   /** Per-repo intake priority (#15) — feeds the queue ordering. */
   getRepoPriority: (repo: RepoRef) => RepoPriority;
   /** Effective per-repo coding WIP limit (#47) — override, else global default. */
@@ -224,10 +228,15 @@ async function run(itemId: string, repoKey: string): Promise<void> {
         : buildResumePrompt(issue);
 
     const memory = deps.getMemoryMcp?.(item);
+    const llmSettings = await deps.getLlmSettings();
     const baseOptions = {
       systemPrompt: CODER_SYSTEM_PROMPT,
       cwd: worktree.path,
-      model: deps.getRepoSettings(item.repo).coderModel,
+      // Role models are Claude aliases — non-claude providers carry their own
+      // model in settings.json (see modelForRole).
+      model: modelForRole(llmSettings, deps.getRepoSettings(item.repo).coderModel),
+      provider: llmSettings.provider,
+      ...(apiKeyForProvider(llmSettings) ? { apiKey: apiKeyForProvider(llmSettings) } : {}),
       maxTurns: settings.coderMaxTurns,
       onEvent: (event: CodingEvent) => deps?.emitEvent(itemId, event),
       signal: controller.signal,

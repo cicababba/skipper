@@ -1230,6 +1230,7 @@ export function initOrchestrator(
       });
     },
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
+    getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
     getRepoPriority: (repo) => repoOrch(repo).priority,
     getRepoWipLimit: (repo) => repoOrch(repo).wipLimit,
     getRepoSettings: repoOrch,

@@ -1,6 +1,7 @@
 import type { CodingEvent, LLMProvider } from "@skipper/shared";
 import type { MemoryMcp } from "./memory-mcp";
 import { ClaudeCLIProvider } from "./claude-cli";
+import { CodexCLIProvider } from "./codex-cli";
 import { OpenAIProvider } from "./openai";
 import { OllamaProvider } from "./ollama";
 
@@ -29,7 +30,7 @@ export interface LLMProviderInterface {
    * Agentic completion: the model may use tools (read files, search/fetch the
    * web, run commands) across multiple turns before producing its answer.
    * Optional — only providers that wrap a tool-capable runtime implement it
-   * (today: claude-cli and ollama). Callers should fall back to `ask` when absent.
+   * (today: claude-cli, codex-cli and ollama). Callers should fall back to `ask` when absent.
    */
   agent?(prompt: string, opts?: AgentOptions): Promise<LLMResponse>;
 }
@@ -43,6 +44,8 @@ export function createProvider(config: {
   switch (config.provider) {
     case "claude-cli":
       return new ClaudeCLIProvider(config.model, config.maxTurns);
+    case "codex-cli":
+      return new CodexCLIProvider(config.model, config.apiKey);
     case "openai":
       return new OpenAIProvider(config.model, config.apiKey);
     case "ollama":

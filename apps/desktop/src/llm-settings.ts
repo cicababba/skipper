@@ -22,6 +22,8 @@ export function modelForRole(settings: LlmSettings, roleModel: string): string {
   switch (settings.provider) {
     case "claude-cli":
       return roleModel;
+    case "codex-cli":
+      return settings.codexModel;
     case "ollama":
       return settings.ollamaModel;
     case "openai":
@@ -29,7 +31,14 @@ export function modelForRole(settings: LlmSettings, roleModel: string): string {
   }
 }
 
+/** API key for the active provider, if it takes one. */
+export function apiKeyForProvider(settings: LlmSettings): string | undefined {
+  if (settings.provider === "openai") return settings.openaiApiKey || undefined;
+  if (settings.provider === "codex-cli") return settings.codexApiKey || undefined;
+  return undefined;
+}
+
 /** Cache key: a provider switch must not hand back the previous provider. */
 export function providerCacheKey(settings: LlmSettings, model: string): string {
-  return `${settings.provider}:${model}:${settings.openaiApiKey ? "k" : ""}`;
+  return `${settings.provider}:${model}:${apiKeyForProvider(settings) ? "k" : ""}`;
 }

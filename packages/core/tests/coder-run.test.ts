@@ -149,3 +149,71 @@ describe("runCodingAgent", () => {
     }
   });
 });
+
+describe("runCodingAgent on codex-cli (#67)", () => {
+  const codexLines = (...l: string[]) => l.join("\n") + "\n";
+  const started = `{"type":"thread.started","thread_id":"019f-thread"}`;
+  const done = `{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":2}}`;
+  const message = (t: string) =>
+    `{"type":"item.completed","item":{"id":"i0","type":"agent_message","text":${JSON.stringify(t)}}}`;
+
+  const codexOpts = (extra: Record<string, unknown> = {}) => ({
+    ...baseOpts(),
+    provider: "codex-cli" as const,
+    model: "gpt-5.6-sol",
+    ...extra,
+  });
+
+  it("lets the coder write, and takes its session id from the thread", async () => {
+    const { child, spawnImpl, calls } = fakeSpawn();
+    const p = runCodingAgent(codexOpts(), spawnImpl);
+    child.stdout.emit("data", Buffer.from(codexLines(started, message("shipped it"), done)));
+    child.emit("close", 0);
+
+    const res = await p;
+    expect(res).toMatchObject({ ok: true, summary: "shipped it", sessionId: "019f-thread" });
+    const args = calls[0].args;
+    expect(args[args.indexOf("--sandbox") + 1]).toBe("workspace-write");
+    expect(args[args.indexOf("-C") + 1]).toBe("/tmp/wt");
+    // The persisted session is the shepherd's re-entry seam — never --ephemeral.
+    expect(args).not.toContain("--ephemeral");
+  });
+
+  it("puts flags before `resume` — codex rejects them after it", async () => {
+    const { child, spawnImpl, calls } = fakeSpawn();
+    const p = runCodingAgent(codexOpts({ resumeSessionId: "019f-thread" }), spawnImpl);
+    child.stdout.emit("data", Buffer.from(codexLines(started, done)));
+    child.emit("close", 0);
+    await p;
+
+    const args = calls[0].args;
+    const resumeAt = args.indexOf("resume");
+    expect(args[resumeAt + 1]).toBe("019f-thread");
+    expect(args.indexOf("--sandbox")).toBeLessThan(resumeAt);
+    expect(args.indexOf("-C")).toBeLessThan(resumeAt);
+    // The prompt still rides stdin, after the session id.
+    expect(args.at(-1)).toBe("-");
+    expect(child.stdin.written).toBe("implement it");
+  });
+
+  it("runs in its own process group so a kill reaches codex's shells", async () => {
+    const { child, spawnImpl, calls } = fakeSpawn();
+    const p = runCodingAgent(codexOpts(), spawnImpl);
+    child.stdout.emit("data", Buffer.from(codexLines(started, done)));
+    child.emit("close", 0);
+    await p;
+    expect(calls[0].opts.detached).toBe(process.platform !== "win32");
+    expect(calls[0].opts.windowsHide).toBe(true);
+  });
+
+  it("keeps the claude path on its own argv", async () => {
+    const { child, spawnImpl, calls } = fakeSpawn();
+    const p = runCodingAgent(baseOpts(), spawnImpl);
+    child.stdout.emit("data", Buffer.from(initLine + "\n" + okResultLine + "\n"));
+    child.emit("close", 0);
+    await p;
+    expect(calls[0].args).toContain("--max-turns");
+    expect(calls[0].args).not.toContain("exec");
+    expect(calls[0].opts.detached).toBe(false);
+  });
+});
