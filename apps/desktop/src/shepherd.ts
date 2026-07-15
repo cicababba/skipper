@@ -9,6 +9,7 @@ import {
   buildPrBody,
   buildPrTitle,
   createPullRequest,
+  fetchFailingChecks,
   fetchPullReviewComments,
   fetchPullReviews,
   findOpenPullByHead,
@@ -42,6 +43,7 @@ export interface ShepherdDeps {
     to: LifecycleState,
     actor: TransitionActor,
     reason?: string,
+    resumeTo?: LifecycleState,
   ) => Promise<TrackedItem>;
   /** Single manifest write: authoritative pr link + lastPushedSha + clear pending comments + transition to pr-open. */
   completePrOpen: (
@@ -159,7 +161,13 @@ export async function openOrPushPr(
       if (actor === "shepherd") {
         // Auto mode must never silently spin — park the item for the human.
         await deps
-          .requestTransition(itemId, "needs-input", "shepherd", `auto repush failed: ${message}`)
+          .requestTransition(
+            itemId,
+            "needs-input",
+            "shepherd",
+            `auto repush failed: ${message}`,
+            "human-review",
+          )
           .catch(() => {});
       }
       return { ok: false, error: message };
@@ -184,10 +192,29 @@ async function reenter(itemId: string): Promise<void> {
     // No author filter: the connected user is usually the PR author, and their
     // inline comments on the agent's PR are exactly the feedback to address.
     let feedback = mapReviewFeedback(reviews, comments);
+    // CI-triggered re-entry: the failing checks are the actionable feedback.
+    const ciSha = item.shepherd?.lastCiSha;
+    const ciTriggered = ciSha !== undefined && ciSha === item.shepherd?.lastPushedSha;
+    if (ciTriggered) {
+      try {
+        const failing = await fetchFailingChecks(item.repo, ciSha, getToken);
+        feedback = [
+          ...feedback,
+          ...failing.map((check) => ({
+            body: `CI check failed: ${check.name}${check.summary ? ` — ${check.summary}` : ""}`,
+            url: check.url,
+          })),
+        ];
+      } catch {
+        // Non-fatal: the fallback below still points the coder at CI.
+      }
+    }
     if (feedback.length === 0) {
       feedback = [
         {
-          body: "Changes were requested on the pull request without written comments — re-inspect the PR diff and the issue for what needs to change.",
+          body: ciTriggered
+            ? "CI is failing on the pushed commit — inspect the failing checks and fix the underlying problem."
+            : "Changes were requested on the pull request without written comments — re-inspect the PR diff and the issue for what needs to change.",
         },
       ];
     }

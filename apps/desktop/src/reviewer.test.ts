@@ -63,7 +63,13 @@ function makeItem(state: LifecycleState, review?: AgentReview): TrackedItem {
 interface Harness {
   items: Map<string, TrackedItem>;
   deps: ReviewerDeps;
-  completions: { itemId: string; review: AgentReview; to: LifecycleState; reason: string }[];
+  completions: {
+    itemId: string;
+    review: AgentReview;
+    to: LifecycleState;
+    reason: string;
+    resumeTo?: LifecycleState;
+  }[];
 }
 
 function makeHarness(
@@ -88,8 +94,8 @@ function makeHarness(
         plan,
       }) as StoredPlan,
     getDiff: async () => smallDiff,
-    completeReview: async (itemId, review, to, reason) => {
-      completions.push({ itemId, review, to, reason });
+    completeReview: async (itemId, review, to, reason, resumeTo) => {
+      completions.push({ itemId, review, to, reason, resumeTo });
       const item = items.get(itemId)!;
       items.set(itemId, { ...item, review, state: to });
     },
@@ -269,6 +275,7 @@ describe("reviewer driver", () => {
     expect(h.completions[0].review.rounds).toBe(2);
     expect(h.completions[0].reason).toContain("did not converge after 2 rounds");
     expect(h.completions[0].reason).toContain("criterion not met");
+    expect(h.completions[0].resumeTo).toBe("human-review");
   });
 
   // #62: reviewMaxRounds was hardcoded at 2 (MAX_REVIEW_ROUNDS).
@@ -349,6 +356,7 @@ describe("reviewer driver", () => {
     await settle();
     expect(h.completions[0].to).toBe("needs-input");
     expect(h.completions[0].reason).toContain("no changes");
+    expect(h.completions[0].resumeTo).toBe("queued");
   });
 
   it("diff capture failure exits to needs-input", async () => {

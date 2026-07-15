@@ -52,11 +52,13 @@ export {
   deriveReviewDecision,
   mapReviewFeedback,
   fetchCiStatus,
+  fetchFailingChecks,
 } from "./github";
 export type {
   CreatedPull,
   PullReviewPayload,
   PullReviewCommentPayload,
+  FailingCheck,
   InstallationRepo,
   InstallationsResult,
 } from "./github";

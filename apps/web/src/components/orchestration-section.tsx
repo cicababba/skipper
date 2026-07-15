@@ -75,6 +75,19 @@ export function OrchestrationSection() {
           </select>
         </Row>
 
+        <Row label={r.ciReentry} hint={r.ciReentryDesc} stack>
+          <select
+            value={s.ciReentry}
+            onChange={(e) =>
+              void updateSettings({ ciReentry: e.target.value as "off" | "auto" })
+            }
+            className={`${selectClass} w-full`}
+          >
+            <option value="off">{r.off}</option>
+            <option value="auto">{r.ciReentryAuto}</option>
+          </select>
+        </Row>
+
         <Row
           label={r.reviewMaxRounds}
           hint={s.review === "off" ? r.reviewOffNote : r.reviewMaxRoundsDesc}

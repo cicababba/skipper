@@ -36,6 +36,11 @@ const en = {
     age: "Age",
     actions: "Actions",
   },
+  ci: {
+    passing: "CI passing",
+    failing: "CI failing",
+    pending: "CI running",
+  },
   states: {
     triage: "Triage",
     planning: "Planning",
@@ -237,6 +242,8 @@ const en = {
     reviewDesc: "Whether the diff is reviewed by the critic after coding.",
     reviewMaxRounds: "Review rounds",
     reviewMaxRoundsDesc: "Fix rounds before the item stops at needs-input.",
+    ciReentry: "CI re-entry",
+    ciReentryDesc: "Whether a red CI on the agent's own push re-enters coding (max 2 rounds).",
     worktrees: "Active worktrees",
     worktreesEmpty: "No active worktrees for this repo.",
     open: "Open",
@@ -293,6 +300,11 @@ const it: typeof en = {
     pr: "PR",
     age: "Età",
     actions: "Azioni",
+  },
+  ci: {
+    passing: "CI verde",
+    failing: "CI rossa",
+    pending: "CI in corso",
   },
   states: {
     triage: "Triage",
@@ -495,6 +507,8 @@ const it: typeof en = {
     reviewDesc: "Se il diff viene revisionato dal critico dopo lo sviluppo.",
     reviewMaxRounds: "Round di review",
     reviewMaxRoundsDesc: "Round di fix prima che l'item si fermi a needs-input.",
+    ciReentry: "Rientro da CI",
+    ciReentryDesc: "Se una CI rossa sul push dell'agente rientra in sviluppo (max 2 round).",
     worktrees: "Worktree attivi",
     worktreesEmpty: "Nessun worktree attivo per questo repo.",
     open: "Apri",
@@ -551,6 +565,11 @@ const fr: typeof en = {
     pr: "PR",
     age: "Âge",
     actions: "Actions",
+  },
+  ci: {
+    passing: "CI verte",
+    failing: "CI rouge",
+    pending: "CI en cours",
   },
   states: {
     triage: "Triage",
@@ -754,6 +773,8 @@ const fr: typeof en = {
     reviewDesc: "Si le diff est relu par le critique après le codage.",
     reviewMaxRounds: "Tours de revue",
     reviewMaxRoundsDesc: "Tours de correction avant que l'item s'arrête à needs-input.",
+    ciReentry: "Reprise sur CI",
+    ciReentryDesc: "Si une CI rouge sur le push de l'agent relance le codage (max 2 tours).",
     worktrees: "Worktrees actifs",
     worktreesEmpty: "Aucun worktree actif pour ce dépôt.",
     open: "Ouvrir",
@@ -810,6 +831,11 @@ const es: typeof en = {
     pr: "PR",
     age: "Edad",
     actions: "Acciones",
+  },
+  ci: {
+    passing: "CI en verde",
+    failing: "CI en rojo",
+    pending: "CI en curso",
   },
   states: {
     triage: "Triaje",
@@ -1012,6 +1038,8 @@ const es: typeof en = {
     reviewDesc: "Si el diff lo revisa el crítico después de codificar.",
     reviewMaxRounds: "Rondas de revisión",
     reviewMaxRoundsDesc: "Rondas de corrección antes de que el item pare en needs-input.",
+    ciReentry: "Reingreso por CI",
+    ciReentryDesc: "Si una CI en rojo sobre el push del agente reingresa a codificación (máx. 2 rondas).",
     worktrees: "Worktrees activos",
     worktreesEmpty: "Ningún worktree activo para este repo.",
     open: "Abrir",

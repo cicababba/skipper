@@ -181,6 +181,31 @@ export function RepoIntakeControls({
       {gateRow("autoCoding", rp.autoCoding, rp.autoCodingDesc, o.autoCodingAuto(high))}
       {gateRow("review", rp.review, rp.reviewDesc, o.reviewAuto(high))}
 
+      <Row label={rp.ciReentry} busy={false} hint={rp.ciReentryDesc}>
+        <div className="flex items-center gap-2">
+          <select
+            value={row.settings.ciReentry ?? resolved.ciReentry}
+            disabled={busy}
+            onChange={(e) => onPatch({ ciReentry: e.target.value as "off" | "auto" })}
+            className={selectClass}
+          >
+            <option value="off">{o.off}</option>
+            <option value="auto">{o.ciReentryAuto}</option>
+          </select>
+          {row.settings.ciReentry === undefined ? (
+            <span className="text-[11px] text-muted/50">{rp.wipGlobal}</span>
+          ) : (
+            <button
+              onClick={() => onPatch({ ciReentry: undefined })}
+              disabled={busy}
+              className="text-[11px] text-accent hover:underline disabled:opacity-40"
+            >
+              {rp.wipClear}
+            </button>
+          )}
+        </div>
+      </Row>
+
       <Row label={rp.reviewMaxRounds} busy={false} hint={rp.reviewMaxRoundsDesc}>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">

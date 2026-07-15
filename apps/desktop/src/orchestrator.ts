@@ -288,6 +288,7 @@ const SETTINGS_VALIDATORS: {
   autoCoding: oneOf("on", "off", "auto"),
   review: oneOf("on", "off", "auto"),
   reviewMaxRounds: clampInt(1, 5),
+  ciReentry: oneOf("off", "auto"),
   codingWipPerRepo: clampInt(1, 10),
   // #58: model strings stay opaque CLI aliases — no enum, so a manifest
   // hand-edited to a full model id survives a write from the UI.
@@ -308,6 +309,7 @@ const REPO_SETTINGS_VALIDATORS: {
   autoCoding: oneOf("on", "off", "auto"),
   review: oneOf("on", "off", "auto"),
   reviewMaxRounds: clampInt(1, 5),
+  ciReentry: oneOf("off", "auto"),
   plannerModel: nonEmptyString,
   coderModel: nonEmptyString,
   reviewerModel: nonEmptyString,
@@ -565,7 +567,10 @@ async function completePlan(
     reason = "plan generated (confidence unavailable)";
   }
   const withRef = { ...item, plan: { ...item.plan, ref, confidence: confidence?.composite } };
-  m.items[itemId] = applyTransition(withRef, target, "planner", reason);
+  // Below the low floor the plan itself is broken — resume means replan.
+  m.items[itemId] = applyTransition(withRef, target, "planner", reason, {
+    resumeTo: target === "needs-input" ? "planning" : undefined,
+  });
   await saveOrchestratorManifest(deps.manifestFilePath, m);
   broadcast();
   // High confidence gates straight to queued — wake the coder.
@@ -581,12 +586,13 @@ async function completeReview(
   review: AgentReview,
   to: LifecycleState,
   reason: string,
+  resumeTo?: LifecycleState,
 ): Promise<void> {
   if (!deps) throw new Error("orchestrator not initialized");
   const m = await ensureManifest();
   const item = m.items[itemId];
   if (!item) throw new Error(`unknown item ${itemId}`);
-  m.items[itemId] = applyTransition({ ...item, review }, to, "reviewer", reason);
+  m.items[itemId] = applyTransition({ ...item, review }, to, "reviewer", reason, { resumeTo });
   await saveOrchestratorManifest(deps.manifestFilePath, m);
   broadcast();
   // Fix round lands the item back in queued-for-coding territory — wake the coder.
@@ -685,6 +691,7 @@ export async function requestTransition(
   to: LifecycleState,
   actor: TransitionActor,
   reason?: string,
+  resumeTo?: LifecycleState,
 ): Promise<TrackedItem> {
   if (!deps) throw new Error("orchestrator not initialized");
   const m = await ensureManifest();
@@ -696,7 +703,7 @@ export async function requestTransition(
     actor === "user" && item.state === "triage" && item.holdAutoPlan
       ? { ...item, holdAutoPlan: undefined }
       : item;
-  const next = applyTransition(source, to, actor, reason);
+  const next = applyTransition(source, to, actor, reason, { resumeTo });
   m.items[itemId] = next;
   await saveOrchestratorManifest(deps.manifestFilePath, m);
   broadcast();

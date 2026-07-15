@@ -130,6 +130,10 @@ const en = {
     reviewMaxRoundsDesc:
       "Fix rounds before the item stops at needs-input. Not the coding agent's turn limit.",
     reviewOffNote: "Review is off, so rounds do not apply.",
+    ciReentry: "CI re-entry",
+    ciReentryDesc:
+      "Whether a red CI on the agent's own push sends the item back to coding with the failing checks as feedback. Capped at 2 rounds per push, then it stops at needs-input.",
+    ciReentryAuto: "Auto — re-enter coding on a red CI (max 2 rounds)",
     models: "Models",
     modelsDesc: "Which model each agent role runs on. A repo can override any of them.",
     plannerModel: "Planner",
@@ -313,6 +317,10 @@ const it: typeof en = {
     reviewMaxRoundsDesc:
       "Round di fix prima che l'item si fermi a needs-input. Non è il limite di turni dell'agente.",
     reviewOffNote: "La review è disattivata, quindi i round non si applicano.",
+    ciReentry: "Rientro da CI",
+    ciReentryDesc:
+      "Se una CI rossa sul push dell'agente rimanda l'item in sviluppo con i check falliti come feedback. Massimo 2 round per push, poi si ferma a needs-input.",
+    ciReentryAuto: "Auto — rientra in sviluppo su CI rossa (max 2 round)",
     models: "Modelli",
     modelsDesc: "Su quale modello gira ogni ruolo. Ogni repo può sovrascriverli.",
     plannerModel: "Planner",
@@ -496,6 +504,10 @@ const fr: typeof en = {
     reviewMaxRoundsDesc:
       "Tours de correction avant que l'item s'arrête à needs-input. Pas la limite de tours de l'agent.",
     reviewOffNote: "La revue est désactivée, les tours ne s'appliquent pas.",
+    ciReentry: "Reprise sur CI",
+    ciReentryDesc:
+      "Si une CI rouge sur le push de l'agent renvoie l'item en codage avec les checks échoués comme feedback. Maximum 2 tours par push, puis arrêt à needs-input.",
+    ciReentryAuto: "Auto — reprendre le codage sur CI rouge (max 2 tours)",
     models: "Modèles",
     modelsDesc: "Le modèle utilisé par chaque rôle. Chaque dépôt peut les remplacer.",
     plannerModel: "Planner",
@@ -679,6 +691,10 @@ const es: typeof en = {
     reviewMaxRoundsDesc:
       "Rondas de corrección antes de que el item pare en needs-input. No es el límite de turnos del agente.",
     reviewOffNote: "La revisión está desactivada, así que las rondas no aplican.",
+    ciReentry: "Reingreso por CI",
+    ciReentryDesc:
+      "Si una CI en rojo sobre el push del agente devuelve el ítem a codificación con los checks fallidos como feedback. Máximo 2 rondas por push, luego se detiene en needs-input.",
+    ciReentryAuto: "Auto — volver a codificar con CI en rojo (máx. 2 rondas)",
     models: "Modelos",
     modelsDesc: "Con qué modelo corre cada rol. Cada repo puede sobrescribirlos.",
     plannerModel: "Planner",

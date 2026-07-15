@@ -342,6 +342,85 @@ describe("reconcile — pull requests", () => {
   });
 });
 
+describe("reconcile — CI re-entry", () => {
+  const SHA = "abc123";
+
+  function ciManifest(state: LifecycleState, shepherd = {}): OrchestratorManifest {
+    const m = manifest();
+    (m.settings as { ciReentry?: string }).ciReentry = "auto";
+    m.items["github:42"] = tracked(42, state, {
+      pr: { id: "github:pr-7", number: 7, url: "u" },
+      shepherd: { lastPushedSha: SHA, ...shepherd },
+    });
+    return m;
+  }
+
+  function failingPull(overrides: Partial<PullRequest> = {}): PullRequest {
+    return pull(7, { draft: true, ciStatus: "failing", headSha: SHA, ...overrides });
+  }
+
+  it("re-enters changes-requested on a red CI over the agent's own push", () => {
+    const m = ciManifest("pr-open");
+    const outcome = reconcile(m, ACCOUNT, poll({ pullRequests: [failingPull()] }), openPolicy);
+    expect(m.items["github:42"].state).toBe("changes-requested");
+    expect(m.items["github:42"].shepherd).toMatchObject({ lastCiSha: SHA, ciFixRounds: 1 });
+    expect(outcome.transitions[0].reason).toContain("CI failing");
+  });
+
+  it("reacts once per sha", () => {
+    const m = ciManifest("pr-open", { lastCiSha: SHA, ciFixRounds: 1 });
+    reconcile(m, ACCOUNT, poll({ pullRequests: [failingPull()] }), openPolicy);
+    expect(m.items["github:42"].state).toBe("pr-open");
+  });
+
+  it("ignores a red CI on a human's push (headSha != lastPushedSha)", () => {
+    const m = ciManifest("pr-open");
+    reconcile(
+      m,
+      ACCOUNT,
+      poll({ pullRequests: [failingPull({ headSha: "human999" })] }),
+      openPolicy,
+    );
+    expect(m.items["github:42"].state).toBe("pr-open");
+    expect(m.items["github:42"].shepherd?.ciFixRounds).toBeUndefined();
+  });
+
+  it("is a no-op under ciReentry off", () => {
+    const m = ciManifest("pr-open");
+    (m.settings as { ciReentry?: string }).ciReentry = "off";
+    reconcile(m, ACCOUNT, poll({ pullRequests: [failingPull()] }), openPolicy);
+    expect(m.items["github:42"].state).toBe("pr-open");
+  });
+
+  it("parks at needs-input with resumeTo human-review past the round cap", () => {
+    const m = ciManifest("pr-open", { lastCiSha: "prev", ciFixRounds: 2 });
+    reconcile(m, ACCOUNT, poll({ pullRequests: [failingPull()] }), openPolicy);
+    expect(m.items["github:42"].state).toBe("needs-input");
+    expect(m.items["github:42"].resumeTo).toBe("human-review");
+  });
+
+  it("a green CI restores the round budget", () => {
+    const m = ciManifest("pr-open", { lastCiSha: "prev", ciFixRounds: 2 });
+    reconcile(
+      m,
+      ACCOUNT,
+      poll({ pullRequests: [failingPull({ ciStatus: "passing" })] }),
+      openPolicy,
+    );
+    expect(m.items["github:42"].state).toBe("pr-open");
+    expect(m.items["github:42"].shepherd?.ciFixRounds).toBeUndefined();
+    expect(m.items["github:42"].shepherd?.lastCiSha).toBeUndefined();
+  });
+
+  it("respects a per-repo ciReentry override over the global off", () => {
+    const m = ciManifest("pr-open");
+    (m.settings as { ciReentry?: string }).ciReentry = "off";
+    m.repoSettings["o/r"] = { ciReentry: "auto" };
+    reconcile(m, ACCOUNT, poll({ pullRequests: [failingPull()] }), openPolicy);
+    expect(m.items["github:42"].state).toBe("changes-requested");
+  });
+});
+
 describe("reconcile — full-walk absence", () => {
   it("closes absent pre-coding items", () => {
     const m = manifest();

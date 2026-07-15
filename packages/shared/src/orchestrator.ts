@@ -43,9 +43,16 @@ export interface ShepherdState {
   pendingReviewComments?: PrReviewComment[];
   /** HEAD sha of the last successful push. */
   lastPushedSha?: string;
+  /** Last sha CI-failure re-entry reacted to — one reaction per push. */
+  lastCiSha?: string;
+  /** Consecutive CI-fix re-entries; reset when CI goes green. Capped by CI_FIX_MAX_ROUNDS. */
+  ciFixRounds?: number;
   /** Solutions-memory record ref — presence means the post-merge capture ran. */
   memoryRef?: string;
 }
+
+/** After this many consecutive CI-fix rounds the item parks for a human. */
+export const CI_FIX_MAX_ROUNDS = 2;
 
 /** Lifecycle states from docs/DIRECTION.md ("Il ciclo di vita"). */
 export type LifecycleState =
@@ -124,6 +131,8 @@ export interface OrchestratorSettings {
   reviewerModel: string;
   /** After a change-request fix round (#11): hold at human-review or repush unattended. */
   shepherdRepush: "human" | "auto";
+  /** auto = a red CI on the agent's own push re-enters coding (round-capped). off = evidence only. */
+  ciReentry: "off" | "auto";
   /** Coding WIP limit per repo (#15); parallelism is across repos. */
   codingWipPerRepo: number;
 }
@@ -140,6 +149,7 @@ export const DEFAULT_ORCHESTRATOR_SETTINGS: OrchestratorSettings = {
   reviewMaxRounds: 2,
   reviewerModel: "opus",
   shepherdRepush: "human",
+  ciReentry: "off",
   codingWipPerRepo: 1,
 };
 
@@ -156,6 +166,7 @@ export interface RepoIntakeSettings {
   autoCoding?: GateMode;
   review?: GateMode;
   reviewMaxRounds?: number;
+  ciReentry?: "off" | "auto";
   /** #58 per-role model overrides. Absent = inherit the global setting. */
   plannerModel?: string;
   coderModel?: string;
@@ -186,6 +197,7 @@ export interface ResolvedRepoOrchestratorSettings extends ResolvedRepoIntakeSett
   autoCoding: GateMode;
   review: GateMode;
   reviewMaxRounds: number;
+  ciReentry: "off" | "auto";
   /** #58 — the model each role's run hands to its provider. */
   plannerModel: string;
   coderModel: string;
@@ -210,6 +222,7 @@ export function resolveRepoOrchestratorSettings(
     autoCoding: repo?.autoCoding ?? global.autoCoding,
     review: repo?.review ?? global.review,
     reviewMaxRounds: repo?.reviewMaxRounds ?? global.reviewMaxRounds,
+    ciReentry: repo?.ciReentry ?? global.ciReentry,
     plannerModel: repo?.plannerModel ?? global.plannerModel,
     coderModel: repo?.coderModel ?? global.coderModel,
     reviewerModel: repo?.reviewerModel ?? global.reviewerModel,

@@ -58,6 +58,7 @@ describe("orchestrator manifest", () => {
         reviewMaxRounds: 2,
         reviewerModel: "opus",
         shepherdRepush: "human",
+        ciReentry: "off",
         codingWipPerRepo: 1,
       },
       items: {},

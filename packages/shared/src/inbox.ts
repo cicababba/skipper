@@ -47,6 +47,8 @@ export interface PullRequest extends WorkItemBase {
   /** Filled by detail hydration; undefined for closed/merged PRs in v1. */
   headRef?: string;
   baseRef?: string;
+  /** Head commit sha from detail hydration — anchors CI evidence to a push. */
+  headSha?: string;
   mergeable?: boolean;
   /** Not populated in v1 — reserved for the orchestrator (#6). */
   reviewDecision?: "approved" | "changes-requested" | "review-required";

@@ -1,4 +1,9 @@
 import type { Issue, LifecycleState, PullRequest, TrackedItem } from "@skipper/shared";
+import {
+  CI_FIX_MAX_ROUNDS,
+  repoKey,
+  resolveRepoOrchestratorSettings,
+} from "@skipper/shared";
 import { admitItem, applyTransition } from "./machine";
 import type { OrchestratorManifest } from "./manifest";
 import { canTransition } from "./states";
@@ -45,8 +50,13 @@ export function reconcile(
 ): ReconcileOutcome {
   const outcome: ReconcileOutcome = { transitions: [], admitted: [], parked: [], conflicts: [] };
 
-  const transition = (item: TrackedItem, to: LifecycleState, reason: string): void => {
-    manifest.items[item.id] = applyTransition(item, to, "reconcile", reason, now);
+  const transition = (
+    item: TrackedItem,
+    to: LifecycleState,
+    reason: string,
+    resumeTo?: LifecycleState,
+  ): void => {
+    manifest.items[item.id] = applyTransition(item, to, "reconcile", reason, { now, resumeTo });
     outcome.transitions.push({ itemId: item.id, from: item.state, to, reason });
   };
 
@@ -122,12 +132,19 @@ export function reconcile(
   return outcome;
 }
 
+type TransitionFn = (
+  item: TrackedItem,
+  to: LifecycleState,
+  reason: string,
+  resumeTo?: LifecycleState,
+) => void;
+
 function reconcilePulls(
   manifest: OrchestratorManifest,
   accountId: string,
   pullRequests: PullRequest[],
   outcome: ReconcileOutcome,
-  transition: (item: TrackedItem, to: LifecycleState, reason: string) => void,
+  transition: TransitionFn,
 ): void {
   const items = Object.values(manifest.items).filter((i) => i.accountId === accountId);
 
@@ -197,7 +214,59 @@ function reconcilePulls(
       if (pr.reviewDecision === "changes-requested" && afterOpen.state === "in-review") {
         transition(afterOpen, "changes-requested", "changes requested on PR");
       }
+      reconcileCi(manifest, item.id, pr, transition);
     }
+  }
+}
+
+/**
+ * CI-failure re-entry (round-guarded). Reacts once per pushed sha, only to the
+ * agent's own push (headSha === lastPushedSha — a human's push is not ours to
+ * fix), only under ciReentry:"auto". Green CI restores the round budget.
+ */
+function reconcileCi(
+  manifest: OrchestratorManifest,
+  itemId: string,
+  pr: PullRequest,
+  transition: TransitionFn,
+): void {
+  const item = manifest.items[itemId];
+  const shepherd = item.shepherd;
+  if (!pr.headSha || !shepherd?.lastPushedSha) return;
+
+  if (pr.ciStatus === "passing" && (shepherd.ciFixRounds || shepherd.lastCiSha)) {
+    manifest.items[itemId] = {
+      ...item,
+      shepherd: { ...shepherd, ciFixRounds: undefined, lastCiSha: undefined },
+    };
+    return;
+  }
+
+  if (pr.ciStatus !== "failing") return;
+  if (pr.headSha !== shepherd.lastPushedSha) return;
+  if (shepherd.lastCiSha === pr.headSha) return;
+  if (item.state !== "pr-open" && item.state !== "in-review") return;
+  const resolved = resolveRepoOrchestratorSettings(
+    manifest.repoSettings[repoKey(item.repo)],
+    manifest.settings,
+  );
+  if (resolved.ciReentry !== "auto") return;
+
+  const rounds = (shepherd.ciFixRounds ?? 0) + 1;
+  const guarded = {
+    ...item,
+    shepherd: { ...shepherd, lastCiSha: pr.headSha, ciFixRounds: rounds },
+  };
+  manifest.items[itemId] = guarded;
+  if (rounds > CI_FIX_MAX_ROUNDS) {
+    transition(
+      guarded,
+      "needs-input",
+      `CI still failing after ${CI_FIX_MAX_ROUNDS} fix rounds`,
+      "human-review",
+    );
+  } else {
+    transition(guarded, "changes-requested", `CI failing (fix round ${rounds}/${CI_FIX_MAX_ROUNDS})`);
   }
 }
 

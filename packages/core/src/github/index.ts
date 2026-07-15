@@ -9,8 +9,9 @@ export {
   deriveReviewDecision,
   mapReviewFeedback,
   fetchCiStatus,
+  fetchFailingChecks,
 } from "./pulls";
-export type { CreatedPull, PullReviewPayload, PullReviewCommentPayload } from "./pulls";
+export type { CreatedPull, PullReviewPayload, PullReviewCommentPayload, FailingCheck } from "./pulls";
 export { listUserInstallationRepos } from "./installations";
 export type { InstallationRepo, InstallationsResult } from "./installations";
 export { GitHubApiError, GitHubAuthError, emptyGitHubCursor } from "./types";

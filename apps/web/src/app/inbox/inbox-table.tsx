@@ -8,6 +8,7 @@ import { formatAge, type SortDir, type SortKey } from "@/lib/inbox/table";
 import { ConfidenceBadge } from "@/components/confidence-popover";
 import { useT } from "@/lib/app-i18n";
 import { StateBadge } from "./state-badge";
+import { CiBadge } from "./ci-badge";
 import { ItemActions } from "./item-actions";
 
 function openExternal(url: string) {
@@ -113,13 +114,16 @@ export function InboxTable({
                 </td>
                 <td className="px-3 py-2">
                   {item.pr ? (
-                    <button
-                      onClick={() => openExternal(item.pr!.url)}
-                      className="flex items-center gap-1 text-accent hover:underline whitespace-nowrap"
-                    >
-                      #{item.pr.number}
-                      <ExternalLink size={11} />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => openExternal(item.pr!.url)}
+                        className="flex items-center gap-1 text-accent hover:underline whitespace-nowrap"
+                      >
+                        #{item.pr.number}
+                        <ExternalLink size={11} />
+                      </button>
+                      <CiBadge item={item} />
+                    </div>
                   ) : (
                     <span className="text-muted/40">—</span>
                   )}

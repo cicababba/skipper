@@ -32,21 +32,29 @@ export function admitItem(issue: Issue, now: Date = new Date()): TrackedItem {
   };
 }
 
+export interface TransitionOptions {
+  now?: Date;
+  /** Where resume should land; only meaningful when `to` is needs-input/blocked. */
+  resumeTo?: LifecycleState;
+}
+
 export function applyTransition(
   item: TrackedItem,
   to: LifecycleState,
   actor: TransitionActor,
   reason?: string,
-  now: Date = new Date(),
+  opts: TransitionOptions = {},
 ): TrackedItem {
   if (!canTransition(item.state, to)) {
     throw new IllegalTransitionError(item.id, item.state, to);
   }
-  const at = now.toISOString();
+  const at = (opts.now ?? new Date()).toISOString();
+  const parked = to === "needs-input" || to === "blocked";
   return {
     ...item,
     state: to,
     updatedAt: at,
+    resumeTo: parked ? opts.resumeTo : undefined,
     transitions: [...item.transitions, { at, from: item.state, to, actor, reason }],
   };
 }

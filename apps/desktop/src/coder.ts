@@ -43,6 +43,7 @@ export interface CoderDeps {
     to: LifecycleState,
     actor: TransitionActor,
     reason?: string,
+    resumeTo?: LifecycleState,
   ) => Promise<TrackedItem>;
   /** Persists item.worktree (path/branch/sessionId) without a transition. */
   setWorktree: (
@@ -169,7 +170,7 @@ async function run(itemId: string, repoKey: string): Promise<void> {
 
     const stored = await deps.getPlan(item);
     if (!stored) {
-      await fail(itemId, "needs-input", "no stored plan — replan required");
+      await fail(itemId, "needs-input", "no stored plan — replan required", "planning");
       return;
     }
 
@@ -179,7 +180,7 @@ async function run(itemId: string, repoKey: string): Promise<void> {
       worktree = await deps.prepareWorktree(item);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      await fail(itemId, "needs-input", `worktree setup failed: ${message.slice(0, 500)}`);
+      await fail(itemId, "needs-input", `worktree setup failed: ${message.slice(0, 500)}`, "queued");
       return;
     }
     deps.emitEvent(itemId, { kind: "status", phase: "worktree", detail: worktree.path });
@@ -294,9 +295,14 @@ function release(repoKey: string): void {
   else activeRepos.set(repoKey, count - 1);
 }
 
-async function fail(itemId: string, to: LifecycleState, reason: string): Promise<void> {
+async function fail(
+  itemId: string,
+  to: LifecycleState,
+  reason: string,
+  resumeTo?: LifecycleState,
+): Promise<void> {
   await deps
-    ?.requestTransition(itemId, to, "coder", reason)
+    ?.requestTransition(itemId, to, "coder", reason, resumeTo)
     .catch(() => {
       /* item moved concurrently — nothing to do */
     });

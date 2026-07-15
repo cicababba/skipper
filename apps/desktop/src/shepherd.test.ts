@@ -52,7 +52,13 @@ interface Harness {
   prOpens: Array<{ itemId: string; pr: { id: string; number: number; url: string }; sha: string; actor: string; reason: string }>;
   reentries: Array<{ itemId: string; comments: PrReviewComment[] }>;
   cleanups: Array<{ itemId: string; memoryRef: string }>;
-  transitions: Array<{ itemId: string; to: LifecycleState; actor: string; reason?: string }>;
+  transitions: Array<{
+    itemId: string;
+    to: LifecycleState;
+    actor: string;
+    reason?: string;
+    resumeTo?: LifecycleState;
+  }>;
 }
 
 function makeHarness(overrides: Partial<ShepherdDeps> = {}): Harness {
@@ -69,8 +75,8 @@ function makeHarness(overrides: Partial<ShepherdDeps> = {}): Harness {
     getRepoPath: () => "/repos/repo",
     getBaseBranch: async () => "develop",
     getPlan: async () => null,
-    requestTransition: async (itemId, to, actor, reason) => {
-      transitions.push({ itemId, to, actor, reason });
+    requestTransition: async (itemId, to, actor, reason, resumeTo) => {
+      transitions.push({ itemId, to, actor, reason, resumeTo });
       const item = items.get(itemId)!;
       const next = { ...item, state: to };
       items.set(itemId, next);
@@ -247,7 +253,11 @@ describe("openOrPushPr", () => {
 
     const result = await openOrPushPr("github:1", "shepherd");
     expect(result.ok).toBe(false);
-    expect(h.transitions[0]).toMatchObject({ to: "needs-input", actor: "shepherd" });
+    expect(h.transitions[0]).toMatchObject({
+      to: "needs-input",
+      actor: "shepherd",
+      resumeTo: "human-review",
+    });
   });
 });
 
@@ -280,6 +290,43 @@ describe("shepherd scan — re-entry", () => {
     expect(h.reentries).toHaveLength(1);
     expect(h.reentries[0].comments.map((c) => c.body)).toEqual(["please fix X", "rename this"]);
     expect(h.items.get("github:1")!.state).toBe("coding");
+  });
+
+  it("appends failing checks as feedback on a CI-triggered re-entry", async () => {
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      const u = String(url);
+      if (u.includes("/check-runs")) {
+        return jsonResponse(200, {
+          check_runs: [
+            {
+              status: "completed",
+              conclusion: "failure",
+              name: "build",
+              html_url: "cu",
+              output: { title: "tsc failed" },
+            },
+            { status: "completed", conclusion: "success", name: "lint" },
+          ],
+        });
+      }
+      return jsonResponse(200, []);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const h = makeHarness();
+    initShepherd(h.deps);
+    h.items.set("github:1", makeItem(1, "changes-requested", {
+      pr: { id: "github:555", number: 9, url: "u" },
+      shepherd: { lastPushedSha: "sha1", lastCiSha: "sha1" },
+    }));
+
+    pokeShepherd();
+    await settle();
+
+    expect(h.reentries).toHaveLength(1);
+    expect(h.reentries[0].comments.map((c) => c.body)).toEqual([
+      "CI check failed: build — tsc failed",
+    ]);
+    expect(h.reentries[0].comments[0].url).toBe("cu");
   });
 
   it("synthesizes a comment when changes were requested without text", async () => {
