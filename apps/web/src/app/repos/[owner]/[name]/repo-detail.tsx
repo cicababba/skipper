@@ -2,29 +2,22 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { ExternalLink, FolderGit2, GitBranch } from "lucide-react";
-import type { RepoIntakeSettings, RepoSettingsRow } from "@skipper/shared";
+import { ExternalLink, FolderGit2, GitBranch, Settings as SettingsIcon } from "lucide-react";
+import type { RepoSettingsRow } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { repoKey } from "@/lib/inbox/model";
-import { RepoIntakeControls } from "@/components/repo-intake-controls";
 import { Section } from "@/app/inbox/[id]/plan-sections";
 import { InboxView } from "@/app/inbox/inbox-view";
 import { MemoryBrowser } from "./memory-browser";
+import { useRepoParams } from "./use-repo-params";
 
 export function RepoDetailView() {
-  const params = useParams();
   const { t } = useT();
   const { state } = useOrchestrator();
-  // Catch-all [...slug] → ["owner", "name"] (Next decodes segments for us).
-  const slug = Array.isArray(params.slug) ? params.slug : params.slug ? [params.slug] : [];
-  const owner = slug[0] ?? "";
-  const name = slug[1] ?? "";
-  const key = `${owner}/${name}`;
+  const { owner, name, key } = useRepoParams();
 
   const [rows, setRows] = useState<RepoSettingsRow[]>([]);
-  const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
     if (!window.skipper) return;
@@ -37,7 +30,6 @@ export function RepoDetailView() {
 
   const row = rows.find((r) => r.key === key);
   const repo = row?.repo ?? { owner, name };
-  const globalWip = state?.queue.wipLimitPerRepo ?? 1;
 
   const worktrees = useMemo(
     () =>
@@ -45,19 +37,7 @@ export function RepoDetailView() {
     [state, key],
   );
 
-  const patch = async (p: Partial<RepoIntakeSettings>) => {
-    if (!window.skipper) return;
-    setBusy(true);
-    try {
-      await window.skipper.orchestrator.setRepoSettings(repo.owner, repo.name, p);
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const rp = t.inbox.repoPage;
-  const isElectron = typeof window !== "undefined" && !!window.skipper;
 
   return (
     <div className="min-h-full p-6 space-y-6">
@@ -72,17 +52,17 @@ export function RepoDetailView() {
         >
           <ExternalLink size={15} />
         </button>
+        <Link
+          href={`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/settings`}
+          className="text-muted hover:text-accent transition-colors"
+          title={rp.settings}
+        >
+          <SettingsIcon size={15} />
+        </Link>
       </div>
 
       {/* Items — the repo's dedicated inbox (tiles + table/kanban, scoped). */}
       <InboxView repo={key} />
-
-      {/* Intake settings + WIP override */}
-      {isElectron && row && (
-        <Section title={rp.intake} editable={false} editing={false}>
-          <RepoIntakeControls row={row} globalWip={globalWip} busy={busy} onPatch={(p) => void patch(p)} />
-        </Section>
-      )}
 
       {/* Active worktrees */}
       <Section title={rp.worktrees} count={worktrees.length} editable={false} editing={false}>

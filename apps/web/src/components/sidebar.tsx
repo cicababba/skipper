@@ -237,7 +237,7 @@ function InboxNav() {
       {!collapsed &&
         rows.map((row) => {
           const href = repoHref(row.repo);
-          const isActive = pathname === href;
+          const isActive = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
               key={row.key}
