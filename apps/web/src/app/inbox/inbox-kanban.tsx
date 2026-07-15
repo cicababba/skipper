@@ -8,6 +8,7 @@ import { formatAge } from "@/lib/inbox/table";
 import { ConfidenceBadge } from "@/components/confidence-popover";
 import { useT } from "@/lib/app-i18n";
 import { StateBadge } from "./state-badge";
+import { CiBadge } from "./ci-badge";
 import { ItemActions } from "./item-actions";
 
 function openExternal(url: string) {
@@ -51,6 +52,7 @@ function KanbanCard({ item, showState }: { item: TrackedItem; showState: boolean
             <ExternalLink size={10} />
           </button>
         )}
+        <CiBadge item={item} />
         <span className="text-[11px] text-muted/60 ml-auto">
           {age.value}
           {t.inbox.age[age.unit]}

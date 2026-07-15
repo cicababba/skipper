@@ -36,6 +36,11 @@ const en = {
     age: "Age",
     actions: "Actions",
   },
+  ci: {
+    passing: "CI passing",
+    failing: "CI failing",
+    pending: "CI running",
+  },
   states: {
     triage: "Triage",
     planning: "Planning",
@@ -293,6 +298,11 @@ const it: typeof en = {
     pr: "PR",
     age: "Età",
     actions: "Azioni",
+  },
+  ci: {
+    passing: "CI verde",
+    failing: "CI rossa",
+    pending: "CI in corso",
   },
   states: {
     triage: "Triage",
@@ -552,6 +562,11 @@ const fr: typeof en = {
     age: "Âge",
     actions: "Actions",
   },
+  ci: {
+    passing: "CI verte",
+    failing: "CI rouge",
+    pending: "CI en cours",
+  },
   states: {
     triage: "Triage",
     planning: "Planification",
@@ -810,6 +825,11 @@ const es: typeof en = {
     pr: "PR",
     age: "Edad",
     actions: "Acciones",
+  },
+  ci: {
+    passing: "CI en verde",
+    failing: "CI en rojo",
+    pending: "CI en curso",
   },
   states: {
     triage: "Triaje",
