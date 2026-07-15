@@ -4,6 +4,7 @@ import { Minus, Plus, Workflow } from "lucide-react";
 import type { GateMode } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
+import { ModelSelect } from "@/components/model-select";
 
 // Settings → Orchestration (#62): the global defaults for the two gate axes.
 // Confidence thresholds stay hand-edit-only, but "auto" on both axes is decided by
@@ -98,6 +99,35 @@ export function OrchestrationSection() {
             </button>
           </div>
         </Row>
+
+        <div className="border-t border-border pt-5 space-y-5">
+          <div>
+            <p className="text-sm font-medium mb-1">{r.models}</p>
+            <p className="text-[11px] text-muted/60 leading-relaxed">{r.modelsDesc}</p>
+          </div>
+
+          <Row label={r.plannerModel} hint={r.plannerModelDesc}>
+            <ModelSelect
+              value={s.plannerModel}
+              onChange={(m) => void updateSettings({ plannerModel: m })}
+              className={selectClass}
+            />
+          </Row>
+          <Row label={r.coderModel} hint={r.coderModelDesc}>
+            <ModelSelect
+              value={s.coderModel}
+              onChange={(m) => void updateSettings({ coderModel: m })}
+              className={selectClass}
+            />
+          </Row>
+          <Row label={r.reviewerModel} hint={r.reviewerModelDesc}>
+            <ModelSelect
+              value={s.reviewerModel}
+              onChange={(m) => void updateSettings({ reviewerModel: m })}
+              className={selectClass}
+            />
+          </Row>
+        </div>
 
         <p className="text-[11px] text-muted/50 leading-relaxed border-t border-border pt-4">
           {r.floorNote(s.confidence.low.toFixed(2))}

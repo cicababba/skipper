@@ -150,7 +150,7 @@ async function run(itemId: string): Promise<void> {
       return;
     }
     const settings = deps.getSettings();
-    const { llm: provider, model } = resolveProvider(settings.plannerModel);
+    const { llm: provider, model } = resolveProvider(deps.getRepoSettings(item.repo).plannerModel);
     const cached = deps.getIssue(item);
     const issue = {
       number: item.number,

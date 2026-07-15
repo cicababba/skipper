@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Minus, Plus } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 import type {
   AutoPlanMode,
   GateMode,
@@ -12,6 +12,7 @@ import type {
 } from "@skipper/shared";
 import { DEFAULT_AUTO_PLAN_LABEL } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
+import { Row, selectClass } from "./settings-row";
 
 /**
  * Per-repo intake controls (#47) — follow / priority / auto-plan / auto-plan
@@ -36,9 +37,6 @@ export function RepoIntakeControls({
   const o = t.settings.orchestration;
   const { resolved } = row;
   const [label, setLabel] = useState(row.settings.autoPlanLabel ?? "");
-
-  const selectClass =
-    "bg-background border border-border rounded-md px-2 py-1.5 text-sm focus:border-accent focus:outline-none disabled:opacity-50";
 
   const override = row.settings.wipLimit;
   const effectiveWip = override ?? global.codingWipPerRepo;
@@ -221,27 +219,3 @@ export function RepoIntakeControls({
   );
 }
 
-function Row({
-  label,
-  hint,
-  busy,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  busy: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <div className="min-w-0">
-        <p className="text-sm font-medium flex items-center gap-2">
-          {label}
-          {busy && <Loader2 size={12} className="animate-spin text-muted" />}
-        </p>
-        {hint && <p className="text-[11px] text-muted/60 leading-relaxed mt-0.5">{hint}</p>}
-      </div>
-      <div className="shrink-0">{children}</div>
-    </div>
-  );
-}

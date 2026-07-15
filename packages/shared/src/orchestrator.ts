@@ -156,6 +156,10 @@ export interface RepoIntakeSettings {
   autoCoding?: GateMode;
   review?: GateMode;
   reviewMaxRounds?: number;
+  /** #58 per-role model overrides. Absent = inherit the global setting. */
+  plannerModel?: string;
+  coderModel?: string;
+  reviewerModel?: string;
 }
 
 export const DEFAULT_AUTO_PLAN_LABEL = "ai-ready";
@@ -182,6 +186,10 @@ export interface ResolvedRepoOrchestratorSettings extends ResolvedRepoIntakeSett
   autoCoding: GateMode;
   review: GateMode;
   reviewMaxRounds: number;
+  /** #58 — the model each role's run hands to its provider. */
+  plannerModel: string;
+  coderModel: string;
+  reviewerModel: string;
 }
 
 /**
@@ -202,6 +210,9 @@ export function resolveRepoOrchestratorSettings(
     autoCoding: repo?.autoCoding ?? global.autoCoding,
     review: repo?.review ?? global.review,
     reviewMaxRounds: repo?.reviewMaxRounds ?? global.reviewMaxRounds,
+    plannerModel: repo?.plannerModel ?? global.plannerModel,
+    coderModel: repo?.coderModel ?? global.coderModel,
+    reviewerModel: repo?.reviewerModel ?? global.reviewerModel,
   };
 }
 

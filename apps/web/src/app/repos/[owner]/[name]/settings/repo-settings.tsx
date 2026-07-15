@@ -9,6 +9,7 @@ import { useT } from "@/lib/app-i18n";
 import { Section } from "@/app/inbox/[id]/plan-sections";
 import { useRepoParams } from "../use-repo-params";
 import { RepoIntakeControls } from "./repo-intake-controls";
+import { RepoModelControls } from "./repo-model-controls";
 
 export function RepoSettingsView() {
   const { t } = useT();
@@ -61,9 +62,24 @@ export function RepoSettingsView() {
       </div>
 
       {isElectron && row && global && (
-        <Section title={rp.intake} editable={false} editing={false}>
-          <RepoIntakeControls row={row} global={global} busy={busy} onPatch={(p) => void patch(p)} />
-        </Section>
+        <>
+          <Section title={rp.intake} editable={false} editing={false}>
+            <RepoIntakeControls
+              row={row}
+              global={global}
+              busy={busy}
+              onPatch={(p) => void patch(p)}
+            />
+          </Section>
+          <Section title={t.settings.orchestration.models} editable={false} editing={false}>
+            <RepoModelControls
+              row={row}
+              global={global}
+              busy={busy}
+              onPatch={(p) => void patch(p)}
+            />
+          </Section>
+        </>
       )}
     </div>
   );
