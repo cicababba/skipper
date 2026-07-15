@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   Settings,
   Sun,
@@ -11,10 +11,11 @@ import {
   ChevronDown,
   Plus,
 } from "lucide-react";
+import type { RepoSettingsRow } from "@skipper/shared";
 import { RepoManagerModal } from "./repo-manager-modal";
 import { BranchIndicator } from "./branch-indicator";
 import { useOrchestrator } from "@/lib/orchestrator-context";
-import { attentionCounts, repoKey, reposOf } from "@/lib/inbox/model";
+import { attentionCounts, repoKey } from "@/lib/inbox/model";
 import { useT } from "@/lib/app-i18n";
 import { useTheme } from "@/lib/theme-context";
 import { useStoredState } from "@/lib/use-stored-state";
@@ -174,21 +175,34 @@ function AttentionBadge({ count, title }: { count: number; title?: string }) {
   );
 }
 
+function repoHref(repo: { owner: string; name: string }): string {
+  return `/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`;
+}
+
 function InboxNav() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { state } = useOrchestrator();
   const { t } = useT();
   const [storedCollapsed, setStoredCollapsed] = useStoredState(INBOX_COLLAPSE_KEY, "0");
   const collapsed = storedCollapsed === "1";
   const [reposOpen, setReposOpen] = useState(false);
+  const [rows, setRows] = useState<RepoSettingsRow[]>([]);
+
+  const loadRepos = useCallback(() => {
+    if (!window.skipper) return;
+    void window.skipper.orchestrator.listRepoSettings().then(setRows);
+  }, []);
+
+  // Reload the linked-repo list on mount and after each orchestrator broadcast
+  // (a poll or a link change) so freshly linked repos — even empty ones — appear.
+  useEffect(() => {
+    loadRepos();
+  }, [loadRepos, state]);
 
   if (!state) return null;
 
   const counts = attentionCounts(state.items);
-  const repos = reposOf(state.items);
   const onInbox = pathname === "/inbox" || pathname.startsWith("/inbox/");
-  const activeRepo = onInbox ? searchParams.get("repo") : null;
 
   const toggleCollapsed = () => setStoredCollapsed((cur) => (cur === "1" ? "0" : "1"));
 
@@ -198,7 +212,7 @@ function InboxNav() {
         <Link
           href="/inbox"
           className={`flex-1 min-w-0 flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-            onInbox && !activeRepo
+            onInbox
               ? "bg-card-hover text-foreground"
               : "text-muted hover:text-foreground hover:bg-card"
           }`}
@@ -207,7 +221,7 @@ function InboxNav() {
           <span className="flex-1 truncate">{t.inbox.all}</span>
           <AttentionBadge count={counts.total} />
         </Link>
-        {repos.length > 0 && (
+        {rows.length > 0 && (
           <button
             onClick={toggleCollapsed}
             className="shrink-0 p-1.5 rounded-md text-muted/40 hover:text-muted hover:bg-card transition-colors"
@@ -221,22 +235,22 @@ function InboxNav() {
         )}
       </div>
       {!collapsed &&
-        repos.map((repo) => {
-          const key = repoKey(repo);
-          const isActive = onInbox && activeRepo === key;
+        rows.map((row) => {
+          const href = repoHref(row.repo);
+          const isActive = pathname === href;
           return (
             <Link
-              key={key}
-              href={`/inbox?repo=${encodeURIComponent(key)}`}
-              title={key}
+              key={row.key}
+              href={href}
+              title={row.key}
               className={`w-full flex items-center gap-2 pl-9 pr-3 py-1.5 rounded-lg text-[13px] transition-colors ${
                 isActive
                   ? "bg-card-hover text-foreground"
                   : "text-muted hover:text-foreground hover:bg-card"
               }`}
             >
-              <span className="flex-1 truncate">{key}</span>
-              <AttentionBadge count={counts.byRepo.get(key) ?? 0} />
+              <span className="flex-1 truncate">{row.key}</span>
+              <AttentionBadge count={counts.byRepo.get(repoKey(row.repo)) ?? 0} />
             </Link>
           );
         })}

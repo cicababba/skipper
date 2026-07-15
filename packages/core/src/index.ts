@@ -114,6 +114,7 @@ export {
   writeSolutionRecord,
   readSolutionRecord,
   listSolutionRecords,
+  deleteSolutionRecord,
   buildEmbedText,
   indexSolutionRecord,
   reconcileMemoryIndex,

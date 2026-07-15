@@ -53,6 +53,8 @@ export interface CoderDeps {
   getSettings: () => OrchestratorSettings;
   /** Per-repo intake priority (#15) — feeds the queue ordering. */
   getRepoPriority: (repo: RepoRef) => RepoPriority;
+  /** Effective per-repo coding WIP limit (#47) — override, else global default. */
+  getRepoWipLimit: (repo: RepoRef) => number;
   /** Buffer + forward one progress event (orchestrator owns the IPC channel). */
   emitEvent: (itemId: string, event: CodingEvent) => void;
   /** skipper-memory MCP for this item's repo (#45); undefined = no CLI bundle. */
@@ -116,7 +118,9 @@ function toCandidate(item: TrackedItem): QueueCandidate {
 
 async function scan(): Promise<void> {
   if (!deps) return;
-  const limit = Math.max(1, deps.getSettings().codingWipPerRepo ?? 1);
+  // The WIP limit is per-repo (#47): resolved inside the loops because each
+  // repo can override the global codingWipPerRepo default.
+  const wipLimit = (item: TrackedItem) => Math.max(1, deps!.getRepoWipLimit(item.repo));
   const idle = deps.listItems().filter((item) => !inFlight.has(item.id));
 
   // Pass 1 — items already in "coding" (PR re-entries + crash recovery) always
@@ -127,7 +131,7 @@ async function scan(): Promise<void> {
     .sort((a, b) => queuedAt(a).localeCompare(queuedAt(b)));
   for (const item of resumes) {
     const repoKey = repoKeyOf(item);
-    if ((activeRepos.get(repoKey) ?? 0) >= limit) continue;
+    if ((activeRepos.get(repoKey) ?? 0) >= wipLimit(item)) continue;
     activeRepos.set(repoKey, (activeRepos.get(repoKey) ?? 0) + 1);
     void run(item.id, repoKey);
   }
@@ -138,7 +142,7 @@ async function scan(): Promise<void> {
     .sort((a, b) => compareQueueCandidates(toCandidate(a), toCandidate(b)));
   for (const item of queuedItems) {
     const repoKey = repoKeyOf(item);
-    if ((activeRepos.get(repoKey) ?? 0) >= limit) continue;
+    if ((activeRepos.get(repoKey) ?? 0) >= wipLimit(item)) continue;
     try {
       await deps.requestTransition(item.id, "coding", "coder", "coding started");
     } catch {
