@@ -62,7 +62,9 @@ function tryParsePlan(text: string): { ok: true; plan: IssuePlan } | { ok: false
  */
 export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan> {
   if (!opts.llm.agent) {
-    throw new PlanGenerationError(`LLM provider "${opts.llm.name}" does not support agent mode`);
+    throw new PlanGenerationError(
+      `planning needs a provider with agent mode (claude-cli or ollama) — "${opts.llm.name}" has none. Pick one in Settings.`,
+    );
   }
   const schema = planJsonSchema();
   const reply = await opts.llm.agent(buildPlannerPrompt(opts.issue, schema), {

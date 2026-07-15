@@ -1,5 +1,8 @@
 import type { CodingEvent, LLMProvider } from "@skipper/shared";
 import type { MemoryMcp } from "./memory-mcp";
+import { ClaudeCLIProvider } from "./claude-cli";
+import { OpenAIProvider } from "./openai";
+import { OllamaProvider } from "./ollama";
 
 export interface LLMResponse {
   text: string;
@@ -26,7 +29,7 @@ export interface LLMProviderInterface {
    * Agentic completion: the model may use tools (read files, search/fetch the
    * web, run commands) across multiple turns before producing its answer.
    * Optional — only providers that wrap a tool-capable runtime implement it
-   * (today: claude-cli). Callers should fall back to `ask` when absent.
+   * (today: claude-cli and ollama). Callers should fall back to `ask` when absent.
    */
   agent?(prompt: string, opts?: AgentOptions): Promise<LLMResponse>;
 }
@@ -39,15 +42,11 @@ export function createProvider(config: {
 }): LLMProviderInterface {
   switch (config.provider) {
     case "claude-cli":
-      // Lazy require to avoid circular deps (dynamic import would force the API async)
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      return new (require("./claude-cli").ClaudeCLIProvider)(config.model, config.maxTurns);
+      return new ClaudeCLIProvider(config.model, config.maxTurns);
     case "openai":
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      return new (require("./openai").OpenAIProvider)(config.model, config.apiKey);
+      return new OpenAIProvider(config.model, config.apiKey);
     case "ollama":
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      return new (require("./ollama").OllamaProvider)(config.model);
+      return new OllamaProvider(config.model);
     default:
       throw new Error(`Unknown provider: ${config.provider}`);
   }

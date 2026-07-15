@@ -4,11 +4,12 @@ import type {
   CriticObjection,
   IssuePlan,
   LifecycleState,
+  LlmSettings,
   RepoIntakeSettings,
   StoredPlan,
   TrackedItem,
 } from "@skipper/shared";
-import { resolveRepoOrchestratorSettings } from "@skipper/shared";
+import { DEFAULT_LLM_SETTINGS, resolveRepoOrchestratorSettings } from "@skipper/shared";
 import type { critiqueDiff, OrchestratorSettings } from "@skipper/core";
 import { DEFAULT_ORCHESTRATOR_SETTINGS } from "@skipper/core";
 import { initReviewer, pokeReviewer, type ReviewerDeps } from "./reviewer";
@@ -94,6 +95,7 @@ function makeHarness(
     },
     getSettings: () => ({ ...DEFAULT_ORCHESTRATOR_SETTINGS, review: "on" }) as OrchestratorSettings,
     getRepoSettings: () => resolveRepoOrchestratorSettings(repoSettings, deps.getSettings()),
+    getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS }),
     ...overrides,
   };
   return { items, deps, completions };
@@ -396,5 +398,69 @@ describe("reviewer driver", () => {
     await settle();
     expect(critic).toHaveBeenCalledOnce();
     expect(h.completions).toHaveLength(1);
+  });
+});
+
+// #59: the reviewer builds its provider from settings.json rather than pinning
+// claude-cli. Unlike the planner it only needs askStructured, so every provider works.
+describe("reviewer provider selection (#59)", () => {
+  /** Captures the provider the driver hands to the critic. */
+  function capturingCritic() {
+    const seen: string[] = [];
+    const critic = vi.fn(async (_args, llm) => {
+      seen.push(llm.name);
+      return { score: 1, verdict: "approve" as const, objections: [] };
+    }) as unknown as typeof critiqueDiff;
+    return { critic, seen };
+  }
+
+  async function reviewWith(llm: Partial<LlmSettings>): Promise<string[]> {
+    const h = makeHarness({
+      getSettings: settings({ review: "on" }),
+      getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS, ...llm }),
+    });
+    const { critic, seen } = capturingCritic();
+    initReviewer(h.deps, critic);
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+    return seen;
+  }
+
+  it("defaults to claude-cli when no provider is configured", async () => {
+    expect(await reviewWith({})).toEqual(["claude-cli"]);
+  });
+
+  it("reviews through openai when it is selected", async () => {
+    expect(await reviewWith({ provider: "openai", openaiModel: "gpt-4o", openaiApiKey: "sk-test" })).toEqual([
+      "openai",
+    ]);
+  });
+
+  it("reviews through ollama when it is selected", async () => {
+    expect(await reviewWith({ provider: "ollama", ollamaModel: "llama3" })).toEqual(["ollama"]);
+  });
+
+  // The pre-#59 cache keyed on the model alone, so switching provider in Settings
+  // kept serving the previous provider until restart.
+  it("rebuilds the provider when the setting changes mid-session", async () => {
+    let llm: Partial<LlmSettings> = {};
+    const h = makeHarness({
+      getSettings: settings({ review: "on" }),
+      getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS, ...llm }),
+    });
+    const { critic, seen } = capturingCritic();
+    initReviewer(h.deps, critic);
+
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+
+    llm = { provider: "ollama", ollamaModel: "llama3" };
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+
+    expect(seen).toEqual(["claude-cli", "ollama"]);
   });
 });

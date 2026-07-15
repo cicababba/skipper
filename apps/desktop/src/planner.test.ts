@@ -1,12 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type {
+  CodingEvent,
   Issue,
   LifecycleState,
+  LlmSettings,
   RepoIntakeSettings,
   TrackedItem,
   TransitionActor,
 } from "@skipper/shared";
-import { resolveRepoOrchestratorSettings } from "@skipper/shared";
+import { DEFAULT_LLM_SETTINGS, resolveRepoOrchestratorSettings } from "@skipper/shared";
 import type { OrchestratorSettings } from "@skipper/core";
 import { DEFAULT_ORCHESTRATOR_SETTINGS } from "@skipper/core";
 import { initPlanner, pokePlanner, type PlannerDeps } from "./planner";
@@ -56,6 +58,7 @@ function makeHarness(
     },
     completePlan: async () => {},
     getSettings,
+    getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS }),
     emitEvent: () => {},
   } as unknown as PlannerDeps;
   return { deps, transitions };
@@ -104,5 +107,69 @@ describe("planner auto-plan master switch (#62)", () => {
     await settle();
     expect(h.transitions).toHaveLength(1);
     expect(h.transitions[0]).toMatchObject({ itemId: "github:1", actor: "planner" });
+  });
+});
+
+// #59: the planner now builds its provider from settings.json instead of pinning
+// claude-cli. These run the REAL generatePlan against a real provider — OpenAI has
+// no agent(), so it throws before any network call.
+describe("planner provider selection (#59)", () => {
+  interface ProviderHarness {
+    deps: PlannerDeps;
+    transitions: { to: LifecycleState; reason?: string }[];
+    events: CodingEvent[];
+  }
+
+  function makeProviderHarness(llm: Partial<LlmSettings>): ProviderHarness {
+    const items = [makeItem("planning")];
+    const transitions: ProviderHarness["transitions"] = [];
+    const events: CodingEvent[] = [];
+    const deps: PlannerDeps = {
+      listItems: () => items,
+      getItem: (id: string) => items.find((i) => i.id === id),
+      getIssue: () => ({ labels: [] }) as unknown as Issue,
+      getRepoPath: () => "/repo",
+      getRepoSettings: () =>
+        resolveRepoOrchestratorSettings({}, { ...DEFAULT_ORCHESTRATOR_SETTINGS } as OrchestratorSettings),
+      requestTransition: async (
+        _itemId: string,
+        to: LifecycleState,
+        _actor: TransitionActor,
+        reason?: string,
+      ) => {
+        transitions.push({ to, reason });
+        return items[0];
+      },
+      completePlan: async () => {},
+      getSettings: () => ({ ...DEFAULT_ORCHESTRATOR_SETTINGS }) as OrchestratorSettings,
+      getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS, ...llm }),
+      emitEvent: (_itemId: string, event: CodingEvent) => void events.push(event),
+    } as unknown as PlannerDeps;
+    return { deps, transitions, events };
+  }
+
+  it("parks the item in needs-input when the provider has no agent mode", async () => {
+    const h = makeProviderHarness({ provider: "openai", openaiModel: "gpt-4o", openaiApiKey: "sk-test" });
+    initPlanner(h.deps);
+    pokePlanner();
+    await settle();
+    expect(h.transitions).toEqual([
+      { to: "needs-input", reason: expect.stringContaining("planning needs a provider with agent mode") },
+    ]);
+    // The message has to stand alone — it is what the user reads on the item.
+    expect(h.events.some((e) => e.kind === "error" && /claude-cli or ollama/.test(e.message))).toBe(true);
+  });
+
+  it("surfaces a missing OpenAI key rather than hanging", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "");
+    const h = makeProviderHarness({ provider: "openai", openaiModel: "gpt-4o", openaiApiKey: "" });
+    initPlanner(h.deps);
+    pokePlanner();
+    await settle();
+    expect(h.transitions[0]).toMatchObject({
+      to: "needs-input",
+      reason: expect.stringContaining("OpenAI API key required"),
+    });
+    vi.unstubAllEnvs();
   });
 });

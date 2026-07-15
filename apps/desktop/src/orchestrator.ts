@@ -56,6 +56,7 @@ import {
   validateRepoOrigin,
   type RepoLinksFile,
 } from "./repo-links";
+import { readLlmSettings } from "./llm-settings";
 import { readStoredPlan, updateStoredPlan } from "./plan-store";
 import { initPlanner, pokePlanner } from "./planner";
 import { initCoder, pokeCoder, cancelCodingRun, killAllCodingRuns } from "./coder";
@@ -92,6 +93,8 @@ export interface OrchestratorDeps {
   plansDir: string;
   worktreesDir: string;
   memoryDir: string;
+  /** userData root — settings.json lives here (#59: planner/reviewer provider). */
+  dataDir: string;
   /** Absolute path to the CLI bundle for the skipper-memory MCP server (#45),
    * or null when it isn't shipped (dev before a CLI build). */
   cliBundlePath: string | null;
@@ -1191,6 +1194,7 @@ export function initOrchestrator(
     requestTransition,
     completePlan,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
+    getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
     emitEvent: emitPlanningEvent,
     plansDir: orchestratorDeps.plansDir,
     getMemoryMcp: (item) =>
@@ -1254,6 +1258,7 @@ export function initOrchestrator(
     completeReview,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getRepoSettings: repoOrch,
+    getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
   });
 
   initShepherd({

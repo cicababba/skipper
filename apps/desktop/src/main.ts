@@ -1070,6 +1070,7 @@ app.whenReady().then(async () => {
         plansDir: join(app.getPath("userData"), "plans"),
         worktreesDir: join(app.getPath("userData"), "worktrees"),
         memoryDir: join(app.getPath("userData"), "memory"),
+        dataDir: getDataDir(),
         cliBundlePath: cliBundlePath(),
       });
       orchestratorPoke = pokeOrchestrator;

@@ -5,6 +5,23 @@
 /** LLM provider configuration */
 export type LLMProvider = "claude-cli" | "openai" | "ollama";
 
+/** The `llm` block of settings.json — written by the web layer, read by main and the CLI. */
+export interface LlmSettings {
+  provider: LLMProvider;
+  openaiApiKey: string;
+  openaiModel: string;
+  claudeModel: string;
+  ollamaModel: string;
+}
+
+export const DEFAULT_LLM_SETTINGS: LlmSettings = {
+  provider: "claude-cli",
+  openaiApiKey: "",
+  openaiModel: "gpt-4o",
+  claudeModel: "sonnet",
+  ollamaModel: "",
+};
+
 // ============================================================
 // Auth
 // ============================================================

@@ -1,7 +1,7 @@
 import {
+  createProvider,
   critiqueDiff,
   resolveReviewMode,
-  ClaudeCLIProvider,
   type LLMProviderInterface,
   type OrchestratorSettings,
 } from "@skipper/core";
@@ -9,11 +9,13 @@ import type {
   AgentReview,
   Issue,
   LifecycleState,
+  LlmSettings,
   RepoRef,
   ResolvedRepoOrchestratorSettings,
   StoredPlan,
   TrackedItem,
 } from "@skipper/shared";
+import { modelForRole, providerCacheKey } from "./llm-settings";
 import type { WorktreeDiff } from "./worktrees";
 
 // Agent review loop (issue #10): consumes "agent-review" items (the #9 coder's
@@ -45,6 +47,8 @@ export interface ReviewerDeps {
   getSettings: () => OrchestratorSettings;
   /** Per-repo overrides (#62): review mode + reviewMaxRounds. */
   getRepoSettings: (repo: RepoRef) => ResolvedRepoOrchestratorSettings;
+  /** settings.json llm block (#59) — which provider the reviewer runs on. */
+  getLlmSettings: () => Promise<LlmSettings>;
 }
 
 const REVIEW_CONCURRENCY = 2;
@@ -52,7 +56,7 @@ const REVIEW_CONCURRENCY = 2;
 let deps: ReviewerDeps | null = null;
 let critic: typeof critiqueDiff = critiqueDiff;
 let llm: LLMProviderInterface | null = null;
-let llmModel: string | null = null;
+let llmKey: string | null = null;
 const queue: string[] = [];
 const queued = new Set<string>();
 const inFlight = new Set<string>();
@@ -63,17 +67,27 @@ export function initReviewer(reviewerDeps: ReviewerDeps, criticImpl?: typeof cri
   deps = reviewerDeps;
   critic = criticImpl ?? critiqueDiff;
   llm = null;
-  llmModel = null;
+  llmKey = null;
   queue.length = 0;
   queued.clear();
   inFlight.clear();
   active = 0;
 }
 
-function resolveProvider(model: string): LLMProviderInterface {
-  if (!llm || llmModel !== model) {
-    llm = new ClaudeCLIProvider(model);
-    llmModel = model;
+/** The provider picked in Settings (#59), cached per provider+model. The role model
+ *  only applies to claude-cli — see modelForRole. */
+async function resolveProvider(roleModel: string): Promise<LLMProviderInterface> {
+  const settings = await deps!.getLlmSettings();
+  const model = modelForRole(settings, roleModel);
+  const key = providerCacheKey(settings, model);
+  if (!llm || llmKey !== key) {
+    llm = createProvider({
+      provider: settings.provider,
+      model,
+      maxTurns: 5,
+      apiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
+    });
+    llmKey = key;
   }
   return llm;
 }
@@ -186,7 +200,7 @@ async function run(itemId: string): Promise<void> {
     try {
       signal = await critic(
         { diff: diff.diff, issue, acceptance: stored?.plan.acceptance ?? [] },
-        resolveProvider(repoSettings.reviewerModel),
+        await resolveProvider(repoSettings.reviewerModel),
       );
     } catch (err) {
       if (deps.getItem(itemId)?.state !== "agent-review") return;

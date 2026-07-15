@@ -160,7 +160,7 @@ describe("generatePlan", () => {
   it("throws PlanGenerationError when the provider has no agent mode", async () => {
     const { llm } = fakeLLM({ noAgent: true });
     await expect(generatePlan({ issue: ISSUE, repoPath: "/repo", llm })).rejects.toThrow(
-      /does not support agent mode/,
+      /planning needs a provider with agent mode/,
     );
   });
 });
