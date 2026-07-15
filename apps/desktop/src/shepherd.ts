@@ -42,6 +42,7 @@ export interface ShepherdDeps {
     to: LifecycleState,
     actor: TransitionActor,
     reason?: string,
+    resumeTo?: LifecycleState,
   ) => Promise<TrackedItem>;
   /** Single manifest write: authoritative pr link + lastPushedSha + clear pending comments + transition to pr-open. */
   completePrOpen: (
@@ -159,7 +160,13 @@ export async function openOrPushPr(
       if (actor === "shepherd") {
         // Auto mode must never silently spin — park the item for the human.
         await deps
-          .requestTransition(itemId, "needs-input", "shepherd", `auto repush failed: ${message}`)
+          .requestTransition(
+            itemId,
+            "needs-input",
+            "shepherd",
+            `auto repush failed: ${message}`,
+            "human-review",
+          )
           .catch(() => {});
       }
       return { ok: false, error: message };

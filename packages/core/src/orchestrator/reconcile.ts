@@ -46,7 +46,7 @@ export function reconcile(
   const outcome: ReconcileOutcome = { transitions: [], admitted: [], parked: [], conflicts: [] };
 
   const transition = (item: TrackedItem, to: LifecycleState, reason: string): void => {
-    manifest.items[item.id] = applyTransition(item, to, "reconcile", reason, now);
+    manifest.items[item.id] = applyTransition(item, to, "reconcile", reason, { now });
     outcome.transitions.push({ itemId: item.id, from: item.state, to, reason });
   };
 

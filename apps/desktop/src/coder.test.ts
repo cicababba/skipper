@@ -56,7 +56,13 @@ function makeItem(n: number, state: LifecycleState, repoName = "repo"): TrackedI
 interface Harness {
   items: Map<string, TrackedItem>;
   deps: CoderDeps;
-  transitions: { itemId: string; to: LifecycleState; actor: TransitionActor; reason?: string }[];
+  transitions: {
+    itemId: string;
+    to: LifecycleState;
+    actor: TransitionActor;
+    reason?: string;
+    resumeTo?: LifecycleState;
+  }[];
   worktreeWrites: { itemId: string; sessionId?: string }[];
   events: { itemId: string; event: CodingEvent }[];
 }
@@ -74,8 +80,8 @@ function makeHarness(
     getItem: (id) => items.get(id),
     getIssue: () => undefined,
     getPlan: async (item) => storedPlanFor(item),
-    requestTransition: async (itemId, to, actor, reason) => {
-      transitions.push({ itemId, to, actor, reason });
+    requestTransition: async (itemId, to, actor, reason, resumeTo) => {
+      transitions.push({ itemId, to, actor, reason, resumeTo });
       const item = items.get(itemId)!;
       const next = { ...item, state: to, transitions: [...item.transitions, { at: new Date().toISOString(), from: item.state, to, actor }] };
       items.set(itemId, next);
@@ -307,6 +313,7 @@ describe("coder driver", () => {
     await settle();
     expect(h.transitions.map((t) => t.to)).toEqual(["coding", "needs-input"]);
     expect(h.transitions[1].reason).toMatch(/no stored plan/);
+    expect(h.transitions[1].resumeTo).toBe("planning");
   });
 
   it("worktree failure lands on needs-input", async () => {
@@ -321,6 +328,7 @@ describe("coder driver", () => {
     await settle();
     expect(h.transitions.map((t) => t.to)).toEqual(["coding", "needs-input"]);
     expect(h.transitions[1].reason).toMatch(/worktree setup failed: branch checked out/);
+    expect(h.transitions[1].resumeTo).toBe("queued");
   });
 
   it("runner failure lands on failed", async () => {

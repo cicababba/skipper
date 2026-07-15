@@ -123,6 +123,31 @@ describe("applyTransition", () => {
     expect(item.transitions).toHaveLength(1);
   });
 
+  it("records resumeTo when parking on needs-input", () => {
+    const item = applyTransition(admitItem(issue(1)), "planning", "planner");
+    const parked = applyTransition(item, "needs-input", "planner", "plan generation failed", {
+      resumeTo: "planning",
+    });
+    expect(parked.resumeTo).toBe("planning");
+  });
+
+  it("clears resumeTo on any non-parked transition", () => {
+    const item = applyTransition(admitItem(issue(1)), "planning", "planner");
+    const parked = applyTransition(item, "needs-input", "planner", "failed", {
+      resumeTo: "planning",
+    });
+    const resumed = applyTransition(parked, "planning", "user", "resume");
+    expect(resumed.resumeTo).toBeUndefined();
+  });
+
+  it("ignores resumeTo on non-parked targets", () => {
+    const item = admitItem(issue(1));
+    const next = applyTransition(item, "planning", "planner", "eager plan", {
+      resumeTo: "queued",
+    });
+    expect(next.resumeTo).toBeUndefined();
+  });
+
   it("throws IllegalTransitionError on a bad edge", () => {
     const item = admitItem(issue(1));
     let caught: unknown;

@@ -52,7 +52,13 @@ interface Harness {
   prOpens: Array<{ itemId: string; pr: { id: string; number: number; url: string }; sha: string; actor: string; reason: string }>;
   reentries: Array<{ itemId: string; comments: PrReviewComment[] }>;
   cleanups: Array<{ itemId: string; memoryRef: string }>;
-  transitions: Array<{ itemId: string; to: LifecycleState; actor: string; reason?: string }>;
+  transitions: Array<{
+    itemId: string;
+    to: LifecycleState;
+    actor: string;
+    reason?: string;
+    resumeTo?: LifecycleState;
+  }>;
 }
 
 function makeHarness(overrides: Partial<ShepherdDeps> = {}): Harness {
@@ -69,8 +75,8 @@ function makeHarness(overrides: Partial<ShepherdDeps> = {}): Harness {
     getRepoPath: () => "/repos/repo",
     getBaseBranch: async () => "develop",
     getPlan: async () => null,
-    requestTransition: async (itemId, to, actor, reason) => {
-      transitions.push({ itemId, to, actor, reason });
+    requestTransition: async (itemId, to, actor, reason, resumeTo) => {
+      transitions.push({ itemId, to, actor, reason, resumeTo });
       const item = items.get(itemId)!;
       const next = { ...item, state: to };
       items.set(itemId, next);
@@ -247,7 +253,11 @@ describe("openOrPushPr", () => {
 
     const result = await openOrPushPr("github:1", "shepherd");
     expect(result.ok).toBe(false);
-    expect(h.transitions[0]).toMatchObject({ to: "needs-input", actor: "shepherd" });
+    expect(h.transitions[0]).toMatchObject({
+      to: "needs-input",
+      actor: "shepherd",
+      resumeTo: "human-review",
+    });
   });
 });
 

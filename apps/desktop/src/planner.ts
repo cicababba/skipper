@@ -41,6 +41,7 @@ export interface PlannerDeps {
     to: LifecycleState,
     actor: TransitionActor,
     reason?: string,
+    resumeTo?: LifecycleState,
   ) => Promise<TrackedItem>;
   /** Sets plan.ref + the confidence-gated transition in one manifest write (#8). */
   completePlan: (itemId: string, ref: string, confidence?: ConfidenceReport) => Promise<void>;
@@ -162,7 +163,7 @@ async function run(itemId: string): Promise<void> {
     if (!item || item.state !== "planning") return;
     const repoPath = deps.getRepoPath(item.repo);
     if (!repoPath) {
-      await deps.requestTransition(itemId, "needs-input", "planner", "repo not linked");
+      await deps.requestTransition(itemId, "needs-input", "planner", "repo not linked", "planning");
       return;
     }
     const settings = deps.getSettings();
@@ -236,6 +237,7 @@ async function run(itemId: string): Promise<void> {
           "needs-input",
           "planner",
           `plan generation failed: ${message.slice(0, 500)}`,
+          "planning",
         )
         .catch(() => {
           /* item moved concurrently — nothing to do */

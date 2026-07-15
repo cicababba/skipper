@@ -43,6 +43,7 @@ export interface ReviewerDeps {
     review: AgentReview,
     to: LifecycleState,
     reason: string,
+    resumeTo?: LifecycleState,
   ) => Promise<void>;
   getSettings: () => OrchestratorSettings;
   /** Per-repo overrides (#62): review mode + reviewMaxRounds. */
@@ -148,6 +149,7 @@ async function run(itemId: string): Promise<void> {
         { rounds: round - 1 || 0, outcome: "unavailable", reason: message, at: now() },
         "needs-input",
         `cannot capture worktree diff: ${message.slice(0, 500)}`,
+        "queued",
       );
       return;
     }
@@ -159,6 +161,7 @@ async function run(itemId: string): Promise<void> {
         { rounds: round - 1 || 0, outcome: "unavailable", reason: "empty diff", at: now() },
         "needs-input",
         "coding produced no changes — nothing to review",
+        "queued",
       );
       return;
     }
@@ -231,6 +234,8 @@ async function run(itemId: string): Promise<void> {
         .filter((o) => o.blocking)
         .map((o) => o.detail)
         .join("; ");
+      // The diff exists and survived N rounds — resume as the human inspecting
+      // it in the merge editor, not a from-scratch replan.
       await complete(
         itemId,
         { rounds: round, outcome: signal.verdict, objections: signal.objections, at: now() },
@@ -239,6 +244,7 @@ async function run(itemId: string): Promise<void> {
           0,
           500,
         ),
+        "human-review",
       );
     } else {
       await complete(
@@ -266,8 +272,9 @@ async function complete(
   review: AgentReview,
   to: LifecycleState,
   reason: string,
+  resumeTo?: LifecycleState,
 ): Promise<void> {
-  await deps?.completeReview(itemId, review, to, reason).catch(() => {
+  await deps?.completeReview(itemId, review, to, reason, resumeTo).catch(() => {
     /* item moved concurrently — nothing to do */
   });
 }
