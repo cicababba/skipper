@@ -80,6 +80,7 @@ Sign-in works out of the box only in official builds. Source builds run with pla
 
 - **Google** (identity for the supporter entitlement): `SKIPPER_GOOGLE_CLIENT_ID` + `SKIPPER_GOOGLE_CLIENT_SECRET` — an OAuth "Desktop app" client from Google Cloud Console.
 - **GitHub** (issue/PR orchestration): `SKIPPER_GITHUB_CLIENT_ID` + `SKIPPER_GITHUB_CLIENT_SECRET` — a GitHub App with "Expire user authorization tokens" enabled, callback URLs `http://127.0.0.1:8127/callback`, `:8128`, `:8129`, and permissions Issues (read), Pull requests (read & write), Metadata (read), Email addresses (read).
+- **GitLab** (gitlab.com sign-in): `SKIPPER_GITLAB_CLIENT_ID` — a GitLab application (User Settings → Applications) with "Confidential" **unchecked** (public client, no secret var), scope `api`, and callback URLs `http://127.0.0.1:8130/callback`, `:8131`, `:8132`. Requires GitLab 15.0+. Self-managed instances aren't covered by the shipped client — connect them with a personal access token instead.
 
 ## Author
 

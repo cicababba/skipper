@@ -26,7 +26,7 @@ export const DEFAULT_LLM_SETTINGS: LlmSettings = {
 // Auth
 // ============================================================
 
-export const AUTH_PROVIDER_IDS = ["google", "github"] as const;
+export const AUTH_PROVIDER_IDS = ["google", "github", "gitlab"] as const;
 export type AuthProviderId = (typeof AUTH_PROVIDER_IDS)[number];
 
 /** Renderer-facing provider row (skipper:auth:getProviders), derived in main
@@ -38,6 +38,8 @@ export interface AuthProviderMeta {
   isIssueSource: boolean;
   /** Connect flow must collect an instance URL before auth (self-hosted providers). */
   requiresBaseUrl: boolean;
+  /** Prefill for the instance-URL field (the provider's public host). */
+  defaultBaseUrl?: string;
   /** Provider accepts a personal access token as a sign-in fallback. */
   supportsPat: boolean;
 }
