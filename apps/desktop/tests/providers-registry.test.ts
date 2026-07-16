@@ -15,6 +15,22 @@ describe("provider registry", () => {
     expect(rows).toEqual([
       { id: "google", displayName: "Google", isIssueSource: false, requiresBaseUrl: false, supportsPat: false },
       { id: "github", displayName: "GitHub", isIssueSource: true, requiresBaseUrl: false, supportsPat: false },
+      {
+        id: "gitlab",
+        displayName: "GitLab",
+        isIssueSource: false,
+        requiresBaseUrl: true,
+        defaultBaseUrl: "https://gitlab.com",
+        supportsPat: true,
+      },
     ]);
+  });
+
+  it("configures the gitlab provider as a public PKCE client with rotating refresh tokens", () => {
+    const gitlab = PROVIDERS.gitlab;
+    expect(gitlab.usesPkce).toBe(true);
+    expect(gitlab.clientSecret).toBeUndefined();
+    expect(gitlab.rotatesRefreshToken).toBe(true);
+    expect(gitlab.redirectPorts).toEqual([8130, 8131, 8132]);
   });
 });

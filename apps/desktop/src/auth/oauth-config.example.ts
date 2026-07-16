@@ -23,6 +23,15 @@
 //      Metadata (Read); Account → Email addresses (Read).
 //   5. Generate a client secret; copy Client ID (starts with `Iv`) + secret below.
 //
+// GitLab (issue/MR orchestration — public client, PKCE flow; gitlab.com):
+//   1. https://gitlab.com → User Settings → Applications → Add new application.
+//   2. Redirect URIs (add all three, matched exactly incl. port):
+//      http://127.0.0.1:8130/callback, http://127.0.0.1:8131/callback,
+//      http://127.0.0.1:8132/callback.
+//   3. Leave "Confidential" UNCHECKED — this is a public client with no secret.
+//   4. Scopes: api. Copy the Application ID into the const below (no secret).
+//      Self-managed instances sign in with a personal access token instead.
+//
 // For Google's "Desktop app" client type the secret is *non-confidential* —
 // it ships in the distributed binary, and security is provided by PKCE, not
 // by the secret. GitHub Apps don't support PKCE, but the same reasoning
@@ -36,3 +45,6 @@ export const GOOGLE_OAUTH_CLIENT_SECRET = "GOCSPX-YOUR_SECRET_HERE";
 
 export const GITHUB_OAUTH_CLIENT_ID = "YOUR_GITHUB_APP_CLIENT_ID";
 export const GITHUB_OAUTH_CLIENT_SECRET = "YOUR_GITHUB_APP_CLIENT_SECRET";
+
+// GitLab is a public client — no secret.
+export const GITLAB_OAUTH_CLIENT_ID = "YOUR_GITLAB_APPLICATION_ID";

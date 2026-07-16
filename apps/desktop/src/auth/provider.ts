@@ -44,6 +44,8 @@ export interface ProviderConfig {
   redirectPorts?: readonly number[];
   /** Connect flow must collect an instance URL before auth (self-hosted providers). */
   requiresBaseUrl: boolean;
+  /** Prefill for the instance-URL field (the provider's public host). */
+  defaultBaseUrl?: string;
   /** Personal-access-token sign-in fallback (no refresh, no expiry). */
   supportsPat: boolean;
   mapUser(accessToken: string, baseUrl?: string): Promise<Account>;

@@ -28,6 +28,9 @@ data/settings.json
 # OAuth client credentials — fork-specific. Copy oauth-config.example.ts.
 apps/desktop/src/auth/oauth-config.ts
 
+# Claude Code — per-issue plan handoff documents (/plan-issue → implementer)
+.claude/plans/
+
 # IDE
 .vscode/*
 !.vscode/settings.json

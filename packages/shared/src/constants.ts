@@ -52,3 +52,32 @@ export const GITHUB_OAUTH_ENDPOINTS = {
   grantEndpointBase: "https://api.github.com/applications",
   redirectPorts: [8127, 8128, 8129],
 } as const;
+
+// ============================================================
+// GitLab OAuth (public client, PKCE flow)
+// ============================================================
+//
+// First provider whose endpoints are functions of the instance base URL:
+// the shipped client targets gitlab.com, self-managed instances sign in with
+// a PAT. GitLab matches redirect URIs *exactly*, port included (no RFC 8252
+// loopback port flexibility — gitlab-org/gitlab#435764), so all three fixed
+// ports must be registered on the application as
+// http://127.0.0.1:<port>/callback. The application is a public client
+// ("Confidential" OFF): no client secret exists, so none is ever sent — PKCE
+// secures the exchange. The `api` scope is used from the start: read_api +
+// write_repository can't create merge requests (write_repository is
+// git-over-HTTP only; MR creation needs `api`), and full `api` avoids a
+// future re-auth when MR creation lands. Refresh tokens rotate and are
+// single-use; access tokens expire (~2h). Minimum supported GitLab: 15.0
+// (expiring + rotating tokens are the default there and PKCE is available).
+
+export const GITLAB_BASE_URL = "https://gitlab.com";
+
+export const GITLAB_OAUTH_ENDPOINTS = {
+  authEndpoint: (base: string = GITLAB_BASE_URL) => `${base}/oauth/authorize`,
+  tokenEndpoint: (base: string = GITLAB_BASE_URL) => `${base}/oauth/token`,
+  revokeEndpoint: (base: string = GITLAB_BASE_URL) => `${base}/oauth/revoke`,
+  userEndpoint: (base: string = GITLAB_BASE_URL) => `${base}/api/v4/user`,
+  scopes: ["api"],
+  redirectPorts: [8130, 8131, 8132],
+} as const;
