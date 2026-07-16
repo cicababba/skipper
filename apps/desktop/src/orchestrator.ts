@@ -416,6 +416,7 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
     const result = await source.poll({
       accountId,
       getToken: (force) => deps!.getToken(accountId, force),
+      baseUrl: account.baseUrl,
       cursor,
       deepHydrate,
     });
@@ -1301,6 +1302,7 @@ export function initOrchestrator(
     getItem: (itemId) => manifest?.items[itemId],
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getTokenProvider: (item) => (force) => deps!.getToken(item.accountId, force),
+    getBaseUrl: (item) => deps!.getAccounts().find((a) => a.id === item.accountId)?.baseUrl,
     getRepoPath: repoPathFor,
     getBaseBranch: async (item) => {
       const link = repoLinks?.repos[repoKey(item.repo)];

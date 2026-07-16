@@ -2,11 +2,17 @@
 // process. Owns the OAuth flows, the persisted multi-account store, in-memory
 // state, and broadcasts state changes to subscribers (typically the renderer).
 
-import { AUTH_PROVIDER_IDS, type AuthProviderId, type AuthState } from "@skipper/shared";
-import { OAuthError, applyRefreshedTokens, type ProviderConfig } from "./provider";
+import {
+  AUTH_PROVIDER_IDS,
+  normalizeBaseUrl,
+  type Account,
+  type AuthProviderId,
+  type AuthState,
+} from "@skipper/shared";
+import { OAuthError, applyRefreshedTokens, type ProviderConfig, type ProviderTokens } from "./provider";
 import { runOAuthFlow, refreshTokens } from "./oauth-flow";
 import { PROVIDERS } from "./providers";
-import { accountKey, emptyStore, type AuthStoreFile } from "./store-format";
+import { accountKey, emptyStore, type AuthStoreFile, type StoredAccount } from "./store-format";
 import { loadStore, saveStore, clearStore, isEncryptionAvailable } from "./token-store";
 
 // Source builds get placeholder OAuth credentials (ensure-oauth-config.mjs):
@@ -27,9 +33,9 @@ export class AuthManager {
   private listeners = new Set<Listener>();
   private signInAborts = new Map<AuthProviderId, AbortController>();
 
-  constructor() {
+  constructor(private readonly providers: Record<AuthProviderId, ProviderConfig> = PROVIDERS) {
     for (const id of AUTH_PROVIDER_IDS) {
-      if (!isConfigured(PROVIDERS[id])) {
+      if (!isConfigured(this.providers[id])) {
         this.flows[id] = { status: "unconfigured" };
       }
     }
@@ -67,57 +73,135 @@ export class AuthManager {
     this.signInAborts.delete(provider);
   }
 
-  async signIn(provider: AuthProviderId): Promise<void> {
-    const config = PROVIDERS[provider];
+  async signIn(provider: AuthProviderId, options?: { baseUrl?: string }): Promise<void> {
+    const config = this.providers[provider];
     if (!isConfigured(config)) return; // source build — nothing to sign in to
     if (this.flows[provider]?.status === "signing-in") {
       // Already running — ignore double-clicks.
       return;
     }
+    const baseUrl = this.resolveBaseUrl(config, options);
+    if (baseUrl === null) return;
     this.setFlow(provider, { status: "signing-in" });
     const abort = new AbortController();
     this.signInAborts.set(provider, abort);
     try {
-      const { tokens, account } = await runOAuthFlow(config, abort.signal);
-      const key = accountKey(provider, account.id);
-      this.store.accounts[key] = { account, tokens, signedInAt: Date.now() };
-      this.store.active[provider] = account.id;
-      await saveStore(this.store);
+      const { tokens, account: mapped } = await runOAuthFlow(config, abort.signal, baseUrl);
+      const account: Account = { ...mapped, authMethod: "oauth", ...(baseUrl ? { baseUrl } : {}) };
+      await this.storeAccount(provider, account, tokens, baseUrl);
       this.setFlow(provider, { status: "idle" });
     } catch (err) {
-      const message = err instanceof OAuthError ? err.message : String(err);
-      console.error(`[auth] ${provider} sign-in failed:`, err);
-      this.setFlow(provider, { status: "error", error: message });
-      // Settle back to idle so the UI can offer a retry.
-      setTimeout(() => {
-        if (this.flows[provider]?.status === "error") this.setFlow(provider, { status: "idle" });
-      }, 4000);
+      this.failFlow(provider, err);
     } finally {
       this.signInAborts.delete(provider);
     }
   }
 
+  /**
+   * Sign in with a personal access token instead of OAuth — the fallback for
+   * self-hosted instances where the user can't register an OAuth app. No
+   * refresh, no expiry, no browser roundtrip (cancelSignIn stays OAuth-only).
+   * Works without OAuth client credentials, so no isConfigured guard.
+   */
+  async signInWithPat(
+    provider: AuthProviderId,
+    pat: string,
+    options?: { baseUrl?: string },
+  ): Promise<void> {
+    const config = this.providers[provider];
+    if (!config.supportsPat || !config.mapUserFromPat) return;
+    if (this.flows[provider]?.status === "signing-in") return;
+    if (!pat.trim()) {
+      this.failFlow(provider, new OAuthError("A personal access token is required"));
+      return;
+    }
+    const baseUrl = this.resolveBaseUrl(config, options);
+    if (baseUrl === null) return;
+    this.setFlow(provider, { status: "signing-in" });
+    try {
+      const mapped = await config.mapUserFromPat(pat.trim(), baseUrl);
+      const account: Account = { ...mapped, authMethod: "pat", ...(baseUrl ? { baseUrl } : {}) };
+      const tokens: ProviderTokens = {
+        accessToken: pat.trim(),
+        refreshToken: "",
+        expiresAt: Number.MAX_SAFE_INTEGER,
+        scope: "",
+        tokenType: "pat",
+      };
+      await this.storeAccount(provider, account, tokens, baseUrl);
+      this.setFlow(provider, { status: "idle" });
+    } catch (err) {
+      this.failFlow(provider, err);
+    }
+  }
+
+  /** Normalized baseUrl to use, undefined when none given, null = invalid (flow errored). */
+  private resolveBaseUrl(
+    config: ProviderConfig,
+    options?: { baseUrl?: string },
+  ): string | undefined | null {
+    const normalized = options?.baseUrl ? normalizeBaseUrl(options.baseUrl) : undefined;
+    if (config.requiresBaseUrl && !normalized) {
+      this.failFlow(config.id, new OAuthError("A valid instance URL is required"));
+      return null;
+    }
+    return normalized ?? undefined;
+  }
+
+  private async storeAccount(
+    provider: AuthProviderId,
+    account: Account,
+    tokens: ProviderTokens,
+    baseUrl?: string,
+  ): Promise<void> {
+    const key = accountKey(provider, account.id, baseUrl);
+    this.store.accounts[key] = { account, tokens, signedInAt: Date.now() };
+    this.store.active[provider] = account.id;
+    await saveStore(this.store);
+  }
+
+  private failFlow(provider: AuthProviderId, err: unknown): void {
+    const message = err instanceof OAuthError ? err.message : String(err);
+    console.error(`[auth] ${provider} sign-in failed:`, err);
+    this.setFlow(provider, { status: "error", error: message });
+    // Settle back to idle so the UI can offer a retry.
+    setTimeout(() => {
+      if (this.flows[provider]?.status === "error") this.setFlow(provider, { status: "idle" });
+    }, 4000);
+  }
+
+  /** Accounts can be stored under host-scoped keys, so (provider, id) lookups scan. */
+  private findStored(
+    provider: AuthProviderId,
+    id: string,
+  ): { key: string; stored: StoredAccount } | undefined {
+    for (const [key, stored] of Object.entries(this.store.accounts)) {
+      if (stored.account.provider === provider && stored.account.id === id) return { key, stored };
+    }
+    return undefined;
+  }
+
   async signOut(provider: AuthProviderId, accountId?: string): Promise<void> {
     const id = accountId ?? this.store.active[provider];
     if (!id) return;
-    const key = accountKey(provider, id);
-    const stored = this.store.accounts[key];
-    delete this.store.accounts[key];
+    const found = this.findStored(provider, id);
+    if (found) delete this.store.accounts[found.key];
     if (this.store.active[provider] === id) {
       const remaining = Object.values(this.store.accounts).find((a) => a.account.provider === provider);
       if (remaining) this.store.active[provider] = remaining.account.id;
       else delete this.store.active[provider];
     }
     await this.persist();
-    if (stored) {
+    if (found && found.stored.account.authMethod !== "pat") {
       // Best-effort: revoke at the provider so the tokens can't be reused.
-      void PROVIDERS[provider].revoke?.(stored.tokens);
+      // PATs are user-created — never destroy them on the user's behalf.
+      void this.providers[provider].revoke?.(found.stored.tokens, found.stored.account.baseUrl);
     }
     this.emit();
   }
 
   async setActiveAccount(provider: AuthProviderId, accountId: string): Promise<void> {
-    if (!this.store.accounts[accountKey(provider, accountId)]) return;
+    if (!this.findStored(provider, accountId)) return;
     this.store.active[provider] = accountId;
     await this.persist();
     this.emit();
@@ -137,15 +221,18 @@ export class AuthManager {
   ): Promise<string | null> {
     const id = accountId ?? this.store.active[provider];
     if (!id) return null;
-    const key = accountKey(provider, id);
-    const stored = this.store.accounts[key];
-    if (!stored) return null;
+    const found = this.findStored(provider, id);
+    if (!found) return null;
+    const { key, stored } = found;
+    // A PAT has no refresh path — hand it back even on forceRefresh; a revoked
+    // one surfaces as API errors until the user signs the account out.
+    if (stored.account.authMethod === "pat") return stored.tokens.accessToken;
     if (!forceRefresh && stored.tokens.expiresAt - REFRESH_LEAD_MS > Date.now()) {
       return stored.tokens.accessToken;
     }
-    const config = PROVIDERS[provider];
+    const config = this.providers[provider];
     try {
-      const refreshed = await refreshTokens(config, stored.tokens.refreshToken);
+      const refreshed = await refreshTokens(config, stored.tokens.refreshToken, stored.account.baseUrl);
       const next = applyRefreshedTokens(stored.tokens, refreshed, config.rotatesRefreshToken);
       this.store.accounts[key] = { ...stored, tokens: next };
       // Persist immediately: losing a rotated refresh token kills the grant.
@@ -169,13 +256,13 @@ export class AuthManager {
   async getGoogleIdToken(): Promise<string | null> {
     const id = this.store.active.google;
     if (!id) return null;
-    const stored = this.store.accounts[accountKey("google", id)];
+    const stored = this.findStored("google", id)?.stored;
     if (!stored) return null;
     if (stored.tokens.expiresAt - REFRESH_LEAD_MS > Date.now()) {
       return stored.tokens.idToken ?? null;
     }
     await this.getAccessToken("google", id, true);
-    return this.store.accounts[accountKey("google", id)]?.tokens.idToken ?? null;
+    return this.findStored("google", id)?.stored.tokens.idToken ?? null;
   }
 
   private async persist(): Promise<void> {

@@ -28,8 +28,9 @@ export interface RefreshedTokens {
 export interface ProviderConfig {
   id: AuthProviderId;
   displayName: string;
-  authEndpoint: string;
-  tokenEndpoint: string;
+  /** Fixed-host providers ignore the argument (self-hosted instances pass their base URL). */
+  authEndpoint(baseUrl?: string): string;
+  tokenEndpoint(baseUrl?: string): string;
   /** Empty for GitHub Apps — permissions live on the App, no scope param. */
   scopes: string[];
   extraAuthParams?: Record<string, string>;
@@ -41,9 +42,15 @@ export interface ProviderConfig {
   requiresRefreshTokenOnExchange: boolean;
   /** Fixed loopback ports (GitHub: exact callback URL match). Unset → any free port. */
   redirectPorts?: readonly number[];
-  mapUser(accessToken: string): Promise<Account>;
+  /** Connect flow must collect an instance URL before auth (self-hosted providers). */
+  requiresBaseUrl: boolean;
+  /** Personal-access-token sign-in fallback (no refresh, no expiry). */
+  supportsPat: boolean;
+  mapUser(accessToken: string, baseUrl?: string): Promise<Account>;
+  /** Required when supportsPat: validate the PAT and map the identity. */
+  mapUserFromPat?(token: string, baseUrl?: string): Promise<Account>;
   /** Best-effort revocation on sign-out. */
-  revoke?(tokens: ProviderTokens): Promise<void>;
+  revoke?(tokens: ProviderTokens, baseUrl?: string): Promise<void>;
 }
 
 export class OAuthError extends Error {

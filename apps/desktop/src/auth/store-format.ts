@@ -12,14 +12,16 @@ export interface StoredAccount {
 
 export interface AuthStoreFile {
   version: 2;
-  /** Keyed by `${provider}:${account.id}`. */
+  /** Keyed by `${provider}:${account.id}`, or `${provider}:${host}:${account.id}`
+   *  when the account is host-scoped (self-hosted instance). */
   accounts: Record<string, StoredAccount>;
   /** provider → active account id */
   active: Partial<Record<AuthProviderId, string>>;
 }
 
-export function accountKey(provider: AuthProviderId, id: string): string {
-  return `${provider}:${id}`;
+/** baseUrl, when present, must already be normalized (normalizeBaseUrl). */
+export function accountKey(provider: AuthProviderId, id: string, baseUrl?: string): string {
+  return baseUrl ? `${provider}:${new URL(baseUrl).host}:${id}` : `${provider}:${id}`;
 }
 
 export function emptyStore(): AuthStoreFile {

@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./constants";
+export * from "./base-url";
 export * from "./auth-view";
 export * from "./inbox";
 export * from "./naming";

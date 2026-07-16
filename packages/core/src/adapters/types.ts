@@ -24,6 +24,8 @@ export interface RateLimit {
 export interface PollOptions<C = unknown> {
   accountId: string;
   getToken: TokenProvider;
+  /** Instance API base for self-hosted providers; fixed-host adapters fall back to their constant. */
+  baseUrl?: string;
   /** Opaque cursor from the previous poll. undefined (or a shape the adapter
    *  doesn't recognize) → full walk of the current open set. */
   cursor?: C;
@@ -93,13 +95,23 @@ export interface CodeHost {
   readonly id: CodeHostId;
   /** Which AuthProviderId's accounts authenticate against this host. */
   readonly authProvider: AuthProviderId;
+  // Network methods take a trailing per-account baseUrl (self-hosted instance);
+  // fixed-host adapters default to their constant. cloneUrl/parseOrigin stay
+  // host-fixed here — self-hosted clone/origin resolution arrives with the
+  // GitLab adapter (#74/#76).
   /** Opens the PR. "Already exists" is a host convention handled inside the
    *  adapter: it adopts the open PR for this head and returns it flagged `existing`. */
-  createPr(repo: RepoRef, params: CreatePrParams, getToken: TokenProvider): Promise<CreatedPr>;
+  createPr(
+    repo: RepoRef,
+    params: CreatePrParams,
+    getToken: TokenProvider,
+    baseUrl?: string,
+  ): Promise<CreatedPr>;
   findOpenPrByHead(
     repo: RepoRef,
     headRef: string,
     getToken: TokenProvider,
+    baseUrl?: string,
   ): Promise<CreatedPr | null>;
   /** prAuthor (optional) excludes the author's own reviews from decision and comments. */
   fetchReviews(
@@ -107,13 +119,20 @@ export interface CodeHost {
     number: number,
     getToken: TokenProvider,
     prAuthor?: string,
+    baseUrl?: string,
   ): Promise<PrReviews>;
   fetchCiStatus(
     repo: RepoRef,
     sha: string,
     getToken: TokenProvider,
+    baseUrl?: string,
   ): Promise<PullRequest["ciStatus"]>;
-  fetchFailingChecks(repo: RepoRef, sha: string, getToken: TokenProvider): Promise<FailingCheck[]>;
+  fetchFailingChecks(
+    repo: RepoRef,
+    sha: string,
+    getToken: TokenProvider,
+    baseUrl?: string,
+  ): Promise<FailingCheck[]>;
   /** The tracker-link line in the PR body, e.g. "Closes #42" for key "42". */
   linkIssueText(key: string): string;
   pushCredentials(token: string): PushCredentials;

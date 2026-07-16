@@ -64,8 +64,8 @@ async function revoke(tokens: ProviderTokens): Promise<void> {
 export const githubProvider: ProviderConfig = {
   id: "github",
   displayName: "GitHub",
-  authEndpoint: GITHUB_OAUTH_ENDPOINTS.authEndpoint,
-  tokenEndpoint: GITHUB_OAUTH_ENDPOINTS.tokenEndpoint,
+  authEndpoint: () => GITHUB_OAUTH_ENDPOINTS.authEndpoint,
+  tokenEndpoint: () => GITHUB_OAUTH_ENDPOINTS.tokenEndpoint,
   // GitHub Apps take no scope param — permissions live on the App itself.
   scopes: [],
   clientId: GITHUB_OAUTH_CLIENT_ID,
@@ -74,6 +74,8 @@ export const githubProvider: ProviderConfig = {
   rotatesRefreshToken: true,
   requiresRefreshTokenOnExchange: true,
   redirectPorts: GITHUB_OAUTH_ENDPOINTS.redirectPorts,
+  requiresBaseUrl: false,
+  supportsPat: false,
   mapUser: mapGitHubUser,
   revoke,
 };

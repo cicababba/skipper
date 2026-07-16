@@ -95,7 +95,12 @@ declare global {
       auth: {
         getState: () => Promise<AuthState>;
         getProviders: () => Promise<AuthProviderMeta[]>;
-        signIn: (provider: AuthProviderId) => Promise<void>;
+        signIn: (provider: AuthProviderId, options?: { baseUrl?: string }) => Promise<void>;
+        signInWithPat: (
+          provider: AuthProviderId,
+          pat: string,
+          options?: { baseUrl?: string },
+        ) => Promise<void>;
         signOut: (provider: AuthProviderId, accountId?: string) => Promise<void>;
         cancelSignIn: (provider: AuthProviderId) => Promise<void>;
         onStateChanged: (callback: (state: AuthState) => void) => () => void;

@@ -100,8 +100,10 @@ contextBridge.exposeInMainWorld("skipper", {
       ipcRenderer.invoke("skipper:auth:getState"),
     getProviders: (): Promise<AuthProviderMeta[]> =>
       ipcRenderer.invoke("skipper:auth:getProviders"),
-    signIn: (provider: AuthProviderId): Promise<void> =>
-      ipcRenderer.invoke(`skipper:auth:${provider}:signIn`),
+    signIn: (provider: AuthProviderId, options?: { baseUrl?: string }): Promise<void> =>
+      ipcRenderer.invoke(`skipper:auth:${provider}:signIn`, options),
+    signInWithPat: (provider: AuthProviderId, pat: string, options?: { baseUrl?: string }): Promise<void> =>
+      ipcRenderer.invoke(`skipper:auth:${provider}:signInWithPat`, pat, options),
     signOut: (provider: AuthProviderId, accountId?: string): Promise<void> =>
       ipcRenderer.invoke(`skipper:auth:${provider}:signOut`, accountId),
     cancelSignIn: (provider: AuthProviderId): Promise<void> =>

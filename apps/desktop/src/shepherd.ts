@@ -28,6 +28,8 @@ export interface ShepherdDeps {
   getItem: (itemId: string) => TrackedItem | undefined;
   getSettings: () => OrchestratorSettings;
   getTokenProvider: (item: TrackedItem) => TokenProvider;
+  /** Instance API base of the item's account — undefined for fixed-host providers. */
+  getBaseUrl: (item: TrackedItem) => string | undefined;
   getRepoPath: (repo: RepoRef) => string | undefined;
   /** Bare base branch name (no origin/ prefix) — the PR `base` param. */
   getBaseBranch: (item: TrackedItem) => Promise<string>;
@@ -145,6 +147,7 @@ export async function openOrPushPr(
             draft: true,
           },
           getToken,
+          deps.getBaseUrl(item),
         );
         pr = { id: created.id, number: created.number, url: created.url };
         reason = "draft PR opened";
@@ -182,16 +185,17 @@ async function reenter(itemId: string): Promise<void> {
     if (!item || item.state !== "changes-requested" || !item.pr) return;
     const host = codeHostFor(item.codeHost);
     const getToken = deps.getTokenProvider(item);
+    const baseUrl = deps.getBaseUrl(item);
     // No author filter: the connected user is usually the PR author, and their
     // inline comments on the agent's PR are exactly the feedback to address.
-    const { comments } = await host.fetchReviews(item.repo, item.pr.number, getToken);
+    const { comments } = await host.fetchReviews(item.repo, item.pr.number, getToken, undefined, baseUrl);
     let feedback = comments;
     // CI-triggered re-entry: the failing checks are the actionable feedback.
     const ciSha = item.shepherd?.lastCiSha;
     const ciTriggered = ciSha !== undefined && ciSha === item.shepherd?.lastPushedSha;
     if (ciTriggered) {
       try {
-        const failing = await host.fetchFailingChecks(item.repo, ciSha, getToken);
+        const failing = await host.fetchFailingChecks(item.repo, ciSha, getToken, baseUrl);
         feedback = [
           ...feedback,
           ...failing.map((check) => ({
