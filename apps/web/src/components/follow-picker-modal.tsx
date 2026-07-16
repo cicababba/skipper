@@ -2,16 +2,26 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, ExternalLink, Github, Loader2, X } from "lucide-react";
-import type { FollowCandidatesResult } from "@skipper/shared";
+import { AlertTriangle, ExternalLink, Loader2, X } from "lucide-react";
+import type { AuthProviderId, FollowCandidatesResult } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
+import { PROVIDER_ICONS, FALLBACK_PROVIDER_ICON } from "@/components/provider-icons";
 
-// Follow-repos picker (#15): shown after a GitHub connect and from the
-// Repositories section. Lists GitHub App installation repos + repos already
-// seen by the poller; unchecked repos get followed:false (admission filter).
-// Detects the valid-token-but-no-installations case and links to the App
-// installation page instead of leaving an inexplicably empty inbox.
-export function FollowPickerModal({ onClose }: { onClose: () => void }) {
+// Follow-repos picker (#15): shown after an issue-source connect and from the
+// Repositories section, scoped to the connecting account. GitHub lists App
+// installation repos, GitLab lists membership projects; both merge repos the
+// account's poller already saw. Unchecked repos get followed:false (admission
+// filter). GitHub also detects the valid-token-but-no-installations case and
+// links to the App installation page instead of an inexplicably empty inbox.
+export function FollowPickerModal({
+  accountId,
+  providerId,
+  onClose,
+}: {
+  accountId?: string;
+  providerId?: AuthProviderId;
+  onClose: () => void;
+}) {
   const { t } = useT();
   const [result, setResult] = useState<FollowCandidatesResult | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -20,7 +30,7 @@ export function FollowPickerModal({ onClose }: { onClose: () => void }) {
   const load = useCallback(async () => {
     setResult(null);
     if (!window.skipper) return;
-    const res = await window.skipper.orchestrator.listFollowCandidates();
+    const res = await window.skipper.orchestrator.listFollowCandidates(accountId);
     setResult(res);
     if (res.ok) {
       setSelected(
@@ -31,7 +41,7 @@ export function FollowPickerModal({ onClose }: { onClose: () => void }) {
         ),
       );
     }
-  }, []);
+  }, [accountId]);
 
   useEffect(() => {
     void load();
@@ -71,12 +81,13 @@ export function FollowPickerModal({ onClose }: { onClose: () => void }) {
   };
 
   const p = t.settings.repositories.picker;
+  const Icon = (providerId && PROVIDER_ICONS[providerId]) || FALLBACK_PROVIDER_ICON;
 
   return createPortal(
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="w-[480px] max-w-[90vw] rounded-xl border border-border bg-card shadow-2xl animate-pop-in overflow-hidden">
         <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border">
-          <Github size={15} className="text-accent shrink-0" />
+          <Icon size={15} className="text-accent shrink-0" />
           <h2 className="text-sm font-medium flex-1">{p.title}</h2>
           <button
             onClick={onClose}
@@ -120,7 +131,7 @@ export function FollowPickerModal({ onClose }: { onClose: () => void }) {
                   <p className="mt-1 text-amber-200/70">{p.noInstallationsBody}</p>
                   <div className="mt-2 flex items-center gap-3">
                     <button
-                      onClick={() => window.skipper?.openExternal(result.installUrl)}
+                      onClick={() => result.installUrl && window.skipper?.openExternal(result.installUrl)}
                       className="flex items-center gap-1.5 h-7 px-2.5 rounded-md bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 transition-colors font-medium"
                     >
                       <ExternalLink size={11} />

@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, FolderGit2, Loader2, Minus, Plus } from "lucide-react";
-import type { RepoSettingsRow } from "@skipper/shared";
+import type { AuthProviderId, RepoSettingsRow } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
+import { useAuth } from "@/lib/auth-context";
 import { useT } from "@/lib/app-i18n";
 import { FollowPickerModal } from "@/components/follow-picker-modal";
 
@@ -14,8 +15,11 @@ import { FollowPickerModal } from "@/components/follow-picker-modal";
 export function RepositoriesSection() {
   const { t } = useT();
   const { state, updateSettings } = useOrchestrator();
+  const { authState, providers } = useAuth();
   const [rows, setRows] = useState<RepoSettingsRow[] | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [picker, setPicker] = useState<{ accountId: string; providerId: AuthProviderId } | null>(
+    null,
+  );
 
   const isElectron = typeof window !== "undefined" && !!window.skipper;
 
@@ -34,6 +38,12 @@ export function RepositoriesSection() {
 
   const r = t.settings.repositories;
   const wipLimit = state?.settings.codingWipPerRepo ?? 1;
+  const issueSourceProviders = new Set(
+    providers.filter((p) => p.isIssueSource).map((p) => p.id),
+  );
+  const displayNameFor = (id: AuthProviderId) =>
+    providers.find((p) => p.id === id)?.displayName ?? id;
+  const fetchAccounts = authState.accounts.filter((a) => issueSourceProviders.has(a.provider));
 
   return (
     <section className="mb-10">
@@ -104,22 +114,31 @@ export function RepositoriesSection() {
             </ul>
           )}
 
-          <div className="mt-3 flex items-center justify-between gap-3">
+          <div className="mt-3 flex items-start justify-between gap-3">
             <p className="text-[11px] text-muted/60">{r.followNote}</p>
-            <button
-              onClick={() => setPickerOpen(true)}
-              className="shrink-0 h-7 px-3 rounded-md text-xs border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors"
-            >
-              {r.fetchFromGitHub}
-            </button>
+            <div className="shrink-0 flex flex-wrap items-center justify-end gap-2">
+              {fetchAccounts.map((account) => (
+                <button
+                  key={account.id}
+                  onClick={() =>
+                    setPicker({ accountId: account.id, providerId: account.provider })
+                  }
+                  className="h-7 px-3 rounded-md text-xs border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors"
+                >
+                  {r.fetchFrom(displayNameFor(account.provider))}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
-      {pickerOpen && (
+      {picker && (
         <FollowPickerModal
+          accountId={picker.accountId}
+          providerId={picker.providerId}
           onClose={() => {
-            setPickerOpen(false);
+            setPicker(null);
             void load();
           }}
         />

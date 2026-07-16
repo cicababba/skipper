@@ -53,6 +53,7 @@ export {
   pollGitLabAccount,
   emptyGitLabCursor,
   listUserInstallationRepos,
+  listMembershipProjects,
 } from "./adapters";
 export type { IssueSource, PollOptions, PollResult, RateLimit, TokenProvider } from "./adapters";
 export type {

@@ -203,7 +203,7 @@ const en = {
     labelPlaceholder: "ai-ready",
     linked: "linked",
     notLinked: "not linked",
-    fetchFromGitHub: "Fetch from GitHub…",
+    fetchFrom: (name: string) => `Fetch from ${name}…`,
     empty: "No repositories yet — connect a GitHub account or link a repo from the inbox.",
     loading: "Loading repositories…",
     picker: {
@@ -411,7 +411,7 @@ const it: typeof en = {
     labelPlaceholder: "ai-ready",
     linked: "collegato",
     notLinked: "non collegato",
-    fetchFromGitHub: "Recupera da GitHub…",
+    fetchFrom: (name) => `Recupera da ${name}…`,
     empty: "Nessun repository — collega un account GitHub o un repo dall'inbox.",
     loading: "Caricamento repository…",
     picker: {
@@ -619,7 +619,7 @@ const fr: typeof en = {
     labelPlaceholder: "ai-ready",
     linked: "lié",
     notLinked: "non lié",
-    fetchFromGitHub: "Récupérer depuis GitHub…",
+    fetchFrom: (name) => `Récupérer depuis ${name}…`,
     empty: "Aucun dépôt — connectez un compte GitHub ou liez un dépôt depuis l'inbox.",
     loading: "Chargement des dépôts…",
     picker: {
@@ -827,7 +827,7 @@ const es: typeof en = {
     labelPlaceholder: "ai-ready",
     linked: "vinculado",
     notLinked: "no vinculado",
-    fetchFromGitHub: "Obtener de GitHub…",
+    fetchFrom: (name) => `Obtener de ${name}…`,
     empty: "Aún no hay repositorios — conecta una cuenta de GitHub o vincula un repo desde el inbox.",
     loading: "Cargando repositorios…",
     picker: {
