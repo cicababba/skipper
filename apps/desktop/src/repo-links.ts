@@ -101,6 +101,7 @@ export async function validateRepoOrigin(
   localPath: string,
   repo: RepoRef,
   host: Pick<CodeHost, "parseOrigin">,
+  baseUrl?: string,
 ): Promise<void> {
   const info = await stat(localPath).catch(() => null);
   if (!info?.isDirectory()) throw new Error(`not a directory: ${localPath}`);
@@ -108,7 +109,7 @@ export async function validateRepoOrigin(
   if (r.code !== 0) {
     throw new Error(`not a git repository with an origin remote: ${r.stderr.trim() || localPath}`);
   }
-  const origin = host.parseOrigin(r.stdout.trim());
+  const origin = host.parseOrigin(r.stdout.trim(), baseUrl);
   if (
     !origin ||
     origin.owner.toLowerCase() !== repo.owner.toLowerCase() ||
@@ -158,6 +159,7 @@ export async function cloneRepo(
   repo: RepoRef,
   destParent: string,
   credentials: PushCredentials,
+  baseUrl?: string,
 ): Promise<string> {
   const dest = join(destParent, repo.name);
   if (await stat(dest).catch(() => null)) {
@@ -166,7 +168,7 @@ export async function cloneRepo(
   await mkdir(destParent, { recursive: true });
 
   const r = await withAskpass(credentials, (env) =>
-    run("git", ["clone", host.cloneUrl(repo), dest], {
+    run("git", ["clone", host.cloneUrl(repo, baseUrl), dest], {
       env,
       timeout: 600_000,
     }),
@@ -176,6 +178,6 @@ export async function cloneRepo(
     throw new Error(`git clone failed: ${r.stderr.trim() || `exit ${r.code}`}`);
   }
 
-  await validateRepoOrigin(dest, repo, host);
+  await validateRepoOrigin(dest, repo, host, baseUrl);
   return dest;
 }

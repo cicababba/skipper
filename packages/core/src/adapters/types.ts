@@ -96,9 +96,9 @@ export interface CodeHost {
   /** Which AuthProviderId's accounts authenticate against this host. */
   readonly authProvider: AuthProviderId;
   // Network methods take a trailing per-account baseUrl (self-hosted instance);
-  // fixed-host adapters default to their constant. cloneUrl/parseOrigin stay
-  // host-fixed here — self-hosted clone/origin resolution arrives with the
-  // GitLab adapter (#74/#76).
+  // fixed-host adapters default to their constant. cloneUrl/parseOrigin take it
+  // too so self-hosted clone/origin resolution works (GitLab, #76); fixed-host
+  // adapters ignore it.
   /** Opens the PR. "Already exists" is a host convention handled inside the
    *  adapter: it adopts the open PR for this head and returns it flagged `existing`. */
   createPr(
@@ -137,9 +137,9 @@ export interface CodeHost {
   linkIssueText(key: string): string;
   pushCredentials(token: string): PushCredentials;
   /** Clone URL for git-over-HTTPS, e.g. "https://github.com/owner/name.git". */
-  cloneUrl(repo: RepoRef): string;
+  cloneUrl(repo: RepoRef, baseUrl?: string): string;
   /** Parses a git remote URL into this host's owner/name; null when it isn't this host. */
-  parseOrigin(remoteUrl: string): RepoRef | null;
+  parseOrigin(remoteUrl: string, baseUrl?: string): RepoRef | null;
 }
 
 export class ApiError extends Error {

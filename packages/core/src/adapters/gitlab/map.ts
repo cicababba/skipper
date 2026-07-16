@@ -33,6 +33,7 @@ export interface GitLabMrDetailPayload extends GitLabMrPayload {
 
 export interface GitLabApprovalsPayload {
   approved?: boolean;
+  approvals_left?: number;
 }
 
 function repoRefFromPath(path: string): RepoRef {
@@ -137,20 +138,39 @@ export function ciStatusFromPipeline(status: string | undefined): PullRequest["c
     case "scheduled":
       return "pending";
     default:
-      return undefined; // absent / skipped / manual
+      // skipped and manual pipelines carry no pass/fail signal — deliberately
+      // undefined (like an absent pipeline) so the shepherd neither blocks nor
+      // greenlights on them.
+      return undefined;
   }
 }
 
-/** Merge detail (head_pipeline) + approvals into an open MR. GitLab approvals have no
- *  changes-requested concept, so the decision is only "approved" | "review-required". */
+/** GitLab has no changes-requested review vote, so an unresolved discussion thread
+ *  stands in for it and takes precedence over an approval — mirrors GitHub, where a
+ *  changes-requested review beats an approval. approvals_left is the rule-aware
+ *  signal; `approved` is the older/free-tier fallback when it is absent. */
+export function deriveGitLabReviewDecision(
+  approvals: GitLabApprovalsPayload | undefined,
+  hasUnresolvedThreads: boolean,
+): NonNullable<PullRequest["reviewDecision"]> {
+  if (hasUnresolvedThreads) return "changes-requested";
+  const approved =
+    approvals?.approvals_left != null
+      ? approvals.approvals_left === 0
+      : approvals?.approved === true;
+  return approved ? "approved" : "review-required";
+}
+
+/** Merge detail (head_pipeline) + approvals + unresolved-thread signal into an open MR. */
 export function applyMrDetails(
   mr: PullRequest,
   detail: GitLabMrDetailPayload,
   approvals: GitLabApprovalsPayload | undefined,
+  hasUnresolvedThreads: boolean,
 ): PullRequest {
   return {
     ...mr,
     ciStatus: ciStatusFromPipeline(detail.head_pipeline?.status ?? undefined),
-    reviewDecision: approvals?.approved ? "approved" : "review-required",
+    reviewDecision: deriveGitLabReviewDecision(approvals, hasUnresolvedThreads),
   };
 }

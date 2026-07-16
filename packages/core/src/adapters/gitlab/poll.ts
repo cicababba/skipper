@@ -9,6 +9,7 @@ import {
   type GitLabMrDetailPayload,
   type GitLabMrPayload,
 } from "./map";
+import { fetchMrDiscussions, hasUnresolvedThreads } from "./mrs";
 import { ApiError } from "../types";
 import {
   asGitLabCursor,
@@ -103,7 +104,13 @@ async function hydrateTrackedMrs(
         continue;
       }
       const approvals = await gitlabGet<GitLabApprovalsPayload>(`${mrUrl}/approvals`, getToken);
-      out.push(applyMrDetails(mr, detail.body, approvals.body));
+      const discussions = await fetchMrDiscussions(
+        { owner: target.owner, name: target.name },
+        target.number,
+        getToken,
+        baseUrl,
+      );
+      out.push(applyMrDetails(mr, detail.body, approvals.body, hasUnresolvedThreads(discussions)));
     } catch (err) {
       // Non-fatal: the next poll retries; reconcile just sees no fresh evidence.
       onProgress?.(`deep hydration failed for ${label}: ${String(err)}`);

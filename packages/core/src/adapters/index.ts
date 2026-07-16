@@ -1,6 +1,6 @@
 import type { AuthProviderId, CodeHostId, IssueSourceId } from "@skipper/shared";
 import { githubCodeHost, githubIssueSource } from "./github";
-import { gitlabIssueSource } from "./gitlab";
+import { gitlabCodeHost, gitlabIssueSource } from "./gitlab";
 import type { CodeHost, IssueSource } from "./types";
 
 // `satisfies` keeps this exhaustive as the IssueSourceId axis widens — a new id
@@ -16,15 +16,15 @@ export function issueSourceFor(source: IssueSourceId): IssueSource {
   return issueSources[source];
 }
 
-// Partial: GitLab widened CodeHostId but its CodeHost adapter is #76.
+// Literal keys (not `[adapter.id]`) so the exact Record stays satisfied — see the
+// issueSources note above.
 export const codeHosts = {
-  [githubCodeHost.id]: githubCodeHost,
-} satisfies Partial<Record<CodeHostId, CodeHost>>;
+  github: githubCodeHost,
+  gitlab: gitlabCodeHost,
+} satisfies Record<CodeHostId, CodeHost>;
 
 export function codeHostFor(host: CodeHostId): CodeHost {
-  const adapter = codeHosts[host];
-  if (!adapter) throw new Error(`no CodeHost adapter for ${host}`); // #76
-  return adapter;
+  return codeHosts[host];
 }
 
 /** Which issue source (if any) polls accounts of this auth provider.

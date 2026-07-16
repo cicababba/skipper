@@ -25,12 +25,21 @@ function parseRateLimit(res: Response): GitLabRateLimit | undefined {
   };
 }
 
-export async function gitlabGet<T>(
+async function gitlabRequest<T>(
+  method: "GET" | "POST",
   url: string,
   getToken: GitLabTokenProvider,
+  body?: unknown,
 ): Promise<GitLabResponse<T>> {
-  const doFetch = async (token: string) =>
-    fetch(url, { method: "GET", headers: { authorization: `Bearer ${token}` } });
+  const doFetch = async (token: string) => {
+    const headers: Record<string, string> = { authorization: `Bearer ${token}` };
+    if (body !== undefined) headers["content-type"] = "application/json";
+    return fetch(url, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  };
 
   const token = await getToken();
   if (!token) throw new AuthError("no GitLab token available");
@@ -67,4 +76,19 @@ export async function gitlabGet<T>(
     nextUrl: parseLinkNext(res.headers.get("link")),
     rateLimit,
   };
+}
+
+export async function gitlabGet<T>(
+  url: string,
+  getToken: GitLabTokenProvider,
+): Promise<GitLabResponse<T>> {
+  return gitlabRequest<T>("GET", url, getToken);
+}
+
+export async function gitlabPost<T>(
+  url: string,
+  getToken: GitLabTokenProvider,
+  body: unknown,
+): Promise<GitLabResponse<T>> {
+  return gitlabRequest<T>("POST", url, getToken, body);
 }
