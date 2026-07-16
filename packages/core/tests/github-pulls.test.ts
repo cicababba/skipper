@@ -8,8 +8,8 @@ import {
   mapReviewFeedback,
   type PullReviewCommentPayload,
   type PullReviewPayload,
-} from "../src/github/pulls";
-import { GitHubApiError } from "../src/github/types";
+} from "../src/adapters/github/pulls";
+import { ApiError } from "../src/adapters/types";
 
 const repo = { owner: "octo", name: "demo" };
 const token = async () => "tok";
@@ -53,7 +53,7 @@ describe("createPullRequest", () => {
       { title: "t", body: "b", head: "h", base: "main", draft: true },
       token,
     ).catch((e) => e);
-    expect(err).toBeInstanceOf(GitHubApiError);
+    expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(422);
   });
 });

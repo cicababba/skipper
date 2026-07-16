@@ -1,4 +1,5 @@
-import { GitHubApiError, GitHubAuthError, type GitHubRateLimit, type GitHubTokenProvider } from "./types";
+import { ApiError, AuthError } from "../types";
+import type { GitHubRateLimit, GitHubTokenProvider } from "./types";
 
 const API_HEADERS = {
   accept: "application/vnd.github+json",
@@ -53,15 +54,15 @@ async function githubRequest<T>(
   };
 
   const token = await getToken();
-  if (!token) throw new GitHubAuthError("no GitHub token available");
+  if (!token) throw new AuthError("no GitHub token available");
 
   let res = await doFetch(token);
   if (res.status === 401) {
     const fresh = await getToken(true);
-    if (!fresh) throw new GitHubAuthError("no GitHub token available after refresh");
+    if (!fresh) throw new AuthError("no GitHub token available after refresh");
     res = await doFetch(fresh);
     if (res.status === 401) {
-      throw new GitHubAuthError("GitHub rejected the token (401) — re-authentication needed");
+      throw new AuthError("GitHub rejected the token (401) — re-authentication needed");
     }
   }
 
@@ -78,7 +79,7 @@ async function githubRequest<T>(
       retryAfterSeconds = Math.max(0, Math.ceil((Date.parse(rateLimit.resetAt) - Date.now()) / 1000));
     }
     const text = await res.text().catch(() => "");
-    throw new GitHubApiError(
+    throw new ApiError(
       `GitHub rate limited (${res.status}): ${text}`,
       res.status,
       rateLimit,
@@ -88,7 +89,7 @@ async function githubRequest<T>(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new GitHubApiError(`GitHub API error: ${res.status} ${text}`, res.status, rateLimit);
+    throw new ApiError(`GitHub API error: ${res.status} ${text}`, res.status, rateLimit);
   }
 
   return {

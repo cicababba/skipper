@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { githubGet, githubPost, parseLinkNext } from "../src/github/client";
-import { GitHubApiError, GitHubAuthError } from "../src/github/types";
+import { githubGet, githubPost, parseLinkNext } from "../src/adapters/github/client";
+import { ApiError, AuthError } from "../src/adapters/types";
 
 function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
   return new Response(status === 304 ? null : JSON.stringify(body), {
@@ -70,16 +70,16 @@ describe("githubGet", () => {
     expect(secondHeaders.authorization).toBe("Bearer fresh");
   });
 
-  it("throws GitHubAuthError when 401 survives the refresh", async () => {
+  it("throws AuthError when 401 survives the refresh", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(401, { message: "bad" })));
-    await expect(githubGet("https://api.github.com/user", token)).rejects.toBeInstanceOf(GitHubAuthError);
+    await expect(githubGet("https://api.github.com/user", token)).rejects.toBeInstanceOf(AuthError);
   });
 
-  it("throws GitHubAuthError without fetching when the token is null", async () => {
+  it("throws AuthError without fetching when the token is null", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     await expect(githubGet("https://api.github.com/user", async () => null)).rejects.toBeInstanceOf(
-      GitHubAuthError,
+      AuthError,
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -89,14 +89,14 @@ describe("githubGet", () => {
       jsonResponse(403, { message: "slow down" }, { "retry-after": "60" }),
     ));
     const err = await githubGet("https://api.github.com/issues", token).catch((e) => e);
-    expect(err).toBeInstanceOf(GitHubApiError);
+    expect(err).toBeInstanceOf(ApiError);
     expect(err.retryAfterSeconds).toBe(60);
   });
 
-  it("throws GitHubApiError with status on non-ok responses", async () => {
+  it("throws ApiError with status on non-ok responses", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(422, { message: "Validation Failed" })));
     const err = await githubGet("https://api.github.com/issues", token).catch((e) => e);
-    expect(err).toBeInstanceOf(GitHubApiError);
+    expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(422);
   });
 
@@ -109,7 +109,7 @@ describe("githubGet", () => {
       }),
     ));
     const err = await githubGet("https://api.github.com/issues", token).catch((e) => e);
-    expect(err).toBeInstanceOf(GitHubApiError);
+    expect(err).toBeInstanceOf(ApiError);
     expect(err.retryAfterSeconds).toBeGreaterThan(100);
     expect(err.retryAfterSeconds).toBeLessThanOrEqual(120);
   });
@@ -144,10 +144,10 @@ describe("githubPost", () => {
     expect(getToken).toHaveBeenNthCalledWith(2, true);
   });
 
-  it("propagates a 422 as GitHubApiError with status", async () => {
+  it("propagates a 422 as ApiError with status", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(422, { message: "already exists" })));
     const err = await githubPost("https://api.github.com/repos/o/r/pulls", token, {}).catch((e) => e);
-    expect(err).toBeInstanceOf(GitHubApiError);
+    expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(422);
   });
 });

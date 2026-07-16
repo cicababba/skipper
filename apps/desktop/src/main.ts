@@ -1061,9 +1061,12 @@ app.whenReady().then(async () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { initOrchestrator, pokeOrchestrator, killAllCodingRuns } = require("./orchestrator.cjs") as typeof import("./orchestrator");
       initOrchestrator(() => mainWindow, {
-        getAccounts: () => authManager?.getState().accounts.filter((a) => a.provider === "github") ?? [],
-        getToken: (accountId, force) =>
-          authManager?.getAccessToken("github", accountId, force) ?? Promise.resolve(null),
+        getAccounts: () => authManager?.getState().accounts ?? [],
+        getToken: (accountId, force) => {
+          const account = authManager?.getState().accounts.find((a) => a.id === accountId);
+          if (!account) return Promise.resolve(null);
+          return authManager?.getAccessToken(account.provider, accountId, force) ?? Promise.resolve(null);
+        },
         cursorFilePath: join(app.getPath("userData"), "inbox-cursors.json"),
         manifestFilePath: join(app.getPath("userData"), "orchestrator-manifest.json"),
         repoLinksFilePath: join(app.getPath("userData"), "repo-links.json"),

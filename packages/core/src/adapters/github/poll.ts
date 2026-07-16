@@ -10,8 +10,9 @@ import {
   type GitHubPullPayload,
 } from "./map";
 import { deriveReviewDecision, fetchCiStatus, fetchPullReviews } from "./pulls";
+import { ApiError } from "../types";
 import {
-  GitHubApiError,
+  asGitHubCursor,
   emptyGitHubCursor,
   type GitHubAccountCursor,
   type GitHubEndpointCursor,
@@ -151,12 +152,12 @@ async function hydrateTrackedPulls(
 }
 
 export async function pollGitHubAccount(options: GitHubPollOptions): Promise<GitHubPollResult> {
-  const cursor = options.cursor?.version === 1 ? options.cursor : undefined;
+  const cursor = asGitHubCursor(options.cursor);
   try {
     return await runPoll(options, cursor);
   } catch (err) {
     // GitHub rejects a malformed `since` with 422 — recover with a full walk.
-    if (cursor && err instanceof GitHubApiError && err.status === 422) {
+    if (cursor && err instanceof ApiError && err.status === 422) {
       options.onProgress?.("cursor rejected (422) — falling back to full walk");
       return runPoll(options, undefined);
     }
