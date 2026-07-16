@@ -728,10 +728,18 @@ ipcMain.handle("skipper:auth:getProviders", (): AuthProviderMeta[] => {
 });
 
 for (const provider of AUTH_PROVIDER_IDS) {
-  ipcMain.handle(`skipper:auth:${provider}:signIn`, async () => {
+  ipcMain.handle(`skipper:auth:${provider}:signIn`, async (_e, options?: { baseUrl?: string }) => {
     if (!authManager) throw new Error("Auth not initialized");
-    await authManager.signIn(provider);
+    await authManager.signIn(provider, options);
   });
+
+  ipcMain.handle(
+    `skipper:auth:${provider}:signInWithPat`,
+    async (_e, pat: string, options?: { baseUrl?: string }) => {
+      if (!authManager) throw new Error("Auth not initialized");
+      await authManager.signInWithPat(provider, pat, options);
+    },
+  );
 
   ipcMain.handle(`skipper:auth:${provider}:signOut`, async (_e, accountId?: string) => {
     if (!authManager) throw new Error("Auth not initialized");

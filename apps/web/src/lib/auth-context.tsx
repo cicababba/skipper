@@ -22,7 +22,12 @@ interface AuthContextValue {
   /** Registry-derived provider rows from the desktop; [] until the IPC answers. */
   providers: AuthProviderMeta[];
   viewFor: (provider: AuthProviderId) => ProviderAuthView;
-  signIn: (provider: AuthProviderId) => Promise<void>;
+  signIn: (provider: AuthProviderId, options?: { baseUrl?: string }) => Promise<void>;
+  signInWithPat: (
+    provider: AuthProviderId,
+    pat: string,
+    options?: { baseUrl?: string },
+  ) => Promise<void>;
   signOut: (provider: AuthProviderId) => Promise<void>;
   cancelSignIn: (provider: AuthProviderId) => Promise<void>;
 }
@@ -58,10 +63,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [authState],
   );
 
-  const signIn = useCallback(async (provider: AuthProviderId) => {
+  const signIn = useCallback(async (provider: AuthProviderId, options?: { baseUrl?: string }) => {
     if (!window.skipper) return;
-    await window.skipper.auth.signIn(provider);
+    await window.skipper.auth.signIn(provider, options);
   }, []);
+
+  const signInWithPat = useCallback(
+    async (provider: AuthProviderId, pat: string, options?: { baseUrl?: string }) => {
+      if (!window.skipper) return;
+      await window.skipper.auth.signInWithPat(provider, pat, options);
+    },
+    [],
+  );
 
   const signOut = useCallback(async (provider: AuthProviderId) => {
     if (!window.skipper) return;
@@ -74,8 +87,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ authState, providers, viewFor, signIn, signOut, cancelSignIn }),
-    [authState, providers, viewFor, signIn, signOut, cancelSignIn],
+    () => ({ authState, providers, viewFor, signIn, signInWithPat, signOut, cancelSignIn }),
+    [authState, providers, viewFor, signIn, signInWithPat, signOut, cancelSignIn],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

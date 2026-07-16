@@ -36,6 +36,10 @@ export interface AuthProviderMeta {
   displayName: string;
   /** An issue source polls this provider's accounts → Settings shows repo-picker affordances. */
   isIssueSource: boolean;
+  /** Connect flow must collect an instance URL before auth (self-hosted providers). */
+  requiresBaseUrl: boolean;
+  /** Provider accepts a personal access token as a sign-in fallback. */
+  supportsPat: boolean;
 }
 
 /** Provider-neutral identity for a connected account. */
@@ -47,6 +51,10 @@ export interface Account {
   email?: string;
   name?: string;
   avatarUrl?: string;
+  /** Normalized instance origin for self-hosted providers. Absent = the provider's fixed host. */
+  baseUrl?: string;
+  /** Absent = "oauth" (pre-#73 accounts). */
+  authMethod?: "oauth" | "pat";
 }
 
 /** Per-provider sign-in flow status. */

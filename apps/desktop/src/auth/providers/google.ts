@@ -41,8 +41,8 @@ async function revoke(tokens: ProviderTokens): Promise<void> {
 export const googleProvider: ProviderConfig = {
   id: "google",
   displayName: "Google",
-  authEndpoint: GOOGLE_OAUTH_ENDPOINTS.authEndpoint,
-  tokenEndpoint: GOOGLE_OAUTH_ENDPOINTS.tokenEndpoint,
+  authEndpoint: () => GOOGLE_OAUTH_ENDPOINTS.authEndpoint,
+  tokenEndpoint: () => GOOGLE_OAUTH_ENDPOINTS.tokenEndpoint,
   scopes: [...GOOGLE_OAUTH_ENDPOINTS.scopes],
   // access_type=offline + prompt=consent ensure we always get a refresh_token,
   // including on subsequent sign-ins of the same Google account.
@@ -56,6 +56,8 @@ export const googleProvider: ProviderConfig = {
   usesPkce: true,
   rotatesRefreshToken: false,
   requiresRefreshTokenOnExchange: true,
+  requiresBaseUrl: false,
+  supportsPat: false,
   mapUser,
   revoke,
 };

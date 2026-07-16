@@ -75,6 +75,7 @@ function makeHarness(overrides: Partial<ShepherdDeps> = {}): Harness {
     getItem: (id) => items.get(id),
     getSettings: () => DEFAULT_ORCHESTRATOR_SETTINGS as OrchestratorSettings,
     getTokenProvider: () => async () => "tok",
+    getBaseUrl: () => undefined,
     getRepoPath: () => "/repos/repo",
     getBaseBranch: async () => "develop",
     getPlan: async () => null,

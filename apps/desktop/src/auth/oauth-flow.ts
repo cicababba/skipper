@@ -38,13 +38,17 @@ function generatePkcePair(): { verifier: string; challenge: string } {
  *
  * Throws OAuthError on any failure (user cancel, network, token exchange).
  */
-export async function runOAuthFlow(config: ProviderConfig, signal?: AbortSignal): Promise<OAuthSuccess> {
+export async function runOAuthFlow(
+  config: ProviderConfig,
+  signal?: AbortSignal,
+  baseUrl?: string,
+): Promise<OAuthSuccess> {
   const { verifier, challenge } = generatePkcePair();
   const state = base64url(randomBytes(16));
 
-  const { code, redirectUri } = await captureAuthCode(config, { state, challenge, signal });
-  const tokens = await exchangeCodeForTokens(config, code, verifier, redirectUri);
-  const account = await config.mapUser(tokens.accessToken);
+  const { code, redirectUri } = await captureAuthCode(config, { state, challenge, signal, baseUrl });
+  const tokens = await exchangeCodeForTokens(config, code, verifier, redirectUri, baseUrl);
+  const account = await config.mapUser(tokens.accessToken, baseUrl);
 
   return { tokens, account };
 }
@@ -53,6 +57,7 @@ interface CaptureArgs {
   state: string;
   challenge: string;
   signal?: AbortSignal;
+  baseUrl?: string;
 }
 
 interface CaptureResult {
@@ -157,6 +162,7 @@ function captureAuthCode(config: ProviderConfig, args: CaptureArgs): Promise<Cap
         redirectUri,
         state: args.state,
         codeChallenge: args.challenge,
+        baseUrl: args.baseUrl,
       });
       shell.openExternal(authUrl).catch((err) => {
         reject(new OAuthError("Failed to open system browser", err));
@@ -169,7 +175,7 @@ function captureAuthCode(config: ProviderConfig, args: CaptureArgs): Promise<Cap
 
 function buildAuthUrl(
   config: ProviderConfig,
-  args: { redirectUri: string; state: string; codeChallenge: string },
+  args: { redirectUri: string; state: string; codeChallenge: string; baseUrl?: string },
 ): string {
   const params = new URLSearchParams({
     client_id: config.clientId,
@@ -185,7 +191,7 @@ function buildAuthUrl(
     params.set("code_challenge", args.codeChallenge);
     params.set("code_challenge_method", "S256");
   }
-  return `${config.authEndpoint}?${params.toString()}`;
+  return `${config.authEndpoint(args.baseUrl)}?${params.toString()}`;
 }
 
 interface TokenResponse {
@@ -202,12 +208,13 @@ async function tokenRequest(
   config: ProviderConfig,
   label: string,
   params: Record<string, string>,
+  baseUrl?: string,
 ): Promise<TokenResponse> {
   const body = new URLSearchParams({ client_id: config.clientId, ...params });
   if (config.clientSecret) {
     body.set("client_secret", config.clientSecret);
   }
-  const res = await fetch(config.tokenEndpoint, {
+  const res = await fetch(config.tokenEndpoint(baseUrl), {
     method: "POST",
     headers: {
       "content-type": "application/x-www-form-urlencoded",
@@ -233,6 +240,7 @@ async function exchangeCodeForTokens(
   code: string,
   verifier: string,
   redirectUri: string,
+  baseUrl?: string,
 ): Promise<ProviderTokens> {
   const params: Record<string, string> = {
     code,
@@ -242,7 +250,7 @@ async function exchangeCodeForTokens(
   if (config.usesPkce) {
     params.code_verifier = verifier;
   }
-  const json = await tokenRequest(config, "Token exchange", params);
+  const json = await tokenRequest(config, "Token exchange", params, baseUrl);
   if (config.requiresRefreshTokenOnExchange && !json.refresh_token) {
     throw new OAuthError(`No refresh_token returned by ${config.displayName} (re-consent may be required)`);
   }
@@ -266,11 +274,14 @@ async function exchangeCodeForTokens(
 export async function refreshTokens(
   config: ProviderConfig,
   refreshToken: string,
+  baseUrl?: string,
 ): Promise<RefreshedTokens> {
-  const json = await tokenRequest(config, "Token refresh", {
-    refresh_token: refreshToken,
-    grant_type: "refresh_token",
-  });
+  const json = await tokenRequest(
+    config,
+    "Token refresh",
+    { refresh_token: refreshToken, grant_type: "refresh_token" },
+    baseUrl,
+  );
   return {
     accessToken: json.access_token,
     expiresAt: Date.now() + json.expires_in * 1000,

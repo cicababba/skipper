@@ -39,6 +39,7 @@ async function walkStream(
   getToken: GitHubTokenProvider,
   cursor: GitHubEndpointCursor | undefined,
   onProgress?: (message: string) => void,
+  baseUrl?: string,
 ): Promise<StreamResult> {
   const params = new URLSearchParams({ filter, per_page: "100" });
   if (cursor?.since) {
@@ -47,7 +48,7 @@ async function walkStream(
   } else {
     params.set("state", "open");
   }
-  const pageOneUrl = `${GITHUB_API_BASE_URL}/issues?${params.toString()}`;
+  const pageOneUrl = `${baseUrl ?? GITHUB_API_BASE_URL}/issues?${params.toString()}`;
 
   const etags: Record<string, string> = {};
   const payloads: GitHubIssuePayload[] = [];
@@ -92,6 +93,7 @@ async function hydratePulls(
   getToken: GitHubTokenProvider,
   onProgress?: (message: string) => void,
   skipKeys?: Set<string>,
+  baseUrl?: string,
 ): Promise<PullRequest[]> {
   const out: PullRequest[] = [];
   let hydrated = 0;
@@ -101,7 +103,7 @@ async function hydratePulls(
       continue;
     }
     hydrated++;
-    const url = `${GITHUB_API_BASE_URL}/repos/${pr.repo.owner}/${pr.repo.name}/pulls/${pr.number}`;
+    const url = `${baseUrl ?? GITHUB_API_BASE_URL}/repos/${pr.repo.owner}/${pr.repo.name}/pulls/${pr.number}`;
     try {
       const res = await githubGet<GitHubPullPayload>(url, getToken);
       out.push(res.body ? applyPullDetails(pr, res.body) : pr);
@@ -121,6 +123,7 @@ async function hydrateTrackedPulls(
   accountId: string,
   getToken: GitHubTokenProvider,
   onProgress?: (message: string) => void,
+  baseUrl?: string,
 ): Promise<PullRequest[]> {
   if (targets.length > DEEP_HYDRATION_CAP) {
     onProgress?.(`deep hydration capped at ${DEEP_HYDRATION_CAP} of ${targets.length} tracked PRs`);
@@ -131,7 +134,7 @@ async function hydrateTrackedPulls(
     const label = `${target.owner}/${target.name}#${target.number}`;
     try {
       const detail = await githubGet<GitHubPullPayload>(
-        `${GITHUB_API_BASE_URL}/repos/${target.owner}/${target.name}/pulls/${target.number}`,
+        `${baseUrl ?? GITHUB_API_BASE_URL}/repos/${target.owner}/${target.name}/pulls/${target.number}`,
         getToken,
       );
       if (!detail.body) continue;
@@ -140,8 +143,8 @@ async function hydrateTrackedPulls(
         out.push(pr);
         continue;
       }
-      const reviews = await fetchPullReviews(repo, target.number, getToken);
-      const ciStatus = await fetchCiStatus(repo, detail.body.head.sha, getToken);
+      const reviews = await fetchPullReviews(repo, target.number, getToken, baseUrl);
+      const ciStatus = await fetchCiStatus(repo, detail.body.head.sha, getToken, baseUrl);
       out.push({ ...pr, reviewDecision: deriveReviewDecision(reviews, pr.author), ciStatus });
     } catch (err) {
       // Non-fatal: the next poll retries; reconcile just sees no fresh evidence.
@@ -169,11 +172,11 @@ async function runPoll(
   options: GitHubPollOptions,
   cursor: GitHubAccountCursor | undefined,
 ): Promise<GitHubPollResult> {
-  const { accountId, getToken, onProgress } = options;
+  const { accountId, getToken, onProgress, baseUrl } = options;
   const mode = cursor ? "delta" : "full";
 
-  const assigned = await walkStream("assigned", getToken, cursor?.assigned, onProgress);
-  const created = await walkStream("created", getToken, cursor?.created, onProgress);
+  const assigned = await walkStream("assigned", getToken, cursor?.assigned, onProgress, baseUrl);
+  const created = await walkStream("created", getToken, cursor?.created, onProgress, baseUrl);
 
   const issues: Issue[] = assigned.payloads
     .filter((p) => !p.pull_request)
@@ -184,8 +187,8 @@ async function runPoll(
 
   const deepTargets = options.deepHydrate ?? [];
   const deepKeys = new Set(deepTargets.map((t) => pullKey(t, t.number)));
-  const pullRequests = await hydratePulls(listPulls, getToken, onProgress, deepKeys);
-  const deepPulls = await hydrateTrackedPulls(deepTargets, accountId, getToken, onProgress);
+  const pullRequests = await hydratePulls(listPulls, getToken, onProgress, deepKeys, baseUrl);
+  const deepPulls = await hydrateTrackedPulls(deepTargets, accountId, getToken, onProgress, baseUrl);
 
   // Merge by repo+number: the stream's issue-record id wins over the pull-record id.
   for (const deep of deepPulls) {

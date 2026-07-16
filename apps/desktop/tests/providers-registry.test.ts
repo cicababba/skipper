@@ -13,8 +13,8 @@ describe("provider registry", () => {
   it("derives the renderer metadata rows from the registries", () => {
     const rows = providerMetadata((id) => issueSourceForAuthProvider(id) !== undefined);
     expect(rows).toEqual([
-      { id: "google", displayName: "Google", isIssueSource: false },
-      { id: "github", displayName: "GitHub", isIssueSource: true },
+      { id: "google", displayName: "Google", isIssueSource: false, requiresBaseUrl: false, supportsPat: false },
+      { id: "github", displayName: "GitHub", isIssueSource: true, requiresBaseUrl: false, supportsPat: false },
     ]);
   });
 });

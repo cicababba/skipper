@@ -15,5 +15,7 @@ export function providerMetadata(
     id,
     displayName: PROVIDERS[id].displayName,
     isIssueSource: isIssueSource(id),
+    requiresBaseUrl: PROVIDERS[id].requiresBaseUrl,
+    supportsPat: PROVIDERS[id].supportsPat,
   }));
 }

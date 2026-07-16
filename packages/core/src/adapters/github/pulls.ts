@@ -10,16 +10,17 @@ interface CreatedPullPayload {
   html_url: string;
 }
 
-function repoUrl(repo: RepoRef): string {
-  return `${GITHUB_API_BASE_URL}/repos/${repo.owner}/${repo.name}`;
+function repoUrl(repo: RepoRef, baseUrl?: string): string {
+  return `${baseUrl ?? GITHUB_API_BASE_URL}/repos/${repo.owner}/${repo.name}`;
 }
 
 export async function createPullRequest(
   repo: RepoRef,
   params: { title: string; body: string; head: string; base: string; draft: boolean },
   getToken: GitHubTokenProvider,
+  baseUrl?: string,
 ): Promise<CreatedPr> {
-  const res = await githubPost<CreatedPullPayload>(`${repoUrl(repo)}/pulls`, getToken, params);
+  const res = await githubPost<CreatedPullPayload>(`${repoUrl(repo, baseUrl)}/pulls`, getToken, params);
   const payload = res.body!;
   return { id: `github:${payload.id}`, number: payload.number, url: payload.html_url };
 }
@@ -29,10 +30,11 @@ export async function findOpenPullByHead(
   repo: RepoRef,
   head: string,
   getToken: GitHubTokenProvider,
+  baseUrl?: string,
 ): Promise<CreatedPr | null> {
   const params = new URLSearchParams({ head: `${repo.owner}:${head}`, state: "open" });
   const res = await githubGet<CreatedPullPayload[]>(
-    `${repoUrl(repo)}/pulls?${params.toString()}`,
+    `${repoUrl(repo, baseUrl)}/pulls?${params.toString()}`,
     getToken,
   );
   const payload = res.body?.[0];
@@ -73,9 +75,10 @@ export async function fetchPullReviews(
   repo: RepoRef,
   number: number,
   getToken: GitHubTokenProvider,
+  baseUrl?: string,
 ): Promise<PullReviewPayload[]> {
   return fetchPaginated<PullReviewPayload>(
-    `${repoUrl(repo)}/pulls/${number}/reviews?per_page=100`,
+    `${repoUrl(repo, baseUrl)}/pulls/${number}/reviews?per_page=100`,
     getToken,
   );
 }
@@ -84,9 +87,10 @@ export async function fetchPullReviewComments(
   repo: RepoRef,
   number: number,
   getToken: GitHubTokenProvider,
+  baseUrl?: string,
 ): Promise<PullReviewCommentPayload[]> {
   return fetchPaginated<PullReviewCommentPayload>(
-    `${repoUrl(repo)}/pulls/${number}/comments?per_page=100`,
+    `${repoUrl(repo, baseUrl)}/pulls/${number}/comments?per_page=100`,
     getToken,
   );
 }
@@ -172,10 +176,14 @@ export async function fetchCiStatus(
   repo: RepoRef,
   sha: string,
   getToken: GitHubTokenProvider,
+  baseUrl?: string,
 ): Promise<PullRequest["ciStatus"]> {
   const [checks, status] = await Promise.all([
-    githubGet<CheckRunsPayload>(`${repoUrl(repo)}/commits/${sha}/check-runs?per_page=100`, getToken),
-    githubGet<CombinedStatusPayload>(`${repoUrl(repo)}/commits/${sha}/status`, getToken),
+    githubGet<CheckRunsPayload>(
+      `${repoUrl(repo, baseUrl)}/commits/${sha}/check-runs?per_page=100`,
+      getToken,
+    ),
+    githubGet<CombinedStatusPayload>(`${repoUrl(repo, baseUrl)}/commits/${sha}/status`, getToken),
   ]);
 
   const runs = checks.body?.check_runs ?? [];
@@ -204,9 +212,10 @@ export async function fetchFailingChecks(
   repo: RepoRef,
   sha: string,
   getToken: GitHubTokenProvider,
+  baseUrl?: string,
 ): Promise<FailingCheck[]> {
   const checks = await githubGet<CheckRunsPayload>(
-    `${repoUrl(repo)}/commits/${sha}/check-runs?per_page=100`,
+    `${repoUrl(repo, baseUrl)}/commits/${sha}/check-runs?per_page=100`,
     getToken,
   );
   return (checks.body?.check_runs ?? [])
