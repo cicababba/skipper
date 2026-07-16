@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronRight, GitPullRequest, Loader2, Search, ThumbsDown, ThumbsUp } from "lucide-react";
-import type { RepoRef, SolutionRecord } from "@skipper/shared";
+import { displayKey, type RepoRef, type SolutionRecord } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { MemoryRecordView } from "./memory-record";
 
@@ -34,7 +34,9 @@ export function MemoryBrowser({ repo }: { repo: RepoRef }) {
     const list = records ?? [];
     if (!q) return list;
     return list.filter(
-      (r) => r.title.toLowerCase().includes(q) || String(r.issueNumber).includes(q),
+      (r) =>
+        r.title.toLowerCase().includes(q) ||
+        (r.issueKey ?? String(r.issueNumber ?? "")).toLowerCase().includes(q),
     );
   }, [records, query]);
 
@@ -94,7 +96,7 @@ export function MemoryBrowser({ repo }: { repo: RepoRef }) {
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-card transition-colors"
                 >
                   <span className="font-mono text-[12px] text-muted shrink-0">
-                    #{rec.issueNumber}
+                    {displayKey(rec.issueKey ?? String(rec.issueNumber))}
                   </span>
                   <span className="flex-1 min-w-0 truncate text-[13px]">{rec.title}</span>
                   <span className="flex items-center gap-1 shrink-0 font-mono text-[11px] text-muted/70">

@@ -3,7 +3,9 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadRepoLinks, saveRepoLinks, repoKey, validateRepoOrigin } from "./repo-links";
+import { githubCodeHost } from "@skipper/core";
+import { repoKey } from "@skipper/shared";
+import { loadRepoLinks, saveRepoLinks, validateRepoOrigin } from "./repo-links";
 import { planFileName, readStoredPlan, updateStoredPlan, writeStoredPlan } from "./plan-store";
 import type { StoredPlan } from "@skipper/shared";
 
@@ -27,7 +29,7 @@ async function makeRepo(originUrl: string): Promise<string> {
 
 describe("repoKey", () => {
   it("normalizes case", () => {
-    expect(repoKey("CicaBabba", "Skipper")).toBe("cicababba/skipper");
+    expect(repoKey({ owner: "CicaBabba", name: "Skipper" })).toBe("cicababba/skipper");
   });
 });
 
@@ -40,32 +42,32 @@ describe("validateRepoOrigin", () => {
     "ssh://git@github.com/owner/repo.git",
   ])("accepts origin %s", async (url) => {
     const repoDir = await makeRepo(url);
-    await expect(validateRepoOrigin(repoDir, "owner", "repo")).resolves.toBeUndefined();
+    await expect(validateRepoOrigin(repoDir, { owner: "owner", name: "repo" }, githubCodeHost)).resolves.toBeUndefined();
   });
 
   it("is case-insensitive on owner/name", async () => {
     const repoDir = await makeRepo("https://github.com/Owner/Repo.git");
-    await expect(validateRepoOrigin(repoDir, "owner", "repo")).resolves.toBeUndefined();
+    await expect(validateRepoOrigin(repoDir, { owner: "owner", name: "repo" }, githubCodeHost)).resolves.toBeUndefined();
   });
 
   it("rejects a mismatched owner/name", async () => {
     const repoDir = await makeRepo("https://github.com/someone/else.git");
-    await expect(validateRepoOrigin(repoDir, "owner", "repo")).rejects.toThrow(/does not match/);
+    await expect(validateRepoOrigin(repoDir, { owner: "owner", name: "repo" }, githubCodeHost)).rejects.toThrow(/does not match/);
   });
 
   it("rejects a non-github origin", async () => {
     const repoDir = await makeRepo("https://gitlab.com/owner/repo.git");
-    await expect(validateRepoOrigin(repoDir, "owner", "repo")).rejects.toThrow(/does not match/);
+    await expect(validateRepoOrigin(repoDir, { owner: "owner", name: "repo" }, githubCodeHost)).rejects.toThrow(/does not match/);
   });
 
   it("rejects a directory that is not a git repo", async () => {
     const plain = join(dir, "plain");
     await mkdir(plain);
-    await expect(validateRepoOrigin(plain, "owner", "repo")).rejects.toThrow(/not a git repository/);
+    await expect(validateRepoOrigin(plain, { owner: "owner", name: "repo" }, githubCodeHost)).rejects.toThrow(/not a git repository/);
   });
 
   it("rejects a missing path", async () => {
-    await expect(validateRepoOrigin(join(dir, "nope"), "owner", "repo")).rejects.toThrow(
+    await expect(validateRepoOrigin(join(dir, "nope"), { owner: "owner", name: "repo" }, githubCodeHost)).rejects.toThrow(
       /not a directory/,
     );
   });
@@ -77,7 +79,7 @@ describe("repo links store", () => {
     const fresh = await loadRepoLinks(filePath);
     expect(fresh).toEqual({ version: 1, repos: {} });
 
-    fresh.repos[repoKey("o", "r")] = { localPath: "/x", linkedAt: "2026-07-11T10:00:00.000Z" };
+    fresh.repos[repoKey({ owner: "o", name: "r" })] = { localPath: "/x", linkedAt: "2026-07-11T10:00:00.000Z" };
     await saveRepoLinks(filePath, fresh);
     const loaded = await loadRepoLinks(filePath);
     expect(loaded).toEqual(fresh);

@@ -14,7 +14,8 @@ export interface MemoryHit {
   ref: string;
   score: number;
   title: string;
-  issueNumber: number;
+  /** Work-item display key; falls back to the number on pre-#71 records. */
+  issueKey: string;
   url: string;
   pr: { number: number; url: string };
   planSummary?: string;
@@ -47,7 +48,7 @@ export async function searchMemory(
       score:
         candidate.score * recencyWeight(record.capturedAt) * feedbackWeight(record.feedback),
       title: record.title,
-      issueNumber: record.issueNumber,
+      issueKey: record.issueKey ?? String(record.issueNumber),
       url: record.url,
       pr: record.pr,
       planSummary: record.plan?.plan.summary,

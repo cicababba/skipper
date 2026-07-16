@@ -15,7 +15,7 @@ import {
   Save,
   X,
 } from "lucide-react";
-import type { WorktreeFileChange, WorktreeFileContents } from "@skipper/shared";
+import { displayKey, type WorktreeFileChange, type WorktreeFileContents } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { repoKey } from "@/lib/inbox/model";
@@ -241,7 +241,7 @@ export function ReviewDetailView() {
       <div className="space-y-2 shrink-0">
         {backLink}
         <div className="flex items-baseline gap-2 min-w-0">
-          <span className="font-mono text-[13px] text-muted shrink-0">#{item.number}</span>
+          <span className="font-mono text-[13px] text-muted shrink-0">{displayKey(item.key)}</span>
           <h1 className="text-xl font-semibold tracking-tight min-w-0">{item.title}</h1>
           <button
             onClick={() => void window.skipper?.openExternal(item.url)}

@@ -25,6 +25,7 @@ import {
   slugify,
 } from "@skipper/core";
 import type { LLMProviderInterface } from "@skipper/core";
+import { displayKey } from "@skipper/shared";
 import { readFile } from "node:fs/promises";
 import { saveSession, resumeSession } from "./session.js";
 import { serveMemory } from "./memory-serve.js";
@@ -477,7 +478,7 @@ memory
         return;
       }
       for (const hit of hits) {
-        console.log(`${hit.score.toFixed(3)}  #${hit.issueNumber} ${hit.title}`);
+        console.log(`${hit.score.toFixed(3)}  ${displayKey(hit.issueKey)} ${hit.title}`);
         console.log(`       id ${hit.id} · PR #${hit.pr.number} · captured ${hit.capturedAt}`);
         if (hit.planSummary) console.log(`       ${hit.planSummary.slice(0, 200)}`);
         if (hit.filesTouched.length > 0) {

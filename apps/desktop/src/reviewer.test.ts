@@ -44,9 +44,12 @@ const blockingObjection: CriticObjection = {
 function makeItem(state: LifecycleState, review?: AgentReview): TrackedItem {
   return {
     id: "github:1",
-    platform: "github",
+    source: "github",
+    sourceRef: { project: "owner/repo", key: "1" },
+    codeHost: "github",
     accountId: "acct",
     repo: { owner: "owner", name: "repo" },
+    key: "1",
     number: 1,
     title: "issue 1",
     url: "https://github.com/owner/repo/issues/1",

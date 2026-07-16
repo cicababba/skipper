@@ -17,7 +17,7 @@ const plan: IssuePlan = {
 
 describe("buildCommitMessage", () => {
   it("uses the issue title and number", () => {
-    expect(buildCommitMessage({ title: "Add dark mode", number: 42 })).toBe("Add dark mode (#42)");
+    expect(buildCommitMessage({ title: "Add dark mode", key: "42" })).toBe("Add dark mode (#42)");
   });
 });
 

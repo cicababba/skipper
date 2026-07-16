@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ExternalLink, Inbox, Loader2, X } from "lucide-react";
-import type { IssuePlan, StoredPlan } from "@skipper/shared";
+import { displayKey, type IssuePlan, type StoredPlan } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { repoKey } from "@/lib/inbox/model";
@@ -217,7 +217,7 @@ export function PlanDetailView() {
       {/* Header */}
       <div className="space-y-2">
         <div className="flex items-baseline gap-2 min-w-0">
-          <span className="font-mono text-[13px] text-muted shrink-0">#{item.number}</span>
+          <span className="font-mono text-[13px] text-muted shrink-0">{displayKey(item.key)}</span>
           <h1 className="text-xl font-semibold tracking-tight min-w-0">{item.title}</h1>
           <button
             onClick={() => void window.skipper?.openExternal(item.url)}

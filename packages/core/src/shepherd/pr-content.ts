@@ -1,7 +1,7 @@
-import type { IssuePlan } from "@skipper/shared";
+import { displayKey, type IssuePlan } from "@skipper/shared";
 
-export function buildCommitMessage(item: { title: string; number: number }): string {
-  return `${item.title} (#${item.number})`;
+export function buildCommitMessage(item: { title: string; key: string }): string {
+  return `${item.title} (${displayKey(item.key)})`;
 }
 
 export function buildPrTitle(item: { title: string }): string {

@@ -38,9 +38,12 @@ function storedPlanFor(item: TrackedItem): StoredPlan {
 function makeItem(n: number, state: LifecycleState, repoName = "repo"): TrackedItem {
   return {
     id: `github:${n}`,
-    platform: "github",
+    source: "github",
+    sourceRef: { project: `owner/${repoName}`, key: String(n) },
+    codeHost: "github",
     accountId: "acct",
     repo: { owner: "owner", name: repoName },
+    key: String(n),
     number: n,
     title: `issue ${n}`,
     url: `https://github.com/owner/${repoName}/issues/${n}`,

@@ -10,8 +10,11 @@ import {
   mapReviewFeedback,
 } from "./pulls";
 
+// Matches https, ssh and scp-like origins: https://github.com/o/r(.git), git@github.com:o/r(.git).
+const ORIGIN_RE = /github\.com[/:]([^/]+)\/(.+?)(?:\.git)?\/?$/i;
+
 export const githubCodeHost: CodeHost = {
-  platform: "github",
+  id: "github",
   authProvider: "github",
   createPr: async (repo, params, getToken) => {
     try {
@@ -38,6 +41,11 @@ export const githubCodeHost: CodeHost = {
   },
   fetchCiStatus: (repo, sha, getToken) => fetchCiStatus(repo, sha, getToken),
   fetchFailingChecks: (repo, sha, getToken) => fetchFailingChecks(repo, sha, getToken),
-  linkIssueText: (issueNumber) => `Closes #${issueNumber}`,
+  linkIssueText: (key) => `Closes #${key}`,
   pushCredentials: (token) => ({ username: "x-access-token", password: token }),
+  cloneUrl: (repo) => `https://github.com/${repo.owner}/${repo.name}.git`,
+  parseOrigin: (remoteUrl) => {
+    const match = ORIGIN_RE.exec(remoteUrl.trim());
+    return match ? { owner: match[1], name: match[2] } : null;
+  },
 };

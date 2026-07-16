@@ -195,7 +195,7 @@ async function run(itemId: string, repoKey: string): Promise<void> {
 
     const cached = deps.getIssue(item);
     const issue = {
-      number: item.number,
+      key: item.key,
       title: item.title,
       url: item.url,
       labels: cached?.labels ?? [],

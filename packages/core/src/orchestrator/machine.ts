@@ -19,9 +19,12 @@ export function admitItem(issue: Issue, now: Date = new Date()): TrackedItem {
   const at = now.toISOString();
   return {
     id: issue.id,
-    platform: issue.platform,
+    source: issue.source,
+    sourceRef: issue.sourceRef,
+    codeHost: issue.codeHost,
     accountId: issue.accountId,
     repo: issue.repo,
+    key: issue.key,
     number: issue.number,
     title: issue.title,
     url: issue.url,

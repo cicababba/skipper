@@ -172,7 +172,7 @@ async function run(itemId: string): Promise<void> {
     );
     const cached = deps.getIssue(item);
     const issue = {
-      number: item.number,
+      key: item.key,
       title: item.title,
       url: item.url,
       labels: cached?.labels ?? [],
@@ -193,6 +193,7 @@ async function run(itemId: string): Promise<void> {
       version: 2,
       itemId,
       repo: item.repo,
+      issueKey: item.key,
       issueNumber: item.number,
       generatedAt: new Date().toISOString(),
       model,

@@ -1,3 +1,4 @@
+import { displayKey } from "@skipper/shared";
 import type { PlanIssueInput } from "./generate";
 
 const MAX_BODY_CHARS = 20_000;
@@ -21,7 +22,7 @@ export function buildPlannerPrompt(
   const lines = [
     `Plan the implementation of this GitHub issue.`,
     ``,
-    `Issue #${issue.number}: ${issue.title}`,
+    `Issue ${displayKey(issue.key)}: ${issue.title}`,
     `URL: ${issue.url}`,
     issue.labels.length > 0 ? `Labels: ${issue.labels.join(", ")}` : "",
     ``,

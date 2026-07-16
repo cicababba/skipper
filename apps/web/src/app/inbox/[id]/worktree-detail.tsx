@@ -14,7 +14,7 @@ import {
   SquareTerminal,
   Sparkles,
 } from "lucide-react";
-import type { WorktreeStatusResult } from "@skipper/shared";
+import { displayKey, slugKey, type WorktreeStatusResult } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useTerminal } from "@/lib/terminal-context";
 import { useT } from "@/lib/app-i18n";
@@ -73,7 +73,7 @@ export function WorktreeDetailView() {
 
   const ready = status.kind === "ready" ? status.status : null;
   const usable = ready?.present === true;
-  const terminalLabel = `issue-${item.number}`;
+  const terminalLabel = `issue-${slugKey(item.key)}`;
 
   const openWorktreeTerminal = () => {
     if (!ready) return;
@@ -100,7 +100,7 @@ export function WorktreeDetailView() {
           {t.inbox.plan.back}
         </Link>
         <div className="flex items-baseline gap-2 min-w-0">
-          <span className="font-mono text-[13px] text-muted shrink-0">#{item.number}</span>
+          <span className="font-mono text-[13px] text-muted shrink-0">{displayKey(item.key)}</span>
           <h1 className="text-xl font-semibold tracking-tight min-w-0">{item.title}</h1>
           <button
             onClick={() => void window.skipper?.openExternal(item.url)}

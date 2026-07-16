@@ -2,27 +2,46 @@
 // Skipper — Platform-neutral inbox items (Issue / PullRequest)
 // ============================================================
 
-/** Issue-source platforms. Widens with the two-axis IssueSource/CodeHost split (epic #68): GitLab, Jira. */
-export type PlatformId = "github";
+/** Where the work item is tracked (issue-tracker axis, epic #68). Widens: GitLab, Jira. */
+export type IssueSourceId = "github";
+
+/** Where the code lives (git-host axis, epic #68). Widens: GitLab. */
+export type CodeHostId = "github";
 
 export interface RepoRef {
   owner: string;
   name: string;
 }
 
-/** Canonical "owner/name" key — the per-repo partition/scoping axis. */
+/**
+ * Canonical lowercased "owner/name" key — the per-repo partition/scoping axis.
+ * Always anchored to the code-host repo, never to a tracker project.
+ */
 export function repoKey(repo: RepoRef): string {
-  return `${repo.owner}/${repo.name}`;
+  return `${repo.owner.toLowerCase()}/${repo.name.toLowerCase()}`;
+}
+
+/** Tracker-side coordinates of a work item. */
+export interface SourceRef {
+  /** Tracker project scope: "owner/name" for GitHub, project key ("PROJ") for Jira. */
+  project: string;
+  /** Native display key: "42" (GitHub) or "PROJ-123" (Jira). Mirrored as WorkItem.key. */
+  key: string;
 }
 
 interface WorkItemBase {
-  /** Platform-scoped stable id, e.g. "github:1234567890". */
+  /** Source-scoped stable id, e.g. "github:1234567890". */
   id: string;
-  platform: PlatformId;
+  source: IssueSourceId;
+  sourceRef: SourceRef;
+  codeHost: CodeHostId;
   /** Which connected Account (Account.id) sees this item. */
   accountId: string;
   repo: RepoRef;
-  number: number;
+  /** Display id: "42" (GitHub) or "PROJ-123" (Jira). Same as sourceRef.key. */
+  key: string;
+  /** Present when the source numbers items (GitHub); Jira has none. */
+  number?: number;
   title: string;
   body?: string;
   labels: string[];
@@ -41,6 +60,8 @@ export interface Issue extends WorkItemBase {
 
 export interface PullRequest extends WorkItemBase {
   kind: "pull-request";
+  /** Code hosts number their PRs — always present, unlike issue keys. */
+  number: number;
   state: "open" | "closed";
   merged: boolean;
   draft: boolean;

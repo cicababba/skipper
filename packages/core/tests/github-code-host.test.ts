@@ -136,3 +136,24 @@ describe("githubCodeHost conventions", () => {
     });
   });
 });
+
+describe("githubCodeHost identity helpers", () => {
+  it("builds the tracker link from the string key", () => {
+    expect(githubCodeHost.linkIssueText("42")).toBe("Closes #42");
+  });
+
+  it("builds the https clone URL", () => {
+    expect(githubCodeHost.cloneUrl(repo)).toBe("https://github.com/octo/demo.git");
+  });
+
+  it("parses https, scp-like and ssh origins", () => {
+    expect(githubCodeHost.parseOrigin("https://github.com/octo/demo.git")).toEqual(repo);
+    expect(githubCodeHost.parseOrigin("https://github.com/octo/demo/")).toEqual(repo);
+    expect(githubCodeHost.parseOrigin("git@github.com:octo/demo.git")).toEqual(repo);
+    expect(githubCodeHost.parseOrigin("ssh://git@github.com/octo/demo")).toEqual(repo);
+  });
+
+  it("returns null for non-GitHub origins", () => {
+    expect(githubCodeHost.parseOrigin("https://gitlab.com/octo/demo.git")).toBeNull();
+  });
+});

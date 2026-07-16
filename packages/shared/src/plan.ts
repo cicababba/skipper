@@ -45,7 +45,10 @@ export interface StoredPlan {
   version: 2;
   itemId: string;
   repo: RepoRef;
-  issueNumber: number;
+  /** Work-item display key ("42" | "PROJ-123"); absent on pre-#71 files. */
+  issueKey?: string;
+  /** Present when the source numbers items; absent for Jira. */
+  issueNumber?: number;
   generatedAt: string; // ISO 8601
   model: string;
   plan: IssuePlan;

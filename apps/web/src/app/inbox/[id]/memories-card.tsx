@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { ExternalLink, GitPullRequest, Loader2, ThumbsDown, ThumbsUp } from "lucide-react";
-import type { MemoryPhase, SolutionRecord, UsedMemoryRef } from "@skipper/shared";
+import {
+  displayKey,
+  type MemoryPhase,
+  type SolutionRecord,
+  type UsedMemoryRef,
+} from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { Section } from "./plan-sections";
 
@@ -89,7 +94,9 @@ export function MemoriesCard({
                       className="flex items-center gap-1.5 min-w-0 text-left hover:text-accent transition-colors"
                       title={rec.url}
                     >
-                      <span className="font-mono text-muted shrink-0">#{rec.issueNumber}</span>
+                      <span className="font-mono text-muted shrink-0">
+                        {displayKey(rec.issueKey ?? String(rec.issueNumber))}
+                      </span>
                       <span className="truncate">{rec.title}</span>
                       <ExternalLink size={11} className="shrink-0 opacity-50" />
                     </button>

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, FolderGit2, GitBranch, Settings as SettingsIcon } from "lucide-react";
-import type { RepoSettingsRow } from "@skipper/shared";
+import { displayKey, type RepoSettingsRow } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { repoKey } from "@/lib/inbox/model";
@@ -76,7 +76,7 @@ export function RepoDetailView() {
                   href={`/inbox/${encodeURIComponent(it.id)}`}
                   className="flex items-center gap-3 py-2.5 hover:text-accent transition-colors"
                 >
-                  <span className="font-mono text-[12px] text-muted shrink-0">#{it.number}</span>
+                  <span className="font-mono text-[12px] text-muted shrink-0">{displayKey(it.key)}</span>
                   <span className="flex-1 min-w-0 truncate text-[13px]">{it.title}</span>
                   {it.worktree && (
                     <span className="flex items-center gap-1 shrink-0 font-mono text-[11px] text-muted/70">

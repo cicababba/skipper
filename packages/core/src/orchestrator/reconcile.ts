@@ -1,5 +1,7 @@
 import type { Issue, LifecycleState, PullRequest, TrackedItem } from "@skipper/shared";
 import {
+  BRANCH_ISSUE_RE,
+  branchSlugMatchesKey,
   CI_FIX_MAX_ROUNDS,
   repoKey,
   resolveRepoOrchestratorSettings,
@@ -33,7 +35,6 @@ export interface ReconcilePoll {
 }
 
 const PRE_CODING_STATES: readonly LifecycleState[] = ["triage", "planning", "plan-gate", "queued"];
-const BRANCH_ISSUE_RE = /^(?:feature|fix)\/issue-(\d+)\b/;
 
 /**
  * Maps one account's poll result onto the manifest (observe → reconcile →
@@ -164,11 +165,10 @@ function reconcilePulls(
     if (!item && pr.state === "open" && pr.headRef) {
       const match = BRANCH_ISSUE_RE.exec(pr.headRef);
       if (match) {
-        const issueNumber = Number(match[1]);
         const candidate = items.find(
           (i) =>
             !i.pr &&
-            i.number === issueNumber &&
+            branchSlugMatchesKey(match[1], i.key) &&
             i.repo.owner === pr.repo.owner &&
             i.repo.name === pr.repo.name,
         );

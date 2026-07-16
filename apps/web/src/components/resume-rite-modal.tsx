@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Inbox, Loader2 } from "lucide-react";
+import { displayKey } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 
@@ -84,7 +85,7 @@ export function ResumeRiteModal() {
                     />
                     <span className="text-foreground truncate">{item.title}</span>
                     <span className="ml-auto shrink-0 text-muted/70">
-                      {item.repo.owner}/{item.repo.name}#{item.number}
+                      {item.repo.owner}/{item.repo.name}{displayKey(item.key)}
                     </span>
                   </label>
                 </li>
