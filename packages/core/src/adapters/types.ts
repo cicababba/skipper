@@ -4,8 +4,9 @@
 
 import type {
   AuthProviderId,
+  CodeHostId,
   Issue,
-  PlatformId,
+  IssueSourceId,
   PrReviewComment,
   PullRequest,
   RepoRef,
@@ -44,11 +45,11 @@ export interface PollResult<C = unknown> {
 }
 
 export interface IssueSource<C = unknown> {
-  readonly platform: PlatformId;
+  readonly id: IssueSourceId;
   /** Which AuthProviderId's accounts this source polls. */
   readonly authProvider: AuthProviderId;
   // Method syntax (not an arrow property) — bivariance lets IssueSource<ConcreteCursor>
-  // satisfy Record<PlatformId, IssueSource> under strictFunctionTypes.
+  // satisfy Record<IssueSourceId, IssueSource> under strictFunctionTypes.
   poll(opts: PollOptions<C>): Promise<PollResult<C>>;
 }
 
@@ -89,7 +90,7 @@ export interface PushCredentials {
 }
 
 export interface CodeHost {
-  readonly platform: PlatformId;
+  readonly id: CodeHostId;
   /** Which AuthProviderId's accounts authenticate against this host. */
   readonly authProvider: AuthProviderId;
   /** Opens the PR. "Already exists" is a host convention handled inside the
@@ -113,9 +114,13 @@ export interface CodeHost {
     getToken: TokenProvider,
   ): Promise<PullRequest["ciStatus"]>;
   fetchFailingChecks(repo: RepoRef, sha: string, getToken: TokenProvider): Promise<FailingCheck[]>;
-  /** The tracker-link line in the PR body, e.g. "Closes #42". */
-  linkIssueText(issueNumber: number): string;
+  /** The tracker-link line in the PR body, e.g. "Closes #42" for key "42". */
+  linkIssueText(key: string): string;
   pushCredentials(token: string): PushCredentials;
+  /** Clone URL for git-over-HTTPS, e.g. "https://github.com/owner/name.git". */
+  cloneUrl(repo: RepoRef): string;
+  /** Parses a git remote URL into this host's owner/name; null when it isn't this host. */
+  parseOrigin(remoteUrl: string): RepoRef | null;
 }
 
 export class ApiError extends Error {

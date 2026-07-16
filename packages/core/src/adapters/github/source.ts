@@ -3,7 +3,7 @@ import { pollGitHubAccount } from "./poll";
 import type { GitHubAccountCursor } from "./types";
 
 export const githubIssueSource: IssueSource<GitHubAccountCursor> = {
-  platform: "github",
+  id: "github",
   authProvider: "github",
   poll: (opts) => pollGitHubAccount(opts),
 };

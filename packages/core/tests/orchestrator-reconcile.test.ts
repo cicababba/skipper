@@ -13,9 +13,12 @@ function issue(n: number, overrides: Partial<Issue> = {}): Issue {
   return {
     id: `github:${n}`,
     kind: "issue",
-    platform: "github",
+    source: "github",
+    sourceRef: { project: "o/r", key: String(n) },
+    codeHost: "github",
     accountId: ACCOUNT,
     repo: { owner: "o", name: "r" },
+    key: String(n),
     number: n,
     title: `Issue ${n}`,
     labels: [],
@@ -32,9 +35,12 @@ function pull(n: number, overrides: Partial<PullRequest> = {}): PullRequest {
   return {
     id: `github:pr-${n}`,
     kind: "pull-request",
-    platform: "github",
+    source: "github",
+    sourceRef: { project: "o/r", key: String(n) },
+    codeHost: "github",
     accountId: ACCOUNT,
     repo: { owner: "o", name: "r" },
+    key: String(n),
     number: n,
     title: `PR ${n}`,
     labels: [],
@@ -235,6 +241,38 @@ describe("reconcile — pull requests", () => {
       openPolicy,
     );
     expect(m.items["github:42"].pr).toBeUndefined();
+  });
+
+  it("links a string-keyed item (Jira) via the slugged branch heuristic", () => {
+    const m = manifest();
+    m.items["jira:900"] = tracked(42, "human-review", {
+      id: "jira:900",
+      key: "PROJ-123",
+      sourceRef: { project: "PROJ", key: "PROJ-123" },
+    });
+    reconcile(
+      m,
+      ACCOUNT,
+      poll({ pullRequests: [pull(7, { headRef: "feature/issue-proj-123-fix-login" })] }),
+      openPolicy,
+    );
+    expect(m.items["jira:900"].pr).toEqual({
+      id: "github:pr-7",
+      number: 7,
+      url: "https://github.com/o/r/pull/7",
+    });
+  });
+
+  it("does not link when the item key is only a string prefix of the branch slug", () => {
+    const m = manifest();
+    m.items["github:7"] = tracked(7, "triage");
+    reconcile(
+      m,
+      ACCOUNT,
+      poll({ pullRequests: [pull(9, { headRef: "feature/issue-71-two-axis" })] }),
+      openPolicy,
+    );
+    expect(m.items["github:7"].pr).toBeUndefined();
   });
 
   it("moves a linked item to merged when its PR merges", () => {

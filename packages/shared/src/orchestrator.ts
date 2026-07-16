@@ -9,7 +9,7 @@ import {
   type CriticObjection,
   type CriticVerdict,
 } from "./confidence";
-import type { Issue, PlatformId, PullRequest, RepoRef } from "./inbox";
+import type { CodeHostId, Issue, IssueSourceId, PullRequest, RepoRef, SourceRef } from "./inbox";
 import type { StoredPlan } from "./plan";
 
 export type AgentReviewOutcome = CriticVerdict | "skipped" | "unavailable";
@@ -92,7 +92,7 @@ export interface TransitionEvent {
 }
 
 // Per-repo intake settings (#15). Stored in the orchestrator manifest keyed by
-// repoKey(owner, name); absent record / absent field = defaults (follow-all).
+// repoKey(repo); absent record / absent field = defaults (follow-all).
 
 export type RepoPriority = "high" | "normal" | "low";
 
@@ -229,14 +229,19 @@ export function resolveRepoOrchestratorSettings(
   };
 }
 
-/** An issue tracked through the lifecycle. Mirrors platform metadata + orchestrator overlay. */
+/** An issue tracked through the lifecycle. Mirrors source metadata + orchestrator overlay. */
 export interface TrackedItem {
   /** Same id as the inbox Issue, e.g. "github:1234567890". */
   id: string;
-  platform: PlatformId;
+  source: IssueSourceId;
+  sourceRef: SourceRef;
+  codeHost: CodeHostId;
   accountId: string;
   repo: RepoRef;
-  number: number;
+  /** Display id: "42" (GitHub) or "PROJ-123" (Jira). Same as sourceRef.key. */
+  key: string;
+  /** Present when the source numbers items (GitHub); Jira has none. */
+  number?: number;
   title: string;
   url: string;
   state: LifecycleState;
@@ -338,7 +343,7 @@ export interface OrchestratorState {
   queue: QueueStatus;
   items: TrackedItem[];
   accounts: Record<string, OrchestratorAccountState>;
-  /** repoKey(owner, name) → per-repo intake settings (#15). */
+  /** repoKey(repo) → per-repo intake settings (#15). */
   repoSettings: Record<string, RepoIntakeSettings>;
   /** Pending resume-rite prompt (#15); null when none. */
   resumeRite: { itemIds: string[] } | null;

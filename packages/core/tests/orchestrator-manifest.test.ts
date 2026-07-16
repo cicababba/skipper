@@ -27,9 +27,12 @@ function issue(n: number): Issue {
   return {
     id: `github:${n}`,
     kind: "issue",
-    platform: "github",
+    source: "github",
+    sourceRef: { project: "o/r", key: String(n) },
+    codeHost: "github",
     accountId: "acct-1",
     repo: { owner: "o", name: "r" },
+    key: String(n),
     number: n,
     title: `Issue ${n}`,
     labels: [],
@@ -198,6 +201,49 @@ describe("orchestrator manifest", () => {
     const manifest = await loadOrCreateOrchestratorManifest(filePath);
     expect(manifest.version).toBe(1);
     expect(manifest.items).toEqual({});
+  });
+
+  it("migrates pre-#71 items: platform → source + codeHost, key from number", async () => {
+    const legacyItem = {
+      id: "github:1234567890",
+      platform: "github",
+      accountId: "acct-1",
+      repo: { owner: "o", name: "r" },
+      number: 42,
+      title: "Issue 42",
+      url: "https://github.com/o/r/issues/42",
+      state: "coding",
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+      transitions: [],
+      worktree: { path: "/w/o-r/issue-42", branch: "feature/issue-42" },
+    };
+    await writeFile(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        settings: { intakePaused: false },
+        items: { "github:1234567890": legacyItem },
+        parked: {},
+      }),
+      "utf-8",
+    );
+
+    const manifest = await loadOrCreateOrchestratorManifest(filePath);
+    const item = manifest.items["github:1234567890"];
+    expect(item.source).toBe("github");
+    expect(item.codeHost).toBe("github");
+    expect(item.key).toBe("42");
+    expect(item.sourceRef).toEqual({ project: "o/r", key: "42" });
+    expect(item.number).toBe(42);
+    expect(item.worktree).toEqual({ path: "/w/o-r/issue-42", branch: "feature/issue-42" });
+    expect("platform" in item).toBe(false);
+
+    // The migrated shape reserializes without the legacy key.
+    await saveOrchestratorManifest(filePath, manifest);
+    const raw = JSON.parse(await readFile(filePath, "utf-8")) as OrchestratorManifest;
+    expect("platform" in raw.items["github:1234567890"]).toBe(false);
+    expect(raw.items["github:1234567890"].key).toBe("42");
   });
 
   it("serializes concurrent saves — last write wins and the file stays valid", async () => {

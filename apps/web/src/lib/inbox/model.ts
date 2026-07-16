@@ -1,8 +1,7 @@
 import type { LifecycleState, RepoRef, TrackedItem } from "@skipper/shared";
 
-export function repoKey(repo: RepoRef): string {
-  return `${repo.owner}/${repo.name}`;
-}
+export { repoKey } from "@skipper/shared";
+import { repoKey } from "@skipper/shared";
 
 /** States where the item is waiting on the human — what the sidebar badges count. */
 export const ATTENTION_STATES: readonly LifecycleState[] = [

@@ -1,4 +1,4 @@
-import type { CriticObjection, IssuePlan, PrReviewComment } from "@skipper/shared";
+import { displayKey, type CriticObjection, type IssuePlan, type PrReviewComment } from "@skipper/shared";
 import type { PlanIssueInput } from "../planner/generate";
 
 const MAX_BODY_CHARS = 20_000;
@@ -19,7 +19,7 @@ function issueHeader(issue: PlanIssueInput): string[] {
       ? `${issue.body.slice(0, MAX_BODY_CHARS)}\n[... issue body truncated ...]`
       : issue.body;
   return [
-    `Issue #${issue.number}: ${issue.title}`,
+    `Issue ${displayKey(issue.key)}: ${issue.title}`,
     `URL: ${issue.url}`,
     issue.labels.length > 0 ? `Labels: ${issue.labels.join(", ")}` : "",
     ``,

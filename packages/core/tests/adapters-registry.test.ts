@@ -11,7 +11,7 @@ import { githubCodeHost, githubIssueSource } from "../src/adapters/github";
 describe("issue-source registry", () => {
   it("registers the GitHub adapter under its self-declared platform", () => {
     expect(issueSources.github).toBe(githubIssueSource);
-    expect(githubIssueSource.platform).toBe("github");
+    expect(githubIssueSource.id).toBe("github");
     expect(issueSourceFor("github")).toBe(githubIssueSource);
   });
 
@@ -27,7 +27,7 @@ describe("issue-source registry", () => {
 describe("code-host registry", () => {
   it("registers the GitHub adapter under its self-declared platform", () => {
     expect(codeHosts.github).toBe(githubCodeHost);
-    expect(githubCodeHost.platform).toBe("github");
+    expect(githubCodeHost.id).toBe("github");
     expect(githubCodeHost.authProvider).toBe("github");
     expect(codeHostFor("github")).toBe(githubCodeHost);
   });

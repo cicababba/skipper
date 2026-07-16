@@ -1,4 +1,4 @@
-import type { CriticSignal, PlanAcceptance } from "@skipper/shared";
+import { displayKey, type CriticSignal, type PlanAcceptance } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm";
 import type { PlanIssueInput } from "../planner";
 import { runCritic } from "../confidence";
@@ -41,7 +41,7 @@ export async function critiqueDiff(
       ? `${issue.body.slice(0, MAX_BODY_CHARS)}\n[... issue body truncated ...]`
       : issue.body;
   const context = [
-    `Issue #${issue.number}: ${issue.title}`,
+    `Issue ${displayKey(issue.key)}: ${issue.title}`,
     issue.labels.length > 0 ? `Labels: ${issue.labels.join(", ")}` : "",
     body ?? "(no issue body)",
     ``,
@@ -55,7 +55,7 @@ export async function critiqueDiff(
   return runCritic(
     {
       artifactKind: "diff",
-      artifactLabel: `working-tree diff for issue #${issue.number}: ${issue.title}`,
+      artifactLabel: `working-tree diff for issue ${displayKey(issue.key)}: ${issue.title}`,
       artifact: truncateDiff(args.diff).text,
       context,
     },

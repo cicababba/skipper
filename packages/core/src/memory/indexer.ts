@@ -1,4 +1,4 @@
-import { repoKey, type SolutionRecord } from "@skipper/shared";
+import { displayKey, repoKey, type SolutionRecord } from "@skipper/shared";
 import { VectorStore } from "../vectorstore";
 import { listSolutionRecords } from "./store";
 
@@ -52,7 +52,9 @@ export async function reconcileMemoryIndex(
     if (await store.has(record.itemId)) continue;
     await indexSolutionRecord(store, ref, record);
     indexed++;
-    onProgress?.(`indexed ${ref} (${repoKey(record.repo)} #${record.issueNumber})`);
+    onProgress?.(
+      `indexed ${ref} (${repoKey(record.repo)} ${displayKey(record.issueKey ?? String(record.issueNumber))})`,
+    );
   }
 
   const known = new Set(entries.map((e) => e.record.itemId));

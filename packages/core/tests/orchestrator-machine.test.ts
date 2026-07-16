@@ -31,9 +31,12 @@ function issue(n: number, overrides: Partial<Issue> = {}): Issue {
   return {
     id: `github:${n}`,
     kind: "issue",
-    platform: "github",
+    source: "github",
+    sourceRef: { project: "o/r", key: String(n) },
+    codeHost: "github",
     accountId: "acct-1",
     repo: { owner: "o", name: "r" },
+    key: String(n),
     number: n,
     title: `Issue ${n}`,
     labels: [],

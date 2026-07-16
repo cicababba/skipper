@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, ExternalLink } from "lucide-react";
-import type { TrackedItem } from "@skipper/shared";
+import { displayKey, type TrackedItem } from "@skipper/shared";
 import { ATTENTION_SECTION_STATES, repoKey } from "@/lib/inbox/model";
 import { formatAge, type SortDir, type SortKey } from "@/lib/inbox/table";
 import { ConfidenceBadge } from "@/components/confidence-popover";
@@ -89,7 +89,7 @@ export function InboxTable({
                       title={item.title}
                     >
                       <span className="font-mono text-[11px] text-muted shrink-0">
-                        #{item.number}
+                        {displayKey(item.key)}
                       </span>
                       <span className="truncate">{item.title}</span>
                     </button>

@@ -22,7 +22,12 @@ import {
   type OrchestratorManifest,
   type OrchestratorSettings,
 } from "@skipper/core";
-import { resolveRepoIntakeSettings, resolveRepoOrchestratorSettings } from "@skipper/shared";
+import {
+  issueBranchFor,
+  repoKey,
+  resolveRepoIntakeSettings,
+  resolveRepoOrchestratorSettings,
+} from "@skipper/shared";
 import type {
   Account,
   AgentReview,
@@ -49,9 +54,8 @@ import type {
 } from "@skipper/shared";
 import { loadCursors, saveCursors, type InboxCursorFile } from "./inbox-cursor-store";
 import {
-  cloneGitHubRepo,
+  cloneRepo,
   loadRepoLinks,
-  repoKey,
   saveRepoLinks,
   validateRepoOrigin,
   type RepoLinksFile,
@@ -63,7 +67,6 @@ import { initCoder, pokeCoder, cancelCodingRun, killAllCodingRuns } from "./code
 import { initReviewer, pokeReviewer } from "./reviewer";
 import { initShepherd, pokeShepherd, openOrPushPr } from "./shepherd";
 import {
-  branchFor,
   captureWorktreeDiff,
   ensureWorktree,
   fetchOrigin,
@@ -262,7 +265,7 @@ async function ensureRepoLinks(): Promise<RepoLinksFile> {
 }
 
 function repoPathFor(repo: RepoRef): string | undefined {
-  return repoLinks?.repos[repoKey(repo.owner, repo.name)]?.localPath;
+  return repoLinks?.repos[repoKey(repo)]?.localPath;
 }
 
 // Per-key validation for the two settings writers (#62). Each returns the value to
@@ -316,13 +319,13 @@ const REPO_SETTINGS_VALIDATORS: {
 };
 
 function repoIntake(repo: RepoRef): ResolvedRepoIntakeSettings {
-  return resolveRepoIntakeSettings(manifest?.repoSettings[repoKey(repo.owner, repo.name)]);
+  return resolveRepoIntakeSettings(manifest?.repoSettings[repoKey(repo)]);
 }
 
 /** Intake settings plus every per-repo override of a global setting (#62). */
 function repoOrch(repo: RepoRef): ResolvedRepoOrchestratorSettings {
   return resolveRepoOrchestratorSettings(
-    manifest?.repoSettings[repoKey(repo.owner, repo.name)],
+    manifest?.repoSettings[repoKey(repo)],
     manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
   );
 }
@@ -340,10 +343,10 @@ async function tokenForRepo(
 ): Promise<string | null> {
   if (!deps) return null;
   if (accountId) return deps.getToken(accountId);
-  const key = repoKey(owner, name);
+  const key = repoKey({ owner, name });
   for (const [acctId, map] of items) {
     for (const item of map.values()) {
-      if (repoKey(item.repo.owner, item.repo.name) === key) return deps.getToken(acctId);
+      if (repoKey(item.repo) === key) return deps.getToken(acctId);
     }
   }
   const first = issueAccounts()[0];
@@ -359,7 +362,7 @@ function admissionPolicy(m: OrchestratorManifest): {
     // Follow list (#15): default-all — an absent record means followed. Ignored
     // repos' issues stay in the raw inbox arrays; linking still gates planning.
     shouldAdmit: (issue) =>
-      resolveRepoIntakeSettings(m.repoSettings[repoKey(issue.repo.owner, issue.repo.name)])
+      resolveRepoIntakeSettings(m.repoSettings[repoKey(issue.repo)])
         .followed,
   };
 }
@@ -388,7 +391,7 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
   if (!ignoreBackoff && existing?.nextPollAt && Date.now() < existing.nextPollAt) return;
 
   const forceFull = Date.now() - (lastFullWalkAt.get(accountId) ?? 0) > FULL_WALK_EVERY_MS;
-  const cursor = forceFull ? undefined : cursors.platforms[source.platform]?.[accountId];
+  const cursor = forceFull ? undefined : cursors.platforms[source.id]?.[accountId];
 
   patchAccount(accountId, { status: "polling" });
   try {
@@ -453,7 +456,7 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
     }
     await saveOrchestratorManifest(deps.manifestFilePath, m);
 
-    (cursors.platforms[source.platform] ??= {})[accountId] = result.cursor;
+    (cursors.platforms[source.id] ??= {})[accountId] = result.cursor;
     await saveCursors(deps.cursorFilePath, cursors);
 
     patchAccount(accountId, {
@@ -848,7 +851,7 @@ export function initOrchestrator(
     "skipper:orchestrator:setRepoSettings",
     async (_e, owner: string, name: string, patch: Partial<RepoIntakeSettings>) => {
       const m = await ensureManifest();
-      const key = repoKey(owner, name);
+      const key = repoKey({ owner, name });
       const followedBefore = resolveRepoIntakeSettings(m.repoSettings[key]).followed;
       const merged: RepoIntakeSettings = { ...m.repoSettings[key] };
       for (const k of Object.keys(REPO_SETTINGS_VALIDATORS) as (keyof RepoIntakeSettings)[]) {
@@ -887,10 +890,10 @@ export function initOrchestrator(
     // Poll cache + tracked items carry proper-case RepoRefs; keys reconstructed
     // from links/settings fall back to the lowercased form.
     for (const map of items.values()) {
-      for (const item of map.values()) put(repoKey(item.repo.owner, item.repo.name), item.repo);
+      for (const item of map.values()) put(repoKey(item.repo), item.repo);
     }
     for (const item of Object.values(m.items)) {
-      put(repoKey(item.repo.owner, item.repo.name), item.repo);
+      put(repoKey(item.repo), item.repo);
     }
     for (const key of [...Object.keys(links.repos), ...Object.keys(m.repoSettings)]) {
       const [owner, name] = key.split("/");
@@ -927,7 +930,7 @@ export function initOrchestrator(
           linked: Boolean(links.repos[key]),
         });
         for (const repo of result.repos) {
-          const key = repoKey(repo.owner, repo.name);
+          const key = repoKey(repo);
           const ref = { owner: repo.owner, name: repo.name };
           candidates.set(key, {
             repo: ref,
@@ -940,7 +943,7 @@ export function initOrchestrator(
         // installations — merge everything the poller has already seen.
         for (const map of items.values()) {
           for (const item of map.values()) {
-            const key = repoKey(item.repo.owner, item.repo.name);
+            const key = repoKey(item.repo);
             if (candidates.has(key)) continue;
             candidates.set(key, {
               repo: item.repo,
@@ -991,9 +994,10 @@ export function initOrchestrator(
     "skipper:orchestrator:linkRepo",
     async (_e, owner: string, name: string, localPath: string) => {
       try {
-        await validateRepoOrigin(localPath, owner, name);
+        // TODO(#68): pick the host from the repo's code-host axis once a second host lands.
+        await validateRepoOrigin(localPath, { owner, name }, codeHostFor("github"));
         const links = await ensureRepoLinks();
-        links.repos[repoKey(owner, name)] = { localPath, linkedAt: new Date().toISOString() };
+        links.repos[repoKey({ owner, name })] = { localPath, linkedAt: new Date().toISOString() };
         await saveRepoLinks(deps!.repoLinksFilePath, links);
         await reconcileFromCache();
         return { ok: true as const, localPath };
@@ -1008,14 +1012,15 @@ export function initOrchestrator(
       try {
         const token = await tokenForRepo(owner, name, accountId);
         if (!token) throw new Error("no GitHub account token available");
-        const localPath = await cloneGitHubRepo(
-          owner,
-          name,
+        const host = codeHostFor("github");
+        const localPath = await cloneRepo(
+          host,
+          { owner, name },
           destParent,
-          codeHostFor("github").pushCredentials(token),
+          host.pushCredentials(token),
         );
         const links = await ensureRepoLinks();
-        links.repos[repoKey(owner, name)] = { localPath, linkedAt: new Date().toISOString() };
+        links.repos[repoKey({ owner, name })] = { localPath, linkedAt: new Date().toISOString() };
         await saveRepoLinks(deps!.repoLinksFilePath, links);
         await reconcileFromCache();
         return { ok: true as const, localPath };
@@ -1027,7 +1032,7 @@ export function initOrchestrator(
   ipcMain.handle("skipper:orchestrator:unlinkRepo", async (_e, owner: string, name: string) => {
     try {
       const links = await ensureRepoLinks();
-      delete links.repos[repoKey(owner, name)];
+      delete links.repos[repoKey({ owner, name })];
       await saveRepoLinks(deps!.repoLinksFilePath, links);
       return { ok: true as const };
     } catch (err) {
@@ -1039,7 +1044,7 @@ export function initOrchestrator(
     const seen = new Map<string, RepoRef>();
     for (const map of items.values()) {
       for (const item of map.values()) {
-        seen.set(repoKey(item.repo.owner, item.repo.name), item.repo);
+        seen.set(repoKey(item.repo), item.repo);
       }
     }
     const linked = Object.entries(links.repos).map(([key, link]) => ({
@@ -1091,11 +1096,11 @@ export function initOrchestrator(
     return readSolutionRecord(deps!.memoryDir, memoryFileName(id));
   });
   ipcMain.handle("skipper:memory:list", async (_e, repo: RepoRef) => {
-    const key = repoKey(repo.owner, repo.name);
+    const key = repoKey(repo);
     const entries = await listSolutionRecords(deps!.memoryDir);
     return entries
       .map((e) => e.record)
-      .filter((r) => repoKey(r.repo.owner, r.repo.name) === key);
+      .filter((r) => repoKey(r.repo) === key);
   });
   // 👍/👎 (#46): move the record's aggregate counters by the delta between the
   // item entry's old vote and the new one, and store the new vote as the local
@@ -1238,18 +1243,18 @@ export function initOrchestrator(
     requestTransition,
     setWorktree,
     prepareWorktree: async (item) => {
-      const link = repoLinks?.repos[repoKey(item.repo.owner, item.repo.name)];
+      const link = repoLinks?.repos[repoKey(item.repo)];
       if (!link) throw new Error(`repo ${item.repo.owner}/${item.repo.name} is not linked`);
       const token = await tokenForRepo(item.repo.owner, item.repo.name, item.accountId);
       await fetchOrigin(
         link.localPath,
-        token ? codeHostFor(item.platform).pushCredentials(token) : undefined,
+        token ? codeHostFor(item.codeHost).pushCredentials(token) : undefined,
       );
       const baseRef = await resolveBaseRef(link.localPath, link.baseBranch);
       return ensureWorktree({
         repoPath: link.localPath,
-        worktreePath: worktreeDirFor(orchestratorDeps.worktreesDir, item.repo, item.number),
-        branch: branchFor(item.number),
+        worktreePath: worktreeDirFor(orchestratorDeps.worktreesDir, item.repo, item.key),
+        branch: issueBranchFor(item.key),
         baseRef,
       });
     },
@@ -1292,7 +1297,7 @@ export function initOrchestrator(
     getTokenProvider: (item) => (force) => deps!.getToken(item.accountId, force),
     getRepoPath: repoPathFor,
     getBaseBranch: async (item) => {
-      const link = repoLinks?.repos[repoKey(item.repo.owner, item.repo.name)];
+      const link = repoLinks?.repos[repoKey(item.repo)];
       if (!link) throw new Error(`repo ${item.repo.owner}/${item.repo.name} is not linked`);
       const baseRef = await resolveBaseRef(link.localPath, link.baseBranch);
       return baseRef.replace(/^origin\//, "");

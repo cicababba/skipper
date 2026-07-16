@@ -117,7 +117,7 @@ export async function openOrPushPr(
       if (!deps.getRepoPath(item.repo)) {
         throw new Error(`repo ${item.repo.owner}/${item.repo.name} is not linked`);
       }
-      const host = codeHostFor(item.platform);
+      const host = codeHostFor(item.codeHost);
       const getToken = deps.getTokenProvider(item);
 
       const { sha } = await commitWorktree(item.worktree.path, buildCommitMessage(item));
@@ -139,7 +139,7 @@ export async function openOrPushPr(
           item.repo,
           {
             title: buildPrTitle(item),
-            body: buildPrBody({ issueLink: host.linkIssueText(item.number), plan: stored?.plan }),
+            body: buildPrBody({ issueLink: host.linkIssueText(item.key), plan: stored?.plan }),
             head: item.worktree.branch,
             base: await deps.getBaseBranch(item),
             draft: true,
@@ -180,7 +180,7 @@ async function reenter(itemId: string): Promise<void> {
   try {
     const item = deps.getItem(itemId);
     if (!item || item.state !== "changes-requested" || !item.pr) return;
-    const host = codeHostFor(item.platform);
+    const host = codeHostFor(item.codeHost);
     const getToken = deps.getTokenProvider(item);
     // No author filter: the connected user is usually the PR author, and their
     // inline comments on the agent's PR are exactly the feedback to address.
@@ -249,6 +249,7 @@ async function captureMerged(itemId: string): Promise<void> {
       version: 1,
       itemId: item.id,
       repo: item.repo,
+      issueKey: item.key,
       issueNumber: item.number,
       title: item.title,
       url: item.url,

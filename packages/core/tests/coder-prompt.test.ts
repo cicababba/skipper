@@ -9,7 +9,7 @@ import {
 } from "../src/coder";
 
 const issue = {
-  number: 42,
+  key: "42",
   title: "Add dark mode",
   url: "https://github.com/o/r/issues/42",
   labels: ["enhancement"],

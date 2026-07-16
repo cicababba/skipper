@@ -31,9 +31,12 @@ let memoryDir: string;
 function makeItem(n: number, state: LifecycleState, extra: Partial<TrackedItem> = {}): TrackedItem {
   return {
     id: `github:${n}`,
-    platform: "github",
+    source: "github",
+    sourceRef: { project: "owner/repo", key: String(n) },
+    codeHost: "github",
     accountId: "acct",
     repo: { owner: "owner", name: "repo" },
+    key: String(n),
     number: n,
     title: `issue ${n}`,
     url: `https://github.com/owner/repo/issues/${n}`,

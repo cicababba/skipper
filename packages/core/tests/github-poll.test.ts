@@ -69,7 +69,10 @@ describe("pollGitHubAccount", () => {
     expect(result.issues.map((i) => i.number)).toEqual([1, 2]);
     expect(result.issues[0]).toMatchObject({
       id: "github:1",
-      platform: "github",
+      source: "github",
+      codeHost: "github",
+      key: "1",
+      sourceRef: { project: "o/r", key: "1" },
       accountId: ACCOUNT,
       repo: { owner: "o", name: "r" },
       kind: "issue",

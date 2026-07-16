@@ -1,12 +1,13 @@
-// Per-repo link between a GitHub owner/name and a local clone, persisted as
+// Per-repo link between a code-host owner/name and a local clone, persisted as
 // plain JSON in userData. Pure Node module (no electron import) so it stays
-// unit-testable; callers inject the file path.
+// unit-testable; callers inject the file path and the CodeHost adapter.
 
 import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rename, rm, writeFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import type { PushCredentials } from "@skipper/core";
+import type { RepoRef } from "@skipper/shared";
+import type { CodeHost, PushCredentials } from "@skipper/core";
 
 export interface RepoLink {
   localPath: string;
@@ -17,13 +18,8 @@ export interface RepoLink {
 
 export interface RepoLinksFile {
   version: 1;
-  /** repoKey(owner, name) → link */
+  /** repoKey(repo) → link */
   repos: Record<string, RepoLink>;
-}
-
-/** GitHub owner/name are case-insensitive — normalize once. */
-export function repoKey(owner: string, name: string): string {
-  return `${owner.toLowerCase()}/${name.toLowerCase()}`;
 }
 
 function freshLinksFile(): RepoLinksFile {
@@ -100,15 +96,11 @@ function run(
   });
 }
 
-// Covers https://github.com/o/r(.git), git@github.com:o/r.git and
-// ssh://git@github.com/o/r(.git), with or without a trailing slash.
-const ORIGIN_RE = /github\.com[/:]([^/]+)\/(.+?)(?:\.git)?\/?$/i;
-
-/** Throws unless localPath is a git repo whose origin points at owner/name. */
+/** Throws unless localPath is a git repo whose origin points at repo on this code host. */
 export async function validateRepoOrigin(
   localPath: string,
-  owner: string,
-  name: string,
+  repo: RepoRef,
+  host: Pick<CodeHost, "parseOrigin">,
 ): Promise<void> {
   const info = await stat(localPath).catch(() => null);
   if (!info?.isDirectory()) throw new Error(`not a directory: ${localPath}`);
@@ -116,14 +108,14 @@ export async function validateRepoOrigin(
   if (r.code !== 0) {
     throw new Error(`not a git repository with an origin remote: ${r.stderr.trim() || localPath}`);
   }
-  const match = ORIGIN_RE.exec(r.stdout.trim());
+  const origin = host.parseOrigin(r.stdout.trim());
   if (
-    !match ||
-    match[1].toLowerCase() !== owner.toLowerCase() ||
-    match[2].toLowerCase() !== name.toLowerCase()
+    !origin ||
+    origin.owner.toLowerCase() !== repo.owner.toLowerCase() ||
+    origin.name.toLowerCase() !== repo.name.toLowerCase()
   ) {
     throw new Error(
-      `origin remote "${r.stdout.trim()}" does not match github.com/${owner}/${name}`,
+      `origin remote "${r.stdout.trim()}" does not match ${repo.owner}/${repo.name}`,
     );
   }
 }
@@ -161,20 +153,20 @@ export async function withAskpass<T>(
  * Full clone (no shallow — worktrees need history, #9) authenticated via
  * withAskpass. The plain https URL means nothing needs scrubbing afterwards.
  */
-export async function cloneGitHubRepo(
-  owner: string,
-  name: string,
+export async function cloneRepo(
+  host: Pick<CodeHost, "cloneUrl" | "parseOrigin">,
+  repo: RepoRef,
   destParent: string,
   credentials: PushCredentials,
 ): Promise<string> {
-  const dest = join(destParent, name);
+  const dest = join(destParent, repo.name);
   if (await stat(dest).catch(() => null)) {
     throw new Error(`destination already exists: ${dest}`);
   }
   await mkdir(destParent, { recursive: true });
 
   const r = await withAskpass(credentials, (env) =>
-    run("git", ["clone", `https://github.com/${owner}/${name}.git`, dest], {
+    run("git", ["clone", host.cloneUrl(repo), dest], {
       env,
       timeout: 600_000,
     }),
@@ -184,6 +176,6 @@ export async function cloneGitHubRepo(
     throw new Error(`git clone failed: ${r.stderr.trim() || `exit ${r.code}`}`);
   }
 
-  await validateRepoOrigin(dest, owner, name);
+  await validateRepoOrigin(dest, repo, host);
   return dest;
 }

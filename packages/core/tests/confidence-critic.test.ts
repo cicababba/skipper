@@ -5,7 +5,7 @@ import type { PlanIssueInput } from "../src/planner";
 import { buildCriticPrompt, critiquePlan, runCritic, CriticError } from "../src/confidence";
 
 const ISSUE: PlanIssueInput = {
-  number: 42,
+  key: "42",
   title: "Add retry to the poller",
   url: "https://github.com/o/r/issues/42",
   labels: ["enhancement"],

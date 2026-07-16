@@ -6,7 +6,8 @@ import { IssuePlanSchema, planJsonSchema } from "./schema";
 import { PLANNER_SYSTEM_PROMPT, buildPlannerPrompt, buildRepairPrompt } from "./prompt";
 
 export interface PlanIssueInput {
-  number: number;
+  /** Work-item display key: "42" (GitHub) or "PROJ-123" (Jira). */
+  key: string;
   title: string;
   url: string;
   labels: string[];

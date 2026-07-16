@@ -9,7 +9,7 @@ import {
   ThumbsUp,
   Trash2,
 } from "lucide-react";
-import type { SolutionRecord } from "@skipper/shared";
+import { displayKey, type SolutionRecord } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { Section } from "@/app/inbox/[id]/plan-sections";
 
@@ -65,7 +65,9 @@ export function MemoryRecordView({
           className="flex items-center gap-1.5 min-w-0 text-left hover:text-accent transition-colors"
           title={record.url}
         >
-          <span className="font-mono text-muted shrink-0">#{record.issueNumber}</span>
+          <span className="font-mono text-muted shrink-0">
+            {displayKey(record.issueKey ?? String(record.issueNumber))}
+          </span>
           <span className="font-medium truncate">{record.title}</span>
           <ExternalLink size={12} className="shrink-0 opacity-50" />
         </button>

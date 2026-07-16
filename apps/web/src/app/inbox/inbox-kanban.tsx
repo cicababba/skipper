@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { ExternalLink, TriangleAlert } from "lucide-react";
-import type { TrackedItem } from "@skipper/shared";
+import { displayKey, type TrackedItem } from "@skipper/shared";
 import { ATTENTION_SECTION_STATES, KANBAN_COLUMNS, repoKey } from "@/lib/inbox/model";
 import { formatAge } from "@/lib/inbox/table";
 import { ConfidenceBadge } from "@/components/confidence-popover";
@@ -26,7 +26,7 @@ function KanbanCard({ item, showState }: { item: TrackedItem; showState: boolean
         className="text-left hover:text-accent transition-colors w-full"
         title={item.title}
       >
-        <span className="font-mono text-[11px] text-muted mr-1.5">#{item.number}</span>
+        <span className="font-mono text-[11px] text-muted mr-1.5">{displayKey(item.key)}</span>
         <span className="text-[13px] line-clamp-2">{item.title}</span>
       </button>
       <p className="text-[11px] text-muted truncate">{repoKey(item.repo)}</p>

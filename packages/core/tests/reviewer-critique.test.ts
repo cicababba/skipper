@@ -3,7 +3,7 @@ import type { LLMProviderInterface } from "../src/llm";
 import { critiqueDiff, truncateDiff, DIFF_CHAR_BUDGET } from "../src/reviewer";
 
 const issue = {
-  number: 42,
+  key: "42",
   title: "Add dark mode",
   url: "https://github.com/o/r/issues/42",
   labels: ["enhancement"],

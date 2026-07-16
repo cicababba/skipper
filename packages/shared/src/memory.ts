@@ -16,7 +16,10 @@ export interface SolutionRecord {
   version: 1;
   itemId: string;
   repo: RepoRef;
-  issueNumber: number;
+  /** Work-item display key ("42" | "PROJ-123"); absent on pre-#71 files. */
+  issueKey?: string;
+  /** Present when the source numbers items; absent for Jira. */
+  issueNumber?: number;
   title: string;
   url: string;
   pr: { number: number; url: string };

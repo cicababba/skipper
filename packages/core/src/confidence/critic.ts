@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { CriticSignal, CriticVerdict, IssuePlan } from "@skipper/shared";
+import { displayKey, type CriticSignal, type CriticVerdict, type IssuePlan } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm";
 import type { PlanIssueInput } from "../planner";
 
@@ -94,10 +94,10 @@ export async function critiquePlan(
   return runCritic(
     {
       artifactKind: "plan",
-      artifactLabel: `implementation plan for issue #${issue.number}: ${issue.title}`,
+      artifactLabel: `implementation plan for issue ${displayKey(issue.key)}: ${issue.title}`,
       artifact: JSON.stringify(plan, null, 2),
       context: [
-        `Issue #${issue.number}: ${issue.title}`,
+        `Issue ${displayKey(issue.key)}: ${issue.title}`,
         issue.labels.length > 0 ? `Labels: ${issue.labels.join(", ")}` : "",
         issue.body ?? "(no issue body)",
       ]

@@ -48,7 +48,7 @@ export async function runSearchMemory(
   const hits = await searchMemory(opts.memoryDir, query, { repo: opts.repo, k });
   const summaries = hits.map((h) => ({
     id: h.id,
-    issue: h.issueNumber,
+    issue: h.issueKey,
     url: h.url,
     pr: h.pr,
     title: h.title,

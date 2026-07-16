@@ -3,11 +3,12 @@
 
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve, normalize, sep } from "node:path";
-import type {
-  RepoRef,
-  WorktreeFileChange,
-  WorktreeFileContents,
-  WorktreeStatusResult,
+import {
+  slugKey,
+  type RepoRef,
+  type WorktreeFileChange,
+  type WorktreeFileContents,
+  type WorktreeStatusResult,
 } from "@skipper/shared";
 import type { DiffStats, PushCredentials } from "@skipper/core";
 import { runGit } from "./git";
@@ -17,14 +18,9 @@ function sanitize(component: string): string {
   return component.replace(/[^A-Za-z0-9._-]/g, "_");
 }
 
-/** <root>/<owner>-<name>/issue-<N> — every component Windows-safe. */
-export function worktreeDirFor(root: string, repo: RepoRef, issueNumber: number): string {
-  return join(root, `${sanitize(repo.owner)}-${sanitize(repo.name)}`, `issue-${issueNumber}`);
-}
-
-/** Must match the reconcile PR-linking heuristic (reconcile.ts BRANCH_ISSUE_RE). */
-export function branchFor(issueNumber: number): string {
-  return `feature/issue-${issueNumber}`;
+/** <root>/<owner>-<name>/issue-<slug(key)> — every component Windows-safe. */
+export function worktreeDirFor(root: string, repo: RepoRef, key: string): string {
+  return join(root, `${sanitize(repo.owner)}-${sanitize(repo.name)}`, `issue-${slugKey(key)}`);
 }
 
 /** Location + on-disk liveness of an item's worktree record (control center, #40). */

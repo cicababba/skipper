@@ -2,6 +2,8 @@ import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
   DEFAULT_ORCHESTRATOR_SETTINGS,
+  type CodeHostId,
+  type IssueSourceId,
   type OrchestratorSettings,
   type RepoIntakeSettings,
   type TrackedItem,
@@ -44,6 +46,25 @@ function migrateReviewMode(settings: OrchestratorSettings): void {
   settings.review ??= DEFAULT_ORCHESTRATOR_SETTINGS.review;
 }
 
+/**
+ * #71 two-axis migration: platform → source + codeHost, string key derived from
+ * the GitHub number. Legacy key consumed then deleted (reviewMode precedent) —
+ * the object reserializes on save. Worktrees on disk need nothing:
+ * item.worktree.path is persisted per-item and never reconstructed.
+ */
+function migrateTwoAxisItem(item: TrackedItem): void {
+  const legacy = item as unknown as { platform?: IssueSourceId };
+  if (item.source === undefined && legacy.platform !== undefined) {
+    item.source = legacy.platform;
+    item.codeHost = legacy.platform as CodeHostId;
+  }
+  delete legacy.platform;
+  item.source ??= "github";
+  item.codeHost ??= "github";
+  item.key ??= String(item.number);
+  item.sourceRef ??= { project: `${item.repo.owner}/${item.repo.name}`, key: item.key };
+}
+
 function freshManifest(): OrchestratorManifest {
   return {
     version: 1,
@@ -83,6 +104,7 @@ export async function loadOrCreateOrchestratorManifest(
       parsed.settings.ciReentry ??= DEFAULT_ORCHESTRATOR_SETTINGS.ciReentry;
       parsed.settings.codingWipPerRepo ??= DEFAULT_ORCHESTRATOR_SETTINGS.codingWipPerRepo;
       parsed.repoSettings ??= {};
+      for (const item of Object.values(parsed.items)) migrateTwoAxisItem(item);
       return parsed;
     }
     return freshManifest();

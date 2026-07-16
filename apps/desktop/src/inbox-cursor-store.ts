@@ -5,12 +5,12 @@
 
 import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { PlatformId } from "@skipper/shared";
+import type { IssueSourceId } from "@skipper/shared";
 
 export interface InboxCursorFile {
   version: 2;
-  /** platform → accountId → opaque adapter cursor */
-  platforms: Partial<Record<PlatformId, Record<string, unknown>>>;
+  /** issue source → accountId → opaque adapter cursor. Field name predates the two-axis split (#71). */
+  platforms: Partial<Record<IssueSourceId, Record<string, unknown>>>;
 }
 
 function freshCursorFile(): InboxCursorFile {

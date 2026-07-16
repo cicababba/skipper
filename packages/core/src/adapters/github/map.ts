@@ -42,11 +42,16 @@ export function parseRepoFromUrl(repositoryUrl: string): RepoRef {
 }
 
 function mapBase(payload: GitHubIssuePayload, accountId: string) {
+  const repo = parseRepoFromUrl(payload.repository_url);
+  const key = String(payload.number);
   return {
     id: `github:${payload.id}`,
-    platform: "github" as const,
+    source: "github" as const,
+    sourceRef: { project: `${repo.owner}/${repo.name}`, key },
+    codeHost: "github" as const,
     accountId,
-    repo: parseRepoFromUrl(payload.repository_url),
+    repo,
+    key,
     number: payload.number,
     title: payload.title,
     body: payload.body ?? undefined,
@@ -83,9 +88,12 @@ export function mapPullDetail(
 ): PullRequest {
   return {
     id: `github:${payload.id}`,
-    platform: "github",
+    source: "github",
+    sourceRef: { project: `${repo.owner}/${repo.name}`, key: String(payload.number) },
+    codeHost: "github",
     accountId,
     repo,
+    key: String(payload.number),
     number: payload.number,
     title: payload.title,
     body: payload.body ?? undefined,

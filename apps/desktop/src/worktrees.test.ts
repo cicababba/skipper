@@ -3,8 +3,8 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { BRANCH_ISSUE_RE, issueBranchFor } from "@skipper/shared";
 import {
-  branchFor,
   captureBranchDiff,
   captureWorktreeDiff,
   commitWorktree,
@@ -52,15 +52,21 @@ async function makeCloneWithOrigin(): Promise<{ origin: string; clone: string }>
   return { origin, clone };
 }
 
-describe("worktreeDirFor / branchFor", () => {
+describe("worktreeDirFor / issueBranchFor", () => {
   it("builds a sanitized per-issue path", () => {
-    const path = worktreeDirFor("/root", { owner: "My Org", name: "a/b" }, 7);
+    const path = worktreeDirFor("/root", { owner: "My Org", name: "a/b" }, "7");
     expect(path).toBe(join("/root", "My_Org-a_b", "issue-7"));
   });
 
+  it("slugs tracker keys into the path", () => {
+    const path = worktreeDirFor("/root", { owner: "o", name: "r" }, "PROJ-123");
+    expect(path).toBe(join("/root", "o-r", "issue-proj-123"));
+  });
+
   it("branch matches the reconcile heuristic", () => {
-    expect(branchFor(42)).toBe("feature/issue-42");
-    expect(/^(?:feature|fix)\/issue-(\d+)\b/.exec(branchFor(42))?.[1]).toBe("42");
+    expect(issueBranchFor("42")).toBe("feature/issue-42");
+    expect(BRANCH_ISSUE_RE.exec(issueBranchFor("42"))?.[1]).toBe("42");
+    expect(BRANCH_ISSUE_RE.exec(issueBranchFor("PROJ-123"))?.[1]).toBe("proj-123");
   });
 });
 

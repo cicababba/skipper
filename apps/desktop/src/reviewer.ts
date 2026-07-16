@@ -192,7 +192,7 @@ async function run(itemId: string): Promise<void> {
     if (deps.getItem(itemId)?.state !== "agent-review") return;
     const cached = deps.getIssue(item);
     const issue = {
-      number: item.number,
+      key: item.key,
       title: item.title,
       url: item.url,
       labels: cached?.labels ?? [],
