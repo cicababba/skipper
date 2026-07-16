@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { listUserInstallationRepos } from "../src/github/installations";
+import { listUserInstallationRepos } from "../src/adapters/github/installations";
 
 const token = async () => "tok";
 

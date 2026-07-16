@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { githubGet, githubPost, parseLinkNext } from "../src/github/client";
-import { GitHubApiError, GitHubAuthError } from "../src/github/types";
+import { githubGet, githubPost, parseLinkNext } from "../src/adapters/github/client";
+import { GitHubApiError, GitHubAuthError } from "../src/adapters/github/types";
 
 function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
   return new Response(status === 304 ? null : JSON.stringify(body), {

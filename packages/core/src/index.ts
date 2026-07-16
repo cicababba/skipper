@@ -43,7 +43,7 @@ export {
   GitHubAuthError,
   emptyGitHubCursor,
   listUserInstallationRepos,
-} from "./github";
+} from "./adapters/github";
 export {
   createPullRequest,
   findOpenPullByHead,
@@ -53,7 +53,7 @@ export {
   mapReviewFeedback,
   fetchCiStatus,
   fetchFailingChecks,
-} from "./github";
+} from "./adapters/github";
 export type {
   CreatedPull,
   PullReviewPayload,
@@ -61,7 +61,7 @@ export type {
   FailingCheck,
   InstallationRepo,
   InstallationsResult,
-} from "./github";
+} from "./adapters/github";
 export type {
   GitHubTokenProvider,
   GitHubEndpointCursor,
@@ -69,7 +69,7 @@ export type {
   GitHubRateLimit,
   GitHubPollOptions,
   GitHubPollResult,
-} from "./github";
+} from "./adapters/github";
 
 // Planner (issue #7)
 export { generatePlan, PlanGenerationError, IssuePlanSchema, planJsonSchema } from "./planner";

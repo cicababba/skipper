@@ -8,8 +8,8 @@ import {
   mapReviewFeedback,
   type PullReviewCommentPayload,
   type PullReviewPayload,
-} from "../src/github/pulls";
-import { GitHubApiError } from "../src/github/types";
+} from "../src/adapters/github/pulls";
+import { GitHubApiError } from "../src/adapters/github/types";
 
 const repo = { owner: "octo", name: "demo" };
 const token = async () => "tok";

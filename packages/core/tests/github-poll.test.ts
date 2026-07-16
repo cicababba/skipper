@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { pollGitHubAccount } from "../src/github/poll";
-import { emptyGitHubCursor, type GitHubAccountCursor } from "../src/github/types";
+import { pollGitHubAccount } from "../src/adapters/github/poll";
+import { emptyGitHubCursor, type GitHubAccountCursor } from "../src/adapters/github/types";
 
 const ACCOUNT = "45292355";
 const token = async () => "tok";
