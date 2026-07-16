@@ -1,13 +1,8 @@
 import { GITHUB_API_BASE_URL } from "@skipper/shared";
 import type { PrReviewComment, PullRequest, RepoRef } from "@skipper/shared";
+import type { CreatedPr, FailingCheck } from "../types";
 import { githubGet, githubPost, type GitHubResponse } from "./client";
 import type { GitHubTokenProvider } from "./types";
-
-export interface CreatedPull {
-  id: string;
-  number: number;
-  url: string;
-}
 
 interface CreatedPullPayload {
   id: number;
@@ -23,7 +18,7 @@ export async function createPullRequest(
   repo: RepoRef,
   params: { title: string; body: string; head: string; base: string; draft: boolean },
   getToken: GitHubTokenProvider,
-): Promise<CreatedPull> {
+): Promise<CreatedPr> {
   const res = await githubPost<CreatedPullPayload>(`${repoUrl(repo)}/pulls`, getToken, params);
   const payload = res.body!;
   return { id: `github:${payload.id}`, number: payload.number, url: payload.html_url };
@@ -34,7 +29,7 @@ export async function findOpenPullByHead(
   repo: RepoRef,
   head: string,
   getToken: GitHubTokenProvider,
-): Promise<CreatedPull | null> {
+): Promise<CreatedPr | null> {
   const params = new URLSearchParams({ head: `${repo.owner}:${head}`, state: "open" });
   const res = await githubGet<CreatedPullPayload[]>(
     `${repoUrl(repo)}/pulls?${params.toString()}`,
@@ -202,12 +197,6 @@ export async function fetchCiStatus(
   if (passing) return "passing";
 
   return undefined;
-}
-
-export interface FailingCheck {
-  name: string;
-  url?: string;
-  summary?: string;
 }
 
 /** The failed check runs on a commit — feeds the CI-fix re-entry prompt (name + summary). */

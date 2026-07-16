@@ -9,7 +9,7 @@ import type {
   WorktreeFileContents,
   WorktreeStatusResult,
 } from "@skipper/shared";
-import type { DiffStats } from "@skipper/core";
+import type { DiffStats, PushCredentials } from "@skipper/core";
 import { runGit } from "./git";
 import { withAskpass } from "./repo-links";
 
@@ -42,13 +42,16 @@ export async function worktreeStatus(
   };
 }
 
-/** git fetch origin; on failure with a token, retry once under GIT_ASKPASS. */
-export async function fetchOrigin(repoPath: string, token?: string | null): Promise<void> {
+/** git fetch origin; on failure with credentials, retry once under GIT_ASKPASS. */
+export async function fetchOrigin(
+  repoPath: string,
+  credentials?: PushCredentials | null,
+): Promise<void> {
   const timeout = 300_000;
   const plain = await runGit(repoPath, ["fetch", "origin"], timeout);
   if (plain.code === 0) return;
-  if (token) {
-    const authed = await withAskpass(token, (env) =>
+  if (credentials) {
+    const authed = await withAskpass(credentials, (env) =>
       runGit(repoPath, ["fetch", "origin"], timeout, env),
     );
     if (authed.code === 0) return;
@@ -366,19 +369,21 @@ export async function commitWorktree(
   return { committed: true, sha: await headSha() };
 }
 
-/** git push -u origin <branch>; on failure with a token, retry once under GIT_ASKPASS. */
+/** git push -u origin <branch>; on failure with credentials, retry once under GIT_ASKPASS. */
 export async function pushWorktreeBranch(
   worktreePath: string,
   branch: string,
-  token?: string | null,
+  credentials?: PushCredentials | null,
 ): Promise<void> {
   const timeout = 300_000;
   const args = ["push", "-u", "origin", branch];
   const plain = await runGit(worktreePath, args, timeout);
   if (plain.code === 0) return;
   let last = plain;
-  if (token) {
-    const authed = await withAskpass(token, (env) => runGit(worktreePath, args, timeout, env));
+  if (credentials) {
+    const authed = await withAskpass(credentials, (env) =>
+      runGit(worktreePath, args, timeout, env),
+    );
     if (authed.code === 0) return;
     last = authed;
   }

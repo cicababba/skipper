@@ -6,6 +6,7 @@ import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rename, rm, writeFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import type { PushCredentials } from "@skipper/core";
 
 export interface RepoLink {
   localPath: string;
@@ -128,23 +129,29 @@ export async function validateRepoOrigin(
 }
 
 /**
- * Runs fn with a throwaway GIT_ASKPASS script environment: the token rides
- * an env var of the child process only, never argv, never .git/config, and
+ * Runs fn with a throwaway GIT_ASKPASS script environment: the credentials ride
+ * env vars of the child process only, never argv, never .git/config, and
  * the script dies in finally. Shared by clone (here) and fetch (#9).
+ * The username convention is per code host — callers get it from pushCredentials().
  */
 export async function withAskpass<T>(
-  token: string,
+  credentials: PushCredentials,
   fn: (env: NodeJS.ProcessEnv) => Promise<T>,
 ): Promise<T> {
   const askDir = await mkdtemp(join(tmpdir(), "nb-askpass-"));
   const isWin = process.platform === "win32";
   const script = join(askDir, isWin ? "askpass.bat" : "askpass.sh");
   const body = isWin
-    ? '@echo off\r\necho %~1| findstr /b /c:"Username" >nul\r\nif errorlevel 1 (echo %NB_GIT_TOKEN%) else (echo x-access-token)\r\n'
-    : '#!/bin/sh\ncase "$1" in\n  Username*) echo x-access-token ;;\n  *) printf %s "$NB_GIT_TOKEN" ;;\nesac\n';
+    ? '@echo off\r\necho %~1| findstr /b /c:"Username" >nul\r\nif errorlevel 1 (echo %NB_GIT_TOKEN%) else (echo %NB_GIT_USERNAME%)\r\n'
+    : '#!/bin/sh\ncase "$1" in\n  Username*) printf %s "$NB_GIT_USERNAME" ;;\n  *) printf %s "$NB_GIT_TOKEN" ;;\nesac\n';
   await writeFile(script, body, { mode: 0o700 });
   try {
-    return await fn({ ...process.env, GIT_ASKPASS: script, NB_GIT_TOKEN: token });
+    return await fn({
+      ...process.env,
+      GIT_ASKPASS: script,
+      NB_GIT_USERNAME: credentials.username,
+      NB_GIT_TOKEN: credentials.password,
+    });
   } finally {
     await rm(askDir, { recursive: true, force: true });
   }
@@ -158,7 +165,7 @@ export async function cloneGitHubRepo(
   owner: string,
   name: string,
   destParent: string,
-  token: string,
+  credentials: PushCredentials,
 ): Promise<string> {
   const dest = join(destParent, name);
   if (await stat(dest).catch(() => null)) {
@@ -166,7 +173,7 @@ export async function cloneGitHubRepo(
   }
   await mkdir(destParent, { recursive: true });
 
-  const r = await withAskpass(token, (env) =>
+  const r = await withAskpass(credentials, (env) =>
     run("git", ["clone", `https://github.com/${owner}/${name}.git`, dest], {
       env,
       timeout: 600_000,

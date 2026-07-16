@@ -1,6 +1,6 @@
 import type { AuthProviderId, PlatformId } from "@skipper/shared";
-import { githubIssueSource } from "./github";
-import type { IssueSource } from "./types";
+import { githubCodeHost, githubIssueSource } from "./github";
+import type { CodeHost, IssueSource } from "./types";
 
 // Computed key: the adapter self-declares its platform, so the "github" literal
 // stays inside adapters/github/. `satisfies` keeps this exhaustive as PlatformId widens.
@@ -10,6 +10,14 @@ export const issueSources = {
 
 export function issueSourceFor(platform: PlatformId): IssueSource {
   return issueSources[platform];
+}
+
+export const codeHosts = {
+  [githubCodeHost.platform]: githubCodeHost,
+} satisfies Record<PlatformId, CodeHost>;
+
+export function codeHostFor(platform: PlatformId): CodeHost {
+  return codeHosts[platform];
 }
 
 /** Which issue source (if any) polls accounts of this auth provider.

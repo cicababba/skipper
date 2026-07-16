@@ -8,6 +8,7 @@ import {
   ApiError,
   AuthError,
   listUserInstallationRepos,
+  codeHostFor,
   resolveGate,
   DEFAULT_ORCHESTRATOR_SETTINGS,
   IssuePlanSchema,
@@ -1007,7 +1008,12 @@ export function initOrchestrator(
       try {
         const token = await tokenForRepo(owner, name, accountId);
         if (!token) throw new Error("no GitHub account token available");
-        const localPath = await cloneGitHubRepo(owner, name, destParent, token);
+        const localPath = await cloneGitHubRepo(
+          owner,
+          name,
+          destParent,
+          codeHostFor("github").pushCredentials(token),
+        );
         const links = await ensureRepoLinks();
         links.repos[repoKey(owner, name)] = { localPath, linkedAt: new Date().toISOString() };
         await saveRepoLinks(deps!.repoLinksFilePath, links);
@@ -1235,7 +1241,10 @@ export function initOrchestrator(
       const link = repoLinks?.repos[repoKey(item.repo.owner, item.repo.name)];
       if (!link) throw new Error(`repo ${item.repo.owner}/${item.repo.name} is not linked`);
       const token = await tokenForRepo(item.repo.owner, item.repo.name, item.accountId);
-      await fetchOrigin(link.localPath, token);
+      await fetchOrigin(
+        link.localPath,
+        token ? codeHostFor(item.platform).pushCredentials(token) : undefined,
+      );
       const baseRef = await resolveBaseRef(link.localPath, link.baseBranch);
       return ensureWorktree({
         repoPath: link.localPath,

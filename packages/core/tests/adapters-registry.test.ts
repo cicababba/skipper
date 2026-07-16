@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { issueSources, issueSourceFor, issueSourceForAuthProvider } from "../src/adapters";
-import { githubIssueSource } from "../src/adapters/github";
+import {
+  codeHosts,
+  codeHostFor,
+  issueSources,
+  issueSourceFor,
+  issueSourceForAuthProvider,
+} from "../src/adapters";
+import { githubCodeHost, githubIssueSource } from "../src/adapters/github";
 
 describe("issue-source registry", () => {
   it("registers the GitHub adapter under its self-declared platform", () => {
@@ -15,5 +21,14 @@ describe("issue-source registry", () => {
 
   it("returns undefined for identity-only providers", () => {
     expect(issueSourceForAuthProvider("google")).toBeUndefined();
+  });
+});
+
+describe("code-host registry", () => {
+  it("registers the GitHub adapter under its self-declared platform", () => {
+    expect(codeHosts.github).toBe(githubCodeHost);
+    expect(githubCodeHost.platform).toBe("github");
+    expect(githubCodeHost.authProvider).toBe("github");
+    expect(codeHostFor("github")).toBe(githubCodeHost);
   });
 });

@@ -160,7 +160,10 @@ describe("openOrPushPr", () => {
     const result = await openOrPushPr("github:1", "user");
     expect(result.ok).toBe(true);
     expect(commitMock).toHaveBeenCalledWith("/wt/repo/issue-1", "issue 1 (#1)");
-    expect(pushMock).toHaveBeenCalledWith("/wt/repo/issue-1", "feature/issue-1", "tok");
+    expect(pushMock).toHaveBeenCalledWith("/wt/repo/issue-1", "feature/issue-1", {
+      username: "x-access-token",
+      password: "tok",
+    });
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe("https://api.github.com/repos/owner/repo/pulls");
     const body = JSON.parse(init!.body as string);
