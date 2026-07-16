@@ -18,7 +18,7 @@ describe("provider registry", () => {
       {
         id: "gitlab",
         displayName: "GitLab",
-        isIssueSource: false,
+        isIssueSource: true,
         requiresBaseUrl: true,
         defaultBaseUrl: "https://gitlab.com",
         supportsPat: true,

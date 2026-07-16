@@ -1,5 +1,8 @@
 import { ApiError, AuthError } from "../types";
+import { parseLinkNext } from "../http";
 import type { GitHubRateLimit, GitHubTokenProvider } from "./types";
+
+export { parseLinkNext };
 
 const API_HEADERS = {
   accept: "application/vnd.github+json",
@@ -12,15 +15,6 @@ export interface GitHubResponse<T> {
   etag?: string;
   nextUrl?: string; // from Link rel="next"
   rateLimit?: GitHubRateLimit;
-}
-
-export function parseLinkNext(linkHeader: string | null): string | undefined {
-  if (!linkHeader) return undefined;
-  for (const part of linkHeader.split(",")) {
-    const match = part.match(/<([^>]+)>\s*;\s*rel="next"/);
-    if (match) return match[1];
-  }
-  return undefined;
 }
 
 function parseRateLimit(res: Response): GitHubRateLimit | undefined {

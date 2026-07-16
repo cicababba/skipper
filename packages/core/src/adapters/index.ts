@@ -1,23 +1,30 @@
 import type { AuthProviderId, CodeHostId, IssueSourceId } from "@skipper/shared";
 import { githubCodeHost, githubIssueSource } from "./github";
+import { gitlabIssueSource } from "./gitlab";
 import type { CodeHost, IssueSource } from "./types";
 
-// Computed key: the adapter self-declares its id, so the "github" literal
-// stays inside adapters/github/. `satisfies` keeps this exhaustive as the axes widen.
+// `satisfies` keeps this exhaustive as the IssueSourceId axis widens — a new id
+// forces a new entry here. Literal keys (not `[adapter.id]`): once the union has
+// more than one member a computed key widens to a string index signature that no
+// longer satisfies the exact Record.
 export const issueSources = {
-  [githubIssueSource.id]: githubIssueSource,
+  github: githubIssueSource,
+  gitlab: gitlabIssueSource,
 } satisfies Record<IssueSourceId, IssueSource>;
 
 export function issueSourceFor(source: IssueSourceId): IssueSource {
   return issueSources[source];
 }
 
+// Partial: GitLab widened CodeHostId but its CodeHost adapter is #76.
 export const codeHosts = {
   [githubCodeHost.id]: githubCodeHost,
-} satisfies Record<CodeHostId, CodeHost>;
+} satisfies Partial<Record<CodeHostId, CodeHost>>;
 
 export function codeHostFor(host: CodeHostId): CodeHost {
-  return codeHosts[host];
+  const adapter = codeHosts[host];
+  if (!adapter) throw new Error(`no CodeHost adapter for ${host}`); // #76
+  return adapter;
 }
 
 /** Which issue source (if any) polls accounts of this auth provider.
@@ -28,3 +35,4 @@ export function issueSourceForAuthProvider(provider: AuthProviderId): IssueSourc
 
 export * from "./types";
 export * from "./github";
+export * from "./gitlab";

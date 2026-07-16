@@ -49,6 +49,9 @@ export {
   githubCodeHost,
   pollGitHubAccount,
   emptyGitHubCursor,
+  gitlabIssueSource,
+  pollGitLabAccount,
+  emptyGitLabCursor,
   listUserInstallationRepos,
 } from "./adapters";
 export type { IssueSource, PollOptions, PollResult, RateLimit, TokenProvider } from "./adapters";
@@ -69,6 +72,14 @@ export type {
   GitHubRateLimit,
   GitHubPollOptions,
   GitHubPollResult,
+} from "./adapters";
+export type {
+  GitLabTokenProvider,
+  GitLabStreamCursor,
+  GitLabAccountCursor,
+  GitLabRateLimit,
+  GitLabPollOptions,
+  GitLabPollResult,
 } from "./adapters";
 
 // Planner (issue #7)
