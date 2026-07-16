@@ -9,21 +9,22 @@ import {
   useState,
 } from "react";
 import { deriveProviderView } from "@skipper/shared";
-import type { AuthProviderId, AuthState, ProviderAuthView } from "@skipper/shared";
+import type {
+  AuthProviderId,
+  AuthProviderMeta,
+  AuthState,
+  ProviderAuthView,
+} from "@skipper/shared";
 
 interface AuthContextValue {
-  /** Google view — what the current account UI renders. */
-  state: ProviderAuthView;
-  /** GitHub view — feeds the orchestrator connect UI (#15). */
-  github: ProviderAuthView;
   /** Full multi-provider state, for provider-aware UI. */
   authState: AuthState;
-  signIn: () => Promise<void>;
-  signOut: () => Promise<void>;
-  cancelSignIn: () => Promise<void>;
-  signInProvider: (provider: AuthProviderId) => Promise<void>;
-  signOutProvider: (provider: AuthProviderId) => Promise<void>;
-  cancelSignInProvider: (provider: AuthProviderId) => Promise<void>;
+  /** Registry-derived provider rows from the desktop; [] until the IPC answers. */
+  providers: AuthProviderMeta[];
+  viewFor: (provider: AuthProviderId) => ProviderAuthView;
+  signIn: (provider: AuthProviderId) => Promise<void>;
+  signOut: (provider: AuthProviderId) => Promise<void>;
+  cancelSignIn: (provider: AuthProviderId) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -32,6 +33,7 @@ const DEFAULT_STATE: AuthState = { accounts: [], active: {}, flows: {} };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authState, setAuthState] = useState<AuthState>(DEFAULT_STATE);
+  const [providers, setProviders] = useState<AuthProviderMeta[]>([]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.skipper) return;
@@ -42,54 +44,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .then((s) => { if (!cancelled) setAuthState(s); })
       .catch(() => { /* keep default */ });
 
+    auth.getProviders()
+      .then((p) => { if (!cancelled) setProviders(p); })
+      .catch(() => { /* keep default */ });
+
     const off = auth.onStateChanged((s) => setAuthState(s));
 
     return () => { cancelled = true; off(); };
   }, []);
 
-  const signIn = useCallback(async () => {
-    if (!window.skipper) return;
-    await window.skipper.auth.signIn("google");
-  }, []);
+  const viewFor = useCallback(
+    (provider: AuthProviderId) => deriveProviderView(authState, provider),
+    [authState],
+  );
 
-  const signOut = useCallback(async () => {
-    if (!window.skipper) return;
-    await window.skipper.auth.signOut("google");
-  }, []);
-
-  const cancelSignIn = useCallback(async () => {
-    if (!window.skipper) return;
-    await window.skipper.auth.cancelSignIn("google");
-  }, []);
-
-  const signInProvider = useCallback(async (provider: AuthProviderId) => {
+  const signIn = useCallback(async (provider: AuthProviderId) => {
     if (!window.skipper) return;
     await window.skipper.auth.signIn(provider);
   }, []);
 
-  const signOutProvider = useCallback(async (provider: AuthProviderId) => {
+  const signOut = useCallback(async (provider: AuthProviderId) => {
     if (!window.skipper) return;
     await window.skipper.auth.signOut(provider);
   }, []);
 
-  const cancelSignInProvider = useCallback(async (provider: AuthProviderId) => {
+  const cancelSignIn = useCallback(async (provider: AuthProviderId) => {
     if (!window.skipper) return;
     await window.skipper.auth.cancelSignIn(provider);
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({
-      state: deriveProviderView(authState, "google"),
-      github: deriveProviderView(authState, "github"),
-      authState,
-      signIn,
-      signOut,
-      cancelSignIn,
-      signInProvider,
-      signOutProvider,
-      cancelSignInProvider,
-    }),
-    [authState, signIn, signOut, cancelSignIn, signInProvider, signOutProvider, cancelSignInProvider],
+    () => ({ authState, providers, viewFor, signIn, signOut, cancelSignIn }),
+    [authState, providers, viewFor, signIn, signOut, cancelSignIn],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

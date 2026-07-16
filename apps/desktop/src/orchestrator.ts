@@ -31,6 +31,7 @@ import {
 import type {
   Account,
   AgentReview,
+  AuthProviderId,
   CodingEvent,
   CodingEventEnvelope,
   ConfidenceReport,
@@ -333,6 +334,11 @@ function repoOrch(repo: RepoRef): ResolvedRepoOrchestratorSettings {
 /** Accounts whose auth provider backs an issue source (identity-only providers filtered out). */
 function issueAccounts(): Account[] {
   return (deps?.getAccounts() ?? []).filter((a) => issueSourceForAuthProvider(a.provider));
+}
+
+/** Exposed to main (CJS) via the orchestrator bundle — core's registry is ESM-only. */
+export function isIssueSourceProvider(provider: AuthProviderId): boolean {
+  return issueSourceForAuthProvider(provider) !== undefined;
 }
 
 /** Token for cloning: explicit account, else the account that sees the repo, else the first one. */

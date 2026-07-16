@@ -110,7 +110,9 @@ function AutoPlanChip() {
 
 function AccountWidget() {
   const { t } = useT();
-  const { state, signIn, signOut, cancelSignIn } = useAuth();
+  // Google-pinned by design: this widget is the supporter-license surface.
+  const { viewFor, signIn, signOut, cancelSignIn } = useAuth();
+  const state = viewFor("google");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -145,7 +147,7 @@ function AccountWidget() {
   if (state.status === "signed-out") {
     return (
       <button
-        onClick={signIn}
+        onClick={() => void signIn("google")}
         style={noDrag}
         className="flex items-center gap-2 h-7 px-3 rounded-md border border-border bg-card hover:bg-card-hover text-xs font-medium transition-colors"
       >
@@ -161,7 +163,7 @@ function AccountWidget() {
         <Loader2 size={13} className="animate-spin" />
         <span>{t.tree.topbar.waitingBrowser}</span>
         <button
-          onClick={cancelSignIn}
+          onClick={() => void cancelSignIn("google")}
           className="ml-2 text-muted/70 hover:text-foreground underline-offset-2 hover:underline"
         >
           {t.tree.topbar.cancel}
@@ -175,7 +177,7 @@ function AccountWidget() {
       <div style={noDrag} className="flex items-center gap-2 h-7 px-3 text-xs text-red-400">
         <span title={state.error}>{t.tree.topbar.signInFailed}</span>
         <button
-          onClick={signIn}
+          onClick={() => void signIn("google")}
           className="ml-1 text-foreground underline-offset-2 hover:underline"
         >
           {t.tree.topbar.retry}
@@ -212,7 +214,7 @@ function AccountWidget() {
             {t.tree.topbar.accountSettings}
           </Link>
           <button
-            onClick={async () => { setMenuOpen(false); await signOut(); }}
+            onClick={async () => { setMenuOpen(false); await signOut("google"); }}
             className="flex items-center gap-2 px-3 py-2 text-xs w-full text-left hover:bg-card-hover transition-colors text-red-400/90"
           >
             <LogOut size={13} />

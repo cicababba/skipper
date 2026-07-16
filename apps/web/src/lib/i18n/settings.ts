@@ -1,6 +1,20 @@
 // settings surface dictionary — EN is the master shape; other languages must
 // mirror its keys exactly.
 
+import type { AuthProviderId } from "@skipper/shared";
+
+/** Per-provider copy for the generic account section; a provider missing from
+ *  byProvider falls back to the displayName-parameterized generic strings. */
+export type ProviderAccountCopy = {
+  title: string;
+  freeTitle: string;
+  freeDesc: string;
+  signIn: string;
+  signedOutTitle: string;
+  signedOutDesc: string;
+  signOut: string;
+};
+
 const en = {
   title: "Settings",
 
@@ -88,32 +102,39 @@ const en = {
   },
 
   account: {
-    title: "Account",
-    freeTitle: "Sign-in is not available in source builds",
-    freeDesc: "Google sign-in comes pre-configured in the official builds. Building from source? Wire your own Google OAuth client — see the README.",
-    signInGoogle: "Sign in with Google",
-    signedOutTitle: "Sign in with Google",
-    signedOutDesc: "Your account links this install to your supporter license and unlocks app updates.",
     waitingBrowser: "Waiting for browser to complete sign-in…",
     cancel: "Cancel",
     signInFailed: (error: string) => `Sign-in failed: ${error}`,
     retry: "Retry",
-    signOut: "Sign out",
-  },
-
-  githubAccount: {
-    title: "GitHub",
-    freeTitle: "GitHub sign-in is not available in source builds",
-    freeDesc: "The GitHub App comes pre-configured in the official builds. Building from source? Wire your own GitHub App — see the README.",
-    signIn: "Connect GitHub",
-    signedOutTitle: "Connect a GitHub account",
-    signedOutDesc: "Assigned issues on your repositories flow into the inbox and through the orchestrator.",
-    waitingBrowser: "Waiting for browser to complete sign-in…",
-    cancel: "Cancel",
-    signInFailed: (error: string) => `Sign-in failed: ${error}`,
-    retry: "Retry",
-    signOut: "Disconnect",
     chooseRepos: "Choose repositories…",
+    generic: {
+      freeTitle: (name: string) => `${name} sign-in is not available in source builds`,
+      freeDesc: (name: string) => `${name} sign-in comes pre-configured in the official builds. Building from source? See the README.`,
+      signIn: (name: string) => `Connect ${name}`,
+      signedOutTitle: (name: string) => `Connect a ${name} account`,
+      signedOutDesc: (name: string) => `Connect ${name} to use it in Skipper.`,
+      signOut: "Disconnect",
+    },
+    byProvider: {
+      google: {
+        title: "Account",
+        freeTitle: "Sign-in is not available in source builds",
+        freeDesc: "Google sign-in comes pre-configured in the official builds. Building from source? Wire your own Google OAuth client — see the README.",
+        signIn: "Sign in with Google",
+        signedOutTitle: "Sign in with Google",
+        signedOutDesc: "Your account links this install to your supporter license and unlocks app updates.",
+        signOut: "Sign out",
+      },
+      github: {
+        title: "GitHub",
+        freeTitle: "GitHub sign-in is not available in source builds",
+        freeDesc: "The GitHub App comes pre-configured in the official builds. Building from source? Wire your own GitHub App — see the README.",
+        signIn: "Connect GitHub",
+        signedOutTitle: "Connect a GitHub account",
+        signedOutDesc: "Assigned issues on your repositories flow into the inbox and through the orchestrator.",
+        signOut: "Disconnect",
+      },
+    } satisfies Partial<Record<AuthProviderId, ProviderAccountCopy>>,
   },
 
   orchestration: {
@@ -275,32 +296,39 @@ const it: typeof en = {
   },
 
   account: {
-    title: "Account",
-    freeTitle: "L'accesso non è disponibile nelle build da sorgente",
-    freeDesc: "L'accesso Google è preconfigurato nelle build ufficiali. Compili da sorgente? Collega il tuo client Google OAuth — vedi il README.",
-    signInGoogle: "Accedi con Google",
-    signedOutTitle: "Accedi con Google",
-    signedOutDesc: "Il tuo account collega questa installazione alla tua licenza supporter e sblocca gli aggiornamenti dell'app.",
     waitingBrowser: "In attesa che il browser completi l'accesso…",
     cancel: "Annulla",
     signInFailed: (error) => `Accesso non riuscito: ${error}`,
     retry: "Riprova",
-    signOut: "Esci",
-  },
-
-  githubAccount: {
-    title: "GitHub",
-    freeTitle: "L'accesso GitHub non è disponibile nelle build da sorgente",
-    freeDesc: "La GitHub App è preconfigurata nelle build ufficiali. Compili da sorgente? Collega la tua GitHub App — vedi il README.",
-    signIn: "Collega GitHub",
-    signedOutTitle: "Collega un account GitHub",
-    signedOutDesc: "Le issue assegnate sui tuoi repository entrano nell'inbox e nell'orchestratore.",
-    waitingBrowser: "In attesa che il browser completi l'accesso…",
-    cancel: "Annulla",
-    signInFailed: (error) => `Accesso non riuscito: ${error}`,
-    retry: "Riprova",
-    signOut: "Disconnetti",
     chooseRepos: "Scegli repository…",
+    generic: {
+      freeTitle: (name) => `L'accesso ${name} non è disponibile nelle build da sorgente`,
+      freeDesc: (name) => `L'accesso ${name} è preconfigurato nelle build ufficiali. Compili da sorgente? Vedi il README.`,
+      signIn: (name) => `Collega ${name}`,
+      signedOutTitle: (name) => `Collega un account ${name}`,
+      signedOutDesc: (name) => `Collega ${name} per usarlo in Skipper.`,
+      signOut: "Disconnetti",
+    },
+    byProvider: {
+      google: {
+        title: "Account",
+        freeTitle: "L'accesso non è disponibile nelle build da sorgente",
+        freeDesc: "L'accesso Google è preconfigurato nelle build ufficiali. Compili da sorgente? Collega il tuo client Google OAuth — vedi il README.",
+        signIn: "Accedi con Google",
+        signedOutTitle: "Accedi con Google",
+        signedOutDesc: "Il tuo account collega questa installazione alla tua licenza supporter e sblocca gli aggiornamenti dell'app.",
+        signOut: "Esci",
+      },
+      github: {
+        title: "GitHub",
+        freeTitle: "L'accesso GitHub non è disponibile nelle build da sorgente",
+        freeDesc: "La GitHub App è preconfigurata nelle build ufficiali. Compili da sorgente? Collega la tua GitHub App — vedi il README.",
+        signIn: "Collega GitHub",
+        signedOutTitle: "Collega un account GitHub",
+        signedOutDesc: "Le issue assegnate sui tuoi repository entrano nell'inbox e nell'orchestratore.",
+        signOut: "Disconnetti",
+      },
+    },
   },
 
   orchestration: {
@@ -462,32 +490,39 @@ const fr: typeof en = {
   },
 
   account: {
-    title: "Compte",
-    freeTitle: "La connexion n'est pas disponible dans les builds depuis les sources",
-    freeDesc: "La connexion Google est préconfigurée dans les builds officiels. Vous compilez depuis les sources ? Branchez votre propre client Google OAuth — voir le README.",
-    signInGoogle: "Se connecter avec Google",
-    signedOutTitle: "Se connecter avec Google",
-    signedOutDesc: "Votre compte relie cette installation à votre licence supporter et débloque les mises à jour de l'application.",
     waitingBrowser: "En attente de la fin de la connexion dans le navigateur…",
     cancel: "Annuler",
     signInFailed: (error) => `Échec de la connexion : ${error}`,
     retry: "Réessayer",
-    signOut: "Se déconnecter",
-  },
-
-  githubAccount: {
-    title: "GitHub",
-    freeTitle: "La connexion GitHub n'est pas disponible dans les builds depuis les sources",
-    freeDesc: "La GitHub App est préconfigurée dans les builds officiels. Vous compilez depuis les sources ? Branchez votre propre GitHub App — voir le README.",
-    signIn: "Connecter GitHub",
-    signedOutTitle: "Connecter un compte GitHub",
-    signedOutDesc: "Les issues assignées sur vos dépôts arrivent dans l'inbox et dans l'orchestrateur.",
-    waitingBrowser: "En attente de la fin de la connexion dans le navigateur…",
-    cancel: "Annuler",
-    signInFailed: (error) => `Échec de la connexion : ${error}`,
-    retry: "Réessayer",
-    signOut: "Déconnecter",
     chooseRepos: "Choisir les dépôts…",
+    generic: {
+      freeTitle: (name) => `La connexion ${name} n'est pas disponible dans les builds depuis les sources`,
+      freeDesc: (name) => `La connexion ${name} est préconfigurée dans les builds officiels. Vous compilez depuis les sources ? Voir le README.`,
+      signIn: (name) => `Connecter ${name}`,
+      signedOutTitle: (name) => `Connecter un compte ${name}`,
+      signedOutDesc: (name) => `Connectez ${name} pour l'utiliser dans Skipper.`,
+      signOut: "Déconnecter",
+    },
+    byProvider: {
+      google: {
+        title: "Compte",
+        freeTitle: "La connexion n'est pas disponible dans les builds depuis les sources",
+        freeDesc: "La connexion Google est préconfigurée dans les builds officiels. Vous compilez depuis les sources ? Branchez votre propre client Google OAuth — voir le README.",
+        signIn: "Se connecter avec Google",
+        signedOutTitle: "Se connecter avec Google",
+        signedOutDesc: "Votre compte relie cette installation à votre licence supporter et débloque les mises à jour de l'application.",
+        signOut: "Se déconnecter",
+      },
+      github: {
+        title: "GitHub",
+        freeTitle: "La connexion GitHub n'est pas disponible dans les builds depuis les sources",
+        freeDesc: "La GitHub App est préconfigurée dans les builds officiels. Vous compilez depuis les sources ? Branchez votre propre GitHub App — voir le README.",
+        signIn: "Connecter GitHub",
+        signedOutTitle: "Connecter un compte GitHub",
+        signedOutDesc: "Les issues assignées sur vos dépôts arrivent dans l'inbox et dans l'orchestrateur.",
+        signOut: "Déconnecter",
+      },
+    },
   },
 
   orchestration: {
@@ -649,32 +684,39 @@ const es: typeof en = {
   },
 
   account: {
-    title: "Cuenta",
-    freeTitle: "El inicio de sesión no está disponible en las builds desde el código fuente",
-    freeDesc: "El inicio de sesión con Google viene preconfigurado en las builds oficiales. ¿Compilas desde el código fuente? Conecta tu propio cliente de Google OAuth — consulta el README.",
-    signInGoogle: "Iniciar sesión con Google",
-    signedOutTitle: "Iniciar sesión con Google",
-    signedOutDesc: "Tu cuenta vincula esta instalación con tu licencia de supporter y desbloquea las actualizaciones de la app.",
     waitingBrowser: "Esperando a que el navegador complete el inicio de sesión…",
     cancel: "Cancelar",
     signInFailed: (error) => `Error al iniciar sesión: ${error}`,
     retry: "Reintentar",
-    signOut: "Cerrar sesión",
-  },
-
-  githubAccount: {
-    title: "GitHub",
-    freeTitle: "El inicio de sesión con GitHub no está disponible en las builds desde el código fuente",
-    freeDesc: "La GitHub App viene preconfigurada en las builds oficiales. ¿Compilas desde el código fuente? Conecta tu propia GitHub App — consulta el README.",
-    signIn: "Conectar GitHub",
-    signedOutTitle: "Conecta una cuenta de GitHub",
-    signedOutDesc: "Las issues asignadas en tus repositorios entran en el inbox y en el orquestador.",
-    waitingBrowser: "Esperando a que el navegador complete el inicio de sesión…",
-    cancel: "Cancelar",
-    signInFailed: (error) => `Error al iniciar sesión: ${error}`,
-    retry: "Reintentar",
-    signOut: "Desconectar",
     chooseRepos: "Elegir repositorios…",
+    generic: {
+      freeTitle: (name) => `El inicio de sesión con ${name} no está disponible en las builds desde el código fuente`,
+      freeDesc: (name) => `El inicio de sesión con ${name} viene preconfigurado en las builds oficiales. ¿Compilas desde el código fuente? Consulta el README.`,
+      signIn: (name) => `Conectar ${name}`,
+      signedOutTitle: (name) => `Conecta una cuenta de ${name}`,
+      signedOutDesc: (name) => `Conecta ${name} para usarlo en Skipper.`,
+      signOut: "Desconectar",
+    },
+    byProvider: {
+      google: {
+        title: "Cuenta",
+        freeTitle: "El inicio de sesión no está disponible en las builds desde el código fuente",
+        freeDesc: "El inicio de sesión con Google viene preconfigurado en las builds oficiales. ¿Compilas desde el código fuente? Conecta tu propio cliente de Google OAuth — consulta el README.",
+        signIn: "Iniciar sesión con Google",
+        signedOutTitle: "Iniciar sesión con Google",
+        signedOutDesc: "Tu cuenta vincula esta instalación con tu licencia de supporter y desbloquea las actualizaciones de la app.",
+        signOut: "Cerrar sesión",
+      },
+      github: {
+        title: "GitHub",
+        freeTitle: "El inicio de sesión con GitHub no está disponible en las builds desde el código fuente",
+        freeDesc: "La GitHub App viene preconfigurada en las builds oficiales. ¿Compilas desde el código fuente? Conecta tu propia GitHub App — consulta el README.",
+        signIn: "Conectar GitHub",
+        signedOutTitle: "Conecta una cuenta de GitHub",
+        signedOutDesc: "Las issues asignadas en tus repositorios entran en el inbox y en el orquestador.",
+        signOut: "Desconectar",
+      },
+    },
   },
 
   orchestration: {

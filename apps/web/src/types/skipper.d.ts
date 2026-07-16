@@ -2,6 +2,7 @@ export {};
 
 import type {
   AuthProviderId,
+  AuthProviderMeta,
   AuthState,
   CodingEventEnvelope,
   IssuePlan,
@@ -93,6 +94,7 @@ declare global {
       };
       auth: {
         getState: () => Promise<AuthState>;
+        getProviders: () => Promise<AuthProviderMeta[]>;
         signIn: (provider: AuthProviderId) => Promise<void>;
         signOut: (provider: AuthProviderId, accountId?: string) => Promise<void>;
         cancelSignIn: (provider: AuthProviderId) => Promise<void>;

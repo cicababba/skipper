@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   AuthProviderId,
+  AuthProviderMeta,
   AuthState,
   IssuePlan,
   LifecycleState,
@@ -97,6 +98,8 @@ contextBridge.exposeInMainWorld("skipper", {
   auth: {
     getState: (): Promise<AuthState> =>
       ipcRenderer.invoke("skipper:auth:getState"),
+    getProviders: (): Promise<AuthProviderMeta[]> =>
+      ipcRenderer.invoke("skipper:auth:getProviders"),
     signIn: (provider: AuthProviderId): Promise<void> =>
       ipcRenderer.invoke(`skipper:auth:${provider}:signIn`),
     signOut: (provider: AuthProviderId, accountId?: string): Promise<void> =>
