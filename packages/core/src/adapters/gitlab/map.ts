@@ -36,7 +36,7 @@ export interface GitLabApprovalsPayload {
   approvals_left?: number;
 }
 
-function repoRefFromPath(path: string): RepoRef {
+export function repoRefFromPath(path: string): RepoRef {
   const segments = path.split("/").filter(Boolean);
   const name = segments.pop() ?? "";
   return { owner: segments.join("/"), name };

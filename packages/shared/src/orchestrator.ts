@@ -421,8 +421,9 @@ export interface RepoSettingsRow {
 export interface FollowCandidate {
   repo: RepoRef;
   private?: boolean;
-  /** installation = visible via the GitHub App; polled = seen in the assigned-issues poll. */
-  source: "installation" | "polled";
+  /** installation = visible via the GitHub App; membership = a GitLab membership
+   *  project; polled = seen in the assigned-issues poll. */
+  source: "installation" | "membership" | "polled";
   followed: boolean;
   linked: boolean;
 }
@@ -430,9 +431,10 @@ export interface FollowCandidate {
 export type FollowCandidatesResult =
   | {
       ok: true;
-      installationCount: number;
-      /** GitHub App installation page (fallback: user installations settings). */
-      installUrl: string;
+      /** GitHub only: number of GitHub App installations for the account. */
+      installationCount?: number;
+      /** GitHub only: App installation page (fallback: user installations settings). */
+      installUrl?: string;
       repos: FollowCandidate[];
     }
   | { ok: false; error: string };

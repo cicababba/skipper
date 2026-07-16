@@ -8,6 +8,7 @@ import {
   ApiError,
   AuthError,
   listUserInstallationRepos,
+  listMembershipProjects,
   codeHostFor,
   resolveGate,
   DEFAULT_ORCHESTRATOR_SETTINGS,
@@ -924,48 +925,70 @@ export function initOrchestrator(
         const account = accountId
           ? issueAccounts().find((a) => a.id === accountId)
           : issueAccounts()[0];
-        if (!account) return { ok: false, error: "no GitHub account connected" };
+        if (!account) return { ok: false, error: "no issue-source account connected" };
         const m = await ensureManifest();
         const links = await ensureRepoLinks();
-        const result = await listUserInstallationRepos((force) =>
-          deps!.getToken(account.id, force),
-        );
 
         const candidates = new Map<string, FollowCandidate>();
-        const describe = (repo: RepoRef, key: string): Omit<FollowCandidate, "repo" | "source"> => ({
+        const describe = (key: string): Omit<FollowCandidate, "repo" | "source"> => ({
           followed: resolveRepoIntakeSettings(m.repoSettings[key]).followed,
           linked: Boolean(links.repos[key]),
         });
-        for (const repo of result.repos) {
-          const key = repoKey(repo);
-          const ref = { owner: repo.owner, name: repo.name };
-          candidates.set(key, {
-            repo: ref,
-            private: repo.private,
-            source: "installation",
-            ...describe(ref, key),
-          });
+
+        let installationCount: number | undefined;
+        let installUrl: string | undefined;
+
+        if (account.provider === "github") {
+          const result = await listUserInstallationRepos((force) =>
+            deps!.getToken(account.id, force),
+          );
+          for (const repo of result.repos) {
+            const key = repoKey(repo);
+            candidates.set(key, {
+              repo: { owner: repo.owner, name: repo.name },
+              private: repo.private,
+              source: "installation",
+              ...describe(key),
+            });
+          }
+          installationCount = result.installationCount;
+          installUrl = result.appSlug
+            ? `https://github.com/apps/${result.appSlug}/installations/new`
+            : "https://github.com/settings/installations";
+        } else if (account.provider === "gitlab") {
+          const projects = await listMembershipProjects(
+            (force) => deps!.getToken(account.id, force),
+            account.baseUrl,
+          );
+          for (const project of projects) {
+            const key = repoKey(project.repo);
+            candidates.set(key, {
+              repo: project.repo,
+              private: project.private,
+              source: "membership",
+              ...describe(key),
+            });
+          }
         }
-        // Public repos assigned via general visibility never show in
-        // installations — merge everything the poller has already seen.
-        for (const map of items.values()) {
-          for (const item of map.values()) {
+
+        // Public repos assigned via general visibility never show in the
+        // installation/membership lists — merge what this account's poller saw.
+        const polled = items.get(account.id);
+        if (polled) {
+          for (const item of polled.values()) {
             const key = repoKey(item.repo);
             if (candidates.has(key)) continue;
             candidates.set(key, {
               repo: item.repo,
               source: "polled",
-              ...describe(item.repo, key),
+              ...describe(key),
             });
           }
         }
 
-        const installUrl = result.appSlug
-          ? `https://github.com/apps/${result.appSlug}/installations/new`
-          : "https://github.com/settings/installations";
         return {
           ok: true,
-          installationCount: result.installationCount,
+          installationCount,
           installUrl,
           repos: [...candidates.values()].sort((a, b) =>
             `${a.repo.owner}/${a.repo.name}`.localeCompare(`${b.repo.owner}/${b.repo.name}`),
