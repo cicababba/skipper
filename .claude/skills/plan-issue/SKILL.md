@@ -100,22 +100,71 @@ Once you have enough information, present a clear plan:
 ### 7. Wait for user confirmation
 
 Ask:
-> Does this plan look good? Let me know if you want to adjust anything, otherwise I'll start implementing.
+> Does this plan look good? Let me know if you want to adjust anything, otherwise I'll hand it to the implementer.
 
 **Do NOT start coding until the user confirms.**
 
-### 8. After confirmation: Implement
+### 8. After confirmation: Write the plan document
 
-Once confirmed:
 1. Exit plan mode
-2. Implement according to the plan
-3. When done, show manual testing checklist
+2. Write the plan to `.claude/plans/issue-<N>.md` (create the directory if missing; gitignored)
 
-### 9. After manual testing confirmation: Write tests
+The document is the **only context** the implementer receives — it must be
+self-contained. Include everything learned during exploration, not just the
+plan summary shown to the user:
 
-Only after user confirms manual testing passed:
-1. Write automated tests for the new functionality
-2. Update existing tests if behavior changed
+```markdown
+# Plan: #<number> <issue title>
+
+## Goal
+<what and why, 2-3 sentences>
+
+## Context
+<key facts from codebase exploration the implementer must know:
+current behavior, relevant types/functions with file:line, gotchas,
+patterns to follow, things that look related but must NOT be touched>
+
+## Decisions
+<clarifications resolved with the user, with the reasoning>
+
+## Files to modify
+- `path/to/file1.ts` — <what changes>
+
+## New files
+- `path/to/new-file.ts` — <purpose>
+
+## Steps
+1. <ordered, concrete steps>
+
+## Verification
+<which lint/test/build commands must pass; what to check manually>
+
+## Out of scope
+<explicitly excluded work, so the implementer doesn't drift>
+```
+
+### 9. Delegate implementation
+
+Spawn the `implementer` subagent (it runs on Opus) via the Agent tool
+(`subagent_type: "implementer"`), passing the plan file path and issue number
+in the prompt. Wait for its report.
+
+### 10. Review the result
+
+You (the planning model) review the implementer's work:
+
+1. Read its report — surface deviations and conflicts to the user verbatim
+2. Review `git diff` against the plan: correctness, scope drift, convention violations
+3. If something is wrong, send the implementer a follow-up (SendMessage) with
+   the specific fix — don't fix it inline yourself unless it's trivial
+4. When the diff is sound, show the user the manual testing checklist from
+   the plan's Verification section
+
+### 11. After manual testing confirmation: Write tests
+
+Only after user confirms manual testing passed: delegate test-writing to the
+same implementer agent (SendMessage follow-up), then review the tests as in
+step 10.
 
 ## Notes
 
@@ -123,3 +172,7 @@ Only after user confirms manual testing passed:
 - The goal is zero surprises: user knows exactly what will happen
 - Better to ask one extra question than to redo work
 - Keep the plan concise but complete
+- **Model split**: planning and review run on the main session's model;
+  coding runs on the `implementer` subagent (Opus). The plan document is the
+  handoff artifact — if a plan exists but the session was lost, use
+  `/implement-plan` to resume from the document.
