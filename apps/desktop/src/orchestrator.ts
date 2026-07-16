@@ -1,13 +1,12 @@
 import { ipcMain, type BrowserWindow } from "electron";
 import {
-  pollGitHubAccount,
-  emptyGitHubCursor,
+  issueSourceForAuthProvider,
   reconcile,
   applyTransition,
   loadOrCreateOrchestratorManifest,
   saveOrchestratorManifest,
-  GitHubApiError,
-  GitHubAuthError,
+  ApiError,
+  AuthError,
   listUserInstallationRepos,
   resolveGate,
   DEFAULT_ORCHESTRATOR_SETTINGS,
@@ -327,6 +326,11 @@ function repoOrch(repo: RepoRef): ResolvedRepoOrchestratorSettings {
   );
 }
 
+/** Accounts whose auth provider backs an issue source (identity-only providers filtered out). */
+function issueAccounts(): Account[] {
+  return (deps?.getAccounts() ?? []).filter((a) => issueSourceForAuthProvider(a.provider));
+}
+
 /** Token for cloning: explicit account, else the account that sees the repo, else the first one. */
 async function tokenForRepo(
   owner: string,
@@ -341,7 +345,7 @@ async function tokenForRepo(
       if (repoKey(item.repo.owner, item.repo.name) === key) return deps.getToken(acctId);
     }
   }
-  const first = deps.getAccounts()[0];
+  const first = issueAccounts()[0];
   return first ? deps.getToken(first.id) : null;
 }
 
@@ -376,12 +380,14 @@ function deriveArrays(accountId: string): { issues: Issue[]; pullRequests: PullR
 
 async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<void> {
   if (!deps || !cursors) return;
+  const source = issueSourceForAuthProvider(account.provider);
+  if (!source) return;
   const accountId = account.id;
   const existing = accountsState[accountId];
   if (!ignoreBackoff && existing?.nextPollAt && Date.now() < existing.nextPollAt) return;
 
   const forceFull = Date.now() - (lastFullWalkAt.get(accountId) ?? 0) > FULL_WALK_EVERY_MS;
-  const cursor = forceFull ? undefined : cursors.github[accountId];
+  const cursor = forceFull ? undefined : cursors.platforms[source.platform]?.[accountId];
 
   patchAccount(accountId, { status: "polling" });
   try {
@@ -397,7 +403,7 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
       )
       .map((i) => ({ owner: i.repo.owner, name: i.repo.name, number: i.pr!.number }));
 
-    const result = await pollGitHubAccount({
+    const result = await source.poll({
       accountId,
       getToken: (force) => deps!.getToken(accountId, force),
       cursor,
@@ -446,7 +452,7 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
     }
     await saveOrchestratorManifest(deps.manifestFilePath, m);
 
-    cursors.github[accountId] = result.cursor ?? emptyGitHubCursor();
+    (cursors.platforms[source.platform] ??= {})[accountId] = result.cursor;
     await saveCursors(deps.cursorFilePath, cursors);
 
     patchAccount(accountId, {
@@ -457,11 +463,11 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
       ...deriveArrays(accountId),
     });
   } catch (err) {
-    if (err instanceof GitHubAuthError) {
+    if (err instanceof AuthError) {
       patchAccount(accountId, { status: "auth-error", error: err.message });
       return;
     }
-    if (err instanceof GitHubApiError && err.retryAfterSeconds) {
+    if (err instanceof ApiError && err.retryAfterSeconds) {
       patchAccount(accountId, {
         status: "error",
         error: err.message,
@@ -482,7 +488,7 @@ async function pollNow(ignoreBackoff = false): Promise<void> {
     if (!cursors) cursors = await loadCursors(deps.cursorFilePath);
     await ensureManifest();
 
-    const accounts = deps.getAccounts();
+    const accounts = issueAccounts();
     const known = new Set(accounts.map((a) => a.id));
 
     // Accounts signed out since the last tick: prune poll state + cursors.
@@ -493,7 +499,9 @@ async function pollNow(ignoreBackoff = false): Promise<void> {
         const { [accountId]: _gone, ...rest } = accountsState;
         accountsState = rest;
         items.delete(accountId);
-        delete cursors.github[accountId];
+        for (const perPlatform of Object.values(cursors.platforms)) {
+          delete perPlatform?.[accountId];
+        }
         pruned = true;
       }
     }
@@ -903,8 +911,8 @@ export function initOrchestrator(
     async (_e, accountId?: string): Promise<FollowCandidatesResult> => {
       try {
         const account = accountId
-          ? deps!.getAccounts().find((a) => a.id === accountId)
-          : deps!.getAccounts()[0];
+          ? issueAccounts().find((a) => a.id === accountId)
+          : issueAccounts()[0];
         if (!account) return { ok: false, error: "no GitHub account connected" };
         const m = await ensureManifest();
         const links = await ensureRepoLinks();

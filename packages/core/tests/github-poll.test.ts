@@ -203,6 +203,22 @@ describe("pollGitHubAccount", () => {
     expect(result.mode).toBe("full");
   });
 
+  it("treats an opaque garbage cursor as a full walk", async () => {
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      expect(String(url)).not.toContain("since=");
+      return jsonResponse(200, []);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    for (const garbage of ["junk", 42, null, { version: 1 }, { version: 1, assigned: "x", created: {} }]) {
+      const result = await pollGitHubAccount({
+        accountId: ACCOUNT,
+        getToken: token,
+        cursor: garbage as unknown as GitHubAccountCursor,
+      });
+      expect(result.mode).toBe("full");
+    }
+  });
+
   it("recovers from a 422 on delta with a full walk", async () => {
     const cursor: GitHubAccountCursor = {
       ...emptyGitHubCursor(),

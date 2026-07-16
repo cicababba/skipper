@@ -36,14 +36,19 @@ export {
   getHookStatus,
 } from "./knowledge";
 
-// GitHub adapter
+// Issue-source adapters (epic #68) — port + registry, GitHub adapter included
 export {
+  ApiError,
+  AuthError,
+  issueSources,
+  issueSourceFor,
+  issueSourceForAuthProvider,
+  githubIssueSource,
   pollGitHubAccount,
-  GitHubApiError,
-  GitHubAuthError,
   emptyGitHubCursor,
   listUserInstallationRepos,
-} from "./adapters/github";
+} from "./adapters";
+export type { IssueSource, PollOptions, PollResult, RateLimit, TokenProvider } from "./adapters";
 export {
   createPullRequest,
   findOpenPullByHead,
@@ -53,7 +58,7 @@ export {
   mapReviewFeedback,
   fetchCiStatus,
   fetchFailingChecks,
-} from "./adapters/github";
+} from "./adapters";
 export type {
   CreatedPull,
   PullReviewPayload,
@@ -61,7 +66,7 @@ export type {
   FailingCheck,
   InstallationRepo,
   InstallationsResult,
-} from "./adapters/github";
+} from "./adapters";
 export type {
   GitHubTokenProvider,
   GitHubEndpointCursor,
@@ -69,7 +74,7 @@ export type {
   GitHubRateLimit,
   GitHubPollOptions,
   GitHubPollResult,
-} from "./adapters/github";
+} from "./adapters";
 
 // Planner (issue #7)
 export { generatePlan, PlanGenerationError, IssuePlanSchema, planJsonSchema } from "./planner";

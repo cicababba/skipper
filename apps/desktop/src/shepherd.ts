@@ -4,7 +4,7 @@
 // manifest state via pokeShepherd(), the coder.ts loop pattern.
 
 import {
-  GitHubApiError,
+  ApiError,
   buildCommitMessage,
   buildPrBody,
   buildPrTitle,
@@ -146,7 +146,7 @@ export async function openOrPushPr(
           pr = await createPullRequest(item.repo, params, getToken);
         } catch (err) {
           // 422 = a PR for this head already exists — adopt it.
-          if (err instanceof GitHubApiError && err.status === 422) {
+          if (err instanceof ApiError && err.status === 422) {
             pr = (await findOpenPullByHead(item.repo, item.worktree.branch, getToken)) ?? undefined;
           }
           if (!pr) throw err;

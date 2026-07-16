@@ -1,8 +1,7 @@
-import type { Issue, PullRequest } from "@skipper/shared";
+import type { PollOptions, PollResult, RateLimit, TokenProvider } from "../types";
 
-/** Returns a valid access token, or null when no account is available.
- *  `forceRefresh` bypasses the cached token — used after a 401. */
-export type GitHubTokenProvider = (forceRefresh?: boolean) => Promise<string | null>;
+export type GitHubTokenProvider = TokenProvider;
+export type GitHubRateLimit = RateLimit;
 
 export interface GitHubEndpointCursor {
   /** ISO timestamp for the next `since=` param (max updated_at seen − 60s overlap). */
@@ -18,51 +17,18 @@ export interface GitHubAccountCursor {
   lastPolledAt?: string;
 }
 
-export interface GitHubRateLimit {
-  remaining: number;
-  resetAt: string; // ISO
-}
+export type GitHubPollOptions = PollOptions<GitHubAccountCursor>;
+export type GitHubPollResult = PollResult<GitHubAccountCursor>;
 
-export interface GitHubPollOptions {
-  accountId: string;
-  getToken: GitHubTokenProvider;
-  /** undefined (or version mismatch) → full walk of the current open set. */
-  cursor?: GitHubAccountCursor;
-  /** Tracked PRs to hydrate unconditionally each poll (#11) — reviews and CI
-   *  don't bump the PR's updated_at, so deltas alone would never surface them. */
-  deepHydrate?: Array<{ owner: string; name: string; number: number }>;
-  onProgress?: (message: string) => void;
-}
-
-export interface GitHubPollResult {
-  /** "full" → replace the account snapshot; "delta" → upsert by id
-   *  (closed issues / merged PRs arrive as delta items with their new state). */
-  mode: "full" | "delta";
-  issues: Issue[];
-  pullRequests: PullRequest[];
-  cursor: GitHubAccountCursor;
-  rateLimit?: GitHubRateLimit;
-}
-
-export class GitHubApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly rateLimit?: GitHubRateLimit,
-    /** Seconds to wait before retrying (from Retry-After / X-RateLimit-Reset). */
-    readonly retryAfterSeconds?: number,
-  ) {
-    super(message);
-    this.name = "GitHubApiError";
-  }
-}
-
-/** 401 that survived one force-refresh retry, or no token available — re-auth needed. */
-export class GitHubAuthError extends GitHubApiError {
-  constructor(message: string) {
-    super(message, 401);
-    this.name = "GitHubAuthError";
-  }
+/** The cursor arrives opaque (unknown) through the port — accept only the exact
+ *  v1 shape; anything else means full walk. */
+export function asGitHubCursor(cursor: unknown): GitHubAccountCursor | undefined {
+  if (typeof cursor !== "object" || cursor === null) return undefined;
+  const c = cursor as Partial<GitHubAccountCursor>;
+  if (c.version !== 1) return undefined;
+  if (typeof c.assigned !== "object" || c.assigned === null) return undefined;
+  if (typeof c.created !== "object" || c.created === null) return undefined;
+  return c as GitHubAccountCursor;
 }
 
 export function emptyGitHubCursor(): GitHubAccountCursor {

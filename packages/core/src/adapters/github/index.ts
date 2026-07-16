@@ -1,4 +1,5 @@
 export { pollGitHubAccount } from "./poll";
+export { githubIssueSource } from "./source";
 export { githubGet, githubPost, parseLinkNext } from "./client";
 export type { GitHubResponse } from "./client";
 export {
@@ -14,7 +15,7 @@ export {
 export type { CreatedPull, PullReviewPayload, PullReviewCommentPayload, FailingCheck } from "./pulls";
 export { listUserInstallationRepos } from "./installations";
 export type { InstallationRepo, InstallationsResult } from "./installations";
-export { GitHubApiError, GitHubAuthError, emptyGitHubCursor } from "./types";
+export { asGitHubCursor, emptyGitHubCursor } from "./types";
 export type {
   GitHubTokenProvider,
   GitHubEndpointCursor,

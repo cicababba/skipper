@@ -1,32 +1,56 @@
-// Per-account GitHub poll cursors, persisted as plain JSON in userData.
+// Per-account issue-source poll cursors, persisted as plain JSON in userData.
+// Cursor payloads are opaque adapter state — persisted verbatim, never inspected.
 // Pure Node module (no electron import) so it stays unit-testable; the
 // poller injects the file path.
 
 import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { GitHubAccountCursor } from "@skipper/core";
+import type { PlatformId } from "@skipper/shared";
 
 export interface InboxCursorFile {
-  version: 1;
-  /** accountId → cursor */
-  github: Record<string, GitHubAccountCursor>;
+  version: 2;
+  /** platform → accountId → opaque adapter cursor */
+  platforms: Partial<Record<PlatformId, Record<string, unknown>>>;
 }
 
 function freshCursorFile(): InboxCursorFile {
-  return { version: 1, github: {} };
+  return { version: 2, platforms: {} };
+}
+
+/** Pure parse + v1→v2 migration. Null = unrecognized shape (caller starts fresh). */
+export function parseCursorFile(json: string): { file: InboxCursorFile; migrated: boolean } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const obj = parsed as Record<string, unknown>;
+  if (obj.version === 2 && typeof obj.platforms === "object" && obj.platforms !== null) {
+    return { file: parsed as InboxCursorFile, migrated: false };
+  }
+  // Legacy v1 was GitHub-only: { version: 1, github: Record<accountId, cursor> }.
+  if (obj.version === 1 && typeof obj.github === "object" && obj.github !== null) {
+    return {
+      file: { version: 2, platforms: { github: obj.github as Record<string, unknown> } },
+      migrated: true,
+    };
+  }
+  return null;
 }
 
 export async function loadCursors(filePath: string): Promise<InboxCursorFile> {
+  let raw: string;
   try {
-    const raw = await readFile(filePath, "utf-8");
-    const parsed = JSON.parse(raw) as InboxCursorFile;
-    if (parsed.version === 1 && typeof parsed.github === "object" && parsed.github !== null) {
-      return parsed;
-    }
-    return freshCursorFile();
+    raw = await readFile(filePath, "utf-8");
   } catch {
     return freshCursorFile();
   }
+  const parsed = parseCursorFile(raw);
+  if (!parsed) return freshCursorFile();
+  if (parsed.migrated) await saveCursors(filePath, parsed.file);
+  return parsed.file;
 }
 
 // Serialized saves so concurrent poll ticks never race the write+rename.
