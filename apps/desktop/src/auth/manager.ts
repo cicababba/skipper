@@ -2,7 +2,7 @@
 // process. Owns the OAuth flows, the persisted multi-account store, in-memory
 // state, and broadcasts state changes to subscribers (typically the renderer).
 
-import type { AuthProviderId, AuthState } from "@skipper/shared";
+import { AUTH_PROVIDER_IDS, type AuthProviderId, type AuthState } from "@skipper/shared";
 import { OAuthError, applyRefreshedTokens, type ProviderConfig } from "./provider";
 import { runOAuthFlow, refreshTokens } from "./oauth-flow";
 import { PROVIDERS } from "./providers";
@@ -19,8 +19,6 @@ function isConfigured(config: ProviderConfig): boolean {
 // Refresh the access token this many ms before it actually expires.
 const REFRESH_LEAD_MS = 5 * 60 * 1000; // 5 minutes
 
-const PROVIDER_IDS = Object.keys(PROVIDERS) as AuthProviderId[];
-
 type Listener = (state: AuthState) => void;
 
 export class AuthManager {
@@ -30,7 +28,7 @@ export class AuthManager {
   private signInAborts = new Map<AuthProviderId, AbortController>();
 
   constructor() {
-    for (const id of PROVIDER_IDS) {
+    for (const id of AUTH_PROVIDER_IDS) {
       if (!isConfigured(PROVIDERS[id])) {
         this.flows[id] = { status: "unconfigured" };
       }
@@ -39,7 +37,7 @@ export class AuthManager {
 
   /** Load any previously persisted accounts. Call once on app startup. */
   async init(): Promise<void> {
-    if (PROVIDER_IDS.every((id) => this.flows[id]?.status === "unconfigured")) return;
+    if (AUTH_PROVIDER_IDS.every((id) => this.flows[id]?.status === "unconfigured")) return;
     if (!isEncryptionAvailable()) {
       console.warn("[auth] safeStorage unavailable on this platform");
     }
@@ -163,10 +161,12 @@ export class AuthManager {
 
   /**
    * Fresh Google id_token (proof of the signed-in email) for the update
-   * entitlement exchange. id_tokens share the access token's ~1h lifetime, so
-   * reuse the refresh path to get a current one.
+   * entitlement exchange. Intentionally Google-pinned: the licensing service
+   * only exposes the Google-specific /entitlement/google endpoint. id_tokens
+   * share the access token's ~1h lifetime, so reuse the refresh path to get a
+   * current one.
    */
-  async getIdToken(): Promise<string | null> {
+  async getGoogleIdToken(): Promise<string | null> {
     const id = this.store.active.google;
     if (!id) return null;
     const stored = this.store.accounts[accountKey("google", id)];

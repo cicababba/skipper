@@ -2,17 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { Settings as SettingsIcon, Check, Loader2 } from "lucide-react";
-import { AccountSection } from "@/components/account-section";
-import { GithubAccountSection } from "@/components/github-account-section";
+import { ProviderAccountSection } from "@/components/provider-account-section";
 import { RepositoriesSection } from "@/components/repositories-section";
 import { OrchestrationSection } from "@/components/orchestration-section";
 import { CliInstallSection } from "@/components/cli-install-section";
 import { UpdatesSection } from "@/components/updates-section";
 import { LanguageSection } from "@/components/language-section";
 import { useT } from "@/lib/app-i18n";
+import { useAuth } from "@/lib/auth-context";
 
 export default function SettingsPage() {
   const { t } = useT();
+  const { providers } = useAuth();
   const [claudeModel, setClaudeModel] = useState("sonnet");
   const [autoExtractAtoms, setAutoExtractAtoms] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -71,9 +72,9 @@ export default function SettingsPage() {
 
         <LanguageSection />
 
-        <AccountSection />
-
-        <GithubAccountSection />
+        {providers.map((p) => (
+          <ProviderAccountSection key={p.id} provider={p} />
+        ))}
 
         <RepositoriesSection />
         <OrchestrationSection />

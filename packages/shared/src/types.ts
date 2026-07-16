@@ -26,7 +26,17 @@ export const DEFAULT_LLM_SETTINGS: LlmSettings = {
 // Auth
 // ============================================================
 
-export type AuthProviderId = "google" | "github";
+export const AUTH_PROVIDER_IDS = ["google", "github"] as const;
+export type AuthProviderId = (typeof AUTH_PROVIDER_IDS)[number];
+
+/** Renderer-facing provider row (skipper:auth:getProviders), derived in main
+ *  from the provider registry + the core issue-source registry. */
+export interface AuthProviderMeta {
+  id: AuthProviderId;
+  displayName: string;
+  /** An issue source polls this provider's accounts → Settings shows repo-picker affordances. */
+  isIssueSource: boolean;
+}
 
 /** Provider-neutral identity for a connected account. */
 export interface Account {

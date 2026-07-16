@@ -25,7 +25,8 @@ import {
 } from "node:fs";
 import { execSync, spawn } from "node:child_process";
 import { AuthManager } from "./auth";
-import type { AuthState } from "@skipper/shared";
+import { providerMetadata } from "./auth/providers";
+import { AUTH_PROVIDER_IDS, type AuthProviderId, type AuthProviderMeta, type AuthState } from "@skipper/shared";
 import { registerGitHandlers } from "./git";
 import { registerTerminalHandlers, type TerminalApi } from "./terminal";
 
@@ -711,7 +712,22 @@ ipcMain.handle("skipper:auth:getState", (): AuthState => {
   return authManager?.getState() ?? { accounts: [], active: {}, flows: {} };
 });
 
-for (const provider of ["google", "github"] as const) {
+ipcMain.handle("skipper:auth:getProviders", (): AuthProviderMeta[] => {
+  // The issue-source registry lives in the ESM @skipper/core — reach it via
+  // the orchestrator bundle; a broken bundle must never block auth, so
+  // degrade to identity-only (repo-picker affordances hide).
+  let isIssueSource = (_: AuthProviderId) => false;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    isIssueSource = (require("./orchestrator.cjs") as typeof import("./orchestrator"))
+      .isIssueSourceProvider;
+  } catch {
+    /* fall back to identity-only */
+  }
+  return providerMetadata(isIssueSource);
+});
+
+for (const provider of AUTH_PROVIDER_IDS) {
   ipcMain.handle(`skipper:auth:${provider}:signIn`, async () => {
     if (!authManager) throw new Error("Auth not initialized");
     await authManager.signIn(provider);
@@ -942,7 +958,7 @@ async function getSupporterEntitlement(): Promise<string | null> {
     }
   } catch { /* no cache yet */ }
 
-  const idToken = await authManager?.getIdToken();
+  const idToken = await authManager?.getGoogleIdToken();
   if (!idToken) return null;
   try {
     const res = await fetch(`${LICENSING_BASE}/entitlement/google`, {
