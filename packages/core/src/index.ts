@@ -43,27 +43,22 @@ export {
   issueSources,
   issueSourceFor,
   issueSourceForAuthProvider,
+  codeHosts,
+  codeHostFor,
   githubIssueSource,
+  githubCodeHost,
   pollGitHubAccount,
   emptyGitHubCursor,
   listUserInstallationRepos,
 } from "./adapters";
 export type { IssueSource, PollOptions, PollResult, RateLimit, TokenProvider } from "./adapters";
-export {
-  createPullRequest,
-  findOpenPullByHead,
-  fetchPullReviews,
-  fetchPullReviewComments,
-  deriveReviewDecision,
-  mapReviewFeedback,
-  fetchCiStatus,
-  fetchFailingChecks,
-} from "./adapters";
 export type {
-  CreatedPull,
-  PullReviewPayload,
-  PullReviewCommentPayload,
+  CodeHost,
+  CreatePrParams,
+  CreatedPr,
+  PrReviews,
   FailingCheck,
+  PushCredentials,
   InstallationRepo,
   InstallationsResult,
 } from "./adapters";

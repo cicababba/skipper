@@ -28,8 +28,8 @@ describe("buildPrTitle", () => {
 });
 
 describe("buildPrBody", () => {
-  it("includes Closes #N, the plan summary and acceptance criteria", () => {
-    const body = buildPrBody({ issueNumber: 42, plan });
+  it("includes the issue link, the plan summary and acceptance criteria", () => {
+    const body = buildPrBody({ issueLink: "Closes #42", plan });
     expect(body).toContain("Closes #42");
     expect(body).toContain("Introduce a theme context and toggle.");
     expect(body).toContain("- toggle persists");
@@ -37,7 +37,7 @@ describe("buildPrBody", () => {
   });
 
   it("works without a plan", () => {
-    const body = buildPrBody({ issueNumber: 42 });
+    const body = buildPrBody({ issueLink: "Closes #42" });
     expect(body).toContain("Closes #42");
     expect(body).not.toContain("## Plan");
   });

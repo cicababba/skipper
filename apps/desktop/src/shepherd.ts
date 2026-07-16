@@ -4,19 +4,13 @@
 // manifest state via pokeShepherd(), the coder.ts loop pattern.
 
 import {
-  ApiError,
   buildCommitMessage,
   buildPrBody,
   buildPrTitle,
-  createPullRequest,
-  fetchFailingChecks,
-  fetchPullReviewComments,
-  fetchPullReviews,
-  findOpenPullByHead,
-  mapReviewFeedback,
+  codeHostFor,
   writeSolutionRecord,
-  type GitHubTokenProvider,
   type OrchestratorSettings,
+  type TokenProvider,
 } from "@skipper/core";
 import type {
   LifecycleState,
@@ -33,7 +27,7 @@ export interface ShepherdDeps {
   listItems: () => TrackedItem[];
   getItem: (itemId: string) => TrackedItem | undefined;
   getSettings: () => OrchestratorSettings;
-  getTokenProvider: (item: TrackedItem) => GitHubTokenProvider;
+  getTokenProvider: (item: TrackedItem) => TokenProvider;
   getRepoPath: (repo: RepoRef) => string | undefined;
   /** Bare base branch name (no origin/ prefix) — the PR `base` param. */
   getBaseBranch: (item: TrackedItem) => Promise<string>;
@@ -123,34 +117,36 @@ export async function openOrPushPr(
       if (!deps.getRepoPath(item.repo)) {
         throw new Error(`repo ${item.repo.owner}/${item.repo.name} is not linked`);
       }
+      const host = codeHostFor(item.platform);
       const getToken = deps.getTokenProvider(item);
 
       const { sha } = await commitWorktree(item.worktree.path, buildCommitMessage(item));
       if (item.pr && item.shepherd?.lastPushedSha === sha) {
         throw new Error("no new changes to push");
       }
-      await pushWorktreeBranch(item.worktree.path, item.worktree.branch, await getToken());
+      const token = await getToken();
+      await pushWorktreeBranch(
+        item.worktree.path,
+        item.worktree.branch,
+        token ? host.pushCredentials(token) : undefined,
+      );
 
       let pr = item.pr;
       let reason = "updates pushed to PR";
       if (!pr) {
         const stored = await deps.getPlan(item);
-        const params = {
-          title: buildPrTitle(item),
-          body: buildPrBody({ issueNumber: item.number, plan: stored?.plan }),
-          head: item.worktree.branch,
-          base: await deps.getBaseBranch(item),
-          draft: true,
-        };
-        try {
-          pr = await createPullRequest(item.repo, params, getToken);
-        } catch (err) {
-          // 422 = a PR for this head already exists — adopt it.
-          if (err instanceof ApiError && err.status === 422) {
-            pr = (await findOpenPullByHead(item.repo, item.worktree.branch, getToken)) ?? undefined;
-          }
-          if (!pr) throw err;
-        }
+        const created = await host.createPr(
+          item.repo,
+          {
+            title: buildPrTitle(item),
+            body: buildPrBody({ issueLink: host.linkIssueText(item.number), plan: stored?.plan }),
+            head: item.worktree.branch,
+            base: await deps.getBaseBranch(item),
+            draft: true,
+          },
+          getToken,
+        );
+        pr = { id: created.id, number: created.number, url: created.url };
         reason = "draft PR opened";
       }
 
@@ -184,20 +180,18 @@ async function reenter(itemId: string): Promise<void> {
   try {
     const item = deps.getItem(itemId);
     if (!item || item.state !== "changes-requested" || !item.pr) return;
+    const host = codeHostFor(item.platform);
     const getToken = deps.getTokenProvider(item);
-    const [reviews, comments] = await Promise.all([
-      fetchPullReviews(item.repo, item.pr.number, getToken),
-      fetchPullReviewComments(item.repo, item.pr.number, getToken),
-    ]);
     // No author filter: the connected user is usually the PR author, and their
     // inline comments on the agent's PR are exactly the feedback to address.
-    let feedback = mapReviewFeedback(reviews, comments);
+    const { comments } = await host.fetchReviews(item.repo, item.pr.number, getToken);
+    let feedback = comments;
     // CI-triggered re-entry: the failing checks are the actionable feedback.
     const ciSha = item.shepherd?.lastCiSha;
     const ciTriggered = ciSha !== undefined && ciSha === item.shepherd?.lastPushedSha;
     if (ciTriggered) {
       try {
-        const failing = await fetchFailingChecks(item.repo, ciSha, getToken);
+        const failing = await host.fetchFailingChecks(item.repo, ciSha, getToken);
         feedback = [
           ...feedback,
           ...failing.map((check) => ({

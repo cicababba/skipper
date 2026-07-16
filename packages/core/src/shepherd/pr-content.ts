@@ -8,9 +8,9 @@ export function buildPrTitle(item: { title: string }): string {
   return item.title;
 }
 
-export function buildPrBody(input: { issueNumber: number; plan?: IssuePlan }): string {
-  const { issueNumber, plan } = input;
-  const sections = [`Closes #${issueNumber}`];
+export function buildPrBody(input: { issueLink: string; plan?: IssuePlan }): string {
+  const { issueLink, plan } = input;
+  const sections = [issueLink];
   if (plan) {
     sections.push(`## Plan\n\n${plan.summary}`);
     if (plan.acceptance.length > 0) {
