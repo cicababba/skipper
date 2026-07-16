@@ -7,7 +7,7 @@ import {
   issueSourceForAuthProvider,
 } from "../src/adapters";
 import { githubCodeHost, githubIssueSource } from "../src/adapters/github";
-import { gitlabIssueSource } from "../src/adapters/gitlab";
+import { gitlabCodeHost, gitlabIssueSource } from "../src/adapters/gitlab";
 
 describe("issue-source registry", () => {
   it("registers the GitHub adapter under its self-declared platform", () => {
@@ -40,7 +40,10 @@ describe("code-host registry", () => {
     expect(codeHostFor("github")).toBe(githubCodeHost);
   });
 
-  it("throws for a widened host without a CodeHost adapter (GitLab, #76)", () => {
-    expect(() => codeHostFor("gitlab")).toThrow("no CodeHost adapter for gitlab");
+  it("registers the GitLab adapter under its self-declared platform", () => {
+    expect(codeHosts.gitlab).toBe(gitlabCodeHost);
+    expect(gitlabCodeHost.id).toBe("gitlab");
+    expect(gitlabCodeHost.authProvider).toBe("gitlab");
+    expect(codeHostFor("gitlab")).toBe(gitlabCodeHost);
   });
 });

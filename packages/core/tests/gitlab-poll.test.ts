@@ -267,6 +267,7 @@ describe("pollGitLabAccount", () => {
     const fetchMock = vi.fn(async (url: string | URL) => {
       const u = String(url);
       if (u.includes("/merge_requests/3/approvals")) return jsonResponse(200, { approved: true });
+      if (u.includes("/merge_requests/3/discussions")) return jsonResponse(200, []);
       if (u.includes("/projects/group%2Fsub%2Fproj/merge_requests/3")) {
         return jsonResponse(200, {
           id: 300,
@@ -302,6 +303,49 @@ describe("pollGitLabAccount", () => {
       number: 3,
       reviewDecision: "approved",
       ciStatus: "passing",
+    });
+  });
+
+  it("surfaces changes-requested when a tracked MR has an unresolved thread", async () => {
+    const cursor: GitLabAccountCursor = {
+      ...emptyGitLabCursor(),
+      mergeRequests: { updatedAfter: "2026-07-09T00:00:00Z" },
+    };
+    const listMr = {
+      ...mrPayload({ id: 30, iid: 3, title: "tracked" }),
+      references: { full: "o/r!3" },
+      web_url: "https://gitlab.com/o/r/-/merge_requests/3",
+    };
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      const u = String(url);
+      if (u.includes("/merge_requests/3/approvals")) return jsonResponse(200, { approved: true });
+      if (u.includes("/merge_requests/3/discussions")) {
+        return jsonResponse(200, [
+          { notes: [{ id: 1, resolvable: true, resolved: false, body: "fix this" }] },
+        ]);
+      }
+      if (u.includes("/projects/o%2Fr/merge_requests/3")) {
+        return jsonResponse(200, {
+          ...mrPayload({ id: 300, iid: 3, title: "tracked" }),
+          state: "opened",
+          references: { full: "o/r!3" },
+          web_url: "https://gitlab.com/o/r/-/merge_requests/3",
+          head_pipeline: { status: "success" },
+        });
+      }
+      if (u.includes("/merge_requests?")) return jsonResponse(200, [listMr]);
+      return jsonResponse(200, []);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await pollGitLabAccount({
+      accountId: ACCOUNT,
+      getToken: token,
+      cursor,
+      deepHydrate: [{ owner: "o", name: "r", number: 3 }],
+    });
+    expect(result.pullRequests[0]).toMatchObject({
+      number: 3,
+      reviewDecision: "changes-requested",
     });
   });
 
