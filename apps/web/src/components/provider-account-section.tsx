@@ -121,7 +121,7 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
                     .join(" · ");
                   return (
                     <li
-                      key={`${a.id}:${a.baseUrl ?? ""}`}
+                      key={a.key}
                       className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0"
                     >
                       <Avatar account={a} />
@@ -140,7 +140,7 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
                         </button>
                       )}
                       <button
-                        onClick={() => void signOut(provider.id, a.id)}
+                        onClick={() => void signOut(provider.id, a.key)}
                         className="shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-md text-xs text-red-400/90 hover:bg-red-500/10 transition-colors"
                       >
                         <LogOut size={12} />
@@ -269,7 +269,7 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
 
       {provider.isIssueSource && pickerAccount && (
         <FollowPickerModal
-          accountId={pickerAccount.id}
+          accountId={pickerAccount.key}
           providerId={provider.id}
           onClose={() => setPickerAccount(null)}
         />

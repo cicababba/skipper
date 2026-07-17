@@ -1,8 +1,12 @@
 // Auth store schema + (de)serialization. Pure — no electron imports — so the
 // format and the legacy migration stay unit-testable.
 
-import type { Account, AuthProviderId } from "@skipper/shared";
+import { accountKey, type Account } from "@skipper/shared";
 import type { ProviderTokens } from "./provider";
+
+// Re-exported so existing desktop-auth imports keep resolving here; the canonical
+// definition lives in @skipper/shared so core/renderer can derive keys too (#101).
+export { accountKey };
 
 export interface StoredAccount {
   account: Account;
@@ -15,11 +19,6 @@ export interface AuthStoreFile {
   /** Keyed by `${provider}:${account.id}`, or `${provider}:${host}:${account.id}`
    *  when the account is host-scoped (self-hosted instance). */
   accounts: Record<string, StoredAccount>;
-}
-
-/** baseUrl, when present, must already be normalized (normalizeBaseUrl). */
-export function accountKey(provider: AuthProviderId, id: string, baseUrl?: string): string {
-  return baseUrl ? `${provider}:${new URL(baseUrl).host}:${id}` : `${provider}:${id}`;
 }
 
 export function emptyStore(): AuthStoreFile {
@@ -63,6 +62,7 @@ export function parseStoreFile(json: string): { store: AuthStoreFile; migrated: 
     if (typeof legacy.user?.sub !== "string") return null;
     const account: Account = {
       provider: "google",
+      key: accountKey("google", legacy.user.sub),
       id: legacy.user.sub,
       email: legacy.user.email,
       name: legacy.user.name,

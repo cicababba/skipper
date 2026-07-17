@@ -1,6 +1,5 @@
 import { ipcMain, type BrowserWindow } from "electron";
 import {
-  issueSourceFor,
   issueSourceForAuthProvider,
   reconcile,
   applyTransition,
@@ -93,11 +92,8 @@ export type { OrchestratorAccountState, OrchestratorState } from "@skipper/share
 
 export interface OrchestratorDeps {
   getAccounts: () => Account[];
-  getToken: (
-    provider: AuthProviderId,
-    accountId: string,
-    forceRefresh?: boolean,
-  ) => Promise<string | null>;
+  /** Token for the account with this key (Account.key), refreshed if needed. */
+  getToken: (accountKey: string, forceRefresh?: boolean) => Promise<string | null>;
   cursorFilePath: string;
   manifestFilePath: string;
   repoLinksFilePath: string;
@@ -262,7 +258,13 @@ function patchAccount(accountId: string, patch: Partial<OrchestratorAccountState
 async function ensureManifest(): Promise<OrchestratorManifest> {
   if (!manifest) {
     if (!deps) throw new Error("orchestrator not initialized");
-    manifest = await loadOrCreateOrchestratorManifest(deps.manifestFilePath);
+    // Pass known accounts so persisted bare-id accountIds resolve to keys (#101);
+    // an empty list (no accounts yet) skips resolution rather than mass-dropping.
+    manifest = await loadOrCreateOrchestratorManifest(
+      deps.manifestFilePath,
+      deps.getAccounts().map((a) => ({ id: a.id, key: a.key })),
+      (msg) => console.warn(`[orchestrator] ${msg}`),
+    );
   }
   return manifest;
 }
@@ -351,27 +353,26 @@ export function isIssueSourceProvider(provider: AuthProviderId): boolean {
   return issueSourceForAuthProvider(provider) !== undefined;
 }
 
-/** Token for cloning: explicit account, else the account that sees the repo, else the first one. */
+/** Token for cloning: explicit account key, else the account that sees the repo, else the first one. */
 async function tokenForRepo(
   owner: string,
   name: string,
-  accountId?: string,
+  accountKey?: string,
 ): Promise<string | null> {
   if (!deps) return null;
-  if (accountId) {
-    const provider = issueAccounts().find((a) => a.id === accountId)?.provider;
-    return provider ? deps.getToken(provider, accountId) : null;
+  if (accountKey) {
+    return deps.getToken(accountKey);
   }
   const key = repoKey({ owner, name });
-  for (const [acctId, map] of items) {
+  for (const [acctKey, map] of items) {
     for (const item of map.values()) {
       if (repoKey(item.repo) === key) {
-        return deps.getToken(issueSourceFor(item.source).authProvider, acctId);
+        return deps.getToken(acctKey);
       }
     }
   }
   const first = issueAccounts()[0];
-  return first ? deps.getToken(first.provider, first.id) : null;
+  return first ? deps.getToken(first.key) : null;
 }
 
 function admissionPolicy(m: OrchestratorManifest): {
@@ -407,7 +408,9 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
   if (!deps || !cursors) return;
   const source = issueSourceForAuthProvider(account.provider);
   if (!source) return;
-  const accountId = account.id;
+  // The account key is the identity: item maps, accountsState, cursors and the
+  // manifest's accountId are all keyed by it (#101).
+  const accountId = account.key;
   const existing = accountsState[accountId];
   if (!ignoreBackoff && existing?.nextPollAt && Date.now() < existing.nextPollAt) return;
 
@@ -430,7 +433,7 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
 
     const result = await source.poll({
       accountId,
-      getToken: (force) => deps!.getToken(account.provider, accountId, force),
+      getToken: (force) => deps!.getToken(accountId, force),
       baseUrl: account.baseUrl,
       cursor,
       deepHydrate,
@@ -493,7 +496,7 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
         try {
           dependencies[iss.id] = await source.fetchDependencies(
             iss,
-            (force) => deps!.getToken(account.provider, accountId, force),
+            (force) => deps!.getToken(accountId, force),
             account.baseUrl,
           );
         } catch (err) {
@@ -555,7 +558,7 @@ async function pollNow(ignoreBackoff = false): Promise<void> {
     await ensureManifest();
 
     const accounts = issueAccounts();
-    const known = new Set(accounts.map((a) => a.id));
+    const known = new Set(accounts.map((a) => a.key));
 
     // Accounts signed out since the last tick: prune poll state + cursors.
     // Manifest items survive sign-out so lifecycle state outlives re-login.
@@ -978,7 +981,7 @@ export function initOrchestrator(
       try {
         const account = accountId
           ? issueAccounts().find(
-              (a) => a.id === accountId && (!providerId || a.provider === providerId),
+              (a) => a.key === accountId && (!providerId || a.provider === providerId),
             )
           : issueAccounts()[0];
         if (!account) return { ok: false, error: "no issue-source account connected" };
@@ -996,7 +999,7 @@ export function initOrchestrator(
 
         if (account.provider === "github") {
           const result = await listUserInstallationRepos((force) =>
-            deps!.getToken(account.provider, account.id, force),
+            deps!.getToken(account.key, force),
           );
           for (const repo of result.repos) {
             const key = repoKey(repo);
@@ -1013,7 +1016,7 @@ export function initOrchestrator(
             : "https://github.com/settings/installations";
         } else if (account.provider === "gitlab") {
           const projects = await listMembershipProjects(
-            (force) => deps!.getToken(account.provider, account.id, force),
+            (force) => deps!.getToken(account.key, force),
             account.baseUrl,
           );
           for (const project of projects) {
@@ -1029,7 +1032,7 @@ export function initOrchestrator(
 
         // Public repos assigned via general visibility never show in the
         // installation/membership lists — merge what this account's poller saw.
-        const polled = items.get(account.id);
+        const polled = items.get(account.key);
         if (polled) {
           for (const item of polled.values()) {
             const key = repoKey(item.repo);
@@ -1380,14 +1383,8 @@ export function initOrchestrator(
     listItems: () => Object.values(manifest?.items ?? {}),
     getItem: (itemId) => manifest?.items[itemId],
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
-    getTokenProvider: (item) => (force) =>
-      deps!.getToken(issueSourceFor(item.source).authProvider, item.accountId, force),
-    getBaseUrl: (item) =>
-      deps!
-        .getAccounts()
-        .find(
-          (a) => a.provider === issueSourceFor(item.source).authProvider && a.id === item.accountId,
-        )?.baseUrl,
+    getTokenProvider: (item) => (force) => deps!.getToken(item.accountId, force),
+    getBaseUrl: (item) => deps!.getAccounts().find((a) => a.key === item.accountId)?.baseUrl,
     getRepoPath: repoPathFor,
     getBaseBranch: async (item) => {
       const link = repoLinks?.repos[repoKey(item.repo)];

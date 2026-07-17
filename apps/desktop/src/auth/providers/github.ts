@@ -1,5 +1,5 @@
-import { GITHUB_OAUTH_ENDPOINTS, type Account } from "@skipper/shared";
-import { OAuthError, type ProviderConfig, type ProviderTokens } from "../provider";
+import { GITHUB_OAUTH_ENDPOINTS } from "@skipper/shared";
+import { OAuthError, type MappedAccount, type ProviderConfig, type ProviderTokens } from "../provider";
 import { GITHUB_OAUTH_CLIENT_ID, GITHUB_OAUTH_CLIENT_SECRET } from "../oauth-config";
 
 const API_HEADERS = {
@@ -15,7 +15,7 @@ interface GitHubUser {
   avatar_url?: string;
 }
 
-export async function mapGitHubUser(accessToken: string): Promise<Account> {
+export async function mapGitHubUser(accessToken: string): Promise<MappedAccount> {
   const res = await fetch(GITHUB_OAUTH_ENDPOINTS.userEndpoint, {
     headers: { ...API_HEADERS, authorization: `Bearer ${accessToken}` },
   });

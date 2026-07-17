@@ -1,5 +1,5 @@
-import { GITLAB_BASE_URL, GITLAB_OAUTH_ENDPOINTS, type Account } from "@skipper/shared";
-import { OAuthError, type ProviderConfig, type ProviderTokens } from "../provider";
+import { GITLAB_BASE_URL, GITLAB_OAUTH_ENDPOINTS } from "@skipper/shared";
+import { OAuthError, type MappedAccount, type ProviderConfig, type ProviderTokens } from "../provider";
 import { GITLAB_OAUTH_CLIENT_ID } from "../oauth-config";
 
 interface GitLabUser {
@@ -12,7 +12,7 @@ interface GitLabUser {
 
 // One mapper serves OAuth and PAT: GitLab accepts a personal access token as a
 // Bearer token, same as an OAuth access token.
-export async function mapGitLabUser(accessToken: string, baseUrl?: string): Promise<Account> {
+export async function mapGitLabUser(accessToken: string, baseUrl?: string): Promise<MappedAccount> {
   const res = await fetch(GITLAB_OAUTH_ENDPOINTS.userEndpoint(baseUrl), {
     headers: { authorization: `Bearer ${accessToken}` },
   });

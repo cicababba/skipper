@@ -47,7 +47,11 @@ export interface AuthProviderMeta {
 /** Provider-neutral identity for a connected account. */
 export interface Account {
   provider: AuthProviderId;
-  /** Provider-native user id (Google `sub`; GitHub numeric id as string). */
+  /** Globally unique account identity: `provider:id`, or `provider:host:id` for
+   *  a self-hosted instance. THE identity everywhere downstream (accountKey). */
+  key: string;
+  /** Provider-native user id (Google `sub`; GitHub numeric id as string).
+   *  Only unique per instance — never an identity across hosts; use `key`. */
   id: string;
   /** GitHub may not expose one. */
   email?: string;
