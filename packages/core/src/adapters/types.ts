@@ -10,6 +10,7 @@ import type {
   PrReviewComment,
   PullRequest,
   RepoRef,
+  SourceRef,
 } from "@skipper/shared";
 
 /** Returns a valid access token, or null when no account is available.
@@ -53,6 +54,10 @@ export interface IssueSource<C = unknown> {
   // Method syntax (not an arrow property) — bivariance lets IssueSource<ConcreteCursor>
   // satisfy Record<IssueSourceId, IssueSource> under strictFunctionTypes.
   poll(opts: PollOptions<C>): Promise<PollResult<C>>;
+  /** Optional capability (#85): prerequisite work items ("blocked by") for one issue.
+   *  Same-tracker refs only. Adapters without dependency support omit this — the
+   *  feature is then inert for that source. */
+  fetchDependencies?(issue: Issue, getToken: TokenProvider, baseUrl?: string): Promise<SourceRef[]>;
 }
 
 export interface CreatePrParams {

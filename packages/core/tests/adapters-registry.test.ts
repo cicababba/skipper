@@ -30,6 +30,11 @@ describe("issue-source registry", () => {
   it("returns undefined for identity-only providers", () => {
     expect(issueSourceForAuthProvider("google")).toBeUndefined();
   });
+
+  it("exposes fetchDependencies on GitHub but not GitLab (#85)", () => {
+    expect(typeof githubIssueSource.fetchDependencies).toBe("function");
+    expect(gitlabIssueSource.fetchDependencies).toBeUndefined();
+  });
 });
 
 describe("code-host registry", () => {

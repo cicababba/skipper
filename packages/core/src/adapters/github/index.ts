@@ -1,4 +1,5 @@
 export { pollGitHubAccount } from "./poll";
+export { fetchGitHubDependencies, parseBodyDependencies } from "./dependencies";
 export { githubIssueSource } from "./source";
 export { githubCodeHost } from "./code-host";
 export { githubGet, githubPost, parseLinkNext } from "./client";

@@ -29,6 +29,15 @@ export interface SourceRef {
   key: string;
 }
 
+/**
+ * Canonical "project#key" identity for a SourceRef — the dependency-matching axis
+ * (#85). Project lowercased because GitHub owner/name is case-insensitive (repoKey
+ * already does the same); key kept verbatim.
+ */
+export function sourceRefKey(ref: SourceRef): string {
+  return `${ref.project.toLowerCase()}#${ref.key}`;
+}
+
 interface WorkItemBase {
   /** Source-scoped stable id, e.g. "github:1234567890". */
   id: string;

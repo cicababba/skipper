@@ -8,6 +8,7 @@ import { formatAge, type SortDir, type SortKey } from "@/lib/inbox/table";
 import { ConfidenceBadge } from "@/components/confidence-popover";
 import { useT } from "@/lib/app-i18n";
 import { StateBadge } from "./state-badge";
+import { BlockedByBadges } from "./blocked-by";
 import { CiBadge } from "./ci-badge";
 import { ItemActions } from "./item-actions";
 
@@ -107,7 +108,10 @@ export function InboxTable({
                 </td>
                 <td className="px-3 py-2 text-muted whitespace-nowrap">{repoKey(item.repo)}</td>
                 <td className="px-3 py-2">
-                  <StateBadge item={item} />
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <StateBadge item={item} />
+                    <BlockedByBadges item={item} />
+                  </div>
                 </td>
                 <td className="px-3 py-2">
                   <ConfidenceBadge item={item} />

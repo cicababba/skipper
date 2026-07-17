@@ -1,10 +1,11 @@
-import type { Issue, LifecycleState, PullRequest, TrackedItem } from "@skipper/shared";
+import type { Issue, LifecycleState, PullRequest, SourceRef, TrackedItem } from "@skipper/shared";
 import {
   BRANCH_ISSUE_RE,
   branchSlugMatchesKey,
   CI_FIX_MAX_ROUNDS,
   repoKey,
   resolveRepoOrchestratorSettings,
+  sourceRefKey,
 } from "@skipper/shared";
 import { admitItem, applyTransition } from "./machine";
 import type { OrchestratorManifest } from "./manifest";
@@ -32,6 +33,10 @@ export interface ReconcilePoll {
   mode: "full" | "delta";
   issues: Issue[];
   pullRequests: PullRequest[];
+  /** Fresh dependency evidence keyed by work-item id (#85). A present key is an
+   *  authoritative snapshot (empty array clears); an absent key means no fresh
+   *  evidence — the stored blockedBy stands. */
+  dependencies?: Record<string, SourceRef[]>;
 }
 
 const PRE_CODING_STATES: readonly LifecycleState[] = ["triage", "planning", "plan-gate", "queued"];
@@ -130,7 +135,120 @@ export function reconcile(
     reconcileFullWalkAbsence(manifest, accountId, poll, outcome, transition);
   }
 
+  // Last: a prerequisite merged/closed/evicted above already reads its new state
+  // this tick, so dependents park or release in the same round.
+  reconcileDependencies(manifest, accountId, poll, transition, now);
+
   return outcome;
+}
+
+const DEP_PARK_STATES: readonly LifecycleState[] = ["triage", "plan-gate", "queued"];
+const DEP_RESOLVED_STATES: readonly LifecycleState[] = ["merged", "closed"];
+
+/** Merge two ref lists, deduped by sourceRefKey. */
+function mergeByKey(a: SourceRef[] | undefined, b: SourceRef[]): SourceRef[] {
+  const out = [...(a ?? [])];
+  const seen = new Set(out.map(sourceRefKey));
+  for (const ref of b) {
+    const key = sourceRefKey(ref);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ref);
+  }
+  return out;
+}
+
+/** "#42" when the ref's project matches the item's (case-insensitive), else "owner/repo#42". */
+function displayRef(ref: SourceRef, item: TrackedItem): string {
+  return ref.project.toLowerCase() === item.sourceRef.project.toLowerCase()
+    ? `#${ref.key}`
+    : `${ref.project}#${ref.key}`;
+}
+
+/**
+ * Issue dependencies (#85). Applies fresh adapter evidence to blockedBy, then
+ * parks items with unmet prerequisites (only from resting states) and releases
+ * blocked items whose prerequisites are all merged/closed or gone. A ref only
+ * blocks if it resolves to a tracked item that isn't merged/closed — Skipper
+ * can't observe an untracked issue's merge, so untracked refs are ignored.
+ *
+ * Cycles (A⇄B): both park; the single-pass sweep terminates; a user resume +
+ * waiver breaks the tie. Not detected by design.
+ */
+function reconcileDependencies(
+  manifest: OrchestratorManifest,
+  accountId: string,
+  poll: ReconcilePoll,
+  transition: TransitionFn,
+  now: Date = new Date(),
+): void {
+  // 1. Apply fresh evidence (any state). A present key is authoritative.
+  for (const [itemId, deps] of Object.entries(poll.dependencies ?? {})) {
+    const item = manifest.items[itemId];
+    if (!item) continue; // parked/unknown ids drop
+    const before = (item.blockedBy ?? []).map(sourceRefKey).join("|");
+    const after = deps.map(sourceRefKey).join("|");
+    if (before !== after) {
+      manifest.items[itemId] = {
+        ...item,
+        blockedBy: deps.length ? deps : undefined,
+        updatedAt: now.toISOString(),
+      };
+    }
+  }
+
+  // 2. Resolution index over ALL manifest items (account-agnostic — a prerequisite
+  //    may be tracked under another account of the same tracker).
+  const index = new Map<string, LifecycleState>();
+  for (const item of Object.values(manifest.items)) {
+    index.set(`${item.source}:${sourceRefKey(item.sourceRef)}`, item.state);
+  }
+
+  // Mirrors blockingItemsFor in apps/web/src/lib/inbox/blocked.ts — keep in lockstep.
+  const unmet = (item: TrackedItem): SourceRef[] => {
+    const selfKey = sourceRefKey(item.sourceRef);
+    const waived = new Set((item.blockedByWaived ?? []).map(sourceRefKey));
+    return (item.blockedBy ?? []).filter((ref) => {
+      const key = sourceRefKey(ref);
+      if (key === selfKey || waived.has(key)) return false;
+      const state = index.get(`${item.source}:${key}`);
+      return state !== undefined && !DEP_RESOLVED_STATES.includes(state);
+    });
+  };
+
+  // 3. Sweep this account's items.
+  for (const item of Object.values(manifest.items)) {
+    if (item.accountId !== accountId) continue;
+    const blocking = unmet(item);
+
+    if (blocking.length && DEP_PARK_STATES.includes(item.state)) {
+      const last = item.transitions.at(-1);
+      if (last?.from === "blocked" && last.actor === "user") {
+        // Manual resume is the override — waive the current unmet set instead of
+        // re-parking. A newly appearing dep still blocks (it isn't waived yet).
+        manifest.items[item.id] = {
+          ...item,
+          blockedByWaived: mergeByKey(item.blockedByWaived, blocking),
+        };
+      } else if (canTransition(item.state, "blocked")) {
+        transition(
+          item,
+          "blocked",
+          `blocked by ${blocking.map((r) => displayRef(r, item)).join(", ")}`,
+          item.state,
+        );
+      }
+    } else if (item.state === "blocked" && blocking.length === 0) {
+      // Release only blocks reconcile created (last transition into blocked was
+      // reconcile-actored with a "blocked by" reason).
+      const into = [...item.transitions].reverse().find((t) => t.to === "blocked");
+      if (into?.actor === "reconcile" && into.reason?.startsWith("blocked by")) {
+        const to =
+          item.resumeTo && canTransition("blocked", item.resumeTo) ? item.resumeTo : "triage";
+        transition(item, to, "prerequisites merged/closed");
+      }
+    }
+  }
 }
 
 type TransitionFn = (

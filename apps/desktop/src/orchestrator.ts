@@ -51,6 +51,7 @@ import type {
   ResolvedRepoIntakeSettings,
   ResolvedRepoOrchestratorSettings,
   ResumeRiteAction,
+  SourceRef,
   TrackedItem,
   TransitionActor,
 } from "@skipper/shared";
@@ -109,6 +110,9 @@ const FIRST_POLL_DELAY_MS = 10_000;
 const POLL_EVERY_MS = 3 * 60_000;
 const FULL_WALK_EVERY_MS = 6 * 60 * 60_000;
 const POKE_DEBOUNCE_MS = 1500;
+// Per-poll ceiling on dependency fetches (#85): one API call per target, so cap
+// the fan-out. Admission candidates are fetched before tracked items.
+const DEP_FETCH_CAP = 30;
 
 let status: "idle" | "polling" = "idle";
 let accountsState: Record<string, OrchestratorAccountState> = {};
@@ -453,10 +457,50 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
     }
 
     await ensureRepoLinks();
+
+    // Dependency evidence (#85): fetch "blocked by" for admission candidates and
+    // resting/blocked tracked items, so reconcile can park/release in this round.
+    // Candidates first; per-target failure leaves the key absent (stored stands).
+    let dependencies: Record<string, SourceRef[]> | undefined;
+    if (source.fetchDependencies) {
+      const policy = admissionPolicy(m);
+      const candidates = result.issues.filter((iss) => {
+        if (iss.state !== "open") return false;
+        const t = m.items[iss.id];
+        if (t) {
+          return (
+            t.state === "triage" ||
+            t.state === "plan-gate" ||
+            t.state === "queued" ||
+            t.state === "blocked"
+          );
+        }
+        return !m.settings.intakePaused && policy.shouldAdmit(iss);
+      });
+      candidates.sort((a, b) => Number(Boolean(m.items[a.id])) - Number(Boolean(m.items[b.id])));
+      dependencies = {};
+      for (const iss of candidates.slice(0, DEP_FETCH_CAP)) {
+        try {
+          dependencies[iss.id] = await source.fetchDependencies(
+            iss,
+            (force) => deps!.getToken(accountId, force),
+            account.baseUrl,
+          );
+        } catch (err) {
+          console.warn(`[orchestrator] dependency fetch failed for ${iss.id}: ${String(err)}`);
+        }
+      }
+    }
+
     const outcome = reconcile(
       m,
       accountId,
-      { mode: result.mode, issues: result.issues, pullRequests: result.pullRequests },
+      {
+        mode: result.mode,
+        issues: result.issues,
+        pullRequests: result.pullRequests,
+        dependencies,
+      },
       admissionPolicy(m),
     );
     for (const conflict of outcome.conflicts) {
