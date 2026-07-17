@@ -2,10 +2,12 @@ import { describe, it, expect } from "vitest";
 import {
   codeHosts,
   codeHostFor,
+  codeHostForProvider,
   issueSources,
   issueSourceFor,
   issueSourceForAuthProvider,
 } from "../src/adapters";
+import { bitbucketCodeHost } from "../src/adapters/bitbucket";
 import { githubCodeHost, githubIssueSource } from "../src/adapters/github";
 import { gitlabCodeHost, gitlabIssueSource } from "../src/adapters/gitlab";
 import { jiraIssueSource } from "../src/adapters/jira";
@@ -59,5 +61,28 @@ describe("code-host registry", () => {
     expect(gitlabCodeHost.id).toBe("gitlab");
     expect(gitlabCodeHost.authProvider).toBe("gitlab");
     expect(codeHostFor("gitlab")).toBe(gitlabCodeHost);
+  });
+
+  it("registers the Bitbucket adapter under its self-declared platform", () => {
+    expect(codeHosts.bitbucket).toBe(bitbucketCodeHost);
+    expect(bitbucketCodeHost.id).toBe("bitbucket");
+    expect(bitbucketCodeHost.authProvider).toBe("bitbucket");
+    expect(codeHostFor("bitbucket")).toBe(bitbucketCodeHost);
+  });
+
+  it("declares draft support per host — GitHub and GitLab yes, Bitbucket no", () => {
+    expect(githubCodeHost.supportsDraft).toBe(true);
+    expect(gitlabCodeHost.supportsDraft).toBe(true);
+    expect(bitbucketCodeHost.supportsDraft).toBe(false);
+  });
+
+  it("resolves a code host from the auth provider", () => {
+    expect(codeHostForProvider("bitbucket")).toBe("bitbucket");
+    expect(codeHostForProvider("github")).toBe("github");
+    expect(codeHostForProvider("jira")).toBeUndefined();
+  });
+
+  it("has no issue source for the Bitbucket auth provider", () => {
+    expect(issueSourceForAuthProvider("bitbucket")).toBeUndefined();
   });
 });

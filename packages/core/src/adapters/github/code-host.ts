@@ -16,6 +16,7 @@ const ORIGIN_RE = /github\.com[/:]([^/]+)\/(.+?)(?:\.git)?\/?$/i;
 export const githubCodeHost: CodeHost = {
   id: "github",
   authProvider: "github",
+  supportsDraft: true,
   createPr: async (repo, params, getToken, baseUrl) => {
     try {
       return await createPullRequest(repo, params, getToken, baseUrl);

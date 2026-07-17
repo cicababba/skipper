@@ -51,6 +51,7 @@ function parseGitLabOrigin(remoteUrl: string, baseUrl?: string): RepoRef | null 
 export const gitlabCodeHost: CodeHost = {
   id: "gitlab",
   authProvider: "gitlab",
+  supportsDraft: true,
   createPr: async (repo, params, getToken, baseUrl) => {
     try {
       return await createMergeRequest(repo, params, getToken, baseUrl);

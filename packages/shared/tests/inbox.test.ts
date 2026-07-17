@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
+  formatRepoMappingValue,
   mappingHost,
   parseProjectMappingKey,
+  parseRepoMappingValue,
   projectMappingKey,
   sourceRefKey,
 } from "../src";
@@ -55,5 +57,56 @@ describe("parseProjectMappingKey", () => {
     expect(parseProjectMappingKey("jira:acme.atlassian.net")).toBeNull();
     expect(parseProjectMappingKey("jira::PROJ")).toBeNull();
     expect(parseProjectMappingKey("")).toBeNull();
+  });
+});
+
+describe("parseRepoMappingValue / formatRepoMappingValue", () => {
+  it("reads a bare owner/name as github", () => {
+    expect(parseRepoMappingValue("octo/demo")).toEqual({
+      codeHost: "github",
+      repo: { owner: "octo", name: "demo" },
+    });
+  });
+
+  it("reads a host-prefixed value", () => {
+    expect(parseRepoMappingValue("bitbucket:ws/repo")).toEqual({
+      codeHost: "bitbucket",
+      repo: { owner: "ws", name: "repo" },
+    });
+    expect(parseRepoMappingValue("gitlab:group/proj")).toEqual({
+      codeHost: "gitlab",
+      repo: { owner: "group", name: "proj" },
+    });
+  });
+
+  it("keeps a nested-group owner by splitting at the last slash", () => {
+    expect(parseRepoMappingValue("gitlab:group/sub/proj")).toEqual({
+      codeHost: "gitlab",
+      repo: { owner: "group/sub", name: "proj" },
+    });
+    expect(parseRepoMappingValue("group/sub/proj")).toEqual({
+      codeHost: "github",
+      repo: { owner: "group/sub", name: "proj" },
+    });
+  });
+
+  it("returns undefined for an unknown prefix or a missing half", () => {
+    expect(parseRepoMappingValue("bogus:ws/repo")).toBeUndefined();
+    expect(parseRepoMappingValue("no-slash")).toBeUndefined();
+    expect(parseRepoMappingValue("bitbucket:no-slash")).toBeUndefined();
+  });
+
+  it("formats github bare and other hosts with a prefix", () => {
+    expect(formatRepoMappingValue("github", { owner: "octo", name: "demo" })).toBe("octo/demo");
+    expect(formatRepoMappingValue("bitbucket", { owner: "ws", name: "repo" })).toBe(
+      "bitbucket:ws/repo",
+    );
+  });
+
+  it("round-trips through format and parse", () => {
+    for (const value of ["octo/demo", "bitbucket:ws/repo", "gitlab:group/proj", "gitlab:group/sub/proj"]) {
+      const parsed = parseRepoMappingValue(value)!;
+      expect(formatRepoMappingValue(parsed.codeHost, parsed.repo)).toBe(value);
+    }
   });
 });

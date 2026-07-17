@@ -1,4 +1,5 @@
 import type { AuthProviderId, CodeHostId, IssueSourceId } from "@skipper/shared";
+import { bitbucketCodeHost } from "./bitbucket";
 import { githubCodeHost, githubIssueSource } from "./github";
 import { gitlabCodeHost, gitlabIssueSource } from "./gitlab";
 import { jiraIssueSource } from "./jira";
@@ -23,6 +24,7 @@ export function issueSourceFor(source: IssueSourceId): IssueSource {
 export const codeHosts = {
   github: githubCodeHost,
   gitlab: gitlabCodeHost,
+  bitbucket: bitbucketCodeHost,
 } satisfies Record<CodeHostId, CodeHost>;
 
 export function codeHostFor(host: CodeHostId): CodeHost {
@@ -35,7 +37,15 @@ export function issueSourceForAuthProvider(provider: AuthProviderId): IssueSourc
   return Object.values(issueSources).find((s) => s.authProvider === provider);
 }
 
+/** Which code host (if any) uses accounts of this auth provider — the code-host
+ *  mirror of issueSourceForAuthProvider (#81). */
+export function codeHostForProvider(provider: AuthProviderId): CodeHostId | undefined {
+  const entry = Object.entries(codeHosts).find(([, h]) => h.authProvider === provider);
+  return entry ? (entry[0] as CodeHostId) : undefined;
+}
+
 export * from "./types";
 export * from "./github";
 export * from "./gitlab";
+export * from "./bitbucket";
 export * from "./jira";

@@ -11,7 +11,9 @@ import {
   listUserInstallationRepos,
   listMembershipProjects,
   listJiraProjects,
+  codeHosts,
   codeHostFor,
+  codeHostForProvider,
   resolveGate,
   DEFAULT_ORCHESTRATOR_SETTINGS,
   IssuePlanSchema,
@@ -26,9 +28,11 @@ import {
   type OrchestratorSettings,
 } from "@skipper/core";
 import {
+  formatRepoMappingValue,
   issueBranchFor,
   mappingHost,
   parseProjectMappingKey,
+  parseRepoMappingValue,
   projectMappingKey,
   repoKey,
   resolveRepoIntakeSettings,
@@ -38,6 +42,7 @@ import type {
   Account,
   AgentReview,
   AuthProviderId,
+  CodeHostId,
   CodingEvent,
   CodingEventEnvelope,
   ConfidenceReport,
@@ -367,7 +372,21 @@ export function isIssueSourceProvider(provider: AuthProviderId): boolean {
   return issueSourceForAuthProvider(provider) !== undefined;
 }
 
-/** Token for cloning: explicit account key, else the account that sees the repo, else the first one. */
+/** The connected account that authenticates a code host: prefer the one whose key
+ *  matches preferKey (the item's tracker account, when it is also a code-host
+ *  account), else the first account of the host's auth provider. */
+function codeHostAccountFor(codeHost: CodeHostId, preferKey?: string): Account | undefined {
+  const provider = codeHostFor(codeHost).authProvider;
+  const accounts = (deps?.getAccounts() ?? []).filter((a) => a.provider === provider);
+  if (preferKey) {
+    const preferred = accounts.find((a) => a.key === preferKey);
+    if (preferred) return preferred;
+  }
+  return accounts[0];
+}
+
+/** Token for cloning: explicit account key, else the code-host account behind the
+ *  item that sees the repo, else the first issue account. */
 async function tokenForRepo(
   owner: string,
   name: string,
@@ -381,7 +400,8 @@ async function tokenForRepo(
   for (const [acctKey, map] of items) {
     for (const item of map.values()) {
       if (item.repo && repoKey(item.repo) === key) {
-        return deps.getToken(acctKey);
+        const account = codeHostAccountFor(item.codeHost, acctKey);
+        return account ? deps.getToken(account.key) : null;
       }
     }
   }
@@ -1122,9 +1142,9 @@ export function initOrchestrator(
       if (!parts) return snapshot();
       const key = projectMappingKey(parts.source, parts.host, parts.projectKey);
       if (repo) {
-        const [owner, name] = repo.split("/");
-        if (!owner || !name) return snapshot();
-        m.projectMappings[key] = repoKey({ owner, name });
+        const parsed = parseRepoMappingValue(repo);
+        if (!parsed) return snapshot();
+        m.projectMappings[key] = formatRepoMappingValue(parsed.codeHost, parsed.repo);
       } else {
         delete m.projectMappings[key];
       }
@@ -1180,8 +1200,23 @@ export function initOrchestrator(
     "skipper:orchestrator:linkRepo",
     async (_e, owner: string, name: string, localPath: string) => {
       try {
-        // TODO(#68): pick the host from the repo's code-host axis once a second host lands.
-        await validateRepoOrigin(localPath, { owner, name }, codeHostFor("github"));
+        // No code-host axis on a link request, so detect it from the origin remote:
+        // accept the first registered host whose parseOrigin matches.
+        const repo = { owner, name };
+        let matched = false;
+        let lastErr: unknown;
+        for (const host of Object.values(codeHosts)) {
+          try {
+            await validateRepoOrigin(localPath, repo, host);
+            matched = true;
+            break;
+          } catch (err) {
+            lastErr = err;
+          }
+        }
+        if (!matched) {
+          throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+        }
         const links = await ensureRepoLinks();
         links.repos[repoKey({ owner, name })] = { localPath, linkedAt: new Date().toISOString() };
         await saveRepoLinks(deps!.repoLinksFilePath, links);
@@ -1197,8 +1232,12 @@ export function initOrchestrator(
     async (_e, owner: string, name: string, destParent: string, accountId?: string) => {
       try {
         const token = await tokenForRepo(owner, name, accountId);
-        if (!token) throw new Error("no GitHub account token available");
-        const host = codeHostFor("github");
+        if (!token) throw new Error("no account token available for this repo");
+        const account = accountId
+          ? deps?.getAccounts().find((a) => a.key === accountId)
+          : undefined;
+        const hostId = account ? (codeHostForProvider(account.provider) ?? "github") : "github";
+        const host = codeHostFor(hostId);
         const localPath = await cloneRepo(
           host,
           { owner, name },
@@ -1431,7 +1470,8 @@ export function initOrchestrator(
     prepareWorktree: async (item) => {
       const link = repoLinks?.repos[repoKey(item.repo)];
       if (!link) throw new Error(`repo ${item.repo.owner}/${item.repo.name} is not linked`);
-      const token = await tokenForRepo(item.repo.owner, item.repo.name, item.accountId);
+      const account = codeHostAccountFor(item.codeHost, item.accountId);
+      const token = account ? await deps!.getToken(account.key) : null;
       await fetchOrigin(
         link.localPath,
         token ? codeHostFor(item.codeHost).pushCredentials(token) : undefined,
@@ -1480,8 +1520,11 @@ export function initOrchestrator(
     listItems: () => Object.values(manifest?.items ?? {}),
     getItem: (itemId) => manifest?.items[itemId],
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
-    getTokenProvider: (item) => (force) => deps!.getToken(item.accountId, force),
-    getBaseUrl: (item) => deps!.getAccounts().find((a) => a.key === item.accountId)?.baseUrl,
+    getTokenProvider: (item) => (force) => {
+      const account = codeHostAccountFor(item.codeHost, item.accountId);
+      return account ? deps!.getToken(account.key, force) : Promise.resolve(null);
+    },
+    getBaseUrl: (item) => codeHostAccountFor(item.codeHost, item.accountId)?.baseUrl,
     getRepoPath: repoPathFor,
     getBaseBranch: async (item) => {
       const link = repoLinks?.repos[repoKey(item.repo)];

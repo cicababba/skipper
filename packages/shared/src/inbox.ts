@@ -6,7 +6,9 @@
 export type IssueSourceId = "github" | "gitlab" | "jira";
 
 /** Where the code lives (git-host axis, epic #68). */
-export type CodeHostId = "github" | "gitlab";
+export type CodeHostId = "github" | "gitlab" | "bitbucket";
+
+const CODE_HOST_IDS: readonly CodeHostId[] = ["github", "gitlab", "bitbucket"];
 
 export interface RepoRef {
   owner: string;
@@ -72,6 +74,37 @@ export function parseProjectMappingKey(key: string): ProjectMappingKeyParts | nu
   const projectKey = rest.join(":");
   if (!source || !host || !projectKey) return null;
   return { source, host, projectKey };
+}
+
+/**
+ * Parses a project→repo mapping value (#81): bare `owner/name` means github (the
+ * historical format, kept for back-compat), `<host>:owner/name` names another code
+ * host. Returns undefined when the host prefix is unknown or either half is missing.
+ */
+export function parseRepoMappingValue(
+  value: string,
+): { codeHost: CodeHostId; repo: RepoRef } | undefined {
+  let codeHost: CodeHostId = "github";
+  let rest = value;
+  const colon = value.indexOf(":");
+  if (colon !== -1) {
+    const prefix = value.slice(0, colon);
+    if (!(CODE_HOST_IDS as readonly string[]).includes(prefix)) return undefined;
+    codeHost = prefix as CodeHostId;
+    rest = value.slice(colon + 1);
+  }
+  // Split at the last slash: GitLab nested-group owners contain slashes
+  // (group/sub/proj → owner "group/sub", name "proj").
+  const slash = rest.lastIndexOf("/");
+  if (slash <= 0 || slash === rest.length - 1) return undefined;
+  return { codeHost, repo: { owner: rest.slice(0, slash), name: rest.slice(slash + 1) } };
+}
+
+/** Inverse of parseRepoMappingValue — github stays bare so existing stored values
+ *  and lookups are unchanged. */
+export function formatRepoMappingValue(codeHost: CodeHostId, repo: RepoRef): string {
+  const path = `${repo.owner}/${repo.name}`;
+  return codeHost === "github" ? path : `${codeHost}:${path}`;
 }
 
 interface WorkItemBase {
