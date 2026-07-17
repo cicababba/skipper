@@ -50,6 +50,15 @@ describe("deriveProviderView", () => {
     ).toEqual({ status: "error", error: "boom" });
   });
 
+  it("collapses choosing-resource to signing-in for the glance view", () => {
+    const s = state({
+      flows: {
+        jira: { status: "choosing-resource", candidates: [{ id: "c1", name: "Acme", url: "https://acme.atlassian.net" }] },
+      },
+    });
+    expect(deriveProviderView(s, "jira")).toEqual({ status: "signing-in" });
+  });
+
   it("providers are independent", () => {
     const s = state({
       accounts: [google, github],

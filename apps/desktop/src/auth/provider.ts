@@ -1,7 +1,7 @@
 // Provider abstraction for the desktop OAuth flow. Each provider supplies a
 // ProviderConfig; the generic flow in oauth-flow.ts consumes it.
 
-import type { Account, AuthProviderId } from "@skipper/shared";
+import type { Account, AuthProviderId, ResourceCandidate } from "@skipper/shared";
 
 /** A provider maps an identity without the store key — AuthManager stamps `key`
  *  from (provider, id, baseUrl) on write (#101). */
@@ -44,15 +44,24 @@ export interface ProviderConfig {
   usesPkce: boolean;
   rotatesRefreshToken: boolean;
   requiresRefreshTokenOnExchange: boolean;
+  /** Token endpoint body encoding. Default "form" (x-www-form-urlencoded);
+   *  Atlassian requires a JSON body on both grants. */
+  tokenRequestFormat?: "form" | "json";
   /** Fixed loopback ports (GitHub: exact callback URL match). Unset → any free port. */
   redirectPorts?: readonly number[];
   /** Connect flow must collect an instance URL before auth (self-hosted providers). */
   requiresBaseUrl: boolean;
+  /** OAuth is fixed-host, but the PAT fallback still needs an instance URL
+   *  (Jira Data Center). */
+  patRequiresBaseUrl?: boolean;
   /** Prefill for the instance-URL field (the provider's public host). */
   defaultBaseUrl?: string;
   /** Personal-access-token sign-in fallback (no refresh, no expiry). */
   supportsPat: boolean;
-  mapUser(accessToken: string, baseUrl?: string): Promise<MappedAccount>;
+  /** Resolve the sites this OAuth token can reach — the manager picks one (or
+   *  asks the user) before mapUser. Absent = the token maps directly. */
+  listResources?(accessToken: string): Promise<ResourceCandidate[]>;
+  mapUser(accessToken: string, baseUrl?: string, resource?: ResourceCandidate): Promise<MappedAccount>;
   /** Required when supportsPat: validate the PAT and map the identity. */
   mapUserFromPat?(token: string, baseUrl?: string): Promise<MappedAccount>;
   /** Best-effort revocation on sign-out. */

@@ -36,6 +36,8 @@ const PLACEHOLDERS = {
   GITHUB_OAUTH_CLIENT_ID: "YOUR_GITHUB_APP_CLIENT_ID",
   GITHUB_OAUTH_CLIENT_SECRET: "YOUR_GITHUB_APP_CLIENT_SECRET",
   GITLAB_OAUTH_CLIENT_ID: "YOUR_GITLAB_APPLICATION_ID",
+  JIRA_OAUTH_CLIENT_ID: "YOUR_JIRA_OAUTH_CLIENT_ID",
+  JIRA_OAUTH_CLIENT_SECRET: "YOUR_JIRA_OAUTH_CLIENT_SECRET",
 };
 
 function parseEnvFile(text) {
@@ -83,7 +85,9 @@ function existingPair(source, idConst, secretConst, legacyIdConst, legacySecretC
 }
 
 const existing = existsSync(target) ? readFileSync(target, "utf-8") : "";
-const hasNewShape = existing.includes("GITLAB_OAUTH_CLIENT_ID");
+// Gate on the NEWEST const so an existing checkout missing the Jira pair gets
+// rewritten instead of early-exiting with a stale file the compiler rejects.
+const hasNewShape = existing.includes("JIRA_OAUTH_CLIENT_ID");
 
 const google =
   envPair("GOOGLE") ??
@@ -100,9 +104,19 @@ const gitlab = {
     grabConst(existing, "GITLAB_OAUTH_CLIENT_ID") ??
     PLACEHOLDERS.GITLAB_OAUTH_CLIENT_ID,
 };
+const jira =
+  envPair("JIRA") ??
+  existingPair(existing, "JIRA_OAUTH_CLIENT_ID", "JIRA_OAUTH_CLIENT_SECRET") ??
+  { id: PLACEHOLDERS.JIRA_OAUTH_CLIENT_ID, secret: PLACEHOLDERS.JIRA_OAUTH_CLIENT_SECRET };
 
 // Nothing to change: file already in the new shape and no env override.
-if (hasNewShape && !envPair("GOOGLE") && !envPair("GITHUB") && !envVar("SKIPPER_GITLAB_CLIENT_ID")) {
+if (
+  hasNewShape &&
+  !envPair("GOOGLE") &&
+  !envPair("GITHUB") &&
+  !envVar("SKIPPER_GITLAB_CLIENT_ID") &&
+  !envPair("JIRA")
+) {
   process.exit(0);
 }
 
@@ -128,6 +142,9 @@ const contents = [
   "",
   `export const GITLAB_OAUTH_CLIENT_ID = "${escape(gitlab.id)}";`,
   "",
+  `export const JIRA_OAUTH_CLIENT_ID = "${escape(jira.id)}";`,
+  `export const JIRA_OAUTH_CLIENT_SECRET = "${escape(jira.secret)}";`,
+  "",
 ].join("\n");
 writeFileSync(target, contents, "utf-8");
 
@@ -138,5 +155,5 @@ const describe = (pair, name) =>
 const describeId = (id, name) =>
   id.startsWith("YOUR_") ? `${name}: placeholder (sign-in unconfigured)` : `${name}: configured`;
 console.log(
-  `[oauth] wrote oauth-config.ts — ${describe(google, "google")}, ${describe(github, "github")}, ${describeId(gitlab.id, "gitlab")}.`,
+  `[oauth] wrote oauth-config.ts — ${describe(google, "google")}, ${describe(github, "github")}, ${describeId(gitlab.id, "gitlab")}, ${describe(jira, "jira")}.`,
 );

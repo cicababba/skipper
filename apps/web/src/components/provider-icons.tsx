@@ -7,6 +7,7 @@ export const PROVIDER_ICONS: Partial<Record<AuthProviderId, ProviderIcon>> = {
   google: GoogleMark,
   github: Github,
   gitlab: GitLabMark,
+  jira: JiraMark,
 };
 
 export const FALLBACK_PROVIDER_ICON: ProviderIcon = KeyRound;
@@ -28,6 +29,25 @@ function GitLabMark({ size = 14 }: { size?: number; className?: string }) {
       <path
         fill="#FC6D26"
         d="M12 21.42l3.684-11.333H8.316L12 21.42zM3.16 10.087L2.043 13.53a.762.762 0 0 0 .277.852L12 21.42 3.16 10.087zm5.156 0H3.16l1.905-5.863a.39.39 0 0 1 .742 0l2.509 5.863zM20.84 10.087l1.117 3.442a.762.762 0 0 1-.277.852L12 21.42l8.84-11.333zm-5.156 0h5.156l-1.905-5.863a.39.39 0 0 0-.742 0l-2.509 5.863z"
+      />
+    </svg>
+  );
+}
+
+function JiraMark({ size = 14 }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+      <path
+        fill="#2684FF"
+        d="M11.571 11.513H0a5.218 5.218 0 0 0 5.232 5.215h2.13v2.057A5.215 5.215 0 0 0 12.575 24V12.518a1.005 1.005 0 0 0-1.005-1.005z"
+      />
+      <path
+        fill="#2684FF"
+        d="M17.317 5.756H5.746a5.215 5.215 0 0 0 5.215 5.214h2.129v2.058a5.218 5.218 0 0 0 5.232 5.215V6.76a1.005 1.005 0 0 0-1.005-1.005z"
+      />
+      <path
+        fill="#2684FF"
+        d="M23.063 0H11.492a5.215 5.215 0 0 0 5.215 5.214h2.129v2.058a5.218 5.218 0 0 0 5.168 5.215V1.005A1.005 1.005 0 0 0 23.063 0z"
       />
     </svg>
   );

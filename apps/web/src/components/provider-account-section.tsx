@@ -25,7 +25,7 @@ function hostOf(url: string): string | undefined {
 // (multi-account, #99); issue-source providers get the repo-picker affordances.
 export function ProviderAccountSection({ provider }: { provider: AuthProviderMeta }) {
   const { t } = useT();
-  const { accountsFor, signIn, signInWithPat, signOut, cancelSignIn } = useAuth();
+  const { accountsFor, signIn, signInWithPat, signOut, cancelSignIn, chooseResource } = useAuth();
   const [pickerAccount, setPickerAccount] = useState<Account | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [baseUrl, setBaseUrl] = useState(provider.defaultBaseUrl ?? "");
@@ -46,8 +46,14 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
   };
   const Icon = PROVIDER_ICONS[provider.id] ?? FALLBACK_PROVIDER_ICON;
 
-  const baseUrlOptions = provider.requiresBaseUrl ? { baseUrl } : undefined;
+  // OAuth carries the instance URL only for genuinely self-hosted providers;
+  // Jira OAuth is fixed-host (its site comes from the picker), but the PAT
+  // fallback still needs a Data Center instance URL.
+  const oauthBaseUrlOptions = provider.requiresBaseUrl ? { baseUrl } : undefined;
+  const patNeedsBaseUrl = provider.requiresBaseUrl || !!provider.patRequiresBaseUrl;
+  const patBaseUrlOptions = patNeedsBaseUrl ? { baseUrl } : undefined;
   const baseUrlMissing = provider.requiresBaseUrl && normalizeBaseUrl(baseUrl) === null;
+  const patBaseUrlMissing = patNeedsBaseUrl && normalizeBaseUrl(baseUrl) === null;
   const defaultHost = provider.defaultBaseUrl
     ? hostOf(normalizeBaseUrl(provider.defaultBaseUrl) ?? provider.defaultBaseUrl)
     : undefined;
@@ -68,13 +74,13 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
   };
 
   const connect = () =>
-    void signIn(provider.id, baseUrlOptions).then(() => {
+    void signIn(provider.id, oauthBaseUrlOptions).then(() => {
       setAddOpen(false);
       void openPickerForLatest();
     });
 
   const connectWithPat = () =>
-    void signInWithPat(provider.id, pat, baseUrlOptions).then(() => {
+    void signInWithPat(provider.id, pat, patBaseUrlOptions).then(() => {
       setPat("");
       setAddOpen(false);
       void openPickerForLatest();
@@ -165,6 +171,34 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
               </div>
             )}
 
+            {flow.status === "choosing-resource" && (
+              <div className="space-y-3">
+                <p className="text-sm font-medium">{common.chooseSiteTitle}</p>
+                <ul className="space-y-2">
+                  {flow.candidates.map((c) => (
+                    <li key={c.id}>
+                      <button
+                        onClick={() => void chooseResource(provider.id, c.id)}
+                        className="w-full flex items-center gap-3 p-2.5 rounded-lg border border-border bg-background hover:bg-card-hover text-left transition-colors"
+                      >
+                        <Avatar account={{ name: c.name, avatarUrl: c.avatarUrl }} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{c.name}</p>
+                          <p className="text-[11px] text-muted/60 truncate">{hostOf(c.url) ?? c.url}</p>
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  onClick={() => void cancelSignIn(provider.id)}
+                  className="text-xs text-muted/70 hover:text-foreground underline-offset-2 hover:underline"
+                >
+                  {common.cancel}
+                </button>
+              </div>
+            )}
+
             {flow.status === "error" && (
               <div className="text-sm text-red-400 flex items-center gap-3">
                 <span>{common.signInFailed(flow.error)}</span>
@@ -202,7 +236,7 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
                   setPatOpen={setPatOpen}
                   pat={pat}
                   setPat={setPat}
-                  baseUrlMissing={baseUrlMissing}
+                  patBaseUrlMissing={patBaseUrlMissing}
                   connectWithPat={connectWithPat}
                 />
               </div>
@@ -257,7 +291,7 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
                   setPatOpen={setPatOpen}
                   pat={pat}
                   setPat={setPat}
-                  baseUrlMissing={baseUrlMissing}
+                  patBaseUrlMissing={patBaseUrlMissing}
                   connectWithPat={connectWithPat}
                   hideBaseUrl
                 />
@@ -289,7 +323,7 @@ function ConnectExtras({
   setPatOpen,
   pat,
   setPat,
-  baseUrlMissing,
+  patBaseUrlMissing,
   connectWithPat,
   hideBaseUrl,
 }: {
@@ -301,10 +335,13 @@ function ConnectExtras({
   setPatOpen: (v: boolean) => void;
   pat: string;
   setPat: (v: string) => void;
-  baseUrlMissing: boolean;
+  patBaseUrlMissing: boolean;
   connectWithPat: () => void;
   hideBaseUrl?: boolean;
 }) {
+  // Jira OAuth is fixed-host but its PAT (Data Center) needs an instance URL —
+  // ask for it inside the PAT form so the OAuth button stays ungated.
+  const patNeedsOwnBaseUrl = !!provider.patRequiresBaseUrl && !provider.requiresBaseUrl;
   return (
     <>
       {provider.requiresBaseUrl && !hideBaseUrl && (
@@ -328,23 +365,37 @@ function ConnectExtras({
         </button>
       )}
       {provider.supportsPat && patOpen && (
-        <div className="flex items-end gap-3">
-          <label className="block flex-1 min-w-0">
-            <span className="text-[11px] text-muted/60">{common.patLabel}</span>
-            <input
-              type="password"
-              value={pat}
-              onChange={(e) => setPat(e.target.value)}
-              className="mt-1 w-full h-9 px-3 rounded-lg border border-border bg-background text-xs"
-            />
-          </label>
-          <button
-            onClick={connectWithPat}
-            disabled={baseUrlMissing || !pat.trim()}
-            className="shrink-0 h-9 px-4 rounded-lg border border-border bg-background hover:bg-card-hover text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {common.patSignIn}
-          </button>
+        <div className="space-y-3">
+          {patNeedsOwnBaseUrl && (
+            <label className="block">
+              <span className="text-[11px] text-muted/60">{common.instanceUrlLabel}</span>
+              <input
+                type="text"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder={common.instanceUrlPlaceholder}
+                className="mt-1 w-full h-9 px-3 rounded-lg border border-border bg-background text-xs"
+              />
+            </label>
+          )}
+          <div className="flex items-end gap-3">
+            <label className="block flex-1 min-w-0">
+              <span className="text-[11px] text-muted/60">{common.patLabel}</span>
+              <input
+                type="password"
+                value={pat}
+                onChange={(e) => setPat(e.target.value)}
+                className="mt-1 w-full h-9 px-3 rounded-lg border border-border bg-background text-xs"
+              />
+            </label>
+            <button
+              onClick={connectWithPat}
+              disabled={patBaseUrlMissing || !pat.trim()}
+              className="shrink-0 h-9 px-4 rounded-lg border border-border bg-background hover:bg-card-hover text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {common.patSignIn}
+            </button>
+          </div>
         </div>
       )}
     </>

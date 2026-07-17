@@ -81,3 +81,31 @@ export const GITLAB_OAUTH_ENDPOINTS = {
   scopes: ["api"],
   redirectPorts: [8130, 8131, 8132],
 } as const;
+
+// ============================================================
+// Jira OAuth (Atlassian 3LO — Jira Cloud)
+// ============================================================
+//
+// Jira Cloud 3LO runs against auth.atlassian.com, NOT the site. The exchanged
+// token is unusable until GET api.atlassian.com/oauth/token/accessible-resources
+// resolves a cloudId; every API call then routes via
+// api.atlassian.com/ex/jira/<cloudId>/rest/api/3/... The chosen site URL
+// (https://<site>.atlassian.net) becomes Account.baseUrl, so two sites reached
+// by one token become two host-scoped accounts. 3LO does not support PKCE — a
+// (non-confidential desktop) client secret is required — and the token endpoint
+// wants a JSON body on both grants. Refresh tokens rotate (single-use, 90-day
+// inactivity) and need the offline_access scope. Only one callback URL per app,
+// so a single fixed loopback port. Jira Data Center (self-hosted) is a separate
+// product: it signs in with a PAT + instance URL via the v2 REST API.
+
+export const JIRA_OAUTH_ENDPOINTS = {
+  authEndpoint: "https://auth.atlassian.com/authorize",
+  tokenEndpoint: "https://auth.atlassian.com/oauth/token",
+  accessibleResourcesEndpoint: "https://api.atlassian.com/oauth/token/accessible-resources",
+  apiBase: (cloudId: string) => `https://api.atlassian.com/ex/jira/${cloudId}`,
+  myselfEndpoint: (cloudId: string) =>
+    `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/myself`,
+  dcMyselfEndpoint: (base: string) => `${base}/rest/api/2/myself`,
+  scopes: ["read:jira-work", "read:jira-user", "offline_access"],
+  redirectPorts: [8133],
+} as const;

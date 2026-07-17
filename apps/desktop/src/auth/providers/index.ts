@@ -3,11 +3,13 @@ import type { ProviderConfig } from "../provider";
 import { googleProvider } from "./google";
 import { githubProvider } from "./github";
 import { gitlabProvider } from "./gitlab";
+import { jiraProvider } from "./jira";
 
 export const PROVIDERS: Record<AuthProviderId, ProviderConfig> = {
   google: googleProvider,
   github: githubProvider,
   gitlab: gitlabProvider,
+  jira: jiraProvider,
 };
 
 export function providerMetadata(
@@ -20,5 +22,6 @@ export function providerMetadata(
     requiresBaseUrl: PROVIDERS[id].requiresBaseUrl,
     defaultBaseUrl: PROVIDERS[id].defaultBaseUrl,
     supportsPat: PROVIDERS[id].supportsPat,
+    ...(PROVIDERS[id].patRequiresBaseUrl ? { patRequiresBaseUrl: true } : {}),
   }));
 }

@@ -32,6 +32,7 @@ interface AuthContextValue {
   ) => Promise<void>;
   signOut: (provider: AuthProviderId, accountId: string) => Promise<void>;
   cancelSignIn: (provider: AuthProviderId) => Promise<void>;
+  chooseResource: (provider: AuthProviderId, resourceId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -93,6 +94,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await window.skipper.auth.cancelSignIn(provider);
   }, []);
 
+  const chooseResource = useCallback(async (provider: AuthProviderId, resourceId: string) => {
+    if (!window.skipper) return;
+    await window.skipper.auth.chooseResource(provider, resourceId);
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       authState,
@@ -103,8 +109,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInWithPat,
       signOut,
       cancelSignIn,
+      chooseResource,
     }),
-    [authState, providers, viewFor, accountsFor, signIn, signInWithPat, signOut, cancelSignIn],
+    [authState, providers, viewFor, accountsFor, signIn, signInWithPat, signOut, cancelSignIn, chooseResource],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

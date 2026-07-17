@@ -8,18 +8,14 @@
 //   3. Open the system browser to the provider's auth endpoint with
 //      redirect_uri = http://127.0.0.1:<port>/callback.
 //   4. The provider redirects back with ?code=...&state=...
-//   5. Exchange code for tokens, then map the user via config.mapUser.
+//   5. Exchange code for tokens and return them; the caller maps the user
+//      (some providers must resolve a site/cloudId first — see AuthManager).
 
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { shell } from "electron";
-import { OAuthError, type MappedAccount, type ProviderConfig, type ProviderTokens, type RefreshedTokens } from "./provider";
+import { OAuthError, type ProviderConfig, type ProviderTokens, type RefreshedTokens } from "./provider";
 import { SUCCESS_HTML, errorHtml } from "./callback-pages";
-
-export interface OAuthSuccess {
-  tokens: ProviderTokens;
-  account: MappedAccount;
-}
 
 function base64url(buf: Buffer): string {
   return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -32,8 +28,9 @@ function generatePkcePair(): { verifier: string; challenge: string } {
 }
 
 /**
- * Run the full OAuth flow for a provider. Opens the system browser, waits for
- * the loopback callback, exchanges the code, and returns tokens + account.
+ * Run the OAuth flow for a provider. Opens the system browser, waits for the
+ * loopback callback, exchanges the code, and returns the tokens. The caller
+ * maps the user (some providers resolve a site/cloudId first — see AuthManager).
  *
  * Throws OAuthError on any failure (user cancel, network, token exchange).
  */
@@ -41,15 +38,12 @@ export async function runOAuthFlow(
   config: ProviderConfig,
   signal?: AbortSignal,
   baseUrl?: string,
-): Promise<OAuthSuccess> {
+): Promise<ProviderTokens> {
   const { verifier, challenge } = generatePkcePair();
   const state = base64url(randomBytes(16));
 
   const { code, redirectUri } = await captureAuthCode(config, { state, challenge, signal, baseUrl });
-  const tokens = await exchangeCodeForTokens(config, code, verifier, redirectUri, baseUrl);
-  const account = await config.mapUser(tokens.accessToken, baseUrl);
-
-  return { tokens, account };
+  return exchangeCodeForTokens(config, code, verifier, redirectUri, baseUrl);
 }
 
 interface CaptureArgs {
@@ -209,18 +203,20 @@ async function tokenRequest(
   params: Record<string, string>,
   baseUrl?: string,
 ): Promise<TokenResponse> {
-  const body = new URLSearchParams({ client_id: config.clientId, ...params });
+  const fields: Record<string, string> = { client_id: config.clientId, ...params };
   if (config.clientSecret) {
-    body.set("client_secret", config.clientSecret);
+    fields.client_secret = config.clientSecret;
   }
+  // Atlassian requires a JSON body on both grants; everyone else takes form.
+  const asJson = config.tokenRequestFormat === "json";
   const res = await fetch(config.tokenEndpoint(baseUrl), {
     method: "POST",
     headers: {
-      "content-type": "application/x-www-form-urlencoded",
+      "content-type": asJson ? "application/json" : "application/x-www-form-urlencoded",
       // GitHub answers form-encoded unless asked for JSON; Google ignores it.
       accept: "application/json",
     },
-    body: body.toString(),
+    body: asJson ? JSON.stringify(fields) : new URLSearchParams(fields).toString(),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");

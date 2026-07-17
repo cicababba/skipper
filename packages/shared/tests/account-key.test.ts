@@ -18,4 +18,10 @@ describe("accountKey", () => {
   it("keeps a non-default port in the host segment", () => {
     expect(accountKey("gitlab", "42", "https://git.corp:8443")).toBe("gitlab:git.corp:8443:42");
   });
+
+  it("host-scopes a jira cloud account by its atlassian.net site", () => {
+    expect(accountKey("jira", "acc-9", "https://acme.atlassian.net")).toBe(
+      "jira:acme.atlassian.net:acc-9",
+    );
+  });
 });

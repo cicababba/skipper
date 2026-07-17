@@ -23,6 +23,14 @@ describe("provider registry", () => {
         defaultBaseUrl: "https://gitlab.com",
         supportsPat: true,
       },
+      {
+        id: "jira",
+        displayName: "Jira",
+        isIssueSource: false,
+        requiresBaseUrl: false,
+        supportsPat: true,
+        patRequiresBaseUrl: true,
+      },
     ]);
   });
 
@@ -32,5 +40,18 @@ describe("provider registry", () => {
     expect(gitlab.clientSecret).toBeUndefined();
     expect(gitlab.rotatesRefreshToken).toBe(true);
     expect(gitlab.redirectPorts).toEqual([8130, 8131, 8132]);
+  });
+
+  it("configures the jira provider for Atlassian 3LO (no PKCE, JSON body, audience/prompt, port 8133)", () => {
+    const jira = PROVIDERS.jira;
+    expect(jira.usesPkce).toBe(false);
+    expect(jira.tokenRequestFormat).toBe("json");
+    expect(jira.redirectPorts).toEqual([8133]);
+    expect(jira.scopes).toContain("offline_access");
+    expect(jira.rotatesRefreshToken).toBe(true);
+    expect(jira.requiresBaseUrl).toBe(false);
+    expect(jira.patRequiresBaseUrl).toBe(true);
+    expect(jira.extraAuthParams).toEqual({ audience: "api.atlassian.com", prompt: "consent" });
+    expect(typeof jira.listResources).toBe("function");
   });
 });

@@ -26,7 +26,7 @@ export const DEFAULT_LLM_SETTINGS: LlmSettings = {
 // Auth
 // ============================================================
 
-export const AUTH_PROVIDER_IDS = ["google", "github", "gitlab"] as const;
+export const AUTH_PROVIDER_IDS = ["google", "github", "gitlab", "jira"] as const;
 export type AuthProviderId = (typeof AUTH_PROVIDER_IDS)[number];
 
 /** Renderer-facing provider row (skipper:auth:getProviders), derived in main
@@ -42,6 +42,20 @@ export interface AuthProviderMeta {
   defaultBaseUrl?: string;
   /** Provider accepts a personal access token as a sign-in fallback. */
   supportsPat: boolean;
+  /** OAuth is fixed-host, but the PAT fallback still needs an instance URL
+   *  (Jira Data Center). Independent from requiresBaseUrl. */
+  patRequiresBaseUrl?: boolean;
+}
+
+/** A site/resource the OAuth token can reach — the user picks one per account
+ *  when the token spans several (Jira Cloud accessible-resources). */
+export interface ResourceCandidate {
+  /** Provider-native resource id (Jira cloudId). */
+  id: string;
+  name: string;
+  /** The site origin (e.g. https://acme.atlassian.net) — becomes Account.baseUrl. */
+  url: string;
+  avatarUrl?: string;
 }
 
 /** Provider-neutral identity for a connected account. */
@@ -59,6 +73,8 @@ export interface Account {
   avatarUrl?: string;
   /** Normalized instance origin for self-hosted providers. Absent = the provider's fixed host. */
   baseUrl?: string;
+  /** Atlassian cloudId — the API routes through api.atlassian.com/ex/jira/<cloudId>. */
+  cloudId?: string;
   /** Absent = "oauth" (pre-#73 accounts). */
   authMethod?: "oauth" | "pat";
   /** Epoch ms of the last sign-in — row ordering + most-recent pick. */
@@ -69,6 +85,8 @@ export interface Account {
 export type ProviderFlowStatus =
   | { status: "idle" }
   | { status: "signing-in" }
+  /** Token reaches several sites — the user must pick one before the account lands. */
+  | { status: "choosing-resource"; candidates: ResourceCandidate[] }
   | { status: "error"; error: string }
   /** Source build with placeholder OAuth credentials for this provider —
    *  sign-in can't work; the UI shows a disabled control instead. */
