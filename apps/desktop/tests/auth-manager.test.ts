@@ -100,6 +100,7 @@ describe("AuthManager host-scoped identity (#101)", () => {
       github: fakeProvider("github"),
       gitlab: fakeProvider("gitlab"),
       jira: fakeProvider("jira"),
+      bitbucket: fakeProvider("bitbucket"),
     });
     await manager.init();
   });
@@ -145,6 +146,7 @@ function makeManager(jira: ProviderConfig): AuthManager {
     github: fakeProvider("github"),
     gitlab: fakeProvider("gitlab"),
     jira,
+    bitbucket: fakeProvider("bitbucket"),
   });
 }
 

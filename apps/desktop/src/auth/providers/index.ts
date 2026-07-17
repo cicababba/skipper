@@ -4,12 +4,14 @@ import { googleProvider } from "./google";
 import { githubProvider } from "./github";
 import { gitlabProvider } from "./gitlab";
 import { jiraProvider } from "./jira";
+import { bitbucketProvider } from "./bitbucket";
 
 export const PROVIDERS: Record<AuthProviderId, ProviderConfig> = {
   google: googleProvider,
   github: githubProvider,
   gitlab: gitlabProvider,
   jira: jiraProvider,
+  bitbucket: bitbucketProvider,
 };
 
 export function providerMetadata(

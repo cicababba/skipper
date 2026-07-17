@@ -203,19 +203,26 @@ async function tokenRequest(
   params: Record<string, string>,
   baseUrl?: string,
 ): Promise<TokenResponse> {
-  const fields: Record<string, string> = { client_id: config.clientId, ...params };
-  if (config.clientSecret) {
+  // Bitbucket authenticates the client with HTTP Basic and rejects credentials
+  // in the body; everyone else carries client_id (+ secret) in the body.
+  const useBasic = config.tokenAuth === "basic";
+  const fields: Record<string, string> = useBasic ? { ...params } : { client_id: config.clientId, ...params };
+  if (config.clientSecret && !useBasic) {
     fields.client_secret = config.clientSecret;
   }
-  // Atlassian requires a JSON body on both grants; everyone else takes form.
+  const headers: Record<string, string> = {
+    // Atlassian requires a JSON body on both grants; everyone else takes form.
+    "content-type": config.tokenRequestFormat === "json" ? "application/json" : "application/x-www-form-urlencoded",
+    // GitHub answers form-encoded unless asked for JSON; Google ignores it.
+    accept: "application/json",
+  };
+  if (useBasic) {
+    headers.authorization = `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret ?? ""}`).toString("base64")}`;
+  }
   const asJson = config.tokenRequestFormat === "json";
   const res = await fetch(config.tokenEndpoint(baseUrl), {
     method: "POST",
-    headers: {
-      "content-type": asJson ? "application/json" : "application/x-www-form-urlencoded",
-      // GitHub answers form-encoded unless asked for JSON; Google ignores it.
-      accept: "application/json",
-    },
+    headers,
     body: asJson ? JSON.stringify(fields) : new URLSearchParams(fields).toString(),
   });
   if (!res.ok) {

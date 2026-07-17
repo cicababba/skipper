@@ -1,6 +1,7 @@
 // Make sure `apps/desktop/src/auth/oauth-config.ts` exists with the right
-// credentials (a CLIENT_ID/SECRET pair for Google and GitHub, CLIENT_ID only
-// for GitLab — public client, no secret) before the TS compiler runs.
+// credentials (a CLIENT_ID/SECRET pair for Google, GitHub, Jira and Bitbucket,
+// CLIENT_ID only for GitLab — public client, no secret) before the TS compiler
+// runs.
 //
 // Sources, merged per provider in priority order:
 //
@@ -38,6 +39,8 @@ const PLACEHOLDERS = {
   GITLAB_OAUTH_CLIENT_ID: "YOUR_GITLAB_APPLICATION_ID",
   JIRA_OAUTH_CLIENT_ID: "YOUR_JIRA_OAUTH_CLIENT_ID",
   JIRA_OAUTH_CLIENT_SECRET: "YOUR_JIRA_OAUTH_CLIENT_SECRET",
+  BITBUCKET_OAUTH_CLIENT_ID: "YOUR_BITBUCKET_OAUTH_CLIENT_ID",
+  BITBUCKET_OAUTH_CLIENT_SECRET: "YOUR_BITBUCKET_OAUTH_CLIENT_SECRET",
 };
 
 function parseEnvFile(text) {
@@ -75,7 +78,9 @@ function envPair(provider) {
 // Values already on disk — current const shape, or the legacy two-const
 // Google-only shape (OAUTH_CLIENT_ID / OAUTH_CLIENT_SECRET).
 function grabConst(source, name) {
-  return source.match(new RegExp(`export const ${name} = "((?:[^"\\\\]|\\\\.)*)";`))?.[1];
+  // \s* around "=" tolerates Prettier wrapping the value onto its own line —
+  // a single-line-only match here silently reset real creds to placeholders.
+  return source.match(new RegExp(`export const ${name}\\s*=\\s*"((?:[^"\\\\]|\\\\.)*)";`))?.[1];
 }
 
 function existingPair(source, idConst, secretConst, legacyIdConst, legacySecretConst) {
@@ -85,9 +90,9 @@ function existingPair(source, idConst, secretConst, legacyIdConst, legacySecretC
 }
 
 const existing = existsSync(target) ? readFileSync(target, "utf-8") : "";
-// Gate on the NEWEST const so an existing checkout missing the Jira pair gets
-// rewritten instead of early-exiting with a stale file the compiler rejects.
-const hasNewShape = existing.includes("JIRA_OAUTH_CLIENT_ID");
+// Gate on the NEWEST const so an existing checkout missing the Bitbucket pair
+// gets rewritten instead of early-exiting with a stale file the compiler rejects.
+const hasNewShape = existing.includes("BITBUCKET_OAUTH_CLIENT_ID");
 
 const google =
   envPair("GOOGLE") ??
@@ -108,6 +113,10 @@ const jira =
   envPair("JIRA") ??
   existingPair(existing, "JIRA_OAUTH_CLIENT_ID", "JIRA_OAUTH_CLIENT_SECRET") ??
   { id: PLACEHOLDERS.JIRA_OAUTH_CLIENT_ID, secret: PLACEHOLDERS.JIRA_OAUTH_CLIENT_SECRET };
+const bitbucket =
+  envPair("BITBUCKET") ??
+  existingPair(existing, "BITBUCKET_OAUTH_CLIENT_ID", "BITBUCKET_OAUTH_CLIENT_SECRET") ??
+  { id: PLACEHOLDERS.BITBUCKET_OAUTH_CLIENT_ID, secret: PLACEHOLDERS.BITBUCKET_OAUTH_CLIENT_SECRET };
 
 // Nothing to change: file already in the new shape and no env override.
 if (
@@ -115,7 +124,8 @@ if (
   !envPair("GOOGLE") &&
   !envPair("GITHUB") &&
   !envVar("SKIPPER_GITLAB_CLIENT_ID") &&
-  !envPair("JIRA")
+  !envPair("JIRA") &&
+  !envPair("BITBUCKET")
 ) {
   process.exit(0);
 }
@@ -145,6 +155,9 @@ const contents = [
   `export const JIRA_OAUTH_CLIENT_ID = "${escape(jira.id)}";`,
   `export const JIRA_OAUTH_CLIENT_SECRET = "${escape(jira.secret)}";`,
   "",
+  `export const BITBUCKET_OAUTH_CLIENT_ID = "${escape(bitbucket.id)}";`,
+  `export const BITBUCKET_OAUTH_CLIENT_SECRET = "${escape(bitbucket.secret)}";`,
+  "",
 ].join("\n");
 writeFileSync(target, contents, "utf-8");
 
@@ -155,5 +168,5 @@ const describe = (pair, name) =>
 const describeId = (id, name) =>
   id.startsWith("YOUR_") ? `${name}: placeholder (sign-in unconfigured)` : `${name}: configured`;
 console.log(
-  `[oauth] wrote oauth-config.ts — ${describe(google, "google")}, ${describe(github, "github")}, ${describeId(gitlab.id, "gitlab")}, ${describe(jira, "jira")}.`,
+  `[oauth] wrote oauth-config.ts — ${describe(google, "google")}, ${describe(github, "github")}, ${describeId(gitlab.id, "gitlab")}, ${describe(jira, "jira")}, ${describe(bitbucket, "bitbucket")}.`,
 );

@@ -26,7 +26,7 @@ export const DEFAULT_LLM_SETTINGS: LlmSettings = {
 // Auth
 // ============================================================
 
-export const AUTH_PROVIDER_IDS = ["google", "github", "gitlab", "jira"] as const;
+export const AUTH_PROVIDER_IDS = ["google", "github", "gitlab", "jira", "bitbucket"] as const;
 export type AuthProviderId = (typeof AUTH_PROVIDER_IDS)[number];
 
 /** Renderer-facing provider row (skipper:auth:getProviders), derived in main
