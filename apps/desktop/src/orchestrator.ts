@@ -1,5 +1,6 @@
 import { ipcMain, type BrowserWindow } from "electron";
 import {
+  issueSourceFor,
   issueSourceForAuthProvider,
   reconcile,
   applyTransition,
@@ -92,7 +93,11 @@ export type { OrchestratorAccountState, OrchestratorState } from "@skipper/share
 
 export interface OrchestratorDeps {
   getAccounts: () => Account[];
-  getToken: (accountId: string, forceRefresh?: boolean) => Promise<string | null>;
+  getToken: (
+    provider: AuthProviderId,
+    accountId: string,
+    forceRefresh?: boolean,
+  ) => Promise<string | null>;
   cursorFilePath: string;
   manifestFilePath: string;
   repoLinksFilePath: string;
@@ -353,15 +358,20 @@ async function tokenForRepo(
   accountId?: string,
 ): Promise<string | null> {
   if (!deps) return null;
-  if (accountId) return deps.getToken(accountId);
+  if (accountId) {
+    const provider = issueAccounts().find((a) => a.id === accountId)?.provider;
+    return provider ? deps.getToken(provider, accountId) : null;
+  }
   const key = repoKey({ owner, name });
   for (const [acctId, map] of items) {
     for (const item of map.values()) {
-      if (repoKey(item.repo) === key) return deps.getToken(acctId);
+      if (repoKey(item.repo) === key) {
+        return deps.getToken(issueSourceFor(item.source).authProvider, acctId);
+      }
     }
   }
   const first = issueAccounts()[0];
-  return first ? deps.getToken(first.id) : null;
+  return first ? deps.getToken(first.provider, first.id) : null;
 }
 
 function admissionPolicy(m: OrchestratorManifest): {
@@ -420,7 +430,7 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
 
     const result = await source.poll({
       accountId,
-      getToken: (force) => deps!.getToken(accountId, force),
+      getToken: (force) => deps!.getToken(account.provider, accountId, force),
       baseUrl: account.baseUrl,
       cursor,
       deepHydrate,
@@ -483,7 +493,7 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
         try {
           dependencies[iss.id] = await source.fetchDependencies(
             iss,
-            (force) => deps!.getToken(accountId, force),
+            (force) => deps!.getToken(account.provider, accountId, force),
             account.baseUrl,
           );
         } catch (err) {
@@ -964,10 +974,12 @@ export function initOrchestrator(
   });
   ipcMain.handle(
     "skipper:orchestrator:listFollowCandidates",
-    async (_e, accountId?: string): Promise<FollowCandidatesResult> => {
+    async (_e, accountId?: string, providerId?: AuthProviderId): Promise<FollowCandidatesResult> => {
       try {
         const account = accountId
-          ? issueAccounts().find((a) => a.id === accountId)
+          ? issueAccounts().find(
+              (a) => a.id === accountId && (!providerId || a.provider === providerId),
+            )
           : issueAccounts()[0];
         if (!account) return { ok: false, error: "no issue-source account connected" };
         const m = await ensureManifest();
@@ -984,7 +996,7 @@ export function initOrchestrator(
 
         if (account.provider === "github") {
           const result = await listUserInstallationRepos((force) =>
-            deps!.getToken(account.id, force),
+            deps!.getToken(account.provider, account.id, force),
           );
           for (const repo of result.repos) {
             const key = repoKey(repo);
@@ -1001,7 +1013,7 @@ export function initOrchestrator(
             : "https://github.com/settings/installations";
         } else if (account.provider === "gitlab") {
           const projects = await listMembershipProjects(
-            (force) => deps!.getToken(account.id, force),
+            (force) => deps!.getToken(account.provider, account.id, force),
             account.baseUrl,
           );
           for (const project of projects) {
@@ -1368,8 +1380,14 @@ export function initOrchestrator(
     listItems: () => Object.values(manifest?.items ?? {}),
     getItem: (itemId) => manifest?.items[itemId],
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
-    getTokenProvider: (item) => (force) => deps!.getToken(item.accountId, force),
-    getBaseUrl: (item) => deps!.getAccounts().find((a) => a.id === item.accountId)?.baseUrl,
+    getTokenProvider: (item) => (force) =>
+      deps!.getToken(issueSourceFor(item.source).authProvider, item.accountId, force),
+    getBaseUrl: (item) =>
+      deps!
+        .getAccounts()
+        .find(
+          (a) => a.provider === issueSourceFor(item.source).authProvider && a.id === item.accountId,
+        )?.baseUrl,
     getRepoPath: repoPathFor,
     getBaseBranch: async (item) => {
       const link = repoLinks?.repos[repoKey(item.repo)];

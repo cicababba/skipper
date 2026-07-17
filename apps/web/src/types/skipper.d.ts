@@ -101,7 +101,7 @@ declare global {
           pat: string,
           options?: { baseUrl?: string },
         ) => Promise<void>;
-        signOut: (provider: AuthProviderId, accountId?: string) => Promise<void>;
+        signOut: (provider: AuthProviderId, accountId: string) => Promise<void>;
         cancelSignIn: (provider: AuthProviderId) => Promise<void>;
         onStateChanged: (callback: (state: AuthState) => void) => () => void;
       };
@@ -166,7 +166,10 @@ declare global {
           patch: Partial<RepoIntakeSettings>,
         ) => Promise<OrchestratorState>;
         listRepoSettings: () => Promise<RepoSettingsRow[]>;
-        listFollowCandidates: (accountId?: string) => Promise<FollowCandidatesResult>;
+        listFollowCandidates: (
+          accountId?: string,
+          providerId?: AuthProviderId,
+        ) => Promise<FollowCandidatesResult>;
         resolveResumeRite: (
           action: ResumeRiteAction,
           itemIds?: string[],

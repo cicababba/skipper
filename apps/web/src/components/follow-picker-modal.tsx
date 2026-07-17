@@ -30,7 +30,7 @@ export function FollowPickerModal({
   const load = useCallback(async () => {
     setResult(null);
     if (!window.skipper) return;
-    const res = await window.skipper.orchestrator.listFollowCandidates(accountId);
+    const res = await window.skipper.orchestrator.listFollowCandidates(accountId, providerId);
     setResult(res);
     if (res.ok) {
       setSelected(
@@ -41,7 +41,7 @@ export function FollowPickerModal({
         ),
       );
     }
-  }, [accountId]);
+  }, [accountId, providerId]);
 
   useEffect(() => {
     void load();

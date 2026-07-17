@@ -17,7 +17,6 @@ const V2_STORE: AuthStoreFile = {
       signedInAt: 500,
     },
   },
-  active: { github: "42" },
 };
 
 const LEGACY_SESSION = {
@@ -45,12 +44,19 @@ describe("parseStoreFile", () => {
     expect(parsed).toEqual({ store: V2_STORE, migrated: false });
   });
 
+  it("drops a legacy active key on read", () => {
+    const withActive = { ...V2_STORE, active: { github: "42" } };
+    const parsed = parseStoreFile(JSON.stringify(withActive));
+    expect(parsed).toEqual({ store: V2_STORE, migrated: false });
+    expect("active" in parsed!.store).toBe(false);
+  });
+
   it("migrates a legacy single-session file to a google account", () => {
     const parsed = parseStoreFile(JSON.stringify(LEGACY_SESSION));
     expect(parsed?.migrated).toBe(true);
     const store = parsed!.store;
     expect(store.version).toBe(2);
-    expect(store.active).toEqual({ google: "sub-1" });
+    expect("active" in store).toBe(false);
     const stored = store.accounts["google:sub-1"];
     expect(stored.account).toEqual({
       provider: "google",
