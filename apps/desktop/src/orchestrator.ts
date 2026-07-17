@@ -475,6 +475,7 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
       accountId,
       getToken: (force) => deps!.getToken(accountId, force),
       baseUrl: account.baseUrl,
+      cloudId: account.cloudId,
       cursor,
       deepHydrate,
     });

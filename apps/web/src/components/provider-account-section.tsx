@@ -139,7 +139,7 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
                           <p className="text-[11px] text-muted/60 truncate">{secondary}</p>
                         )}
                       </div>
-                      {provider.isIssueSource && (
+                      {provider.isIssueSource && !provider.needsProjectMapping && (
                         <button
                           onClick={() => setPickerAccount(a)}
                           className="shrink-0 h-8 px-3 rounded-md text-xs border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors"

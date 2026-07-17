@@ -1,6 +1,7 @@
 import type { AuthProviderId, CodeHostId, IssueSourceId } from "@skipper/shared";
 import { githubCodeHost, githubIssueSource } from "./github";
 import { gitlabCodeHost, gitlabIssueSource } from "./gitlab";
+import { jiraIssueSource } from "./jira";
 import type { CodeHost, IssueSource } from "./types";
 
 // `satisfies` keeps this exhaustive as the IssueSourceId axis widens — a new id
@@ -10,6 +11,7 @@ import type { CodeHost, IssueSource } from "./types";
 export const issueSources = {
   github: githubIssueSource,
   gitlab: gitlabIssueSource,
+  jira: jiraIssueSource,
 } satisfies Record<IssueSourceId, IssueSource>;
 
 export function issueSourceFor(source: IssueSourceId): IssueSource {
@@ -36,6 +38,4 @@ export function issueSourceForAuthProvider(provider: AuthProviderId): IssueSourc
 export * from "./types";
 export * from "./github";
 export * from "./gitlab";
-// Jira: client + project listing only — no IssueSource registration (#78 owns
-// the poll adapter, which is what would add a jira entry to issueSources).
 export * from "./jira";

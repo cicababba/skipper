@@ -26,7 +26,7 @@ describe("provider registry", () => {
       {
         id: "jira",
         displayName: "Jira",
-        isIssueSource: false,
+        isIssueSource: true,
         requiresBaseUrl: false,
         supportsPat: true,
         patRequiresBaseUrl: true,

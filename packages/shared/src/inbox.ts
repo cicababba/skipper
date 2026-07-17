@@ -2,8 +2,8 @@
 // Skipper — Platform-neutral inbox items (Issue / PullRequest)
 // ============================================================
 
-/** Where the work item is tracked (issue-tracker axis, epic #68). Widens: Jira. */
-export type IssueSourceId = "github" | "gitlab";
+/** Where the work item is tracked (issue-tracker axis, epic #68). */
+export type IssueSourceId = "github" | "gitlab" | "jira";
 
 /** Where the code lives (git-host axis, epic #68). */
 export type CodeHostId = "github" | "gitlab";
