@@ -751,6 +751,10 @@ for (const provider of AUTH_PROVIDER_IDS) {
   ipcMain.handle(`skipper:auth:${provider}:cancelSignIn`, () => {
     authManager?.cancelSignIn(provider);
   });
+
+  ipcMain.handle(`skipper:auth:${provider}:chooseResource`, (_e, resourceId: string) => {
+    authManager?.chooseResource(provider, resourceId);
+  });
 }
 
 // ====== CLI on PATH (macOS / Windows) ======

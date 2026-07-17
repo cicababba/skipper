@@ -10,7 +10,11 @@ import type {
 export function deriveProviderView(state: AuthState, provider: AuthProviderId): ProviderAuthView {
   const flow = state.flows[provider];
   if (flow?.status === "unconfigured") return { status: "unconfigured" };
-  if (flow?.status === "signing-in") return { status: "signing-in" };
+  // The glance view stays a spinner while the user picks a site; the settings
+  // card reads the full choosing-resource status off the raw flow.
+  if (flow?.status === "signing-in" || flow?.status === "choosing-resource") {
+    return { status: "signing-in" };
+  }
   if (flow?.status === "error") return { status: "error", error: flow.error };
 
   // Most recently signed-in account represents the provider; later array

@@ -32,6 +32,18 @@
 //   4. Scopes: api. Copy the Application ID into the const below (no secret).
 //      Self-managed instances sign in with a personal access token instead.
 //
+// Jira (issue orchestration — Atlassian 3LO; Jira Cloud):
+//   1. https://developer.atlassian.com/console/myapps → Create → OAuth 2.0
+//      integration. Add the "Jira API" permission with the classic scopes
+//      read:jira-work, read:jira-user (offline_access is added automatically
+//      for rotating refresh tokens).
+//   2. Authorization → OAuth 2.0 (3LO): set the callback URL to
+//      http://127.0.0.1:8133/callback (only ONE callback URL is allowed).
+//   3. Copy the Client ID and Client secret from Settings into the consts
+//      below. 3LO does not use PKCE, so the (non-confidential desktop) secret
+//      is required. Jira Data Center (self-hosted) signs in with a personal
+//      access token + instance URL instead.
+//
 // For Google's "Desktop app" client type the secret is *non-confidential* —
 // it ships in the distributed binary, and security is provided by PKCE, not
 // by the secret. GitHub Apps don't support PKCE, but the same reasoning
@@ -48,3 +60,6 @@ export const GITHUB_OAUTH_CLIENT_SECRET = "YOUR_GITHUB_APP_CLIENT_SECRET";
 
 // GitLab is a public client — no secret.
 export const GITLAB_OAUTH_CLIENT_ID = "YOUR_GITLAB_APPLICATION_ID";
+
+export const JIRA_OAUTH_CLIENT_ID = "YOUR_JIRA_OAUTH_CLIENT_ID";
+export const JIRA_OAUTH_CLIENT_SECRET = "YOUR_JIRA_OAUTH_CLIENT_SECRET";

@@ -103,6 +103,7 @@ declare global {
         ) => Promise<void>;
         signOut: (provider: AuthProviderId, accountId: string) => Promise<void>;
         cancelSignIn: (provider: AuthProviderId) => Promise<void>;
+        chooseResource: (provider: AuthProviderId, resourceId: string) => Promise<void>;
         onStateChanged: (callback: (state: AuthState) => void) => () => void;
       };
       openExternal: (url: string) => Promise<void>;

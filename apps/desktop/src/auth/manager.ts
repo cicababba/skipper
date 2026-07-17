@@ -8,6 +8,7 @@ import {
   type Account,
   type AuthProviderId,
   type AuthState,
+  type ResourceCandidate,
 } from "@skipper/shared";
 import { OAuthError, applyRefreshedTokens, type ProviderConfig, type ProviderTokens } from "./provider";
 import { runOAuthFlow, refreshTokens } from "./oauth-flow";
@@ -27,11 +28,17 @@ const REFRESH_LEAD_MS = 5 * 60 * 1000; // 5 minutes
 
 type Listener = (state: AuthState) => void;
 
+interface PendingResourceChoice {
+  candidates: ResourceCandidate[];
+  resolve: (choice: ResourceCandidate) => void;
+}
+
 export class AuthManager {
   private store: AuthStoreFile = emptyStore();
   private flows: AuthState["flows"] = {};
   private listeners = new Set<Listener>();
   private signInAborts = new Map<AuthProviderId, AbortController>();
+  private pendingResourceChoices = new Map<AuthProviderId, PendingResourceChoice>();
 
   constructor(private readonly providers: Record<AuthProviderId, ProviderConfig> = PROVIDERS) {
     for (const id of AUTH_PROVIDER_IDS) {
@@ -72,7 +79,14 @@ export class AuthManager {
     return () => this.listeners.delete(cb);
   }
 
-  /** Cancel any in-flight sign-in (e.g. user closed the browser tab). */
+  /** signing-in and choosing-resource both count as an active flow. */
+  private isFlowBusy(provider: AuthProviderId): boolean {
+    const status = this.flows[provider]?.status;
+    return status === "signing-in" || status === "choosing-resource";
+  }
+
+  /** Cancel any in-flight sign-in (e.g. user closed the browser tab, or backed
+   *  out of the site picker). Aborting rejects any pending resource choice. */
   cancelSignIn(provider: AuthProviderId): void {
     this.signInAborts.get(provider)?.abort();
     this.signInAborts.delete(provider);
@@ -81,7 +95,7 @@ export class AuthManager {
   async signIn(provider: AuthProviderId, options?: { baseUrl?: string }): Promise<void> {
     const config = this.providers[provider];
     if (!isConfigured(config)) return; // source build — nothing to sign in to
-    if (this.flows[provider]?.status === "signing-in") {
+    if (this.isFlowBusy(provider)) {
       // Already running — ignore double-clicks.
       return;
     }
@@ -91,19 +105,83 @@ export class AuthManager {
     const abort = new AbortController();
     this.signInAborts.set(provider, abort);
     try {
-      const { tokens, account: mapped } = await runOAuthFlow(config, abort.signal, baseUrl);
+      const tokens = await runOAuthFlow(config, abort.signal, baseUrl);
+      const resource = await this.resolveResource(provider, config, tokens.accessToken, abort.signal);
+      const mapped = await config.mapUser(tokens.accessToken, baseUrl, resource);
       const account: Omit<Account, "key"> = {
         ...mapped,
         authMethod: "oauth",
         ...(baseUrl ? { baseUrl } : {}),
       };
-      await this.storeAccount(provider, account, tokens, baseUrl);
+      await this.storeAccount(provider, account, tokens);
       this.setFlow(provider, { status: "idle" });
     } catch (err) {
       this.failFlow(provider, err);
     } finally {
       this.signInAborts.delete(provider);
+      this.pendingResourceChoices.delete(provider);
     }
+  }
+
+  /**
+   * Resolve the site the OAuth token should map to. Providers without a
+   * listResources hook map directly (undefined). 0 sites → error; 1 → auto-pick;
+   * several → broadcast a choosing-resource flow and await chooseResource.
+   */
+  private async resolveResource(
+    provider: AuthProviderId,
+    config: ProviderConfig,
+    accessToken: string,
+    signal: AbortSignal,
+  ): Promise<ResourceCandidate | undefined> {
+    if (!config.listResources) return undefined;
+    const candidates = await config.listResources(accessToken);
+    if (candidates.length === 0) {
+      throw new OAuthError(`No ${config.displayName} sites are accessible with this account`);
+    }
+    if (candidates.length === 1) return candidates[0];
+    this.setFlow(provider, { status: "choosing-resource", candidates });
+    return this.awaitResourceChoice(provider, candidates, signal);
+  }
+
+  /** Promise that settles when the user picks a site (chooseResource) or the
+   *  sign-in is aborted (cancelSignIn). */
+  private awaitResourceChoice(
+    provider: AuthProviderId,
+    candidates: ResourceCandidate[],
+    signal: AbortSignal,
+  ): Promise<ResourceCandidate> {
+    return new Promise<ResourceCandidate>((resolve, reject) => {
+      const onAbort = () => {
+        this.pendingResourceChoices.delete(provider);
+        reject(new OAuthError("Sign-in cancelled"));
+      };
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+      this.pendingResourceChoices.set(provider, {
+        candidates,
+        resolve: (choice) => {
+          signal.removeEventListener("abort", onAbort);
+          resolve(choice);
+        },
+      });
+    });
+  }
+
+  /** Resolve a pending site pick. Unknown/stale ids are ignored (no active
+   *  pick, or the id isn't among the offered candidates). */
+  chooseResource(provider: AuthProviderId, resourceId: string): void {
+    const pending = this.pendingResourceChoices.get(provider);
+    if (!pending) return;
+    const choice = pending.candidates.find((c) => c.id === resourceId);
+    if (!choice) return;
+    this.pendingResourceChoices.delete(provider);
+    // Back to a plain spinner while /myself resolves the identity.
+    this.setFlow(provider, { status: "signing-in" });
+    pending.resolve(choice);
   }
 
   /**
@@ -119,12 +197,13 @@ export class AuthManager {
   ): Promise<void> {
     const config = this.providers[provider];
     if (!config.supportsPat || !config.mapUserFromPat) return;
-    if (this.flows[provider]?.status === "signing-in") return;
+    if (this.isFlowBusy(provider)) return;
     if (!pat.trim()) {
       this.failFlow(provider, new OAuthError("A personal access token is required"));
       return;
     }
-    const baseUrl = this.resolveBaseUrl(config, options);
+    // OAuth may be fixed-host while the PAT still needs an instance URL (Jira DC).
+    const baseUrl = this.resolveBaseUrl(config, options, config.requiresBaseUrl || !!config.patRequiresBaseUrl);
     if (baseUrl === null) return;
     this.setFlow(provider, { status: "signing-in" });
     try {
@@ -141,7 +220,7 @@ export class AuthManager {
         scope: "",
         tokenType: "pat",
       };
-      await this.storeAccount(provider, account, tokens, baseUrl);
+      await this.storeAccount(provider, account, tokens);
       this.setFlow(provider, { status: "idle" });
     } catch (err) {
       this.failFlow(provider, err);
@@ -152,9 +231,10 @@ export class AuthManager {
   private resolveBaseUrl(
     config: ProviderConfig,
     options?: { baseUrl?: string },
+    required: boolean = config.requiresBaseUrl,
   ): string | undefined | null {
     const normalized = options?.baseUrl ? normalizeBaseUrl(options.baseUrl) : undefined;
-    if (config.requiresBaseUrl && !normalized) {
+    if (required && !normalized) {
       this.failFlow(config.id, new OAuthError("A valid instance URL is required"));
       return null;
     }
@@ -165,9 +245,11 @@ export class AuthManager {
     provider: AuthProviderId,
     account: Omit<Account, "key">,
     tokens: ProviderTokens,
-    baseUrl?: string,
   ): Promise<void> {
-    const key = accountKey(provider, account.id, baseUrl);
+    // Key on the account's own baseUrl: the flow-level baseUrl is undefined for
+    // fixed-host OAuth providers that still carry a per-account host (Jira), so
+    // two Jira sites would otherwise collide on `jira:<id>`.
+    const key = accountKey(provider, account.id, account.baseUrl);
     this.store.accounts[key] = { account: { ...account, key }, tokens, signedInAt: Date.now() };
     await saveStore(this.store);
   }

@@ -108,6 +108,8 @@ contextBridge.exposeInMainWorld("skipper", {
       ipcRenderer.invoke(`skipper:auth:${provider}:signOut`, accountId),
     cancelSignIn: (provider: AuthProviderId): Promise<void> =>
       ipcRenderer.invoke(`skipper:auth:${provider}:cancelSignIn`),
+    chooseResource: (provider: AuthProviderId, resourceId: string): Promise<void> =>
+      ipcRenderer.invoke(`skipper:auth:${provider}:chooseResource`, resourceId),
     onStateChanged: (callback: (state: AuthState) => void) => {
       const handler = (_e: unknown, state: AuthState) => callback(state);
       ipcRenderer.on("skipper:auth:stateChanged", handler);
