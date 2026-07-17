@@ -27,6 +27,9 @@ export interface PollOptions<C = unknown> {
   getToken: TokenProvider;
   /** Instance API base for self-hosted providers; fixed-host adapters fall back to their constant. */
   baseUrl?: string;
+  /** Atlassian cloudId — routes Jira Cloud calls via api.atlassian.com/ex/jira/<cloudId>.
+   *  Fixed-host and self-hosted adapters ignore it. */
+  cloudId?: string;
   /** Opaque cursor from the previous poll. undefined (or a shape the adapter
    *  doesn't recognize) → full walk of the current open set. */
   cursor?: C;
