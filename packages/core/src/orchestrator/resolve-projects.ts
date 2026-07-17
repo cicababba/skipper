@@ -1,5 +1,5 @@
-import type { Issue, RepoRef, UnmappedProject } from "@skipper/shared";
-import { projectMappingKey } from "@skipper/shared";
+import type { Issue, UnmappedProject } from "@skipper/shared";
+import { parseRepoMappingValue, projectMappingKey } from "@skipper/shared";
 
 export interface ResolveProjectReposResult {
   /** Input issues with `repo` filled from the mapping where one applies; issues
@@ -7,13 +7,6 @@ export interface ResolveProjectReposResult {
   issues: Issue[];
   /** Projects with open, still-repo-less issues, aggregated with a count. */
   unmapped: UnmappedProject[];
-}
-
-/** "owner/name" → RepoRef; undefined when either half is missing (malformed value). */
-function parseRepoValue(value: string): RepoRef | undefined {
-  const [owner, name] = value.split("/");
-  if (!owner || !name) return undefined;
-  return { owner, name };
 }
 
 /**
@@ -38,9 +31,9 @@ export function resolveProjectRepos(
     }
     const key = projectMappingKey(issue.source, target.host, issue.sourceRef.project);
     const value = projectMappings[key];
-    const repo = value ? parseRepoValue(value) : undefined;
-    if (repo) {
-      out.push({ ...issue, repo });
+    const parsed = value ? parseRepoMappingValue(value) : undefined;
+    if (parsed) {
+      out.push({ ...issue, repo: parsed.repo, codeHost: parsed.codeHost });
       continue;
     }
     // Still repo-less: passes through unchanged so reconcile can see it (never

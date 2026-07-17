@@ -57,6 +57,33 @@ describe("resolveProjectRepos", () => {
     expect(unmapped[0]).toMatchObject({ projectKey: "PROJ", count: 1 });
   });
 
+  it("derives the code host from a host-prefixed mapping value", () => {
+    const mappings = { [projectMappingKey("jira", HOST, "PROJ")]: "bitbucket:ws/repo" };
+    const { issues } = resolveProjectRepos([jiraIssue("PROJ-1", "PROJ")], target, mappings);
+    expect(issues[0].repo).toEqual({ owner: "ws", name: "repo" });
+    expect(issues[0].codeHost).toBe("bitbucket");
+  });
+
+  it("keeps a bare mapping value on github for back-compat", () => {
+    const mappings = { [projectMappingKey("jira", HOST, "PROJ")]: "octo/demo" };
+    const { issues } = resolveProjectRepos([jiraIssue("PROJ-1", "PROJ")], target, mappings);
+    expect(issues[0].codeHost).toBe("github");
+  });
+
+  it("derives gitlab from a gitlab-prefixed mapping value", () => {
+    const mappings = { [projectMappingKey("jira", HOST, "PROJ")]: "gitlab:group/proj" };
+    const { issues } = resolveProjectRepos([jiraIssue("PROJ-1", "PROJ")], target, mappings);
+    expect(issues[0].repo).toEqual({ owner: "group", name: "proj" });
+    expect(issues[0].codeHost).toBe("gitlab");
+  });
+
+  it("treats an unknown host prefix as unmapped", () => {
+    const mappings = { [projectMappingKey("jira", HOST, "PROJ")]: "bogus:ws/repo" };
+    const { issues, unmapped } = resolveProjectRepos([jiraIssue("PROJ-1", "PROJ")], target, mappings);
+    expect(issues[0].repo).toBeUndefined();
+    expect(unmapped[0]).toMatchObject({ projectKey: "PROJ", count: 1 });
+  });
+
   it("counts only open issues", () => {
     const closed = jiraIssue("PROJ-2", "PROJ", { state: "closed" });
     const { unmapped } = resolveProjectRepos([closed], target, {});

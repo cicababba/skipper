@@ -144,13 +144,13 @@ export async function openOrPushPr(
             body: buildPrBody({ issueLink: host.linkIssueText(item.key), plan: stored?.plan }),
             head: item.worktree.branch,
             base: await deps.getBaseBranch(item),
-            draft: true,
+            draft: host.supportsDraft,
           },
           getToken,
           deps.getBaseUrl(item),
         );
         pr = { id: created.id, number: created.number, url: created.url };
-        reason = "draft PR opened";
+        reason = host.supportsDraft ? "draft PR opened" : "PR opened";
       }
 
       await deps.completePrOpen(itemId, pr, sha, actor, reason);

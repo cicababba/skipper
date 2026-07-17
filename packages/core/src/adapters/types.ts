@@ -103,6 +103,9 @@ export interface CodeHost {
   readonly id: CodeHostId;
   /** Which AuthProviderId's accounts authenticate against this host. */
   readonly authProvider: AuthProviderId;
+  /** Callers pass `draft: host.supportsDraft` when opening a PR — Bitbucket Cloud
+   *  has no draft concept, so its PRs are born ready for review. */
+  readonly supportsDraft: boolean;
   // Network methods take a trailing per-account baseUrl (self-hosted instance);
   // fixed-host adapters default to their constant. cloneUrl/parseOrigin take it
   // too so self-hosted clone/origin resolution works (GitLab, #76); fixed-host

@@ -62,9 +62,9 @@ export function mapJiraIssue(
     id: `jira:${payload.id}`,
     source: "jira",
     sourceRef: { project: fields.project?.key ?? "", key: payload.key },
-    // codeHost is only consumed after admission (which needs a repo from the #79
-    // project mapping); Jira issues carry no host, so match the default. Proper
-    // host selection for Jira-mapped repos is a mapping-infra follow-up.
+    // Placeholder for repo-less Jira issues: the effective code host is derived from
+    // the project→repo mapping in resolveProjectRepos (#81), which overwrites this
+    // when it fills the repo. Bare here because a Jira issue carries no host itself.
     codeHost: "github",
     accountId,
     key: payload.key,

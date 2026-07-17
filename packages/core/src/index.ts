@@ -45,6 +45,8 @@ export {
   issueSourceForAuthProvider,
   codeHosts,
   codeHostFor,
+  codeHostForProvider,
+  bitbucketCodeHost,
   githubIssueSource,
   githubCodeHost,
   pollGitHubAccount,

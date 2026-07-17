@@ -125,6 +125,9 @@ export const JIRA_OAUTH_ENDPOINTS = {
 // behind /2.0/user/emails (covered by the `account` scope). Bitbucket Data Center
 // (self-hosted, /rest/api/1.0/) is a separate product and is out of scope.
 
+export const BITBUCKET_BASE_URL = "https://bitbucket.org";
+export const BITBUCKET_API_BASE_URL = "https://api.bitbucket.org/2.0";
+
 export const BITBUCKET_OAUTH_ENDPOINTS = {
   authEndpoint: "https://bitbucket.org/site/oauth2/authorize",
   tokenEndpoint: "https://bitbucket.org/site/oauth2/access_token",
