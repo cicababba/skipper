@@ -23,6 +23,9 @@ export interface OrchestratorManifest {
   parked: Record<string, { firstSeenAt: string }>;
   /** repoKey(owner, name) → per-repo intake settings (#15). */
   repoSettings: Record<string, RepoIntakeSettings>;
+  /** projectMappingKey → canonical repoKey (#79) — repo for trackers whose
+   *  projects have no inherent repo (Jira). */
+  projectMappings: Record<string, string>;
   /** Pending resume-rite prompt (#15); survives restarts, cleared on resolution. */
   resumeRite?: { itemIds: string[]; createdAt: string };
 }
@@ -104,6 +107,7 @@ function freshManifest(): OrchestratorManifest {
     items: {},
     parked: {},
     repoSettings: {},
+    projectMappings: {},
   };
 }
 
@@ -138,6 +142,7 @@ export async function loadOrCreateOrchestratorManifest(
       parsed.settings.ciReentry ??= DEFAULT_ORCHESTRATOR_SETTINGS.ciReentry;
       parsed.settings.codingWipPerRepo ??= DEFAULT_ORCHESTRATOR_SETTINGS.codingWipPerRepo;
       parsed.repoSettings ??= {};
+      parsed.projectMappings ??= {};
       for (const item of Object.values(parsed.items)) migrateTwoAxisItem(item);
       // Empty/absent accounts (e.g. a transient auth failure) must never
       // mass-drop items — skip resolution entirely in that case (#101).

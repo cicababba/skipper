@@ -14,3 +14,4 @@ export {
   type ReconcileOutcome,
   type ReconcilePoll,
 } from "./reconcile";
+export { resolveProjectRepos, type ResolveProjectReposResult } from "./resolve-projects";

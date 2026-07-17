@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useT } from "@/lib/app-i18n";
 import type { ProviderAccountCopy } from "@/lib/i18n/settings";
 import { FollowPickerModal } from "@/components/follow-picker-modal";
+import { ProjectMappingModal } from "@/components/project-mapping-modal";
 import { PROVIDER_ICONS, FALLBACK_PROVIDER_ICON } from "@/components/provider-icons";
 
 type AccountCopy = (typeof import("@/lib/i18n/settings").settings)["en"]["account"];
@@ -27,6 +28,7 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
   const { t } = useT();
   const { accountsFor, signIn, signInWithPat, signOut, cancelSignIn, chooseResource } = useAuth();
   const [pickerAccount, setPickerAccount] = useState<Account | null>(null);
+  const [mappingAccount, setMappingAccount] = useState<Account | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [baseUrl, setBaseUrl] = useState(provider.defaultBaseUrl ?? "");
   const [patOpen, setPatOpen] = useState(false);
@@ -143,6 +145,14 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
                           className="shrink-0 h-8 px-3 rounded-md text-xs border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors"
                         >
                           {common.chooseRepos}
+                        </button>
+                      )}
+                      {provider.needsProjectMapping && (
+                        <button
+                          onClick={() => setMappingAccount(a)}
+                          className="shrink-0 h-8 px-3 rounded-md text-xs border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors"
+                        >
+                          {common.mapProjects}
                         </button>
                       )}
                       <button
@@ -307,6 +317,10 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
           providerId={provider.id}
           onClose={() => setPickerAccount(null)}
         />
+      )}
+
+      {provider.needsProjectMapping && mappingAccount && (
+        <ProjectMappingModal account={mappingAccount} onClose={() => setMappingAccount(null)} />
       )}
     </section>
   );

@@ -107,6 +107,7 @@ const en = {
     signInFailed: (error: string) => `Sign-in failed: ${error}`,
     retry: "Retry",
     chooseRepos: "Choose repositories…",
+    mapProjects: "Map projects…",
     chooseSiteTitle: "Choose a site",
     instanceUrlLabel: "Instance URL",
     instanceUrlPlaceholder: "https://gitlab.example.com",
@@ -229,6 +230,18 @@ const en = {
       loadFailed: "Could not load repositories.",
       private: "private",
     },
+    mapping: {
+      title: "Map projects to repositories",
+      desc: "Jira projects have no repository of their own. Map each project to the repo its issues should code against.",
+      loading: "Loading projects…",
+      loadFailed: "Could not load projects.",
+      empty: "No projects visible for this account.",
+      notMapped: "Not mapped",
+      unmapped: (n: number) =>
+        `${n} project${n === 1 ? "" : "s"} with open issues not mapped yet.`,
+      confirm: "Save",
+      cancel: "Cancel",
+    },
   },
 
 
@@ -326,6 +339,7 @@ const it: typeof en = {
     signInFailed: (error) => `Accesso non riuscito: ${error}`,
     retry: "Riprova",
     chooseRepos: "Scegli repository…",
+    mapProjects: "Mappa progetti…",
     chooseSiteTitle: "Scegli un sito",
     instanceUrlLabel: "URL dell'istanza",
     instanceUrlPlaceholder: "https://gitlab.example.com",
@@ -448,6 +462,18 @@ const it: typeof en = {
       loadFailed: "Impossibile caricare i repository.",
       private: "privato",
     },
+    mapping: {
+      title: "Associa i progetti ai repository",
+      desc: "I progetti Jira non hanno un repository proprio. Associa ogni progetto al repo su cui le sue issue devono lavorare.",
+      loading: "Caricamento progetti…",
+      loadFailed: "Impossibile caricare i progetti.",
+      empty: "Nessun progetto visibile per questo account.",
+      notMapped: "Non associato",
+      unmapped: (n) =>
+        `${n} progett${n === 1 ? "o" : "i"} con issue aperte non ancora associat${n === 1 ? "o" : "i"}.`,
+      confirm: "Salva",
+      cancel: "Annulla",
+    },
   },
 
 
@@ -545,6 +571,7 @@ const fr: typeof en = {
     signInFailed: (error) => `Échec de la connexion : ${error}`,
     retry: "Réessayer",
     chooseRepos: "Choisir les dépôts…",
+    mapProjects: "Associer les projets…",
     chooseSiteTitle: "Choisir un site",
     instanceUrlLabel: "URL de l'instance",
     instanceUrlPlaceholder: "https://gitlab.example.com",
@@ -667,6 +694,18 @@ const fr: typeof en = {
       loadFailed: "Impossible de charger les dépôts.",
       private: "privé",
     },
+    mapping: {
+      title: "Associer les projets aux dépôts",
+      desc: "Les projets Jira n'ont pas de dépôt propre. Associez chaque projet au dépôt sur lequel ses issues doivent coder.",
+      loading: "Chargement des projets…",
+      loadFailed: "Impossible de charger les projets.",
+      empty: "Aucun projet visible pour ce compte.",
+      notMapped: "Non associé",
+      unmapped: (n) =>
+        `${n} projet${n === 1 ? "" : "s"} avec des issues ouvertes pas encore associé${n === 1 ? "" : "s"}.`,
+      confirm: "Enregistrer",
+      cancel: "Annuler",
+    },
   },
 
 
@@ -764,6 +803,7 @@ const es: typeof en = {
     signInFailed: (error) => `Error al iniciar sesión: ${error}`,
     retry: "Reintentar",
     chooseRepos: "Elegir repositorios…",
+    mapProjects: "Asignar proyectos…",
     chooseSiteTitle: "Elige un sitio",
     instanceUrlLabel: "URL de la instancia",
     instanceUrlPlaceholder: "https://gitlab.example.com",
@@ -885,6 +925,18 @@ const es: typeof en = {
       cancel: "Cancelar",
       loadFailed: "No se pudieron cargar los repositorios.",
       private: "privado",
+    },
+    mapping: {
+      title: "Asignar proyectos a repositorios",
+      desc: "Los proyectos de Jira no tienen repositorio propio. Asigna cada proyecto al repo sobre el que deben trabajar sus issues.",
+      loading: "Cargando proyectos…",
+      loadFailed: "No se pudieron cargar los proyectos.",
+      empty: "Ningún proyecto visible para esta cuenta.",
+      notMapped: "Sin asignar",
+      unmapped: (n) =>
+        `${n} proyecto${n === 1 ? "" : "s"} con issues abiertas aún sin asignar.`,
+      confirm: "Guardar",
+      cancel: "Cancelar",
     },
   },
 

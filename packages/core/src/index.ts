@@ -54,6 +54,9 @@ export {
   emptyGitLabCursor,
   listUserInstallationRepos,
   listMembershipProjects,
+  listJiraProjects,
+  jiraGet,
+  jiraApiBase,
 } from "./adapters";
 export type { IssueSource, PollOptions, PollResult, RateLimit, TokenProvider } from "./adapters";
 export type {
@@ -82,6 +85,7 @@ export type {
   GitLabPollOptions,
   GitLabPollResult,
 } from "./adapters";
+export type { JiraTokenProvider, JiraTarget } from "./adapters";
 
 // Planner (issue #7)
 export { generatePlan, PlanGenerationError, IssuePlanSchema, planJsonSchema } from "./planner";
@@ -163,6 +167,7 @@ export {
   saveOrchestratorManifest,
   DEFAULT_ORCHESTRATOR_SETTINGS,
   reconcile,
+  resolveProjectRepos,
   compareQueueCandidates,
 } from "./orchestrator";
 export type {
@@ -171,6 +176,7 @@ export type {
   AdmissionPolicy,
   ReconcileOutcome,
   ReconcilePoll,
+  ResolveProjectReposResult,
   QueueCandidate,
 } from "./orchestrator";
 

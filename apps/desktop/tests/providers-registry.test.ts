@@ -30,6 +30,7 @@ describe("provider registry", () => {
         requiresBaseUrl: false,
         supportsPat: true,
         patRequiresBaseUrl: true,
+        needsProjectMapping: true,
       },
     ]);
   });

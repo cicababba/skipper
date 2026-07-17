@@ -36,3 +36,6 @@ export function issueSourceForAuthProvider(provider: AuthProviderId): IssueSourc
 export * from "./types";
 export * from "./github";
 export * from "./gitlab";
+// Jira: client + project listing only — no IssueSource registration (#78 owns
+// the poll adapter, which is what would add a jira entry to issueSources).
+export * from "./jira";

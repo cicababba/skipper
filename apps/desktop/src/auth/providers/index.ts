@@ -23,5 +23,6 @@ export function providerMetadata(
     defaultBaseUrl: PROVIDERS[id].defaultBaseUrl,
     supportsPat: PROVIDERS[id].supportsPat,
     ...(PROVIDERS[id].patRequiresBaseUrl ? { patRequiresBaseUrl: true } : {}),
+    ...(PROVIDERS[id].needsProjectMapping ? { needsProjectMapping: true } : {}),
   }));
 }

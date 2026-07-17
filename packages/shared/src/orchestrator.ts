@@ -343,6 +343,28 @@ export interface QueueStatus {
   wipLimitPerRepo: number;
 }
 
+/** A tracker project with open issues but no repo mapping yet (#79) — surfaced as
+ *  a warning so the user can map it. count = open, unadmitted issues in the project. */
+export interface UnmappedProject {
+  source: string;
+  host: string;
+  projectKey: string;
+  count: number;
+  accountId: string;
+}
+
+/** One project listed from a tracker for the mapping editor (#79). */
+export interface TrackerProject {
+  id: string;
+  key: string;
+  name: string;
+}
+
+/** Result of listing a tracker account's projects for the mapping editor (#79). */
+export type TrackerProjectsResult =
+  | { ok: true; source: string; host: string; projects: TrackerProject[] }
+  | { ok: false; error: string };
+
 export interface OrchestratorState {
   status: "idle" | "polling";
   /** @deprecated (#62) mirrors settings.intakePaused — read that instead. */
@@ -354,6 +376,10 @@ export interface OrchestratorState {
   accounts: Record<string, OrchestratorAccountState>;
   /** repoKey(repo) → per-repo intake settings (#15). */
   repoSettings: Record<string, RepoIntakeSettings>;
+  /** projectMappingKey → canonical repoKey (#79). */
+  projectMappings: Record<string, string>;
+  /** Tracker projects with open issues but no repo mapping yet (#79). */
+  unmappedProjects: UnmappedProject[];
   /** Pending resume-rite prompt (#15); null when none. */
   resumeRite: { itemIds: string[] } | null;
   /** The global settings bag (#62), so the UI can read and write it. */

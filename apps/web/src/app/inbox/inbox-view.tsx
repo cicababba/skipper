@@ -176,6 +176,35 @@ export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
         </div>
       )}
 
+      {/* Unmapped-projects warning (#79): tracker issues waiting on a repo mapping. */}
+      {state && state.unmappedProjects.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-300 px-3 py-2 text-sm">
+          <span className="font-medium">
+            {t.inbox.unmapped.title(
+              state.unmappedProjects.reduce((n, u) => n + u.count, 0),
+              state.unmappedProjects.length,
+            )}
+          </span>
+          <span className="text-amber-200/70">{t.inbox.unmapped.body}</span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {state.unmappedProjects.map((u) => (
+              <span
+                key={`${u.accountId}:${u.host}:${u.projectKey}`}
+                className="text-[11px] px-1.5 py-0.5 rounded-full border border-amber-500/30 text-amber-200/80"
+              >
+                {u.host} · {u.projectKey} · {u.count}
+              </span>
+            ))}
+          </div>
+          <Link
+            href="/settings"
+            className="ml-auto text-[13px] underline-offset-2 hover:underline"
+          >
+            {t.inbox.unmapped.cta}
+          </Link>
+        </div>
+      )}
+
       {/* Filter row (table only) */}
       {view === "table" && state && state.items.length > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap">

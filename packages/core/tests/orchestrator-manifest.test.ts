@@ -67,6 +67,7 @@ describe("orchestrator manifest", () => {
       items: {},
       parked: {},
       repoSettings: {},
+      projectMappings: {},
     });
   });
 
@@ -90,6 +91,22 @@ describe("orchestrator manifest", () => {
     expect(manifest.settings.shepherdRepush).toBe("human");
     expect(manifest.settings.codingWipPerRepo).toBe(1);
     expect(manifest.repoSettings).toEqual({});
+    expect(manifest.projectMappings).toEqual({});
+  });
+
+  it("backfills projectMappings and round-trips explicit ones (#79)", async () => {
+    await writeFile(
+      filePath,
+      JSON.stringify({ version: 1, settings: { intakePaused: false }, items: {}, parked: {} }),
+      "utf-8",
+    );
+    const backfilled = await loadOrCreateOrchestratorManifest(filePath);
+    expect(backfilled.projectMappings).toEqual({});
+
+    backfilled.projectMappings["jira:acme.atlassian.net:PROJ"] = "octo/demo";
+    await saveOrchestratorManifest(filePath, backfilled);
+    const loaded = await loadOrCreateOrchestratorManifest(filePath);
+    expect(loaded.projectMappings).toEqual({ "jira:acme.atlassian.net:PROJ": "octo/demo" });
   });
 
   // #62. reviewMode was hand-edit-only but read for real, so a hand-set value must
@@ -321,6 +338,7 @@ describe("orchestrator manifest", () => {
       items: {},
       parked: {},
       repoSettings: {},
+      projectMappings: {},
     };
     const saves = Array.from({ length: 10 }, (_, i) =>
       saveOrchestratorManifest(filePath, {

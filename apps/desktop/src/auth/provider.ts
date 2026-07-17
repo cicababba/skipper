@@ -54,6 +54,9 @@ export interface ProviderConfig {
   /** OAuth is fixed-host, but the PAT fallback still needs an instance URL
    *  (Jira Data Center). */
   patRequiresBaseUrl?: boolean;
+  /** Tracker whose projects have no inherent repo — Settings shows the
+   *  project→repo mapping editor for its accounts (#79). */
+  needsProjectMapping?: boolean;
   /** Prefill for the instance-URL field (the provider's public host). */
   defaultBaseUrl?: string;
   /** Personal-access-token sign-in fallback (no refresh, no expiry). */

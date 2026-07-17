@@ -16,6 +16,11 @@ export class IllegalTransitionError extends Error {
 }
 
 export function admitItem(issue: Issue, now: Date = new Date()): TrackedItem {
+  // Admission requires a repo — resolution fills repo-less tracker issues before
+  // reconcile, and the reconcile belt never admits one that is still repo-less (#79).
+  if (!issue.repo) {
+    throw new Error(`cannot admit ${issue.id}: issue has no repo (unmapped project)`);
+  }
   const at = now.toISOString();
   return {
     id: issue.id,

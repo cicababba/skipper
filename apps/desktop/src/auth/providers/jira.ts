@@ -113,6 +113,7 @@ export const jiraProvider: ProviderConfig = {
   redirectPorts: JIRA_OAUTH_ENDPOINTS.redirectPorts,
   requiresBaseUrl: false,
   patRequiresBaseUrl: true,
+  needsProjectMapping: true,
   supportsPat: true,
   listResources: listJiraResources,
   mapUser: mapJiraUser,
