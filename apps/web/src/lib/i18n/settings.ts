@@ -110,6 +110,7 @@ const en = {
     instanceUrlLabel: "Instance URL",
     instanceUrlPlaceholder: "https://gitlab.example.com",
     usePat: "Use a personal access token instead…",
+    addAccount: "Add another account…",
     patLabel: "Personal access token",
     patSignIn: "Connect with token",
     generic: {
@@ -318,6 +319,7 @@ const it: typeof en = {
     instanceUrlLabel: "URL dell'istanza",
     instanceUrlPlaceholder: "https://gitlab.example.com",
     usePat: "Usa un token di accesso personale…",
+    addAccount: "Aggiungi un altro account…",
     patLabel: "Token di accesso personale",
     patSignIn: "Connetti con token",
     generic: {
@@ -526,6 +528,7 @@ const fr: typeof en = {
     instanceUrlLabel: "URL de l'instance",
     instanceUrlPlaceholder: "https://gitlab.example.com",
     usePat: "Utiliser un jeton d'accès personnel…",
+    addAccount: "Ajouter un autre compte…",
     patLabel: "Jeton d'accès personnel",
     patSignIn: "Connecter avec un jeton",
     generic: {
@@ -734,6 +737,7 @@ const es: typeof en = {
     instanceUrlLabel: "URL de la instancia",
     instanceUrlPlaceholder: "https://gitlab.example.com",
     usePat: "Usar un token de acceso personal…",
+    addAccount: "Añadir otra cuenta…",
     patLabel: "Token de acceso personal",
     patSignIn: "Conectar con token",
     generic: {

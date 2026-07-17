@@ -214,7 +214,7 @@ function AccountWidget() {
             {t.tree.topbar.accountSettings}
           </Link>
           <button
-            onClick={async () => { setMenuOpen(false); await signOut("google"); }}
+            onClick={async () => { setMenuOpen(false); await signOut("google", account.id); }}
             className="flex items-center gap-2 px-3 py-2 text-xs w-full text-left hover:bg-card-hover transition-colors text-red-400/90"
           >
             <LogOut size={13} />

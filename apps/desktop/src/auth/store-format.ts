@@ -15,8 +15,6 @@ export interface AuthStoreFile {
   /** Keyed by `${provider}:${account.id}`, or `${provider}:${host}:${account.id}`
    *  when the account is host-scoped (self-hosted instance). */
   accounts: Record<string, StoredAccount>;
-  /** provider → active account id */
-  active: Partial<Record<AuthProviderId, string>>;
 }
 
 /** baseUrl, when present, must already be normalized (normalizeBaseUrl). */
@@ -25,7 +23,7 @@ export function accountKey(provider: AuthProviderId, id: string, baseUrl?: strin
 }
 
 export function emptyStore(): AuthStoreFile {
-  return { version: 2, accounts: {}, active: {} };
+  return { version: 2, accounts: {} };
 }
 
 // Pre-multi-account format: one Google session in the whole file.
@@ -54,7 +52,11 @@ export function parseStoreFile(json: string): { store: AuthStoreFile; migrated: 
 
   const obj = parsed as Record<string, unknown>;
   if (obj.version === 2 && typeof obj.accounts === "object" && obj.accounts !== null) {
-    return { store: parsed as AuthStoreFile, migrated: false };
+    // Rebuild explicitly so a legacy `active` key is dropped on read.
+    return {
+      store: { version: 2, accounts: obj.accounts as Record<string, StoredAccount> },
+      migrated: false,
+    };
   }
   if (obj.version === undefined && typeof obj.tokens === "object" && obj.tokens !== null) {
     const legacy = parsed as LegacyStoredSession;
@@ -76,7 +78,6 @@ export function parseStoreFile(json: string): { store: AuthStoreFile; migrated: 
             signedInAt: legacy.signedInAt,
           },
         },
-        active: { google: account.id },
       },
       migrated: true,
     };

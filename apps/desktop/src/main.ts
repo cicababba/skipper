@@ -709,7 +709,7 @@ ipcMain.handle(
 
 // === Auth (multi-provider OAuth) ===
 ipcMain.handle("skipper:auth:getState", (): AuthState => {
-  return authManager?.getState() ?? { accounts: [], active: {}, flows: {} };
+  return authManager?.getState() ?? { accounts: [], flows: {} };
 });
 
 ipcMain.handle("skipper:auth:getProviders", (): AuthProviderMeta[] => {
@@ -743,6 +743,7 @@ for (const provider of AUTH_PROVIDER_IDS) {
 
   ipcMain.handle(`skipper:auth:${provider}:signOut`, async (_e, accountId?: string) => {
     if (!authManager) throw new Error("Auth not initialized");
+    if (!accountId) return; // stale renderer — sign-out is always per-account now
     await authManager.signOut(provider, accountId);
   });
 
@@ -1086,11 +1087,8 @@ app.whenReady().then(async () => {
       const { initOrchestrator, pokeOrchestrator, killAllCodingRuns } = require("./orchestrator.cjs") as typeof import("./orchestrator");
       initOrchestrator(() => mainWindow, {
         getAccounts: () => authManager?.getState().accounts ?? [],
-        getToken: (accountId, force) => {
-          const account = authManager?.getState().accounts.find((a) => a.id === accountId);
-          if (!account) return Promise.resolve(null);
-          return authManager?.getAccessToken(account.provider, accountId, force) ?? Promise.resolve(null);
-        },
+        getToken: (provider, accountId, force) =>
+          authManager?.getAccessToken(provider, accountId, force) ?? Promise.resolve(null),
         cursorFilePath: join(app.getPath("userData"), "inbox-cursors.json"),
         manifestFilePath: join(app.getPath("userData"), "orchestrator-manifest.json"),
         repoLinksFilePath: join(app.getPath("userData"), "repo-links.json"),

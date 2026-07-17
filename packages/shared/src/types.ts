@@ -57,6 +57,8 @@ export interface Account {
   baseUrl?: string;
   /** Absent = "oauth" (pre-#73 accounts). */
   authMethod?: "oauth" | "pat";
+  /** Epoch ms of the last sign-in — row ordering + most-recent pick. */
+  signedInAt?: number;
 }
 
 /** Per-provider sign-in flow status. */
@@ -71,8 +73,6 @@ export type ProviderFlowStatus =
 /** Auth state pushed from desktop main → renderer. */
 export interface AuthState {
   accounts: Account[];
-  /** provider → active account id */
-  active: Partial<Record<AuthProviderId, string>>;
   flows: Partial<Record<AuthProviderId, ProviderFlowStatus>>;
 }
 
@@ -83,3 +83,11 @@ export type ProviderAuthView =
   | { status: "signed-in"; account: Account }
   | { status: "error"; error: string }
   | { status: "unconfigured" };
+
+/** All of a provider's accounts plus its flow — the multi-account settings view. */
+export interface ProviderAccountsView {
+  /** This provider's accounts in connection order (signedInAt ascending). */
+  accounts: Account[];
+  /** { status: "idle" } when the provider has no active flow. */
+  flow: ProviderFlowStatus;
+}

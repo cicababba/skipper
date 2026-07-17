@@ -104,7 +104,7 @@ contextBridge.exposeInMainWorld("skipper", {
       ipcRenderer.invoke(`skipper:auth:${provider}:signIn`, options),
     signInWithPat: (provider: AuthProviderId, pat: string, options?: { baseUrl?: string }): Promise<void> =>
       ipcRenderer.invoke(`skipper:auth:${provider}:signInWithPat`, pat, options),
-    signOut: (provider: AuthProviderId, accountId?: string): Promise<void> =>
+    signOut: (provider: AuthProviderId, accountId: string): Promise<void> =>
       ipcRenderer.invoke(`skipper:auth:${provider}:signOut`, accountId),
     cancelSignIn: (provider: AuthProviderId): Promise<void> =>
       ipcRenderer.invoke(`skipper:auth:${provider}:cancelSignIn`),
@@ -138,8 +138,11 @@ contextBridge.exposeInMainWorld("skipper", {
       ipcRenderer.invoke("skipper:orchestrator:setRepoSettings", owner, name, patch),
     listRepoSettings: (): Promise<RepoSettingsRow[]> =>
       ipcRenderer.invoke("skipper:orchestrator:listRepoSettings"),
-    listFollowCandidates: (accountId?: string): Promise<FollowCandidatesResult> =>
-      ipcRenderer.invoke("skipper:orchestrator:listFollowCandidates", accountId),
+    listFollowCandidates: (
+      accountId?: string,
+      providerId?: AuthProviderId,
+    ): Promise<FollowCandidatesResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:listFollowCandidates", accountId, providerId),
     resolveResumeRite: (action: ResumeRiteAction, itemIds?: string[]): Promise<OrchestratorState> =>
       ipcRenderer.invoke("skipper:orchestrator:resolveResumeRite", action, itemIds),
     setPinned: (itemId: string, pinned: boolean): Promise<OrchestratorTransitionResult> =>

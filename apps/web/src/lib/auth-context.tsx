@@ -8,11 +8,12 @@ import {
   useMemo,
   useState,
 } from "react";
-import { deriveProviderView } from "@skipper/shared";
+import { deriveProviderAccounts, deriveProviderView } from "@skipper/shared";
 import type {
   AuthProviderId,
   AuthProviderMeta,
   AuthState,
+  ProviderAccountsView,
   ProviderAuthView,
 } from "@skipper/shared";
 
@@ -22,19 +23,20 @@ interface AuthContextValue {
   /** Registry-derived provider rows from the desktop; [] until the IPC answers. */
   providers: AuthProviderMeta[];
   viewFor: (provider: AuthProviderId) => ProviderAuthView;
+  accountsFor: (provider: AuthProviderId) => ProviderAccountsView;
   signIn: (provider: AuthProviderId, options?: { baseUrl?: string }) => Promise<void>;
   signInWithPat: (
     provider: AuthProviderId,
     pat: string,
     options?: { baseUrl?: string },
   ) => Promise<void>;
-  signOut: (provider: AuthProviderId) => Promise<void>;
+  signOut: (provider: AuthProviderId, accountId: string) => Promise<void>;
   cancelSignIn: (provider: AuthProviderId) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const DEFAULT_STATE: AuthState = { accounts: [], active: {}, flows: {} };
+const DEFAULT_STATE: AuthState = { accounts: [], flows: {} };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authState, setAuthState] = useState<AuthState>(DEFAULT_STATE);
@@ -63,6 +65,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [authState],
   );
 
+  const accountsFor = useCallback(
+    (provider: AuthProviderId) => deriveProviderAccounts(authState, provider),
+    [authState],
+  );
+
   const signIn = useCallback(async (provider: AuthProviderId, options?: { baseUrl?: string }) => {
     if (!window.skipper) return;
     await window.skipper.auth.signIn(provider, options);
@@ -76,9 +83,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const signOut = useCallback(async (provider: AuthProviderId) => {
+  const signOut = useCallback(async (provider: AuthProviderId, accountId: string) => {
     if (!window.skipper) return;
-    await window.skipper.auth.signOut(provider);
+    await window.skipper.auth.signOut(provider, accountId);
   }, []);
 
   const cancelSignIn = useCallback(async (provider: AuthProviderId) => {
@@ -87,8 +94,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ authState, providers, viewFor, signIn, signInWithPat, signOut, cancelSignIn }),
-    [authState, providers, viewFor, signIn, signInWithPat, signOut, cancelSignIn],
+    () => ({
+      authState,
+      providers,
+      viewFor,
+      accountsFor,
+      signIn,
+      signInWithPat,
+      signOut,
+      cancelSignIn,
+    }),
+    [authState, providers, viewFor, accountsFor, signIn, signInWithPat, signOut, cancelSignIn],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

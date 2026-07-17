@@ -44,6 +44,10 @@ export function RepositoriesSection() {
   const displayNameFor = (id: AuthProviderId) =>
     providers.find((p) => p.id === id)?.displayName ?? id;
   const fetchAccounts = authState.accounts.filter((a) => issueSourceProviders.has(a.provider));
+  const perProviderCount = new Map<AuthProviderId, number>();
+  for (const a of fetchAccounts) {
+    perProviderCount.set(a.provider, (perProviderCount.get(a.provider) ?? 0) + 1);
+  }
 
   return (
     <section className="mb-10">
@@ -117,17 +121,24 @@ export function RepositoriesSection() {
           <div className="mt-3 flex items-start justify-between gap-3">
             <p className="text-[11px] text-muted/60">{r.followNote}</p>
             <div className="shrink-0 flex flex-wrap items-center justify-end gap-2">
-              {fetchAccounts.map((account) => (
-                <button
-                  key={account.id}
-                  onClick={() =>
-                    setPicker({ accountId: account.id, providerId: account.provider })
-                  }
-                  className="h-7 px-3 rounded-md text-xs border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors"
-                >
-                  {r.fetchFrom(displayNameFor(account.provider))}
-                </button>
-              ))}
+              {fetchAccounts.map((account) => {
+                const name = displayNameFor(account.provider);
+                const label =
+                  (perProviderCount.get(account.provider) ?? 0) > 1
+                    ? `${name} · ${account.name ?? account.email ?? account.id}`
+                    : name;
+                return (
+                  <button
+                    key={`${account.provider}:${account.id}:${account.baseUrl ?? ""}`}
+                    onClick={() =>
+                      setPicker({ accountId: account.id, providerId: account.provider })
+                    }
+                    className="h-7 px-3 rounded-md text-xs border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors"
+                  >
+                    {r.fetchFrom(label)}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
