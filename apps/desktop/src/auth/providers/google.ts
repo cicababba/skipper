@@ -1,5 +1,5 @@
-import { GOOGLE_OAUTH_ENDPOINTS, type Account } from "@skipper/shared";
-import { OAuthError, type ProviderConfig, type ProviderTokens } from "../provider";
+import { GOOGLE_OAUTH_ENDPOINTS } from "@skipper/shared";
+import { OAuthError, type MappedAccount, type ProviderConfig, type ProviderTokens } from "../provider";
 import { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET } from "../oauth-config";
 
 interface GoogleUserinfo {
@@ -9,7 +9,7 @@ interface GoogleUserinfo {
   picture?: string;
 }
 
-async function mapUser(accessToken: string): Promise<Account> {
+async function mapUser(accessToken: string): Promise<MappedAccount> {
   const res = await fetch(GOOGLE_OAUTH_ENDPOINTS.userinfoEndpoint, {
     headers: { authorization: `Bearer ${accessToken}` },
   });

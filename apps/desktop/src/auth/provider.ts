@@ -3,6 +3,10 @@
 
 import type { Account, AuthProviderId } from "@skipper/shared";
 
+/** A provider maps an identity without the store key — AuthManager stamps `key`
+ *  from (provider, id, baseUrl) on write (#101). */
+export type MappedAccount = Omit<Account, "key">;
+
 export interface ProviderTokens {
   accessToken: string;
   refreshToken: string;
@@ -48,9 +52,9 @@ export interface ProviderConfig {
   defaultBaseUrl?: string;
   /** Personal-access-token sign-in fallback (no refresh, no expiry). */
   supportsPat: boolean;
-  mapUser(accessToken: string, baseUrl?: string): Promise<Account>;
+  mapUser(accessToken: string, baseUrl?: string): Promise<MappedAccount>;
   /** Required when supportsPat: validate the PAT and map the identity. */
-  mapUserFromPat?(token: string, baseUrl?: string): Promise<Account>;
+  mapUserFromPat?(token: string, baseUrl?: string): Promise<MappedAccount>;
   /** Best-effort revocation on sign-out. */
   revoke?(tokens: ProviderTokens, baseUrl?: string): Promise<void>;
 }

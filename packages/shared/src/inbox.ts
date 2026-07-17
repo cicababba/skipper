@@ -44,7 +44,7 @@ interface WorkItemBase {
   source: IssueSourceId;
   sourceRef: SourceRef;
   codeHost: CodeHostId;
-  /** Which connected Account (Account.id) sees this item. */
+  /** Which connected Account sees this item — the account key (Account.key). */
   accountId: string;
   repo: RepoRef;
   /** Display id: "42" (GitHub) or "PROJ-123" (Jira). Same as sourceRef.key. */

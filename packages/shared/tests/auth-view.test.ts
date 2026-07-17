@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { deriveProviderAccounts, deriveProviderView } from "../src/auth-view";
 import type { Account, AuthState } from "../src/types";
 
-const google: Account = { provider: "google", id: "sub-1", email: "a@b.c", name: "Ada" };
-const github: Account = { provider: "github", id: "42", name: "octo" };
+const google: Account = { provider: "google", key: "google:sub-1", id: "sub-1", email: "a@b.c", name: "Ada" };
+const github: Account = { provider: "github", key: "github:42", id: "42", name: "octo" };
 
 function state(partial: Partial<AuthState>): AuthState {
   return { accounts: [], flows: {}, ...partial };
@@ -20,15 +20,15 @@ describe("deriveProviderView", () => {
   });
 
   it("picks the most recently signed-in account", () => {
-    const older: Account = { ...google, id: "old", signedInAt: 100 };
-    const newer: Account = { ...google, id: "new", signedInAt: 200 };
+    const older: Account = { ...google, key: "google:old", id: "old", signedInAt: 100 };
+    const newer: Account = { ...google, key: "google:new", id: "new", signedInAt: 200 };
     const s = state({ accounts: [older, newer] });
     expect(deriveProviderView(s, "google")).toEqual({ status: "signed-in", account: newer });
   });
 
   it("later array position wins on a signedInAt tie or absence", () => {
-    const first: Account = { ...google, id: "first" };
-    const second: Account = { ...google, id: "second" };
+    const first: Account = { ...google, key: "google:first", id: "first" };
+    const second: Account = { ...google, key: "google:second", id: "second" };
     const s = state({ accounts: [first, second] });
     expect(deriveProviderView(s, "google")).toEqual({ status: "signed-in", account: second });
   });
@@ -69,9 +69,9 @@ describe("deriveProviderAccounts", () => {
   });
 
   it("filters to the provider and sorts ascending by signedInAt", () => {
-    const a: Account = { ...google, id: "a", signedInAt: 300 };
-    const b: Account = { ...google, id: "b", signedInAt: 100 };
-    const c: Account = { ...google, id: "c", signedInAt: 200 };
+    const a: Account = { ...google, key: "google:a", id: "a", signedInAt: 300 };
+    const b: Account = { ...google, key: "google:b", id: "b", signedInAt: 100 };
+    const c: Account = { ...google, key: "google:c", id: "c", signedInAt: 200 };
     const s = state({ accounts: [a, github, b, c] });
     const view = deriveProviderAccounts(s, "google");
     expect(view.accounts.map((x) => x.id)).toEqual(["b", "c", "a"]);

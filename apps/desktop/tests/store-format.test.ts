@@ -5,7 +5,7 @@ const V2_STORE: AuthStoreFile = {
   version: 2,
   accounts: {
     "github:42": {
-      account: { provider: "github", id: "42", name: "octo" },
+      account: { provider: "github", key: "github:42", id: "42", name: "octo" },
       tokens: {
         accessToken: "ghu_x",
         refreshToken: "ghr_x",
@@ -60,6 +60,7 @@ describe("parseStoreFile", () => {
     const stored = store.accounts["google:sub-1"];
     expect(stored.account).toEqual({
       provider: "google",
+      key: "google:sub-1",
       id: "sub-1",
       email: "a@b.c",
       name: "Ada",

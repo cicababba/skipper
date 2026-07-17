@@ -56,8 +56,11 @@ export class AuthManager {
 
   getState(): AuthState {
     return {
-      accounts: Object.values(this.store.accounts).map((a) => ({
+      // The store key IS the account key — derive it here so legacy auth.enc
+      // accounts (persisted without `key`) still carry one in memory (#101).
+      accounts: Object.entries(this.store.accounts).map(([key, a]) => ({
         ...a.account,
+        key,
         signedInAt: a.signedInAt,
       })),
       flows: { ...this.flows },
@@ -89,7 +92,11 @@ export class AuthManager {
     this.signInAborts.set(provider, abort);
     try {
       const { tokens, account: mapped } = await runOAuthFlow(config, abort.signal, baseUrl);
-      const account: Account = { ...mapped, authMethod: "oauth", ...(baseUrl ? { baseUrl } : {}) };
+      const account: Omit<Account, "key"> = {
+        ...mapped,
+        authMethod: "oauth",
+        ...(baseUrl ? { baseUrl } : {}),
+      };
       await this.storeAccount(provider, account, tokens, baseUrl);
       this.setFlow(provider, { status: "idle" });
     } catch (err) {
@@ -122,7 +129,11 @@ export class AuthManager {
     this.setFlow(provider, { status: "signing-in" });
     try {
       const mapped = await config.mapUserFromPat(pat.trim(), baseUrl);
-      const account: Account = { ...mapped, authMethod: "pat", ...(baseUrl ? { baseUrl } : {}) };
+      const account: Omit<Account, "key"> = {
+        ...mapped,
+        authMethod: "pat",
+        ...(baseUrl ? { baseUrl } : {}),
+      };
       const tokens: ProviderTokens = {
         accessToken: pat.trim(),
         refreshToken: "",
@@ -152,12 +163,12 @@ export class AuthManager {
 
   private async storeAccount(
     provider: AuthProviderId,
-    account: Account,
+    account: Omit<Account, "key">,
     tokens: ProviderTokens,
     baseUrl?: string,
   ): Promise<void> {
     const key = accountKey(provider, account.id, baseUrl);
-    this.store.accounts[key] = { account, tokens, signedInAt: Date.now() };
+    this.store.accounts[key] = { account: { ...account, key }, tokens, signedInAt: Date.now() };
     await saveStore(this.store);
   }
 
@@ -171,50 +182,35 @@ export class AuthManager {
     }, 4000);
   }
 
-  /** Accounts can be stored under host-scoped keys, so (provider, id) lookups scan. */
-  private findStored(
-    provider: AuthProviderId,
-    id: string,
-  ): { key: string; stored: StoredAccount } | undefined {
-    for (const [key, stored] of Object.entries(this.store.accounts)) {
-      if (stored.account.provider === provider && stored.account.id === id) return { key, stored };
-    }
-    return undefined;
-  }
-
-  async signOut(provider: AuthProviderId, accountId: string): Promise<void> {
-    const found = this.findStored(provider, accountId);
-    if (found) delete this.store.accounts[found.key];
+  async signOut(key: string): Promise<void> {
+    const stored = this.store.accounts[key];
+    if (stored) delete this.store.accounts[key];
     await this.persist();
-    if (found && found.stored.account.authMethod !== "pat") {
+    if (stored && stored.account.authMethod !== "pat") {
       // Best-effort: revoke at the provider so the tokens can't be reused.
       // PATs are user-created — never destroy them on the user's behalf.
-      void this.providers[provider].revoke?.(found.stored.tokens, found.stored.account.baseUrl);
+      void this.providers[stored.account.provider].revoke?.(stored.tokens, stored.account.baseUrl);
     }
     this.emit();
   }
 
   /**
-   * Return a valid access token for an account, refreshing if necessary.
-   * Returns null if no such account.
+   * Return a valid access token for the account with this key, refreshing if
+   * necessary. Returns null if no such account.
    *
    * `forceRefresh` skips the cached-token fast path — used when the provider
    * API itself reports 401 (e.g. the user revoked access).
    */
-  async getAccessToken(
-    provider: AuthProviderId,
-    accountId: string,
-    forceRefresh = false,
-  ): Promise<string | null> {
-    const found = this.findStored(provider, accountId);
-    if (!found) return null;
-    const { key, stored } = found;
+  async getAccessToken(key: string, forceRefresh = false): Promise<string | null> {
+    const stored = this.store.accounts[key];
+    if (!stored) return null;
     // A PAT has no refresh path — hand it back even on forceRefresh; a revoked
     // one surfaces as API errors until the user signs the account out.
     if (stored.account.authMethod === "pat") return stored.tokens.accessToken;
     if (!forceRefresh && stored.tokens.expiresAt - REFRESH_LEAD_MS > Date.now()) {
       return stored.tokens.accessToken;
     }
+    const provider = stored.account.provider;
     const config = this.providers[provider];
     try {
       const refreshed = await refreshTokens(config, stored.tokens.refreshToken, stored.account.baseUrl);
@@ -226,7 +222,7 @@ export class AuthManager {
     } catch (err) {
       console.error(`[auth] ${provider} refresh failed, dropping account:`, err);
       // Refresh token revoked / expired — the account must re-authenticate.
-      await this.signOut(provider, accountId);
+      await this.signOut(key);
       return null;
     }
   }
@@ -239,18 +235,21 @@ export class AuthManager {
    * current one.
    */
   async getGoogleIdToken(): Promise<string | null> {
+    let bestKey: string | undefined;
     let best: StoredAccount | undefined;
-    for (const stored of Object.values(this.store.accounts)) {
+    for (const [key, stored] of Object.entries(this.store.accounts)) {
       if (stored.account.provider !== "google") continue;
-      if (!best || stored.signedInAt >= best.signedInAt) best = stored;
+      if (!best || stored.signedInAt >= best.signedInAt) {
+        best = stored;
+        bestKey = key;
+      }
     }
-    if (!best) return null;
-    const id = best.account.id;
+    if (!best || !bestKey) return null;
     if (best.tokens.expiresAt - REFRESH_LEAD_MS > Date.now()) {
       return best.tokens.idToken ?? null;
     }
-    await this.getAccessToken("google", id, true);
-    return this.findStored("google", id)?.stored.tokens.idToken ?? null;
+    await this.getAccessToken(bestKey, true);
+    return this.store.accounts[bestKey]?.tokens.idToken ?? null;
   }
 
   private async persist(): Promise<void> {

@@ -236,6 +236,7 @@ export interface TrackedItem {
   source: IssueSourceId;
   sourceRef: SourceRef;
   codeHost: CodeHostId;
+  /** The owning account's key (Account.key), not a provider-native id. */
   accountId: string;
   repo: RepoRef;
   /** Display id: "42" (GitHub) or "PROJ-123" (Jira). Same as sourceRef.key. */
@@ -324,6 +325,7 @@ export function canTransition(from: LifecycleState, to: LifecycleState): boolean
 // Renderer-facing orchestrator snapshot (pushed on skipper:orchestrator:stateChanged).
 
 export interface OrchestratorAccountState {
+  /** The account key (Account.key) this snapshot belongs to. */
   accountId: string;
   status: "idle" | "polling" | "error" | "auth-error";
   lastSyncAt?: number;
@@ -348,6 +350,7 @@ export interface OrchestratorState {
   parkedCount: number;
   queue: QueueStatus;
   items: TrackedItem[];
+  /** Keyed by account key (Account.key). */
   accounts: Record<string, OrchestratorAccountState>;
   /** repoKey(repo) → per-repo intake settings (#15). */
   repoSettings: Record<string, RepoIntakeSettings>;

@@ -129,9 +129,9 @@ export function RepositoriesSection() {
                     : name;
                 return (
                   <button
-                    key={`${account.provider}:${account.id}:${account.baseUrl ?? ""}`}
+                    key={account.key}
                     onClick={() =>
-                      setPicker({ accountId: account.id, providerId: account.provider })
+                      setPicker({ accountId: account.key, providerId: account.provider })
                     }
                     className="h-7 px-3 rounded-md text-xs border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors"
                   >

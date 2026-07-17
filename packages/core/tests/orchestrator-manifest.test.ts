@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -244,6 +244,74 @@ describe("orchestrator manifest", () => {
     const raw = JSON.parse(await readFile(filePath, "utf-8")) as OrchestratorManifest;
     expect("platform" in raw.items["github:1234567890"]).toBe(false);
     expect(raw.items["github:1234567890"].key).toBe("42");
+  });
+
+  describe("account-key resolution (#101)", () => {
+    async function writeWithItem(accountId: string): Promise<void> {
+      const item = { ...admitItem(issue(1)), accountId };
+      await writeFile(
+        filePath,
+        JSON.stringify({
+          version: 1,
+          settings: { intakePaused: false },
+          items: { [item.id]: item },
+          parked: {},
+        }),
+        "utf-8",
+      );
+    }
+
+    it("rewrites a bare native id to the unique matching account's key", async () => {
+      await writeWithItem("42");
+      const manifest = await loadOrCreateOrchestratorManifest(filePath, [
+        { id: "42", key: "gitlab:git.corp:42" },
+      ]);
+      expect(manifest.items["github:1"].accountId).toBe("gitlab:git.corp:42");
+    });
+
+    it("keeps an accountId that is already a known key", async () => {
+      await writeWithItem("gitlab:git.corp:42");
+      const manifest = await loadOrCreateOrchestratorManifest(filePath, [
+        { id: "42", key: "gitlab:git.corp:42" },
+      ]);
+      expect(manifest.items["github:1"].accountId).toBe("gitlab:git.corp:42");
+    });
+
+    it("drops an item whose account is unknown", async () => {
+      await writeWithItem("999");
+      const warn = vi.fn();
+      const manifest = await loadOrCreateOrchestratorManifest(
+        filePath,
+        [{ id: "42", key: "gitlab:42" }],
+        warn,
+      );
+      expect(manifest.items["github:1"]).toBeUndefined();
+      expect(warn).toHaveBeenCalledOnce();
+    });
+
+    it("drops an item whose native id is ambiguous across hosts", async () => {
+      await writeWithItem("42");
+      const warn = vi.fn();
+      const manifest = await loadOrCreateOrchestratorManifest(
+        filePath,
+        [
+          { id: "42", key: "gitlab:42" },
+          { id: "42", key: "gitlab:git.corp:42" },
+        ],
+        warn,
+      );
+      expect(manifest.items["github:1"]).toBeUndefined();
+      expect(warn).toHaveBeenCalledOnce();
+    });
+
+    it("leaves items untouched when no accounts are supplied", async () => {
+      await writeWithItem("42");
+      const noArg = await loadOrCreateOrchestratorManifest(filePath);
+      expect(noArg.items["github:1"].accountId).toBe("42");
+      await writeWithItem("42");
+      const empty = await loadOrCreateOrchestratorManifest(filePath, []);
+      expect(empty.items["github:1"].accountId).toBe("42");
+    });
   });
 
   it("serializes concurrent saves — last write wins and the file stays valid", async () => {

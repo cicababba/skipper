@@ -65,6 +65,38 @@ function migrateTwoAxisItem(item: TrackedItem): void {
   item.sourceRef ??= { project: `${item.repo.owner}/${item.repo.name}`, key: item.key };
 }
 
+/**
+ * #101: TrackedItem.accountId was a provider-native id; it is now the account
+ * key (`provider:id` / `provider:host:id`). Best-effort in-place migration on
+ * load — no separate migration file, matching migrateTwoAxisItem.
+ *
+ * Rule per item: already a known key → keep; exactly one account whose native id
+ * matches → rewrite to its key; otherwise (unknown or ambiguous across hosts) →
+ * drop the item, since we can't tell which host it belonged to. Callers pass a
+ * `warn` sink rather than logging: core never writes to stdout.
+ */
+function resolveAccountKeys(
+  manifest: OrchestratorManifest,
+  accounts: Array<{ id: string; key: string }>,
+  warn?: (message: string) => void,
+): void {
+  const knownKeys = new Set(accounts.map((a) => a.key));
+  for (const [itemId, item] of Object.entries(manifest.items)) {
+    if (knownKeys.has(item.accountId)) continue;
+    const matches = accounts.filter((a) => a.id === item.accountId);
+    if (matches.length === 1) {
+      item.accountId = matches[0].key;
+    } else {
+      warn?.(
+        `dropping tracked item ${itemId}: account "${item.accountId}" is ${
+          matches.length === 0 ? "unknown" : "ambiguous across hosts"
+        }`,
+      );
+      delete manifest.items[itemId];
+    }
+  }
+}
+
 function freshManifest(): OrchestratorManifest {
   return {
     version: 1,
@@ -77,6 +109,8 @@ function freshManifest(): OrchestratorManifest {
 
 export async function loadOrCreateOrchestratorManifest(
   filePath: string,
+  accounts?: Array<{ id: string; key: string }>,
+  warn?: (message: string) => void,
 ): Promise<OrchestratorManifest> {
   try {
     const raw = await readFile(filePath, "utf-8");
@@ -105,6 +139,9 @@ export async function loadOrCreateOrchestratorManifest(
       parsed.settings.codingWipPerRepo ??= DEFAULT_ORCHESTRATOR_SETTINGS.codingWipPerRepo;
       parsed.repoSettings ??= {};
       for (const item of Object.values(parsed.items)) migrateTwoAxisItem(item);
+      // Empty/absent accounts (e.g. a transient auth failure) must never
+      // mass-drop items — skip resolution entirely in that case (#101).
+      if (accounts && accounts.length > 0) resolveAccountKeys(parsed, accounts, warn);
       return parsed;
     }
     return freshManifest();
