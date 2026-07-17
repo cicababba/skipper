@@ -38,6 +38,42 @@ export function sourceRefKey(ref: SourceRef): string {
   return `${ref.project.toLowerCase()}#${ref.key}`;
 }
 
+/** Parts of a project→repo mapping key (#79). */
+export interface ProjectMappingKeyParts {
+  source: string;
+  host: string;
+  projectKey: string;
+}
+
+/**
+ * Canonical key for the project→repo mapping (#79): `"<source>:<host>:<KEY>"`,
+ * e.g. `jira:acme.atlassian.net:PROJ`. Host lowercased, project key uppercased so
+ * lookups are deterministic whatever case the tracker reports.
+ */
+export function projectMappingKey(source: string, host: string, projectKey: string): string {
+  return `${source}:${host.toLowerCase()}:${projectKey.toUpperCase()}`;
+}
+
+/** Host segment of a mapping key from an Account.baseUrl — "default" when absent/invalid. */
+export function mappingHost(baseUrl?: string): string {
+  if (!baseUrl) return "default";
+  try {
+    return new URL(baseUrl).host.toLowerCase();
+  } catch {
+    return "default";
+  }
+}
+
+/** Splits a mapping key back into its parts; null when it isn't a valid key (IPC guard). */
+export function parseProjectMappingKey(key: string): ProjectMappingKeyParts | null {
+  const parts = key.split(":");
+  if (parts.length < 3) return null;
+  const [source, host, ...rest] = parts;
+  const projectKey = rest.join(":");
+  if (!source || !host || !projectKey) return null;
+  return { source, host, projectKey };
+}
+
 interface WorkItemBase {
   /** Source-scoped stable id, e.g. "github:1234567890". */
   id: string;
@@ -46,7 +82,10 @@ interface WorkItemBase {
   codeHost: CodeHostId;
   /** Which connected Account sees this item — the account key (Account.key). */
   accountId: string;
-  repo: RepoRef;
+  /** Where the code lives. Absent for a tracker issue whose project has no repo
+   *  mapping yet (#79) — resolution fills it before admission; PullRequest and
+   *  TrackedItem always carry one. */
+  repo?: RepoRef;
   /** Display id: "42" (GitHub) or "PROJ-123" (Jira). Same as sourceRef.key. */
   key: string;
   /** Present when the source numbers items (GitHub); Jira has none. */
@@ -69,6 +108,8 @@ export interface Issue extends WorkItemBase {
 
 export interface PullRequest extends WorkItemBase {
   kind: "pull-request";
+  /** A PR always lives in a repo — narrows the optional base field. */
+  repo: RepoRef;
   /** Code hosts number their PRs — always present, unlike issue keys. */
   number: number;
   state: "open" | "closed";

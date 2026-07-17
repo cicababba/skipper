@@ -34,6 +34,7 @@ async function fetchNativeDependencies(
   getToken: GitHubTokenProvider,
   baseUrl?: string,
 ): Promise<SourceRef[]> {
+  if (!issue.repo) return [];
   const base = baseUrl ?? GITHUB_API_BASE_URL;
   const refs: SourceRef[] = [];
   let url: string | undefined = `${base}/repos/${issue.repo.owner}/${issue.repo.name}/issues/${issue.number}/dependencies/blocked_by?per_page=100`;
@@ -60,6 +61,7 @@ export async function fetchGitHubDependencies(
   getToken: GitHubTokenProvider,
   baseUrl?: string,
 ): Promise<SourceRef[]> {
+  if (!issue.repo) return [];
   let refs: SourceRef[] = [];
   if (issue.number != null) {
     try {

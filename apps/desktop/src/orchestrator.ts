@@ -2,6 +2,7 @@ import { ipcMain, type BrowserWindow } from "electron";
 import {
   issueSourceForAuthProvider,
   reconcile,
+  resolveProjectRepos,
   applyTransition,
   loadOrCreateOrchestratorManifest,
   saveOrchestratorManifest,
@@ -9,6 +10,7 @@ import {
   AuthError,
   listUserInstallationRepos,
   listMembershipProjects,
+  listJiraProjects,
   codeHostFor,
   resolveGate,
   DEFAULT_ORCHESTRATOR_SETTINGS,
@@ -25,6 +27,9 @@ import {
 } from "@skipper/core";
 import {
   issueBranchFor,
+  mappingHost,
+  parseProjectMappingKey,
+  projectMappingKey,
   repoKey,
   resolveRepoIntakeSettings,
   resolveRepoOrchestratorSettings,
@@ -53,7 +58,9 @@ import type {
   ResumeRiteAction,
   SourceRef,
   TrackedItem,
+  TrackerProjectsResult,
   TransitionActor,
+  UnmappedProject,
 } from "@skipper/shared";
 import { loadCursors, saveCursors, type InboxCursorFile } from "./inbox-cursor-store";
 import {
@@ -126,6 +133,9 @@ let polling = false;
 // item maps survive delta polls; state arrays are derived snapshots
 const items = new Map<string, Map<string, Issue | PullRequest>>();
 const lastFullWalkAt = new Map<string, number>();
+// accountId → tracker projects with open, still-repo-less issues (#79). In-memory
+// only (stale across restarts otherwise); recomputed from the full derived cache.
+const unmappedProjects = new Map<string, UnmappedProject[]>();
 
 function snapshot(): OrchestratorState {
   const tracked = Object.values(manifest?.items ?? {});
@@ -141,6 +151,10 @@ function snapshot(): OrchestratorState {
     items: tracked,
     accounts: accountsState,
     repoSettings: manifest?.repoSettings ?? {},
+    projectMappings: manifest?.projectMappings ?? {},
+    unmappedProjects: [...unmappedProjects.values()]
+      .flat()
+      .sort((a, b) => `${a.host}:${a.projectKey}`.localeCompare(`${b.host}:${b.projectKey}`)),
     resumeRite: manifest?.resumeRite ? { itemIds: [...manifest.resumeRite.itemIds] } : null,
     settings: manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
   };
@@ -366,7 +380,7 @@ async function tokenForRepo(
   const key = repoKey({ owner, name });
   for (const [acctKey, map] of items) {
     for (const item of map.values()) {
-      if (repoKey(item.repo) === key) {
+      if (item.repo && repoKey(item.repo) === key) {
         return deps.getToken(acctKey);
       }
     }
@@ -383,9 +397,10 @@ function admissionPolicy(m: OrchestratorManifest): {
     intakePaused: m.settings.intakePaused,
     // Follow list (#15): default-all — an absent record means followed. Ignored
     // repos' issues stay in the raw inbox arrays; linking still gates planning.
+    // A repo-less issue (unmapped project, #79) is never followed.
     shouldAdmit: (issue) =>
-      resolveRepoIntakeSettings(m.repoSettings[repoKey(issue.repo)])
-        .followed,
+      issue.repo !== undefined &&
+      resolveRepoIntakeSettings(m.repoSettings[repoKey(issue.repo)]).followed,
   };
 }
 
@@ -402,6 +417,31 @@ function deriveArrays(accountId: string): { issues: Issue[]; pullRequests: PullR
     else pullRequests.push(item);
   }
   return { issues: issues.sort(byUpdatedAtDesc), pullRequests: pullRequests.sort(byUpdatedAtDesc) };
+}
+
+/**
+ * Fills repo-less tracker issues from the project→repo mapping before reconcile
+ * (#79), and refreshes this account's unmappedProjects warning surface. The
+ * returned issues drive reconcile (delta-correct — closed deltas are preserved);
+ * the warning counts come from the full derived cache so a delta poll never
+ * understates them.
+ */
+function resolveAccountIssues(
+  accountId: string,
+  issues: Issue[],
+  m: OrchestratorManifest,
+): Issue[] {
+  const account = deps?.getAccounts().find((a) => a.key === accountId);
+  const host = mappingHost(account?.baseUrl);
+  const resolved = resolveProjectRepos(issues, { accountId, host }, m.projectMappings).issues;
+  const { unmapped } = resolveProjectRepos(
+    deriveArrays(accountId).issues,
+    { accountId, host },
+    m.projectMappings,
+  );
+  if (unmapped.length) unmappedProjects.set(accountId, unmapped);
+  else unmappedProjects.delete(accountId);
+  return resolved;
 }
 
 async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<void> {
@@ -471,13 +511,17 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
 
     await ensureRepoLinks();
 
+    // Fill repo-less tracker issues from the project→repo mapping (#79) and
+    // refresh the unmapped-projects warning surface before reconcile.
+    const resolvedIssues = resolveAccountIssues(accountId, result.issues, m);
+
     // Dependency evidence (#85): fetch "blocked by" for admission candidates and
     // resting/blocked tracked items, so reconcile can park/release in this round.
     // Candidates first; per-target failure leaves the key absent (stored stands).
     let dependencies: Record<string, SourceRef[]> | undefined;
     if (source.fetchDependencies) {
       const policy = admissionPolicy(m);
-      const candidates = result.issues.filter((iss) => {
+      const candidates = resolvedIssues.filter((iss) => {
         if (iss.state !== "open") return false;
         const t = m.items[iss.id];
         if (t) {
@@ -510,7 +554,7 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
       accountId,
       {
         mode: result.mode,
-        issues: result.issues,
+        issues: resolvedIssues,
         pullRequests: result.pullRequests,
         dependencies,
       },
@@ -568,6 +612,7 @@ async function pollNow(ignoreBackoff = false): Promise<void> {
         const { [accountId]: _gone, ...rest } = accountsState;
         accountsState = rest;
         items.delete(accountId);
+        unmappedProjects.delete(accountId);
         for (const perPlatform of Object.values(cursors.platforms)) {
           delete perPlatform?.[accountId];
         }
@@ -606,7 +651,13 @@ async function reconcileFromCache(): Promise<void> {
   let changed = false;
   for (const accountId of items.keys()) {
     const { issues, pullRequests } = deriveArrays(accountId);
-    const outcome = reconcile(m, accountId, { mode: "delta", issues, pullRequests }, admissionPolicy(m));
+    const resolvedIssues = resolveAccountIssues(accountId, issues, m);
+    const outcome = reconcile(
+      m,
+      accountId,
+      { mode: "delta", issues: resolvedIssues, pullRequests },
+      admissionPolicy(m),
+    );
     if (outcome.admitted.length > 0 || outcome.transitions.length > 0) changed = true;
   }
   if (changed) {
@@ -955,7 +1006,7 @@ export function initOrchestrator(
     // Poll cache + tracked items carry proper-case RepoRefs; keys reconstructed
     // from links/settings fall back to the lowercased form.
     for (const map of items.values()) {
-      for (const item of map.values()) put(repoKey(item.repo), item.repo);
+      for (const item of map.values()) if (item.repo) put(repoKey(item.repo), item.repo);
     }
     for (const item of Object.values(m.items)) {
       put(repoKey(item.repo), item.repo);
@@ -1035,6 +1086,7 @@ export function initOrchestrator(
         const polled = items.get(account.key);
         if (polled) {
           for (const item of polled.values()) {
+            if (!item.repo) continue;
             const key = repoKey(item.repo);
             if (candidates.has(key)) continue;
             candidates.set(key, {
@@ -1053,6 +1105,50 @@ export function initOrchestrator(
             `${a.repo.owner}/${a.repo.name}`.localeCompare(`${b.repo.owner}/${b.repo.name}`),
           ),
         };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
+  // Project→repo mapping writer (#79). Validate the key via parseProjectMappingKey
+  // (invalid → no-op, never coerce), rebuild the canonical key, then reconcile so a
+  // fresh mapping admits cached repo-less issues and an unmapping blocks new ones.
+  ipcMain.handle(
+    "skipper:orchestrator:setProjectMapping",
+    async (_e, mappingKey: string, repo: string | null) => {
+      const m = await ensureManifest();
+      const parts = parseProjectMappingKey(mappingKey);
+      if (!parts) return snapshot();
+      const key = projectMappingKey(parts.source, parts.host, parts.projectKey);
+      if (repo) {
+        const [owner, name] = repo.split("/");
+        if (!owner || !name) return snapshot();
+        m.projectMappings[key] = repoKey({ owner, name });
+      } else {
+        delete m.projectMappings[key];
+      }
+      await saveOrchestratorManifest(deps!.manifestFilePath, m);
+      await reconcileFromCache();
+      return snapshot();
+    },
+  );
+  // Live project listing for the mapping editor (#79). Use getAccounts directly —
+  // issueAccounts() filters through the issue-source registry, which has no jira
+  // entry until #78; this handler is the only path to a Jira account's projects.
+  ipcMain.handle(
+    "skipper:orchestrator:listTrackerProjects",
+    async (_e, accountId: string): Promise<TrackerProjectsResult> => {
+      const account = deps?.getAccounts().find((a) => a.key === accountId);
+      if (!account) return { ok: false, error: "unknown account" };
+      if (account.provider !== "jira") {
+        return { ok: false, error: "account is not a Jira account" };
+      }
+      try {
+        const projects = await listJiraProjects((force) => deps!.getToken(account.key, force), {
+          cloudId: account.cloudId,
+          baseUrl: account.baseUrl,
+        });
+        return { ok: true, source: "jira", host: mappingHost(account.baseUrl), projects };
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
@@ -1133,7 +1229,7 @@ export function initOrchestrator(
     const seen = new Map<string, RepoRef>();
     for (const map of items.values()) {
       for (const item of map.values()) {
-        seen.set(repoKey(item.repo), item.repo);
+        if (item.repo) seen.set(repoKey(item.repo), item.repo);
       }
     }
     const linked = Object.entries(links.repos).map(([key, link]) => ({

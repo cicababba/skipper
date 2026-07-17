@@ -45,6 +45,9 @@ export interface AuthProviderMeta {
   /** OAuth is fixed-host, but the PAT fallback still needs an instance URL
    *  (Jira Data Center). Independent from requiresBaseUrl. */
   patRequiresBaseUrl?: boolean;
+  /** Tracker whose projects have no inherent repo — Settings shows the
+   *  project→repo mapping editor for its accounts (#79). */
+  needsProjectMapping?: boolean;
 }
 
 /** A site/resource the OAuth token can reach — the user picks one per account

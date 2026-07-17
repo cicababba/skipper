@@ -90,8 +90,10 @@ export function reconcile(
     if (!item) {
       if (issue.state === "closed") {
         delete manifest.parked[issue.id];
-      } else if (policy.shouldAdmit?.(issue) === false) {
-        // Unfollowed repo: never parked, never admitted — raw inbox only.
+      } else if (!issue.repo || policy.shouldAdmit?.(issue) === false) {
+        // Repo-less (unmapped project, #79) or unfollowed repo: never parked,
+        // never admitted — raw inbox only. Parking a repo-less issue would be a
+        // time bomb, since the resume rite would later try to admit it.
       } else if (policy.intakePaused) {
         manifest.parked[issue.id] ??= { firstSeenAt: now.toISOString() };
         outcome.parked.push(issue.id);

@@ -20,6 +20,7 @@ import type {
   SaveWorktreeFileResult,
   SolutionRecord,
   StoredPlan,
+  TrackerProjectsResult,
   UpdatePlanResult,
   WorktreeChangesResult,
   WorktreeFileResult,
@@ -140,6 +141,10 @@ contextBridge.exposeInMainWorld("skipper", {
       ipcRenderer.invoke("skipper:orchestrator:setRepoSettings", owner, name, patch),
     listRepoSettings: (): Promise<RepoSettingsRow[]> =>
       ipcRenderer.invoke("skipper:orchestrator:listRepoSettings"),
+    setProjectMapping: (mappingKey: string, repo: string | null): Promise<OrchestratorState> =>
+      ipcRenderer.invoke("skipper:orchestrator:setProjectMapping", mappingKey, repo),
+    listTrackerProjects: (accountId: string): Promise<TrackerProjectsResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:listTrackerProjects", accountId),
     listFollowCandidates: (
       accountId?: string,
       providerId?: AuthProviderId,

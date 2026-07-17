@@ -22,6 +22,7 @@ import type {
   SaveWorktreeFileResult,
   SolutionRecord,
   StoredPlan,
+  TrackerProjectsResult,
   UpdatePlanResult,
   WorktreeChangesResult,
   WorktreeFileResult,
@@ -167,6 +168,11 @@ declare global {
           patch: Partial<RepoIntakeSettings>,
         ) => Promise<OrchestratorState>;
         listRepoSettings: () => Promise<RepoSettingsRow[]>;
+        setProjectMapping: (
+          mappingKey: string,
+          repo: string | null,
+        ) => Promise<OrchestratorState>;
+        listTrackerProjects: (accountId: string) => Promise<TrackerProjectsResult>;
         listFollowCandidates: (
           accountId?: string,
           providerId?: AuthProviderId,

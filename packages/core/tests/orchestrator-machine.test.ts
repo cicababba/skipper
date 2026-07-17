@@ -107,6 +107,10 @@ describe("admitItem", () => {
       },
     ]);
   });
+
+  it("throws on a repo-less issue — admission requires a resolved repo (#79)", () => {
+    expect(() => admitItem(issue(1, { repo: undefined }))).toThrow(/no repo/);
+  });
 });
 
 describe("applyTransition", () => {

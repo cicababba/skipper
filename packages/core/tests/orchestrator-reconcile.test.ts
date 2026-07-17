@@ -56,7 +56,14 @@ function pull(n: number, overrides: Partial<PullRequest> = {}): PullRequest {
 }
 
 function manifest(): OrchestratorManifest {
-  return { version: 1, settings: { intakePaused: false }, items: {}, parked: {}, repoSettings: {} };
+  return {
+    version: 1,
+    settings: { intakePaused: false },
+    items: {},
+    parked: {},
+    repoSettings: {},
+    projectMappings: {},
+  } as OrchestratorManifest;
 }
 
 function tracked(n: number, state: LifecycleState, extra: Partial<TrackedItem> = {}): TrackedItem {
@@ -109,6 +116,24 @@ describe("reconcile — issues", () => {
     expect(outcome.parked).toEqual(["github:1"]);
     expect(m.parked["github:1"]).toBeDefined();
     expect(m.items).toEqual({});
+  });
+
+  it("neither admits nor parks a repo-less open issue, even while intake is paused (#79)", () => {
+    const m = manifest();
+    const repoLess = issue(1, { repo: undefined });
+    const outcome = reconcile(m, ACCOUNT, poll({ issues: [repoLess] }), { intakePaused: true });
+    expect(outcome.admitted).toEqual([]);
+    expect(outcome.parked).toEqual([]);
+    expect(m.items).toEqual({});
+    expect(m.parked).toEqual({});
+  });
+
+  it("still closes a tracked item when its now-repo-less issue closes on the tracker (#79)", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "coding");
+    const repoLessClosed = issue(1, { repo: undefined, state: "closed" });
+    reconcile(m, ACCOUNT, poll({ issues: [repoLessClosed] }), openPolicy);
+    expect(m.items["github:1"].state).toBe("closed");
   });
 
   it("admits a previously parked issue once intake resumes", () => {

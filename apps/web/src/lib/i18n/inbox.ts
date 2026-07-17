@@ -105,6 +105,12 @@ const en = {
     noItems: "No tracked issues yet — assigned issues on linked repos show up here.",
     noItemsForRepo: "No issues for this repo.",
   },
+  unmapped: {
+    title: (issues: number, projects: number) =>
+      `${issues} issue${issues === 1 ? "" : "s"} in ${projects} unmapped project${projects === 1 ? "" : "s"}`,
+    body: "Map their projects to a repository so they can enter the loop.",
+    cta: "Map projects",
+  },
   popover: {
     composite: "Composite score",
     computedAt: "Computed",
@@ -370,6 +376,12 @@ const it: typeof en = {
     goToSettings: "Vai alle Impostazioni",
     noItems: "Nessuna issue tracciata — le issue assegnate su repo collegati compaiono qui.",
     noItemsForRepo: "Nessuna issue per questo repo.",
+  },
+  unmapped: {
+    title: (issues, projects) =>
+      `${issues} issue in ${projects} progett${projects === 1 ? "o" : "i"} non associat${projects === 1 ? "o" : "i"}`,
+    body: "Associa i loro progetti a un repository perché possano entrare nel ciclo.",
+    cta: "Associa progetti",
   },
   popover: {
     composite: "Punteggio composito",
@@ -637,6 +649,12 @@ const fr: typeof en = {
     noItems: "Aucune issue suivie — les issues assignées sur les dépôts liés apparaissent ici.",
     noItemsForRepo: "Aucune issue pour ce dépôt.",
   },
+  unmapped: {
+    title: (issues, projects) =>
+      `${issues} issue${issues === 1 ? "" : "s"} dans ${projects} projet${projects === 1 ? "" : "s"} non associé${projects === 1 ? "" : "s"}`,
+    body: "Associez leurs projets à un dépôt pour qu'elles entrent dans la boucle.",
+    cta: "Associer les projets",
+  },
   popover: {
     composite: "Score composite",
     computedAt: "Calculé",
@@ -903,6 +921,12 @@ const es: typeof en = {
     goToSettings: "Ir a Ajustes",
     noItems: "Ninguna issue rastreada — las issues asignadas en repos vinculados aparecen aquí.",
     noItemsForRepo: "Ninguna issue para este repo.",
+  },
+  unmapped: {
+    title: (issues, projects) =>
+      `${issues} issue${issues === 1 ? "" : "s"} en ${projects} proyecto${projects === 1 ? "" : "s"} sin asignar`,
+    body: "Asigna sus proyectos a un repositorio para que entren en el ciclo.",
+    cta: "Asignar proyectos",
   },
   popover: {
     composite: "Puntuación compuesta",
