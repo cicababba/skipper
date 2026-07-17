@@ -47,6 +47,10 @@ export interface ProviderConfig {
   /** Token endpoint body encoding. Default "form" (x-www-form-urlencoded);
    *  Atlassian requires a JSON body on both grants. */
   tokenRequestFormat?: "form" | "json";
+  /** Token endpoint client authentication. Default: credentials in the body.
+   *  "basic" sends Authorization: Basic base64(clientId:clientSecret) and
+   *  omits both from the body (Bitbucket documents only Basic). */
+  tokenAuth?: "basic";
   /** Fixed loopback ports (GitHub: exact callback URL match). Unset → any free port. */
   redirectPorts?: readonly number[];
   /** Connect flow must collect an instance URL before auth (self-hosted providers). */

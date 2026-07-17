@@ -74,5 +74,25 @@ describe("tokenRequest body encoding", () => {
     expect(params.get("grant_type")).toBe("refresh_token");
     expect(params.get("refresh_token")).toBe("old-refresh");
     expect(params.get("client_id")).toBe("cid");
+    expect((init.headers as Record<string, string>).authorization).toBeUndefined();
+  });
+
+  it("sends HTTP Basic auth and omits client credentials from the body when tokenAuth is basic", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ access_token: "a", expires_in: 3600, refresh_token: "r" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const config = baseConfig({ tokenAuth: "basic", clientSecret: "sec" });
+
+    await refreshTokens(config, "old-refresh");
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    const expected = `Basic ${Buffer.from("cid:sec").toString("base64")}`;
+    expect((init.headers as Record<string, string>).authorization).toBe(expected);
+    const params = new URLSearchParams(init.body as string);
+    expect(params.get("refresh_token")).toBe("old-refresh");
+    expect(params.get("grant_type")).toBe("refresh_token");
+    expect(params.get("client_id")).toBeNull();
+    expect(params.get("client_secret")).toBeNull();
   });
 });

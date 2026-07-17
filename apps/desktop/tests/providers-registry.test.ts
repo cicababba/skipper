@@ -32,6 +32,13 @@ describe("provider registry", () => {
         patRequiresBaseUrl: true,
         needsProjectMapping: true,
       },
+      {
+        id: "bitbucket",
+        displayName: "Bitbucket",
+        isIssueSource: false,
+        requiresBaseUrl: false,
+        supportsPat: false,
+      },
     ]);
   });
 
@@ -54,5 +61,19 @@ describe("provider registry", () => {
     expect(jira.patRequiresBaseUrl).toBe(true);
     expect(jira.extraAuthParams).toEqual({ audience: "api.atlassian.com", prompt: "consent" });
     expect(typeof jira.listResources).toBe("function");
+  });
+
+  it("configures the bitbucket provider (no PKCE, Basic token auth, rotating refresh, dynamic port)", () => {
+    const bitbucket = PROVIDERS.bitbucket;
+    expect(bitbucket.usesPkce).toBe(false);
+    expect(bitbucket.clientSecret).toBeDefined();
+    expect(bitbucket.tokenAuth).toBe("basic");
+    expect(bitbucket.rotatesRefreshToken).toBe(true);
+    expect(bitbucket.requiresRefreshTokenOnExchange).toBe(true);
+    expect(bitbucket.redirectPorts).toBeUndefined();
+    expect(bitbucket.scopes).toEqual(["repository", "pullrequest:write", "account"]);
+    expect(bitbucket.requiresBaseUrl).toBe(false);
+    expect(bitbucket.supportsPat).toBe(false);
+    expect(bitbucket.revoke).toBeUndefined();
   });
 });

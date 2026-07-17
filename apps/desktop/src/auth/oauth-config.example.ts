@@ -44,6 +44,18 @@
 //      is required. Jira Data Center (self-hosted) signs in with a personal
 //      access token + instance URL instead.
 //
+// Bitbucket (PR orchestration — Bitbucket Cloud OAuth consumer):
+//   1. bitbucket.org → workspace → Settings → OAuth consumers → Add consumer.
+//   2. Callback URL: http://127.0.0.1/callback — Bitbucket prefix-matches it
+//      and ignores the loopback port at request time (RFC 8252), so one
+//      port-less URL covers whatever free port the app binds.
+//   3. Tick "This is a private consumer" (required for the secret + refresh grant).
+//   4. Permissions: Account → Read (`account`, also covers /user/emails),
+//      Repositories → Read (`repository`), Pull requests → Write (`pullrequest:write`).
+//   5. Copy consumer Key/Secret below. No PKCE support, so the
+//      (non-confidential desktop) secret is required; token endpoint takes it
+//      via HTTP Basic. Bitbucket Data Center (self-hosted) is not covered.
+//
 // For Google's "Desktop app" client type the secret is *non-confidential* —
 // it ships in the distributed binary, and security is provided by PKCE, not
 // by the secret. GitHub Apps don't support PKCE, but the same reasoning
@@ -63,3 +75,6 @@ export const GITLAB_OAUTH_CLIENT_ID = "YOUR_GITLAB_APPLICATION_ID";
 
 export const JIRA_OAUTH_CLIENT_ID = "YOUR_JIRA_OAUTH_CLIENT_ID";
 export const JIRA_OAUTH_CLIENT_SECRET = "YOUR_JIRA_OAUTH_CLIENT_SECRET";
+
+export const BITBUCKET_OAUTH_CLIENT_ID = "YOUR_BITBUCKET_OAUTH_CLIENT_ID";
+export const BITBUCKET_OAUTH_CLIENT_SECRET = "YOUR_BITBUCKET_OAUTH_CLIENT_SECRET";
