@@ -58,6 +58,7 @@ const en = {
     failed: "Failed",
     closed: "Closed",
   },
+  blockedBy: "Blocked by",
   actions: {
     plan: "Plan",
     approve: "Approve",
@@ -323,6 +324,7 @@ const it: typeof en = {
     failed: "Fallita",
     closed: "Chiusa",
   },
+  blockedBy: "Bloccata da",
   actions: {
     plan: "Pianifica",
     approve: "Approva",
@@ -588,6 +590,7 @@ const fr: typeof en = {
     failed: "Échouée",
     closed: "Fermée",
   },
+  blockedBy: "Bloquée par",
   actions: {
     plan: "Planifier",
     approve: "Approuver",
@@ -854,6 +857,7 @@ const es: typeof en = {
     failed: "Fallida",
     closed: "Cerrada",
   },
+  blockedBy: "Bloqueada por",
   actions: {
     plan: "Planificar",
     approve: "Aprobar",

@@ -256,6 +256,12 @@ export interface TrackedItem {
   holdAutoPlan?: boolean;
   /** Where needs-input/blocked returns once resolved. */
   resumeTo?: LifecycleState;
+  /** Prerequisite work items in the same tracker (#85), last fetched by the adapter.
+   *  Only refs that resolve to a tracked, not-yet-merged/closed item actually block. */
+  blockedBy?: SourceRef[];
+  /** Deps the user waived by manually resuming a dependency-block (#85) —
+   *  reconcile never re-parks for these; a newly appearing dep still blocks. */
+  blockedByWaived?: SourceRef[];
   /** Plan + confidence seam (#7/#8). */
   plan?: { confidence?: number; ref?: string };
   /** Coding runner (#9). sessionId is cwd-scoped: only resumable from the same worktree path. */

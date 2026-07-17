@@ -503,3 +503,200 @@ describe("reconcile — full-walk absence", () => {
     expect(m.parked).toEqual({});
   });
 });
+
+describe("reconcile — dependencies (#85)", () => {
+  const ref = (n: number, project = "o/r") => ({ project, key: String(n) });
+
+  // A blocked item as reconcile would have left it (last transition into blocked
+  // is reconcile-actored, "blocked by …"), so the release path is eligible.
+  function reconcileBlocked(n: number, blockers: number[], resumeTo: LifecycleState = "triage") {
+    return {
+      ...tracked(n, "blocked", { blockedBy: blockers.map((b) => ref(b)), resumeTo }),
+      transitions: [
+        { at: "2026-07-01T00:00:00.000Z", from: null, to: "triage", actor: "reconcile", reason: "admitted" },
+        {
+          at: "2026-07-01T00:00:00.000Z",
+          from: resumeTo,
+          to: "blocked",
+          actor: "reconcile",
+          reason: `blocked by ${blockers.map((b) => `#${b}`).join(", ")}`,
+        },
+      ],
+    } as TrackedItem;
+  }
+
+  it("parks a triage item with an unmet prerequisite, recording resumeTo + blockers", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "coding");
+    m.items["github:2"] = tracked(2, "triage");
+    reconcile(m, ACCOUNT, poll({ dependencies: { "github:2": [ref(1)] } }), openPolicy);
+    expect(m.items["github:2"].state).toBe("blocked");
+    expect(m.items["github:2"].resumeTo).toBe("triage");
+    expect(m.items["github:2"].blockedBy).toEqual([ref(1)]);
+    expect(m.items["github:2"].transitions.at(-1)?.reason).toBe("blocked by #1");
+  });
+
+  it("parks from plan-gate and queued too, resuming to the parked-from state", () => {
+    for (const from of ["plan-gate", "queued"] as const) {
+      const m = manifest();
+      m.items["github:1"] = tracked(1, "coding");
+      m.items["github:2"] = tracked(2, from, { blockedBy: [ref(1)] });
+      reconcile(m, ACCOUNT, poll(), openPolicy);
+      expect(m.items["github:2"].state).toBe("blocked");
+      expect(m.items["github:2"].resumeTo).toBe(from);
+    }
+  });
+
+  it("stores evidence but never parks an in-flight (coding) item", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "triage");
+    m.items["github:2"] = tracked(2, "coding");
+    reconcile(m, ACCOUNT, poll({ dependencies: { "github:2": [ref(1)] } }), openPolicy);
+    expect(m.items["github:2"].state).toBe("coding");
+    expect(m.items["github:2"].blockedBy).toEqual([ref(1)]);
+  });
+
+  it("does not park on an untracked, merged/closed, or self reference", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "merged");
+    m.items["github:2"] = tracked(2, "triage", { blockedBy: [ref(1)] }); // merged → not blocking
+    m.items["github:3"] = tracked(3, "triage", { blockedBy: [ref(99)] }); // untracked → ignored
+    m.items["github:4"] = tracked(4, "triage", { blockedBy: [ref(4)] }); // self → ignored
+    reconcile(m, ACCOUNT, poll(), openPolicy);
+    expect(m.items["github:2"].state).toBe("triage");
+    expect(m.items["github:3"].state).toBe("triage");
+    expect(m.items["github:4"].state).toBe("triage");
+  });
+
+  it("resolves prerequisites case-insensitively", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "coding");
+    m.items["github:2"] = tracked(2, "triage", { blockedBy: [ref(1, "O/R")] });
+    reconcile(m, ACCOUNT, poll(), openPolicy);
+    expect(m.items["github:2"].state).toBe("blocked");
+    expect(m.items["github:2"].transitions.at(-1)?.reason).toBe("blocked by #1");
+  });
+
+  it("releases in the same round the prerequisite PR merges", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "in-review", { pr: { id: "p", number: 10, url: "u" } });
+    m.items["github:2"] = reconcileBlocked(2, [1]);
+    reconcile(
+      m,
+      ACCOUNT,
+      poll({ pullRequests: [pull(10, { merged: true })] }),
+      openPolicy,
+    );
+    expect(m.items["github:1"].state).toBe("merged");
+    expect(m.items["github:2"].state).toBe("triage");
+    expect(m.items["github:2"].transitions.at(-1)?.reason).toBe("prerequisites merged/closed");
+  });
+
+  it("releases in the same round the prerequisite issue closes", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "triage");
+    m.items["github:2"] = reconcileBlocked(2, [1]);
+    reconcile(m, ACCOUNT, poll({ issues: [issue(1, { state: "closed" })] }), openPolicy);
+    expect(m.items["github:1"].state).toBe("closed");
+    expect(m.items["github:2"].state).toBe("triage");
+  });
+
+  it("releases in the same round a full walk evicts the prerequisite", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "triage");
+    m.items["github:2"] = reconcileBlocked(2, [1]);
+    // Full walk: issue 1 absent (evicted → closed), issue 2 present (stays visible).
+    reconcile(m, ACCOUNT, poll({ mode: "full", issues: [issue(2)] }), openPolicy);
+    expect(m.items["github:1"].state).toBe("closed");
+    expect(m.items["github:2"].state).toBe("triage");
+  });
+
+  it("empty evidence clears blockedBy and releases", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "triage");
+    m.items["github:2"] = reconcileBlocked(2, [1]);
+    reconcile(m, ACCOUNT, poll({ dependencies: { "github:2": [] } }), openPolicy);
+    expect(m.items["github:2"].blockedBy).toBeUndefined();
+    expect(m.items["github:2"].state).toBe("triage");
+  });
+
+  it("keeps blocked across a delta with no fresh evidence", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "triage");
+    m.items["github:2"] = reconcileBlocked(2, [1]);
+    reconcile(m, ACCOUNT, poll(), openPolicy); // no dependencies key
+    expect(m.items["github:2"].state).toBe("blocked");
+    expect(m.items["github:2"].blockedBy).toEqual([ref(1)]);
+  });
+
+  it("release preserves holdAutoPlan and falls back to triage without resumeTo", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "merged");
+    m.items["github:2"] = {
+      ...reconcileBlocked(2, [1]),
+      holdAutoPlan: true,
+      resumeTo: undefined,
+    };
+    reconcile(m, ACCOUNT, poll(), openPolicy);
+    expect(m.items["github:2"].state).toBe("triage");
+    expect(m.items["github:2"].holdAutoPlan).toBe(true);
+  });
+
+  it("waives the current unmet set on a user resume out of blocked instead of re-parking", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "triage");
+    m.items["github:2"] = {
+      ...tracked(2, "triage", { blockedBy: [ref(1)] }),
+      transitions: [
+        { at: "2026-07-01T00:00:00.000Z", from: null, to: "triage", actor: "reconcile", reason: "admitted" },
+        { at: "2026-07-01T00:00:00.000Z", from: "triage", to: "blocked", actor: "reconcile", reason: "blocked by #1" },
+        { at: "2026-07-01T00:00:00.000Z", from: "blocked", to: "triage", actor: "user", reason: "resume" },
+      ],
+    } as TrackedItem;
+    reconcile(m, ACCOUNT, poll(), openPolicy);
+    expect(m.items["github:2"].state).toBe("triage");
+    expect(m.items["github:2"].blockedByWaived).toEqual([ref(1)]);
+  });
+
+  it("re-parks when a NEW unmet dep appears after the item moved past the resume", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "triage");
+    m.items["github:3"] = tracked(3, "triage");
+    m.items["github:2"] = {
+      ...tracked(2, "plan-gate", { blockedBy: [ref(1), ref(3)], blockedByWaived: [ref(1)] }),
+      transitions: [
+        { at: "2026-07-01T00:00:00.000Z", from: null, to: "triage", actor: "reconcile", reason: "admitted" },
+        { at: "2026-07-01T00:00:00.000Z", from: "planning", to: "plan-gate", actor: "planner", reason: "confidence" },
+      ],
+    } as TrackedItem;
+    reconcile(m, ACCOUNT, poll(), openPolicy);
+    expect(m.items["github:2"].state).toBe("blocked");
+    expect(m.items["github:2"].resumeTo).toBe("plan-gate");
+    expect(m.items["github:2"].transitions.at(-1)?.reason).toBe("blocked by #3");
+  });
+
+  it("does not auto-release a block a user created", () => {
+    const m = manifest();
+    m.items["github:2"] = {
+      ...tracked(2, "blocked"),
+      transitions: [
+        { at: "2026-07-01T00:00:00.000Z", from: null, to: "triage", actor: "reconcile", reason: "admitted" },
+        { at: "2026-07-01T00:00:00.000Z", from: "triage", to: "blocked", actor: "user", reason: "manual hold" },
+      ],
+    } as TrackedItem;
+    reconcile(m, ACCOUNT, poll(), openPolicy);
+    expect(m.items["github:2"].state).toBe("blocked");
+  });
+
+  it("parks both sides of a cycle and stays stable across a second poll", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "triage", { blockedBy: [ref(2)] });
+    m.items["github:2"] = tracked(2, "triage", { blockedBy: [ref(1)] });
+    reconcile(m, ACCOUNT, poll(), openPolicy);
+    expect(m.items["github:1"].state).toBe("blocked");
+    expect(m.items["github:2"].state).toBe("blocked");
+    reconcile(m, ACCOUNT, poll(), openPolicy);
+    expect(m.items["github:1"].state).toBe("blocked");
+    expect(m.items["github:2"].state).toBe("blocked");
+  });
+});

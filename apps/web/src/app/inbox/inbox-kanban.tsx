@@ -8,6 +8,7 @@ import { formatAge } from "@/lib/inbox/table";
 import { ConfidenceBadge } from "@/components/confidence-popover";
 import { useT } from "@/lib/app-i18n";
 import { StateBadge } from "./state-badge";
+import { BlockedByBadges } from "./blocked-by";
 import { CiBadge } from "./ci-badge";
 import { ItemActions } from "./item-actions";
 
@@ -32,6 +33,7 @@ function KanbanCard({ item, showState }: { item: TrackedItem; showState: boolean
       <p className="text-[11px] text-muted truncate">{repoKey(item.repo)}</p>
       <div className="flex items-center gap-1.5 flex-wrap">
         {showState && <StateBadge item={item} />}
+        <BlockedByBadges item={item} />
         <ConfidenceBadge item={item} />
         <button
           onClick={(e) => {
