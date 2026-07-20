@@ -24,6 +24,8 @@ export interface AgentReview {
   objections?: CriticObjection[];
   /** Set only when the reviewer sent the item back to coding — the coder's fix-round seam. */
   pendingObjections?: CriticObjection[];
+  /** Last critic round's Claude session, cwd-scoped to worktree.path, overwritten each round (#111). */
+  sessionId?: string;
   at: string; // ISO 8601
 }
 
@@ -263,8 +265,9 @@ export interface TrackedItem {
   /** Deps the user waived by manually resuming a dependency-block (#85) —
    *  reconcile never re-parks for these; a newly appearing dep still blocks. */
   blockedByWaived?: SourceRef[];
-  /** Plan + confidence seam (#7/#8). */
-  plan?: { confidence?: number; ref?: string };
+  /** Plan + confidence seam (#7/#8). sessionId is the last plan run's Claude session,
+   *  cwd-scoped to worktree.path, overwritten each run (#111). */
+  plan?: { confidence?: number; ref?: string; sessionId?: string };
   /** Shared worktree, created at planning (#110) and reused for coding/review (#9).
    *  sessionId is cwd-scoped: only resumable from the same worktree path. */
   worktree?: { path: string; branch: string; sessionId?: string };

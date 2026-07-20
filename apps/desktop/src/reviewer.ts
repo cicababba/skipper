@@ -15,6 +15,7 @@ import type {
   StoredPlan,
   TrackedItem,
 } from "@skipper/shared";
+import { randomUUID } from "node:crypto";
 import { modelForRole, providerCacheKey } from "./llm-settings";
 import type { WorktreeDiff } from "./worktrees";
 
@@ -50,6 +51,8 @@ export interface ReviewerDeps {
   getRepoSettings: (repo: RepoRef) => ResolvedRepoOrchestratorSettings;
   /** settings.json llm block (#59) — which provider the reviewer runs on. */
   getLlmSettings: () => Promise<LlmSettings>;
+  /** Records the critic round's Claude session id without a transition (#111). */
+  setReviewSessionId: (itemId: string, sessionId: string) => Promise<void>;
 }
 
 const REVIEW_CONCURRENCY = 2;
@@ -200,10 +203,26 @@ async function run(itemId: string): Promise<void> {
     };
 
     let signal;
+    // sessionId is minted inside the try so a provider-resolution or persistence
+    // failure routes to human-review "unavailable" like the critic call itself,
+    // rather than escaping run() as an unhandled rejection.
+    let sessionId: string | undefined;
     try {
+      const provider = await resolveProvider(repoSettings.reviewerModel);
+      if (deps.getItem(itemId)?.state !== "agent-review") return;
+      // Persist a fresh session per round so the human can resume the critic run from
+      // the worktree later (#111). cwd-scoped, claude-cli only; persist-before-run.
+      const wtPath = item.worktree?.path;
+      sessionId = provider.name === "claude-cli" && wtPath ? randomUUID() : undefined;
+      if (sessionId) await deps.setReviewSessionId(itemId, sessionId);
       signal = await critic(
-        { diff: diff.diff, issue, acceptance: stored?.plan.acceptance ?? [] },
-        await resolveProvider(repoSettings.reviewerModel),
+        {
+          diff: diff.diff,
+          issue,
+          acceptance: stored?.plan.acceptance ?? [],
+          ...(sessionId ? { session: { id: sessionId, cwd: wtPath! } } : {}),
+        },
+        provider,
       );
     } catch (err) {
       if (deps.getItem(itemId)?.state !== "agent-review") return;
@@ -212,7 +231,13 @@ async function run(itemId: string): Promise<void> {
       // anyway. Contrast: a missing deliverable (getDiff) goes to needs-input.
       await complete(
         itemId,
-        { rounds: round - 1 || 0, outcome: "unavailable", reason: message, at: now() },
+        {
+          rounds: round - 1 || 0,
+          outcome: "unavailable",
+          reason: message,
+          ...(sessionId ? { sessionId } : {}),
+          at: now(),
+        },
         "human-review",
         `agent review unavailable: ${message.slice(0, 200)}`,
       );
@@ -225,7 +250,13 @@ async function run(itemId: string): Promise<void> {
       const note = signal.objections[0]?.detail;
       await complete(
         itemId,
-        { rounds: round, outcome: signal.verdict, objections: signal.objections, at: now() },
+        {
+          rounds: round,
+          outcome: signal.verdict,
+          objections: signal.objections,
+          ...(sessionId ? { sessionId } : {}),
+          at: now(),
+        },
         "human-review",
         `agent review round ${round}: ${signal.verdict}${note ? ` — ${note}` : ""}`.slice(0, 200),
       );
@@ -238,7 +269,13 @@ async function run(itemId: string): Promise<void> {
       // it in the merge editor, not a from-scratch replan.
       await complete(
         itemId,
-        { rounds: round, outcome: signal.verdict, objections: signal.objections, at: now() },
+        {
+          rounds: round,
+          outcome: signal.verdict,
+          objections: signal.objections,
+          ...(sessionId ? { sessionId } : {}),
+          at: now(),
+        },
         "needs-input",
         `review did not converge after ${repoSettings.reviewMaxRounds} rounds: ${blocking || signal.verdict}`.slice(
           0,
@@ -254,6 +291,7 @@ async function run(itemId: string): Promise<void> {
           outcome: signal.verdict,
           objections: signal.objections,
           pendingObjections: signal.objections,
+          ...(sessionId ? { sessionId } : {}),
           at: now(),
         },
         "coding",

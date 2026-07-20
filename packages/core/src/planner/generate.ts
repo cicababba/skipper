@@ -24,6 +24,8 @@ export interface GeneratePlanOptions {
   onEvent?: (event: CodingEvent) => void;
   /** Inject the skipper-memory MCP server, scoped to the item's repo (#45). */
   memory?: MemoryMcp;
+  /** Persist the primary agent run under this session id (#111); the repair round stays stateless. */
+  sessionId?: string;
 }
 
 export class PlanGenerationError extends Error {
@@ -74,6 +76,7 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
     maxTurns: opts.maxTurns ?? 24,
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
     ...(opts.memory ? { memory: opts.memory } : {}),
+    ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
   });
 
   const first = tryParsePlan(reply.text);

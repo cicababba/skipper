@@ -7,6 +7,9 @@ import { OllamaProvider } from "./ollama";
 export interface LLMResponse {
   text: string;
   usage?: { inputTokens: number; outputTokens: number };
+  /** Set only when session persistence was requested (opts.sessionId) — the
+   *  on-disk session id, cwd-scoped, for a later `--resume` (#111). */
+  sessionId?: string;
 }
 
 export interface AgentOptions {
@@ -19,12 +22,27 @@ export interface AgentOptions {
   onEvent?: (event: CodingEvent) => void;
   /** Inject the skipper-memory MCP server, scoped to this repo (#45). */
   memory?: MemoryMcp;
+  /** Persist the run under this session id (drops --no-session-persistence) so it
+   *  can be resumed later; cwd-scoped, claude-cli only (#111). */
+  sessionId?: string;
+}
+
+/** Opt-in persistence + cwd for a single structured call (#111). */
+export interface StructuredOptions {
+  /** Working directory the structured call runs in (so the on-disk session lands there). */
+  cwd?: string;
+  /** Persist under this session id (drops --no-session-persistence); claude-cli only. */
+  sessionId?: string;
 }
 
 export interface LLMProviderInterface {
   readonly name: LLMProvider;
   ask(prompt: string, systemPrompt?: string): Promise<LLMResponse>;
-  askStructured<T>(prompt: string, schema: Record<string, unknown>): Promise<T>;
+  askStructured<T>(
+    prompt: string,
+    schema: Record<string, unknown>,
+    opts?: StructuredOptions,
+  ): Promise<T>;
   /**
    * Agentic completion: the model may use tools (read files, search/fetch the
    * web, run commands) across multiple turns before producing its answer.

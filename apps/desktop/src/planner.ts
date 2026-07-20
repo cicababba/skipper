@@ -18,6 +18,7 @@ import type {
   TrackedItem,
   TransitionActor,
 } from "@skipper/shared";
+import { randomUUID } from "node:crypto";
 import { modelForRole, providerCacheKey } from "./llm-settings";
 import { planFileName, writeStoredPlan } from "./plan-store";
 
@@ -49,6 +50,8 @@ export interface PlannerDeps {
   prepareWorktree: (item: TrackedItem) => Promise<{ path: string; branch: string }>;
   /** Persists the worktree record without a transition (#110). */
   setWorktree: (itemId: string, worktree: { path: string; branch: string }) => Promise<void>;
+  /** Records the plan run's Claude session id without a transition (#111). */
+  setPlanSessionId: (itemId: string, sessionId: string) => Promise<void>;
   /** Live orchestrator settings — planner model + confidence knobs. */
   getSettings: () => OrchestratorSettings;
   /** settings.json llm block (#59) — which provider the planner runs on. */
@@ -173,10 +176,12 @@ async function run(itemId: string): Promise<void> {
     // #110: plan in the shared worktree so every phase has one cwd. Setup failure
     // degrades to the shared clone — never blocks planning with needs-input.
     let cwd = repoPath;
+    let inWorktree = false;
     deps.emitEvent(itemId, { kind: "status", phase: "fetching" });
     try {
       const wt = await deps.prepareWorktree(item);
       cwd = wt.path;
+      inWorktree = true;
       deps.emitEvent(itemId, { kind: "status", phase: "worktree", detail: wt.path });
       if (item.worktree?.path !== wt.path || item.worktree.branch !== wt.branch) {
         await deps.setWorktree(itemId, { path: wt.path, branch: wt.branch });
@@ -195,6 +200,12 @@ async function run(itemId: string): Promise<void> {
     const { llm: provider, model } = await resolveProvider(
       deps.getRepoSettings(item.repo).plannerModel,
     );
+    // Persist a session only when planning ran in the worktree — a session recorded
+    // against the shared clone would violate the cwd-scoped invalidation rule (#111).
+    // Persist-before-run so a crashed run still leaves a resumable pointer.
+    const planSessionId =
+      provider.name === "claude-cli" && inWorktree ? randomUUID() : undefined;
+    if (planSessionId) await deps.setPlanSessionId(itemId, planSessionId);
     const cached = deps.getIssue(item);
     const issue = {
       key: item.key,
@@ -210,8 +221,16 @@ async function run(itemId: string): Promise<void> {
       issue,
       repoPath: cwd,
       llm: provider,
-      onEvent: (event) => deps?.emitEvent(itemId, event),
+      onEvent: (event) => {
+        // The minted id is authoritative; if the CLI reports a different session
+        // in its init line, reconcile to the real on-disk id (#111).
+        if (event.kind === "agent-init" && planSessionId && event.sessionId !== planSessionId) {
+          void deps?.setPlanSessionId(itemId, event.sessionId).catch(() => {});
+        }
+        deps?.emitEvent(itemId, event);
+      },
       ...(memory ? { memory } : {}),
+      ...(planSessionId ? { sessionId: planSessionId } : {}),
     });
     const ref = planFileName(itemId);
     const stored: StoredPlan = {

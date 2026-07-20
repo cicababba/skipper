@@ -878,6 +878,45 @@ async function setWorktree(
   broadcast();
 }
 
+/** Records the plan run's Claude session id without a transition (#111). Overwritten
+ *  each plan run; cwd-scoped to worktree.path. completePlan preserves it via spread. */
+async function setPlanSessionId(itemId: string, sessionId: string): Promise<void> {
+  if (!deps) throw new Error("orchestrator not initialized");
+  const m = await ensureManifest();
+  const item = m.items[itemId];
+  if (!item) throw new Error(`unknown item ${itemId}`);
+  m.items[itemId] = {
+    ...item,
+    plan: { ...item.plan, sessionId },
+    updatedAt: new Date().toISOString(),
+  };
+  await saveOrchestratorManifest(deps.manifestFilePath, m);
+  broadcast();
+}
+
+/** Records the critic round's Claude session id without a transition (#111). On
+ *  round 1 (no review yet) it seeds a stub review the reviewer/UI already handle;
+ *  completeReview replaces it wholesale. The chained-round check reads only
+ *  pendingObjections (absent here, preserved by spread) — unaffected. */
+async function setReviewSessionId(itemId: string, sessionId: string): Promise<void> {
+  if (!deps) throw new Error("orchestrator not initialized");
+  const m = await ensureManifest();
+  const item = m.items[itemId];
+  if (!item) throw new Error(`unknown item ${itemId}`);
+  const review: AgentReview = item.review
+    ? { ...item.review, sessionId }
+    : {
+        rounds: 0,
+        outcome: "unavailable",
+        reason: "review in progress",
+        sessionId,
+        at: new Date().toISOString(),
+      };
+  m.items[itemId] = { ...item, review, updatedAt: new Date().toISOString() };
+  await saveOrchestratorManifest(deps.manifestFilePath, m);
+  broadcast();
+}
+
 /**
  * Drives one lifecycle transition and persists it. In-process API for the
  * planner/coder/reviewer/shepherd (#7-#11); throws IllegalTransitionError on
@@ -1521,6 +1560,7 @@ export function initOrchestrator(
     completePlan,
     prepareWorktree: (item) => prepareWorktreeFor(item),
     setWorktree,
+    setPlanSessionId,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
     emitEvent: emitPlanningEvent,
@@ -1572,6 +1612,7 @@ export function initOrchestrator(
       return captureWorktreeDiff(item.worktree.path);
     },
     completeReview,
+    setReviewSessionId,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getRepoSettings: repoOrch,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),

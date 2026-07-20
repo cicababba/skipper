@@ -86,4 +86,21 @@ describe("critiqueDiff", () => {
     const prompt = askStructured.mock.calls[0][0] as string;
     expect(prompt).toContain("[diff truncated");
   });
+
+  // #111: the reviewer persists a per-round session; the bundled cwd+id must
+  // reach askStructured so the run lands on disk resumable from the worktree.
+  it("forwards the session as askStructured opts (cwd + sessionId)", async () => {
+    const { llm, askStructured } = fakeLLM();
+    await critiqueDiff(
+      { diff: "+1", issue, acceptance: [], session: { id: "sid-1", cwd: "/wt/issue-1" } },
+      llm,
+    );
+    expect(askStructured.mock.calls[0][2]).toEqual({ cwd: "/wt/issue-1", sessionId: "sid-1" });
+  });
+
+  it("passes no opts when session is absent", async () => {
+    const { llm, askStructured } = fakeLLM();
+    await critiqueDiff({ diff: "+1", issue, acceptance: [] }, llm);
+    expect(askStructured.mock.calls[0][2]).toBeUndefined();
+  });
 });
