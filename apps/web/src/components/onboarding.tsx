@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { Sparkles, Cpu, Trophy, ArrowRight, Loader2 } from "lucide-react";
 import { useT } from "@/lib/app-i18n";
+import { ModelSelect } from "@/components/model-select";
 
 type Step =
   | "welcome"
@@ -136,15 +137,11 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                 <label className="block text-[11px] text-muted/70 uppercase tracking-wider mb-2">
                   {to.model}
                 </label>
-                <select
+                <ModelSelect
                   value={claudeModel}
-                  onChange={(e) => setClaudeModel(e.target.value)}
+                  onChange={setClaudeModel}
                   className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
-                >
-                  <option value="sonnet">Claude Sonnet 4.6</option>
-                  <option value="opus">Claude Opus 4.6</option>
-                  <option value="haiku">Claude Haiku 4.5</option>
-                </select>
+                />
                 <p className="text-[10px] text-muted/40 mt-2">
                   {to.claudeAuth1}{" "}
                   <code className="text-accent/60">claude auth login</code>{" "}
