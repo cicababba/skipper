@@ -95,4 +95,44 @@ describe("resolveRepoOrchestratorSettings", () => {
     expect(resolved).not.toHaveProperty("autoPlanPaused");
     expect(resolved.autoPlan).toBe("on");
   });
+
+  // #125: the per-role globals are optional overrides of llm.claudeModel. Resolution
+  // order per role: repo override → global override → defaultModel → "sonnet" floor.
+  describe("role model inheritance (#125)", () => {
+    it("falls each role back to defaultModel when repo and global are absent", () => {
+      const resolved = resolveRepoOrchestratorSettings(undefined, global(), "fable");
+      expect(resolved.plannerModel).toBe("fable");
+      expect(resolved.coderModel).toBe("fable");
+      expect(resolved.reviewerModel).toBe("fable");
+    });
+
+    it("lets a global override beat defaultModel", () => {
+      const resolved = resolveRepoOrchestratorSettings(
+        undefined,
+        global({ plannerModel: "opus" }),
+        "fable",
+      );
+      expect(resolved.plannerModel).toBe("opus");
+      expect(resolved.coderModel).toBe("fable");
+    });
+
+    it("lets a repo override beat both the global and defaultModel", () => {
+      const resolved = resolveRepoOrchestratorSettings(
+        { plannerModel: "haiku" },
+        global({ plannerModel: "opus" }),
+        "fable",
+      );
+      expect(resolved.plannerModel).toBe("haiku");
+    });
+
+    it.each([[undefined], [""], ["   "]] as const)(
+      "floors an omitted/empty/whitespace defaultModel (%p) to sonnet",
+      (dm) => {
+        const resolved = resolveRepoOrchestratorSettings(undefined, global(), dm);
+        expect(resolved.plannerModel).toBe("sonnet");
+        expect(resolved.coderModel).toBe("sonnet");
+        expect(resolved.reviewerModel).toBe("sonnet");
+      },
+    );
+  });
 });

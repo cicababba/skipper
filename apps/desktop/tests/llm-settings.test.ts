@@ -3,7 +3,12 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_LLM_SETTINGS, type LlmSettings } from "@skipper/shared";
-import { readLlmSettings, modelForRole, providerCacheKey } from "../src/llm-settings";
+import {
+  readLlmSettings,
+  readLlmSettingsSync,
+  modelForRole,
+  providerCacheKey,
+} from "../src/llm-settings";
 
 async function tempDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "llm-settings-"));
@@ -61,6 +66,35 @@ describe("readLlmSettings (#59)", () => {
     const read = await readLlmSettings(dir);
     expect(read.provider).toBe("claude-cli");
     // The rest of the bag survives — only the provider is overridden.
+    expect(read.claudeModel).toBe("haiku");
+  });
+});
+
+// #125: the synchronous sibling backing repoOrch()'s per-role model fallback.
+describe("readLlmSettingsSync (#125)", () => {
+  it("reads claudeModel written by the web layer", async () => {
+    const dir = await tempDir();
+    await writeFile(
+      join(dir, "settings.json"),
+      JSON.stringify({ llm: { claudeModel: "fable" } }),
+      "utf-8",
+    );
+    expect(readLlmSettingsSync(dir).claudeModel).toBe("fable");
+  });
+
+  it("falls back to defaults when settings.json is absent", async () => {
+    expect(readLlmSettingsSync(await tempDir())).toEqual(DEFAULT_LLM_SETTINGS);
+  });
+
+  it("coerces a stale provider to claude-cli", async () => {
+    const dir = await tempDir();
+    await writeFile(
+      join(dir, "settings.json"),
+      JSON.stringify({ llm: settings({ provider: "openai", claudeModel: "haiku" }) }),
+      "utf-8",
+    );
+    const read = readLlmSettingsSync(dir);
+    expect(read.provider).toBe("claude-cli");
     expect(read.claudeModel).toBe("haiku");
   });
 });

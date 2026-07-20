@@ -151,6 +151,20 @@ describe("coder driver", () => {
     expect(opts.resumeSessionId).toBeUndefined();
   });
 
+  // #125: with no per-role or global override, the resolved coderModel floors to the
+  // llm.claudeModel default ("sonnet"), which is what the runner's direct-model path uses.
+  it("hands the runner the default model when nothing overrides coderModel", async () => {
+    const h = makeHarness();
+    const runner = okRunner();
+    initCoder(h.deps, runner);
+    h.items.set("github:1", makeItem(1, "queued"));
+
+    pokeCoder();
+    await settle();
+
+    expect(runner.mock.calls[0][0].model).toBe("sonnet");
+  });
+
   // #58: the model reaches the runner from the resolved per-repo bag.
   it("hands the runner the global coderModel when the repo has no override", async () => {
     const h = makeHarness({

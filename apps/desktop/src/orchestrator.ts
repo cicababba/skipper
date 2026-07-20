@@ -78,7 +78,7 @@ import {
   validateRepoOrigin,
   type RepoLinksFile,
 } from "./repo-links";
-import { readLlmSettings } from "./llm-settings";
+import { readLlmSettings, readLlmSettingsSync } from "./llm-settings";
 import { archiveStoredPlan, readStoredPlan, updateStoredPlan } from "./plan-store";
 import { initPlanner, pokePlanner } from "./planner";
 import { initCoder, pokeCoder, cancelCodingRun, killAllCodingRuns } from "./coder";
@@ -390,6 +390,7 @@ function repoOrch(repo: RepoRef): ResolvedRepoOrchestratorSettings {
   return resolveRepoOrchestratorSettings(
     manifest?.repoSettings[repoKey(repo)],
     manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
+    deps ? readLlmSettingsSync(deps.dataDir).claudeModel : undefined,
   );
 }
 
@@ -1123,6 +1124,12 @@ export function initOrchestrator(
       for (const key of Object.keys(SETTINGS_VALIDATORS) as (keyof OrchestratorSettings)[]) {
         // `key in patch`, not a truthiness check: an absent key is not a clear.
         if (!patch || !(key in patch)) continue;
+        // #125: explicit undefined clears a per-role model back to inherit llm.claudeModel.
+        if ((patch as Record<string, unknown>)[key] === undefined) {
+          if (key === "plannerModel" || key === "coderModel" || key === "reviewerModel")
+            delete (m.settings as unknown as Record<string, unknown>)[key];
+          continue;
+        }
         const next = SETTINGS_VALIDATORS[key]!((patch as Record<string, unknown>)[key]);
         if (next !== undefined) (m.settings as unknown as Record<string, unknown>)[key] = next;
       }
@@ -1187,6 +1194,7 @@ export function initOrchestrator(
       const [owner, name] = key.split("/");
       if (owner && name) put(key, { owner, name });
     }
+    const defaultModel = readLlmSettingsSync(deps!.dataDir).claudeModel;
     return [...repos.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, repo]) => ({
@@ -1195,7 +1203,7 @@ export function initOrchestrator(
         linked: Boolean(links.repos[key]),
         localPath: links.repos[key]?.localPath,
         settings: m.repoSettings[key] ?? {},
-        resolved: resolveRepoOrchestratorSettings(m.repoSettings[key], m.settings),
+        resolved: resolveRepoOrchestratorSettings(m.repoSettings[key], m.settings, defaultModel),
       }));
   });
   ipcMain.handle(

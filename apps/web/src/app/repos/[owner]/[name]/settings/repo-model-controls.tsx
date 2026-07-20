@@ -1,6 +1,6 @@
 "use client";
 
-import type { OrchestratorSettings, RepoIntakeSettings, RepoSettingsRow } from "@skipper/shared";
+import type { RepoIntakeSettings, RepoSettingsRow } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { ModelSelect } from "@/components/model-select";
 import { Row, selectClass } from "./settings-row";
@@ -12,12 +12,10 @@ import { Row, selectClass } from "./settings-row";
  */
 export function RepoModelControls({
   row,
-  global,
   busy,
   onPatch,
 }: {
   row: RepoSettingsRow;
-  global: OrchestratorSettings;
   busy: boolean;
   onPatch: (patch: Partial<RepoIntakeSettings>) => void;
 }) {
@@ -26,12 +24,14 @@ export function RepoModelControls({
   const o = t.settings.orchestration;
 
   // Binds to row.settings (not row.resolved), so "inherit" and "explicitly set to
-  // the global value" stay distinguishable — the wipLimit/gate model.
+  // the resolved value" stay distinguishable — the wipLimit/gate model. When the repo
+  // has no override the picker shows row.resolved[key], which now carries the global →
+  // llm.claudeModel fallback (#125) and is refetched after every patch.
   const modelRow = (key: "plannerModel" | "coderModel" | "reviewerModel", label: string) => (
     <Row key={key} label={label} busy={false}>
       <div className="flex items-center gap-2">
         <ModelSelect
-          value={row.settings[key] ?? global[key]}
+          value={row.settings[key] ?? row.resolved[key]}
           disabled={busy}
           onChange={(m) => onPatch({ [key]: m })}
           className={selectClass}

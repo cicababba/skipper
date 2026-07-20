@@ -33,7 +33,7 @@ function jiraItem(n: number, state: LifecycleState, extra: Partial<TrackedItem> 
 
 function manifest(items: TrackedItem[]): OrchestratorManifest {
   return {
-    version: 1,
+    version: 2,
     settings: { intakePaused: false },
     items: Object.fromEntries(items.map((i) => [i.id, i])),
     parked: {},

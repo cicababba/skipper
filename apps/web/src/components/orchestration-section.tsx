@@ -9,7 +9,7 @@ import { ModelSelect } from "@/components/model-select";
 // Settings → Orchestration (#62): the global defaults for the two gate axes.
 // Confidence thresholds stay hand-edit-only, but "auto" on both axes is decided by
 // confidence.high — so the copy reads the number out of settings rather than hiding it.
-export function OrchestrationSection() {
+export function OrchestrationSection({ defaultModel }: { defaultModel: string }) {
   const { t } = useT();
   const { state, updateSettings } = useOrchestrator();
 
@@ -18,6 +18,9 @@ export function OrchestrationSection() {
 
   const r = t.settings.orchestration;
   const s = state.settings;
+  // #125: the per-role globals inherit llm.claudeModel when absent; the picker shows the
+  // inherited value for display and a "Use default" clear appears once a role overrides it.
+  const inheritModel = defaultModel.trim() || "sonnet";
   const high = s.confidence.high.toFixed(2);
   const selectClass =
     "bg-background border border-border rounded-md px-2 py-1.5 text-sm focus:border-accent focus:outline-none disabled:opacity-50";
@@ -119,27 +122,39 @@ export function OrchestrationSection() {
             <p className="text-[11px] text-muted/60 leading-relaxed">{r.modelsDesc}</p>
           </div>
 
-          <Row label={r.plannerModel} hint={r.plannerModelDesc}>
-            <ModelSelect
-              value={s.plannerModel}
-              onChange={(m) => void updateSettings({ plannerModel: m })}
-              className={selectClass}
-            />
-          </Row>
-          <Row label={r.coderModel} hint={r.coderModelDesc}>
-            <ModelSelect
-              value={s.coderModel}
-              onChange={(m) => void updateSettings({ coderModel: m })}
-              className={selectClass}
-            />
-          </Row>
-          <Row label={r.reviewerModel} hint={r.reviewerModelDesc}>
-            <ModelSelect
-              value={s.reviewerModel}
-              onChange={(m) => void updateSettings({ reviewerModel: m })}
-              className={selectClass}
-            />
-          </Row>
+          <ModelRow
+            label={r.plannerModel}
+            hint={r.plannerModelDesc}
+            model={s.plannerModel}
+            inheritModel={inheritModel}
+            selectClass={selectClass}
+            defaultLabel={r.modelDefault}
+            useDefaultLabel={r.modelUseDefault}
+            onChange={(m) => void updateSettings({ plannerModel: m })}
+            onClear={() => void updateSettings({ plannerModel: undefined })}
+          />
+          <ModelRow
+            label={r.coderModel}
+            hint={r.coderModelDesc}
+            model={s.coderModel}
+            inheritModel={inheritModel}
+            selectClass={selectClass}
+            defaultLabel={r.modelDefault}
+            useDefaultLabel={r.modelUseDefault}
+            onChange={(m) => void updateSettings({ coderModel: m })}
+            onClear={() => void updateSettings({ coderModel: undefined })}
+          />
+          <ModelRow
+            label={r.reviewerModel}
+            hint={r.reviewerModelDesc}
+            model={s.reviewerModel}
+            inheritModel={inheritModel}
+            selectClass={selectClass}
+            defaultLabel={r.modelDefault}
+            useDefaultLabel={r.modelUseDefault}
+            onChange={(m) => void updateSettings({ reviewerModel: m })}
+            onClear={() => void updateSettings({ reviewerModel: undefined })}
+          />
         </div>
 
         <p className="text-[11px] text-muted/50 leading-relaxed border-t border-border pt-4">
@@ -147,6 +162,46 @@ export function OrchestrationSection() {
         </p>
       </div>
     </section>
+  );
+}
+
+// One per-role model row: the picker reads the inherited value when the role has no
+// override, with a muted "Default model" label; an override swaps it for a "Use default"
+// clear. Mirrors the per-repo → global inherit pattern in repo-model-controls.tsx (#125).
+function ModelRow({
+  label,
+  hint,
+  model,
+  inheritModel,
+  selectClass,
+  defaultLabel,
+  useDefaultLabel,
+  onChange,
+  onClear,
+}: {
+  label: string;
+  hint: string;
+  model: string | undefined;
+  inheritModel: string;
+  selectClass: string;
+  defaultLabel: string;
+  useDefaultLabel: string;
+  onChange: (model: string) => void;
+  onClear: () => void;
+}) {
+  return (
+    <Row label={label} hint={hint}>
+      <div className="flex items-center gap-2">
+        <ModelSelect value={model ?? inheritModel} onChange={onChange} className={selectClass} />
+        {model === undefined ? (
+          <span className="text-[11px] text-muted/50">{defaultLabel}</span>
+        ) : (
+          <button onClick={onClear} className="text-[11px] text-accent hover:underline">
+            {useDefaultLabel}
+          </button>
+        )}
+      </div>
+    </Row>
   );
 }
 
