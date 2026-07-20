@@ -24,7 +24,7 @@ Format: `<scope>:<type>: <descriptive title>`
   |-------|------|
   | `desktop` | `apps/desktop` — Electron shell, main/preload, IPC, packaging hooks |
   | `web` | `apps/web` — Next.js UI, components, editor, terminal UI |
-  | `core` | `packages/core` — llm, vectorstore, knowledge |
+  | `core` | `packages/core` — llm, orchestration roles, adapters, vectorstore, knowledge, memory |
   | `cli` | `packages/cli` — the `skipper` CLI |
   | `shared` | `packages/shared` — shared types and constants |
   | `sync` | `packages/sync` — SyncBackend contract + manifest seams |
@@ -43,7 +43,7 @@ becomes the commit message on `develop`). Release PRs are titled `Release v<X.Y.
 
 ## Labels
 
-Scope → label: same name as the scope (`desktop`, `web`, `core`, `cli`, `db`, `shared`, `sync`, `infra`, `epic`).
+Scope → label: same name as the scope (`desktop`, `web`, `core`, `cli`, `shared`, `sync`, `infra`, `epic`).
 
 Type → label:
 
