@@ -3,9 +3,10 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { githubCodeHost } from "@skipper/core";
+import { githubCodeHost, codeHostFor } from "@skipper/core";
+import type { CodeHost } from "@skipper/core";
 import { repoKey } from "@skipper/shared";
-import { loadRepoLinks, saveRepoLinks, validateRepoOrigin } from "./repo-links";
+import { cloneRepo, loadRepoLinks, saveRepoLinks, validateRepoOrigin } from "./repo-links";
 import { planFileName, readStoredPlan, updateStoredPlan, writeStoredPlan } from "./plan-store";
 import type { StoredPlan } from "@skipper/shared";
 
@@ -70,6 +71,62 @@ describe("validateRepoOrigin", () => {
     await expect(validateRepoOrigin(join(dir, "nope"), { owner: "owner", name: "repo" }, githubCodeHost)).rejects.toThrow(
       /not a directory/,
     );
+  });
+});
+
+describe("validateRepoOrigin — gitlab baseUrl", () => {
+  const gitlab = codeHostFor("gitlab");
+
+  it("accepts a self-hosted origin when its baseUrl is passed", async () => {
+    const repoDir = await makeRepo("https://gitlab.acme.com/grp/sub/repo.git");
+    await expect(
+      validateRepoOrigin(repoDir, { owner: "grp/sub", name: "repo" }, gitlab, "https://gitlab.acme.com"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects a self-hosted origin when baseUrl is omitted (defaults to gitlab.com)", async () => {
+    const repoDir = await makeRepo("https://gitlab.acme.com/grp/sub/repo.git");
+    await expect(
+      validateRepoOrigin(repoDir, { owner: "grp/sub", name: "repo" }, gitlab),
+    ).rejects.toThrow(/does not match/);
+  });
+
+  it("accepts a gitlab.com origin on the default path (baseUrl undefined)", async () => {
+    const repoDir = await makeRepo("https://gitlab.com/owner/repo.git");
+    await expect(
+      validateRepoOrigin(repoDir, { owner: "owner", name: "repo" }, gitlab),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe("cloneRepo — baseUrl threading", () => {
+  it("passes baseUrl through to host.cloneUrl", async () => {
+    // Local source repo keeps the clone offline; the stub host records the baseUrl
+    // it is handed and validates via a matching parseOrigin.
+    const src = join(dir, "src");
+    await mkdir(src);
+    execFileSync("git", ["-C", src, "init", "-q"]);
+
+    let seenBaseUrl: string | undefined = "unset";
+    const stubHost: Pick<CodeHost, "cloneUrl" | "parseOrigin"> = {
+      cloneUrl: (_repo, baseUrl) => {
+        seenBaseUrl = baseUrl;
+        return src;
+      },
+      parseOrigin: () => ({ owner: "grp/sub", name: "repo" }),
+    };
+
+    const destParent = join(dir, "dest");
+    const localPath = await cloneRepo(
+      stubHost,
+      { owner: "grp/sub", name: "repo" },
+      destParent,
+      { username: "x", password: "y" },
+      "https://gitlab.acme.com",
+    );
+
+    expect(seenBaseUrl).toBe("https://gitlab.acme.com");
+    expect(localPath).toBe(join(destParent, "repo"));
   });
 });
 

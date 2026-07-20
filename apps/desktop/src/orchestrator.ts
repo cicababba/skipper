@@ -385,28 +385,22 @@ function codeHostAccountFor(codeHost: CodeHostId, preferKey?: string): Account |
   return accounts[0];
 }
 
-/** Token for cloning: explicit account key, else the code-host account behind the
- *  item that sees the repo, else the first issue account. */
-async function tokenForRepo(
-  owner: string,
-  name: string,
-  accountKey?: string,
-): Promise<string | null> {
-  if (!deps) return null;
+/** Account for cloning: explicit account key, else the code-host account behind the
+ *  item that sees the repo, else the first issue account. Carries provider + baseUrl. */
+function accountForRepo(owner: string, name: string, accountKey?: string): Account | undefined {
+  if (!deps) return undefined;
   if (accountKey) {
-    return deps.getToken(accountKey);
+    return deps.getAccounts().find((a) => a.key === accountKey);
   }
   const key = repoKey({ owner, name });
   for (const [acctKey, map] of items) {
     for (const item of map.values()) {
       if (item.repo && repoKey(item.repo) === key) {
-        const account = codeHostAccountFor(item.codeHost, acctKey);
-        return account ? deps.getToken(account.key) : null;
+        return codeHostAccountFor(item.codeHost, acctKey);
       }
     }
   }
-  const first = issueAccounts()[0];
-  return first ? deps.getToken(first.key) : null;
+  return issueAccounts()[0];
 }
 
 function admissionPolicy(m: OrchestratorManifest): {
@@ -1203,15 +1197,24 @@ export function initOrchestrator(
         // No code-host axis on a link request, so detect it from the origin remote:
         // accept the first registered host whose parseOrigin matches.
         const repo = { owner, name };
+        const accounts = deps?.getAccounts() ?? [];
         let matched = false;
         let lastErr: unknown;
-        for (const host of Object.values(codeHosts)) {
-          try {
-            await validateRepoOrigin(localPath, repo, host);
-            matched = true;
-            break;
-          } catch (err) {
-            lastErr = err;
+        outer: for (const host of Object.values(codeHosts)) {
+          const urls = accounts
+            .filter((a) => a.provider === host.authProvider)
+            .map((a) => a.baseUrl)
+            .filter((u): u is string => u !== undefined);
+          // undefined (the host's cloud/fixed default) stays first so gitlab.com,
+          // GitHub and Bitbucket behavior is unchanged; self-hosted baseUrls follow.
+          for (const baseUrl of [undefined, ...new Set(urls)]) {
+            try {
+              await validateRepoOrigin(localPath, repo, host, baseUrl);
+              matched = true;
+              break outer;
+            } catch (err) {
+              lastErr = err;
+            }
           }
         }
         if (!matched) {
@@ -1231,11 +1234,9 @@ export function initOrchestrator(
     "skipper:orchestrator:cloneRepo",
     async (_e, owner: string, name: string, destParent: string, accountId?: string) => {
       try {
-        const token = await tokenForRepo(owner, name, accountId);
+        const account = accountForRepo(owner, name, accountId);
+        const token = account ? await deps!.getToken(account.key) : null;
         if (!token) throw new Error("no account token available for this repo");
-        const account = accountId
-          ? deps?.getAccounts().find((a) => a.key === accountId)
-          : undefined;
         const hostId = account ? (codeHostForProvider(account.provider) ?? "github") : "github";
         const host = codeHostFor(hostId);
         const localPath = await cloneRepo(
@@ -1243,6 +1244,7 @@ export function initOrchestrator(
           { owner, name },
           destParent,
           host.pushCredentials(token),
+          account?.baseUrl,
         );
         const links = await ensureRepoLinks();
         links.repos[repoKey({ owner, name })] = { localPath, linkedAt: new Date().toISOString() };
