@@ -210,6 +210,12 @@ describe("planner worktree at planning (#110)", () => {
     provider: unknown;
     cwds: string[];
     setWorktreeCalls: { path: string; branch: string; sessionId?: string }[];
+    /** Plan session ids persisted via setPlanSessionId, in order (#111). */
+    planSessionIds: string[];
+    /** sessionId handed to each agent() call, in order (#111). */
+    agentSessionIds: (string | undefined)[];
+    /** Whether a plan session was persisted before the first agent() call (crash-safe order). */
+    flags: { persistedBeforeAgent: boolean };
     transitions: { to: LifecycleState }[];
     /** Resolves once run() reaches completePlan — all plansDir writes are done by then. */
     done: Promise<void>;
@@ -218,19 +224,30 @@ describe("planner worktree at planning (#110)", () => {
   function makeRunHarness(opts: {
     item: TrackedItem;
     prepareWorktree: PlannerDeps["prepareWorktree"];
+    /** Provider name gating session minting (#111). Defaults to "fake" → no mint. */
+    providerName?: string;
   }): RunHarness {
     const items = [opts.item];
     const cwds: string[] = [];
     const setWorktreeCalls: RunHarness["setWorktreeCalls"] = [];
+    const planSessionIds: string[] = [];
+    const agentSessionIds: (string | undefined)[] = [];
+    const flags = { persistedBeforeAgent: false };
+    let agentStarted = false;
     const transitions: RunHarness["transitions"] = [];
     let resolveDone: () => void;
     const done = new Promise<void>((r) => (resolveDone = r));
     // agent capture stands in for the whole provider — computeConfidence's
     // extra runs reuse it, its askStructured throws (critic degrades safely).
     const provider = {
-      name: "fake",
-      agent: async (_prompt: string, agentOpts: { cwd: string }) => {
+      name: opts.providerName ?? "fake",
+      agent: async (_prompt: string, agentOpts: { cwd: string; sessionId?: string }) => {
         cwds.push(agentOpts.cwd);
+        agentSessionIds.push(agentOpts.sessionId);
+        if (!agentStarted) {
+          agentStarted = true;
+          flags.persistedBeforeAgent = planSessionIds.length > 0;
+        }
         return { text: VALID_PLAN };
       },
       askStructured: async () => {
@@ -252,12 +269,23 @@ describe("planner worktree at planning (#110)", () => {
       prepareWorktree: opts.prepareWorktree,
       setWorktree: async (_itemId: string, worktree: { path: string; branch: string; sessionId?: string }) =>
         void setWorktreeCalls.push(worktree),
+      setPlanSessionId: async (_itemId: string, sessionId: string) => void planSessionIds.push(sessionId),
       getSettings: () => ({ ...DEFAULT_ORCHESTRATOR_SETTINGS }) as OrchestratorSettings,
       getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS }),
       emitEvent: () => {},
       plansDir,
     } as unknown as PlannerDeps;
-    return { deps, provider, cwds, setWorktreeCalls, transitions, done };
+    return {
+      deps,
+      provider,
+      cwds,
+      setWorktreeCalls,
+      planSessionIds,
+      agentSessionIds,
+      flags,
+      transitions,
+      done,
+    };
   }
 
   it("plans in the worktree and records it once", async () => {
@@ -310,5 +338,54 @@ describe("planner worktree at planning (#110)", () => {
     pokePlanner();
     await h.done;
     expect(h.setWorktreeCalls).toEqual([]);
+  });
+
+  // #111: claude-cli planning in the worktree mints and persists a session id
+  // before the agent runs; the same id is handed to generatePlan/agent.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  it("mints and persists a plan session for claude-cli before the agent runs", async () => {
+    const h = makeRunHarness({
+      item: makeItem("planning"),
+      prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+      providerName: "claude-cli",
+    });
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await h.done;
+    expect(h.planSessionIds).toHaveLength(1);
+    expect(h.planSessionIds[0]).toMatch(UUID_RE);
+    expect(h.flags.persistedBeforeAgent).toBe(true);
+    // The primary agent run receives the minted id; confidence's extra runs stay stateless.
+    expect(h.agentSessionIds[0]).toBe(h.planSessionIds[0]);
+  });
+
+  it("does not mint a plan session for a non-claude-cli provider", async () => {
+    const h = makeRunHarness({
+      item: makeItem("planning"),
+      prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+    });
+    initPlanner(h.deps, h.provider as never); // name "fake"
+    pokePlanner();
+    await h.done;
+    expect(h.planSessionIds).toEqual([]);
+    expect(h.agentSessionIds[0]).toBeUndefined();
+  });
+
+  it("does not mint when planning degrades to the shared clone", async () => {
+    const h = makeRunHarness({
+      item: makeItem("planning"),
+      prepareWorktree: async () => {
+        throw new Error("offline");
+      },
+      providerName: "claude-cli",
+    });
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await h.done;
+    // Degraded to /repo — a session against the clone would break cwd-scoped resume.
+    expect(h.cwds.every((c) => c === "/repo")).toBe(true);
+    expect(h.planSessionIds).toEqual([]);
+    expect(h.agentSessionIds[0]).toBeUndefined();
   });
 });

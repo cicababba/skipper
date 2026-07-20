@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EventEmitter } from "node:events";
 import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
 import type { CodingEvent } from "@skipper/shared";
 import { ClaudeCLIProvider, invalidateResolvedClaude } from "../src/llm/claude-cli";
 
@@ -96,6 +97,26 @@ describe("ClaudeCLIProvider.agent", () => {
     expect(events.map((e) => e.kind)).toEqual(["agent-init", "text", "tool-use", "result"]);
     expect(res.text).toBe(LONG_RESULT); // raw line, not the 2000-char event summary
     expect(res.usage).toEqual({ inputTokens: 100, outputTokens: 200 });
+    expect(res.sessionId).toBeUndefined(); // #111: no id without persistence
+  });
+
+  // #111: passing sessionId persists the run under it — the flag swaps and the
+  // returned id is the CLI's own init-line session (authoritative on disk).
+  it("with sessionId persists the session and returns the init-line id", async () => {
+    const { child, argv } = arm();
+    const minted = "22222222-2222-4222-8222-222222222222";
+    const promise = new ClaudeCLIProvider("sonnet").agent("plan it", {
+      onEvent: () => {},
+      sessionId: minted,
+    });
+    child.stdout.emit("data", Buffer.from(`${initLine}\n${resultLine}\n`));
+    child.emit("close", 0);
+    const res = await promise;
+
+    expect(argv()).toContain("--session-id");
+    expect(argv()).toContain(minted);
+    expect(argv()).not.toContain("--no-session-persistence");
+    expect(res.sessionId).toBe("11111111-1111-4111-8111-111111111111");
   });
 
   it("streaming rejects on an error result", async () => {
@@ -115,5 +136,42 @@ describe("ClaudeCLIProvider.agent", () => {
     child.stdout.emit("data", Buffer.from(`${initLine}\n`));
     child.emit("close", 0);
     await expect(promise).rejects.toThrow(/stream ended without a result/);
+  });
+});
+
+describe("ClaudeCLIProvider.askStructured", () => {
+  const schema = { type: "object" } as Record<string, unknown>;
+  const reply = JSON.stringify({ is_error: false, result: '{"ok":true}' });
+  const spawnOpts = () => vi.mocked(spawn).mock.calls[0][2] as { cwd?: string };
+
+  it("without opts stays stateless and runs in tmpdir", async () => {
+    const { child, argv } = arm();
+    const promise = new ClaudeCLIProvider("sonnet").askStructured("q", schema);
+    child.stdout.emit("data", Buffer.from(reply));
+    child.emit("close", 0);
+    const res = await promise;
+
+    expect(argv()).toContain("--no-session-persistence");
+    expect(argv()).not.toContain("--session-id");
+    expect(spawnOpts().cwd).toBe(tmpdir());
+    expect(res).toEqual({ ok: true });
+  });
+
+  // #111: opts persist the structured call under a session and pin its cwd so the
+  // on-disk session lands in the worktree.
+  it("with opts persists the session and runs in opts.cwd", async () => {
+    const { child, argv } = arm();
+    const promise = new ClaudeCLIProvider("sonnet").askStructured("q", schema, {
+      cwd: "/wt/issue-1",
+      sessionId: "33333333-3333-4333-8333-333333333333",
+    });
+    child.stdout.emit("data", Buffer.from(reply));
+    child.emit("close", 0);
+    await promise;
+
+    expect(argv()).toContain("--session-id");
+    expect(argv()).toContain("33333333-3333-4333-8333-333333333333");
+    expect(argv()).not.toContain("--no-session-persistence");
+    expect(spawnOpts().cwd).toBe("/wt/issue-1");
   });
 });

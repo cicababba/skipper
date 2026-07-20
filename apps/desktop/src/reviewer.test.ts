@@ -73,6 +73,8 @@ interface Harness {
     reason: string;
     resumeTo?: LifecycleState;
   }[];
+  /** setReviewSessionId calls, in order (#111). */
+  sessionCalls: { itemId: string; sessionId: string }[];
 }
 
 function makeHarness(
@@ -82,6 +84,7 @@ function makeHarness(
 ): Harness {
   const items = new Map<string, TrackedItem>();
   const completions: Harness["completions"] = [];
+  const sessionCalls: Harness["sessionCalls"] = [];
   const deps: ReviewerDeps = {
     listItems: () => [...items.values()],
     getItem: (id) => items.get(id),
@@ -105,10 +108,10 @@ function makeHarness(
     getSettings: () => ({ ...DEFAULT_ORCHESTRATOR_SETTINGS, review: "on" }) as OrchestratorSettings,
     getRepoSettings: () => resolveRepoOrchestratorSettings(repoSettings, deps.getSettings()),
     getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS }),
-    setReviewSessionId: async () => {},
+    setReviewSessionId: async (itemId, sessionId) => void sessionCalls.push({ itemId, sessionId }),
     ...overrides,
   };
-  return { items, deps, completions };
+  return { items, deps, completions, sessionCalls };
 }
 
 function fakeCritic(verdict: "approve" | "concerns" | "reject", objections: CriticObjection[] = []) {
@@ -410,6 +413,79 @@ describe("reviewer driver", () => {
     await settle();
     expect(critic).toHaveBeenCalledOnce();
     expect(h.completions).toHaveLength(1);
+  });
+});
+
+// #111: the reviewer mints a per-round claude-cli session, persists it before the
+// critic runs, and stamps it on the AgentReview it completes.
+describe("reviewer session persistence (#111)", () => {
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  it("mints a session before the critic and stamps it on the review", async () => {
+    const h = makeHarness();
+    let sessionsAtCriticTime: number | undefined;
+    let criticSession: { id: string; cwd: string } | undefined;
+    const critic = vi.fn(async (args: { session?: { id: string; cwd: string } }) => {
+      sessionsAtCriticTime = h.sessionCalls.length;
+      criticSession = args.session;
+      return { score: 1, verdict: "approve" as const, objections: [] };
+    }) as unknown as typeof critiqueDiff;
+    initReviewer(h.deps, critic);
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+
+    expect(h.sessionCalls).toHaveLength(1);
+    const sessionId = h.sessionCalls[0].sessionId;
+    expect(sessionId).toMatch(UUID_RE);
+    // Persisted before the critic ran — a crash mid-critique still leaves a pointer.
+    expect(sessionsAtCriticTime).toBe(1);
+    expect(criticSession).toEqual({ id: sessionId, cwd: "/wt/repo/issue-1" });
+    expect(h.completions[0].review.sessionId).toBe(sessionId);
+  });
+
+  it("stamps the session on a fix-round review too", async () => {
+    const h = makeHarness();
+    initReviewer(h.deps, fakeCritic("reject", [blockingObjection]));
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+    expect(h.completions[0].to).toBe("coding");
+    expect(h.completions[0].review.sessionId).toBe(h.sessionCalls[0].sessionId);
+  });
+
+  it("does not mint when the mode gate skips the review", async () => {
+    const h = makeHarness({ getSettings: settings({ review: "off" }) });
+    initReviewer(h.deps, fakeCritic("approve"));
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+    expect(h.sessionCalls).toEqual([]);
+    expect(h.completions[0].review.sessionId).toBeUndefined();
+  });
+
+  it("does not mint on an empty diff", async () => {
+    const h = makeHarness({
+      getDiff: async () => ({ diff: "", stats: { filesChanged: 0, totalChangedLines: 0, files: [] } }),
+    });
+    initReviewer(h.deps, fakeCritic("approve"));
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+    expect(h.sessionCalls).toEqual([]);
+  });
+
+  it("does not mint when diff capture fails", async () => {
+    const h = makeHarness({
+      getDiff: async () => {
+        throw new Error("worktree gone");
+      },
+    });
+    initReviewer(h.deps, fakeCritic("approve"));
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+    expect(h.sessionCalls).toEqual([]);
   });
 });
 
