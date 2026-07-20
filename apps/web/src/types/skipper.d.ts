@@ -1,6 +1,7 @@
 export {};
 
 import type {
+  ArchiveItemResult,
   AuthProviderId,
   AuthProviderMeta,
   AuthState,
@@ -194,6 +195,7 @@ declare global {
         getPlan: (itemId: string) => Promise<StoredPlan | null>;
         updatePlan: (itemId: string, plan: IssuePlan) => Promise<UpdatePlanResult>;
         openPr: (itemId: string) => Promise<OrchestratorTransitionResult>;
+        archiveItem: (itemId: string, force?: boolean) => Promise<ArchiveItemResult>;
         getWorktreeChanges: (itemId: string) => Promise<WorktreeChangesResult>;
         readWorktreeFile: (
           itemId: string,

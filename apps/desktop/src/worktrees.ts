@@ -451,6 +451,37 @@ export async function deleteBranchIfNoUniqueCommits(
 }
 
 /**
+ * Force-delete a local branch (git branch -D) — used after a merge, where the
+ * branch is "ahead" of base only because the merge was squashed, so the local
+ * commits are already safe on the remote. Missing branch → false; never throws.
+ */
+export async function deleteBranchForce(repoPath: string, branch: string): Promise<boolean> {
+  const exists = await runGit(repoPath, [
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    `refs/heads/${branch}`,
+  ]);
+  if (exists.code !== 0) return false;
+  const del = await runGit(repoPath, ["branch", "-D", branch]);
+  return del.code === 0;
+}
+
+/**
+ * Uncommitted paths in a worktree (untracked included), for the archive dirty
+ * gate (#115). Null when the dir is gone or git can't run there (proceed —
+ * nothing to lose); [] when clean.
+ */
+export async function worktreeDirtyFiles(worktreePath: string): Promise<string[] | null> {
+  const status = await runGit(worktreePath, ["status", "--porcelain"]);
+  if (status.code !== 0) return null;
+  return status.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+/**
  * Tear down a parked planning worktree (#110): remove it (tolerating an
  * already-deleted dir), prune, then drop the branch only when baseRef is known
  * and the branch has no unique commits.

@@ -10,12 +10,14 @@ export type ItemActionId =
   | "retry"
   | "close"
   | "pin"
-  | "unpin";
+  | "unpin"
+  | "archive";
 
 export type ItemAction =
   | { id: ItemActionId; kind: "transition"; to: LifecycleState }
   | { id: "openPr"; kind: "openPr" }
-  | { id: "pin" | "unpin"; kind: "pin"; pinned: boolean };
+  | { id: "pin" | "unpin"; kind: "pin"; pinned: boolean }
+  | { id: "archive"; kind: "archive" };
 
 function transition(id: ItemActionId, item: TrackedItem, to: LifecycleState): ItemAction[] {
   return canTransition(item.state, to) ? [{ id, kind: "transition", to }] : [];
@@ -54,6 +56,12 @@ export function actionsFor(item: TrackedItem): ItemAction[] {
     case "coding":
     case "agent-review":
       return close;
+    case "closed": {
+      // Offer Archive once, until the worktree is gone and the plan archived (#115).
+      const alreadyArchived =
+        !item.worktree && (!item.plan?.ref || item.plan.ref.startsWith("archive/"));
+      return alreadyArchived ? [] : [{ id: "archive", kind: "archive" }];
+    }
     default:
       // PR states live on the platform (link-out only); merged/closed are settled.
       return [];

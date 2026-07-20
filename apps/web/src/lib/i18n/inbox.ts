@@ -70,6 +70,11 @@ const en = {
     close: "Close",
     pin: "Pin to front of queue",
     unpin: "Unpin",
+    archive: "Archive",
+  },
+  archive: {
+    confirmDirty: (n: number) =>
+      `The worktree has ${n} uncommitted change${n === 1 ? "" : "s"} that will be lost. Archive anyway?`,
   },
   intake: {
     paused: "New issues paused",
@@ -356,6 +361,11 @@ const it: typeof en = {
     close: "Chiudi",
     pin: "Fissa in cima alla coda",
     unpin: "Sblocca",
+    archive: "Archivia",
+  },
+  archive: {
+    confirmDirty: (n: number) =>
+      `Il worktree ha ${n} ${n === 1 ? "modifica non salvata" : "modifiche non salvate"} che andranno perse. Archiviare comunque?`,
   },
   intake: {
     paused: "Nuove issue in pausa",
@@ -642,6 +652,11 @@ const fr: typeof en = {
     close: "Fermer",
     pin: "Épingler en tête de file",
     unpin: "Désépingler",
+    archive: "Archiver",
+  },
+  archive: {
+    confirmDirty: (n: number) =>
+      `Le worktree a ${n} ${n === 1 ? "modification non validée" : "modifications non validées"} qui seront perdues. Archiver quand même ?`,
   },
   intake: {
     paused: "Nouvelles issues en pause",
@@ -929,6 +944,11 @@ const es: typeof en = {
     close: "Cerrar",
     pin: "Fijar al frente de la cola",
     unpin: "Desfijar",
+    archive: "Archivar",
+  },
+  archive: {
+    confirmDirty: (n: number) =>
+      `El worktree tiene ${n} ${n === 1 ? "cambio sin confirmar" : "cambios sin confirmar"} que se perderán. ¿Archivar de todos modos?`,
   },
   intake: {
     paused: "Nuevas issues en pausa",
