@@ -24,6 +24,7 @@ import type {
   SolutionRecord,
   StoredPlan,
   TrackerProjectsResult,
+  UntrackItemResult,
   UpdatePlanResult,
   WorktreeChangesResult,
   WorktreeFileResult,
@@ -155,7 +156,7 @@ declare global {
       };
       orchestrator: {
         getState: () => Promise<OrchestratorState>;
-        refresh: () => Promise<OrchestratorState>;
+        refresh: (full?: boolean) => Promise<OrchestratorState>;
         requestTransition: (
           itemId: string,
           to: LifecycleState,
@@ -196,6 +197,7 @@ declare global {
         updatePlan: (itemId: string, plan: IssuePlan) => Promise<UpdatePlanResult>;
         openPr: (itemId: string) => Promise<OrchestratorTransitionResult>;
         archiveItem: (itemId: string, force?: boolean) => Promise<ArchiveItemResult>;
+        untrackItem: (itemId: string, force?: boolean) => Promise<UntrackItemResult>;
         getWorktreeChanges: (itemId: string) => Promise<WorktreeChangesResult>;
         readWorktreeFile: (
           itemId: string,

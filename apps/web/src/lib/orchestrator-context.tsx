@@ -15,6 +15,7 @@ import type {
   OrchestratorState,
   OrchestratorTransitionResult,
   ResumeRiteAction,
+  UntrackItemResult,
 } from "@skipper/shared";
 
 interface OrchestratorContextValue {
@@ -22,7 +23,7 @@ interface OrchestratorContextValue {
   state: OrchestratorState | null;
   error: string | null;
   refreshing: boolean;
-  refresh: () => Promise<void>;
+  refresh: (full?: boolean) => Promise<void>;
   requestTransition: (
     itemId: string,
     to: LifecycleState,
@@ -30,6 +31,7 @@ interface OrchestratorContextValue {
   ) => Promise<OrchestratorTransitionResult>;
   openPr: (itemId: string) => Promise<OrchestratorTransitionResult>;
   archiveItem: (itemId: string, force?: boolean) => Promise<ArchiveItemResult>;
+  untrackItem: (itemId: string, force?: boolean) => Promise<UntrackItemResult>;
   setIntakePaused: (paused: boolean) => Promise<void>;
   /** Global settings writer (#62); the handler validates each key. */
   updateSettings: (patch: Partial<OrchestratorSettings>) => Promise<void>;
@@ -60,11 +62,11 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
     return () => { cancelled = true; off(); };
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (full?: boolean) => {
     if (!window.skipper) return;
     setRefreshing(true);
     try {
-      setState(await window.skipper.orchestrator.refresh());
+      setState(await window.skipper.orchestrator.refresh(full));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -98,6 +100,17 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
       if (!window.skipper) return { ok: false, error: "desktop only" };
       const result = await window.skipper.orchestrator.archiveItem(itemId, force);
       // needsConfirm is the dirty-worktree prompt, not an error — the caller drives it.
+      if (!result.ok && !result.needsConfirm) setError(result.error);
+      return result;
+    },
+    [],
+  );
+
+  const untrackItem = useCallback(
+    async (itemId: string, force?: boolean): Promise<UntrackItemResult> => {
+      if (!window.skipper) return { ok: false, error: "desktop only" };
+      const result = await window.skipper.orchestrator.untrackItem(itemId, force);
+      // needsConfirm is the worktree/PR prompt, not an error — the caller drives it.
       if (!result.ok && !result.needsConfirm) setError(result.error);
       return result;
     },
@@ -155,6 +168,7 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
       requestTransition,
       openPr,
       archiveItem,
+      untrackItem,
       setIntakePaused,
       updateSettings,
       resolveResumeRite,
@@ -169,6 +183,7 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
       requestTransition,
       openPr,
       archiveItem,
+      untrackItem,
       setIntakePaused,
       updateSettings,
       resolveResumeRite,

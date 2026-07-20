@@ -281,6 +281,9 @@ export interface TrackedItem {
   shepherd?: ShepherdState;
   /** Solutions memory fetched via get_memory during each run (#46). Reset per run; vote is the local 👍/👎 anchor. */
   usedMemory?: { planning?: UsedMemoryRef[]; coding?: UsedMemoryRef[] };
+  /** Set when the item's project was remapped to a different repo but the item
+   *  wasn't auto-migratable (#120); cleared when its repo matches the mapping again. */
+  staleRepo?: boolean;
 }
 
 /** One memory a run consulted, with the user's local 👍/👎 (#46). */
@@ -444,6 +447,13 @@ export type WorktreeStatusResult =
 export type ArchiveItemResult =
   | { ok: true; item: TrackedItem }
   | { ok: false; needsConfirm: true; dirtyFiles: number }
+  | { ok: false; needsConfirm?: undefined; error: string };
+
+// Manifest cleanup (#120): untrack an item — remove it from the manifest and the
+// raw cache. needsConfirm gates when the item carries a worktree or PR.
+export type UntrackItemResult =
+  | { ok: true }
+  | { ok: false; needsConfirm: true; hasWorktree: boolean; dirtyFiles: number; hasPr: boolean }
   | { ok: false; needsConfirm?: undefined; error: string };
 
 export type RepoLinkResult = { ok: true; localPath: string } | { ok: false; error: string };

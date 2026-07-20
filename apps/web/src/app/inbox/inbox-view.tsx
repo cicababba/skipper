@@ -123,10 +123,10 @@ export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
           ))}
         </div>
         <button
-          onClick={() => void refresh()}
+          onClick={(e) => void refresh(e.shiftKey)}
           disabled={refreshing}
           className="p-2 rounded-lg border border-border text-muted hover:text-foreground hover:bg-card transition-colors disabled:opacity-50"
-          title={t.common.actions.refresh}
+          title={`${t.common.actions.refresh}\n${t.inbox.refresh.fullHint}`}
         >
           <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
         </button>

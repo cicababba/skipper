@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { SquareTerminal } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { EyeOff, SquareTerminal } from "lucide-react";
 import {
   slugKey,
   type LifecycleState,
@@ -12,6 +12,7 @@ import {
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useTerminal } from "@/lib/terminal-context";
 import { useT } from "@/lib/app-i18n";
+import { confirmAndUntrack } from "../item-actions";
 import { IssueDetailView } from "./issue-detail";
 import { PlanDetailView } from "./plan-detail";
 import { CodingDetailView } from "./coding-detail";
@@ -72,9 +73,10 @@ function defaultTabFor(item: TrackedItem): DetailTab {
 export function ItemDetailView() {
   const params = useParams();
   const id = decodeURIComponent(String(params.id));
-  const { state } = useOrchestrator();
+  const { state, untrackItem } = useOrchestrator();
   const { openTerminal } = useTerminal();
   const { t } = useT();
+  const router = useRouter();
 
   const item = state?.items.find((i) => i.id === id);
 
@@ -128,18 +130,32 @@ export function ItemDetailView() {
             </button>
           );
         })}
-        {showTerminal && (
+        <div className="ml-auto flex items-center gap-1.5">
+          {showTerminal && (
+            <button
+              onClick={() => {
+                if (terminalReady)
+                  void openTerminal(terminalReady.path, `issue-${slugKey(item.key)}`);
+              }}
+              disabled={!terminalReady}
+              className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            >
+              <SquareTerminal size={13} />
+              {t.inbox.worktree.openTerminal}
+            </button>
+          )}
           <button
             onClick={() => {
-              if (terminalReady) void openTerminal(terminalReady.path, `issue-${slugKey(item.key)}`);
+              void confirmAndUntrack(item, untrackItem, t).then((done) => {
+                if (done) router.push("/inbox");
+              });
             }}
-            disabled={!terminalReady}
-            className="ml-auto flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors"
           >
-            <SquareTerminal size={13} />
-            {t.inbox.worktree.openTerminal}
+            <EyeOff size={13} />
+            {t.inbox.actions.untrack}
           </button>
-        )}
+        </div>
       </div>
       <div className="flex-1 min-h-0 overflow-auto flex flex-col">
         {activeTab === "detail" ? (

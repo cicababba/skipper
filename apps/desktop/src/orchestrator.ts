@@ -2,6 +2,7 @@ import { ipcMain, type BrowserWindow } from "electron";
 import {
   issueSourceForAuthProvider,
   reconcile,
+  remapProjectItems,
   resolveProjectRepos,
   applyTransition,
   loadOrCreateOrchestratorManifest,
@@ -67,6 +68,7 @@ import type {
   TransitionActor,
   UnmappedProject,
   ArchiveItemResult,
+  UntrackItemResult,
 } from "@skipper/shared";
 import { loadCursors, saveCursors, type InboxCursorFile } from "./inbox-cursor-store";
 import {
@@ -1081,7 +1083,17 @@ export function initOrchestrator(
     await ensureManifest();
     return snapshot();
   });
-  ipcMain.handle("skipper:orchestrator:refresh", async () => {
+  // full = force a real refetch (#120): clear the delta cursors and full-walk
+  // timers so the next poll walks everything. Persisting the cleared cursor file
+  // makes the reset crash-safe. If a poll is already running pollNow no-ops; the
+  // next one runs full anyway since lastFullWalkAt is cleared.
+  ipcMain.handle("skipper:orchestrator:refresh", async (_e, full?: boolean) => {
+    if (full) {
+      if (!cursors) cursors = await loadCursors(deps!.cursorFilePath);
+      cursors.platforms = {};
+      lastFullWalkAt.clear();
+      await saveCursors(deps!.cursorFilePath, cursors);
+    }
     await pollNow(true);
     return snapshot();
   });
@@ -1284,6 +1296,11 @@ export function initOrchestrator(
         const parsed = parseRepoMappingValue(repo);
         if (!parsed) return snapshot();
         m.projectMappings[key] = formatRepoMappingValue(parsed.codeHost, parsed.repo);
+        // #120: migrate/flag already-tracked items pinned to the old repo.
+        remapProjectItems(m, key, { repo: parsed.repo, codeHost: parsed.codeHost }, (accountId) => {
+          const account = deps!.getAccounts().find((a) => a.key === accountId);
+          return account ? mappingHost(account.baseUrl) : undefined;
+        });
       } else {
         delete m.projectMappings[key];
       }
@@ -1632,6 +1649,70 @@ export function initOrchestrator(
       await saveOrchestratorManifest(deps!.manifestFilePath, m);
       broadcast();
       return { ok: true, item: archived };
+    },
+  );
+  // Manifest cleanup (#120): untrack an item — drop it from the manifest and the
+  // raw cache (so reconcileFromCache can't instantly resurrect it) and prune its
+  // worktree. A later real poll/full-walk may re-admit it (no ignore list). The
+  // worktree/PR gate needs confirmation before destroying uncommitted work.
+  ipcMain.handle(
+    "skipper:orchestrator:untrackItem",
+    async (_e, itemId: string, force?: boolean): Promise<UntrackItemResult> => {
+      const m = await ensureManifest();
+      await ensureRepoLinks();
+      const item = m.items[itemId];
+      if (!item) return { ok: false, error: `unknown item ${itemId}` };
+
+      if ((item.worktree || item.pr) && !force) {
+        const dirty = item.worktree ? await worktreeDirtyFiles(item.worktree.path) : null;
+        return {
+          ok: false,
+          needsConfirm: true,
+          hasWorktree: !!item.worktree,
+          dirtyFiles: dirty?.length ?? 0,
+          hasPr: !!item.pr,
+        };
+      }
+
+      if (item.state === "coding") cancelCodingRun(itemId);
+
+      if (item.worktree) {
+        const link = repoLinks?.repos[repoKey(item.repo)];
+        if (link) {
+          const worktreePath = item.worktree.path;
+          const branch = item.worktree.branch;
+          try {
+            await withRepoGitLock(item.repo, async () => {
+              const baseRef = await resolveBaseRef(link.localPath, link.baseBranch).catch(
+                () => undefined,
+              );
+              await discardWorktree({ repoPath: link.localPath, worktreePath, branch, baseRef });
+            });
+          } catch (err) {
+            return { ok: false, error: err instanceof Error ? err.message : String(err) };
+          }
+        }
+      }
+
+      if (item.plan?.ref) {
+        await archiveStoredPlan(deps!.plansDir, item.plan.ref).catch(() => null);
+      }
+
+      delete m.items[itemId];
+      delete m.parked[itemId];
+      if (m.resumeRite) {
+        m.resumeRite.itemIds = m.resumeRite.itemIds.filter((id) => id !== itemId);
+        if (m.resumeRite.itemIds.length === 0) delete m.resumeRite;
+      }
+
+      // Drop from the raw cache so reconcileFromCache (mapping change, link/clone,
+      // re-follow) doesn't instantly re-admit it.
+      items.get(item.accountId)?.delete(itemId);
+      patchAccount(item.accountId, deriveArrays(item.accountId));
+
+      await saveOrchestratorManifest(deps!.manifestFilePath, m);
+      broadcast();
+      return { ok: true };
     },
   );
 

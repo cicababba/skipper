@@ -10,8 +10,10 @@ export {
 export { compareQueueCandidates, type QueueCandidate } from "./queue";
 export {
   reconcile,
+  remapProjectItems,
   type AdmissionPolicy,
   type ReconcileOutcome,
   type ReconcilePoll,
+  type RemapProjectItemsResult,
 } from "./reconcile";
 export { resolveProjectRepos, type ResolveProjectReposResult } from "./resolve-projects";

@@ -1,8 +1,17 @@
-import type { Issue, LifecycleState, PullRequest, SourceRef, TrackedItem } from "@skipper/shared";
+import type {
+  CodeHostId,
+  Issue,
+  LifecycleState,
+  PullRequest,
+  RepoRef,
+  SourceRef,
+  TrackedItem,
+} from "@skipper/shared";
 import {
   BRANCH_ISSUE_RE,
   branchSlugMatchesKey,
   CI_FIX_MAX_ROUNDS,
+  projectMappingKey,
   repoKey,
   resolveRepoOrchestratorSettings,
   sourceRefKey,
@@ -420,4 +429,57 @@ function reconcileFullWalkAbsence(
   for (const parkedId of Object.keys(manifest.parked)) {
     if (!present.has(parkedId)) delete manifest.parked[parkedId];
   }
+}
+
+export interface RemapProjectItemsResult {
+  migrated: string[];
+  flaggedStale: string[];
+  cleared: string[];
+}
+
+/**
+ * Repoints tracked items when a project→repo mapping changes (#120). Items in a
+ * pre-coding state with no worktree/PR auto-migrate to the new repo; anything
+ * further along is flagged staleRepo instead (a badge, never a silent retarget).
+ * Terminal/settled items and items whose account is signed out (no host) are
+ * left untouched. Mutates manifest.items in place; the caller saves.
+ */
+export function remapProjectItems(
+  manifest: OrchestratorManifest,
+  mappingKey: string,
+  target: { repo: RepoRef; codeHost: CodeHostId },
+  hostForAccount: (accountId: string) => string | undefined,
+  now: Date = new Date(),
+): RemapProjectItemsResult {
+  const result: RemapProjectItemsResult = { migrated: [], flaggedStale: [], cleared: [] };
+  const targetKey = repoKey(target.repo);
+  const nowIso = now.toISOString();
+
+  for (const item of Object.values(manifest.items)) {
+    const host = hostForAccount(item.accountId);
+    if (host === undefined) continue;
+    if (projectMappingKey(item.source, host, item.sourceRef.project) !== mappingKey) continue;
+    if (item.state === "merged" || item.state === "closed") continue;
+
+    if (repoKey(item.repo) === targetKey && item.codeHost === target.codeHost) {
+      if (item.staleRepo) {
+        manifest.items[item.id] = { ...item, staleRepo: undefined, updatedAt: nowIso };
+        result.cleared.push(item.id);
+      }
+    } else if (PRE_CODING_STATES.includes(item.state) && !item.worktree && !item.pr) {
+      manifest.items[item.id] = {
+        ...item,
+        repo: target.repo,
+        codeHost: target.codeHost,
+        staleRepo: undefined,
+        updatedAt: nowIso,
+      };
+      result.migrated.push(item.id);
+    } else if (!item.staleRepo) {
+      manifest.items[item.id] = { ...item, staleRepo: true, updatedAt: nowIso };
+      result.flaggedStale.push(item.id);
+    }
+  }
+
+  return result;
 }

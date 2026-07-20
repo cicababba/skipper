@@ -22,6 +22,7 @@ import type {
   SolutionRecord,
   StoredPlan,
   TrackerProjectsResult,
+  UntrackItemResult,
   UpdatePlanResult,
   WorktreeChangesResult,
   WorktreeFileResult,
@@ -123,7 +124,8 @@ contextBridge.exposeInMainWorld("skipper", {
   orchestrator: {
     getState: (): Promise<OrchestratorState> =>
       ipcRenderer.invoke("skipper:orchestrator:getState"),
-    refresh: (): Promise<OrchestratorState> => ipcRenderer.invoke("skipper:orchestrator:refresh"),
+    refresh: (full?: boolean): Promise<OrchestratorState> =>
+      ipcRenderer.invoke("skipper:orchestrator:refresh", full),
     requestTransition: (
       itemId: string,
       to: LifecycleState,
@@ -176,6 +178,8 @@ contextBridge.exposeInMainWorld("skipper", {
       ipcRenderer.invoke("skipper:orchestrator:openPr", itemId),
     archiveItem: (itemId: string, force?: boolean): Promise<ArchiveItemResult> =>
       ipcRenderer.invoke("skipper:orchestrator:archiveItem", itemId, force),
+    untrackItem: (itemId: string, force?: boolean): Promise<UntrackItemResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:untrackItem", itemId, force),
     getWorktreeChanges: (itemId: string): Promise<WorktreeChangesResult> =>
       ipcRenderer.invoke("skipper:orchestrator:getWorktreeChanges", itemId),
     readWorktreeFile: (itemId: string, path: string, oldPath?: string): Promise<WorktreeFileResult> =>
