@@ -2,6 +2,7 @@ import {
   computeConfidence,
   createProvider,
   generatePlan,
+  type IssueComment,
   type LLMProviderInterface,
   type MemoryMcp,
   type OrchestratorSettings,
@@ -34,6 +35,8 @@ export interface PlannerDeps {
   getItem: (itemId: string) => TrackedItem | undefined;
   /** Cached inbox issue for the item (labels + body), best-effort. */
   getIssue: (item: TrackedItem) => Issue | undefined;
+  /** Fresh issue comments fetched at plan time (#144); may reject — the loop degrades. */
+  fetchIssueComments?: (item: TrackedItem) => Promise<IssueComment[]>;
   getRepoPath: (repo: RepoRef) => string | undefined;
   /** Per-repo settings (#15, #62) — gates auto-plan on admission; carries autoCoding. */
   getRepoSettings: (repo: RepoRef) => ResolvedRepoOrchestratorSettings;
@@ -207,12 +210,26 @@ async function run(itemId: string): Promise<void> {
       provider.name === "claude-cli" && inWorktree ? randomUUID() : undefined;
     if (planSessionId) await deps.setPlanSessionId(itemId, planSessionId);
     const cached = deps.getIssue(item);
+    let comments: IssueComment[] = [];
+    if (deps.fetchIssueComments) {
+      try {
+        comments = await deps.fetchIssueComments(item);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        deps.emitEvent(itemId, {
+          kind: "status",
+          phase: "fetching",
+          detail: `comment fetch failed — planning without comments: ${msg.slice(0, 200)}`,
+        });
+      }
+    }
     const issue = {
       key: item.key,
       title: item.title,
       url: item.url,
       labels: cached?.labels ?? [],
       body: cached?.body,
+      ...(comments.length > 0 ? { comments } : {}),
     };
     // agent-start marks a fresh run — it also resets the replay buffer upstream.
     deps.emitEvent(itemId, { kind: "status", phase: "agent-start" });

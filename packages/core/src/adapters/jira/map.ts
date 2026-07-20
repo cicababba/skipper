@@ -34,7 +34,7 @@ function userId(user: JiraUserPayload | null | undefined): string | undefined {
 
 /** Jira returns offsets like `2026-07-17T10:30:00.000+0200`; the orchestrator sorts
  *  updatedAt by string comparison, so normalize to UTC ISO. */
-function toUtcIso(value: string | undefined): string {
+export function toUtcIso(value: string | undefined): string {
   return value ? new Date(Date.parse(value)).toISOString() : new Date(0).toISOString();
 }
 

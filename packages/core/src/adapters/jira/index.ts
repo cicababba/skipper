@@ -1,7 +1,8 @@
 export { jiraGet, jiraApiBase, type JiraTarget } from "./client";
 export { listJiraProjects } from "./projects";
 export { adfToMarkdown } from "./adf";
-export { mapJiraIssue, type JiraIssuePayload, type JiraUserPayload } from "./map";
+export { fetchJiraComments } from "./comments";
+export { mapJiraIssue, toUtcIso, type JiraIssuePayload, type JiraUserPayload } from "./map";
 export { pollJiraAccount } from "./poll";
 export { jiraIssueSource } from "./source";
 export {

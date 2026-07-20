@@ -1,4 +1,5 @@
 import { displayKey, type CriticObjection, type IssuePlan, type PrReviewComment } from "@skipper/shared";
+import { renderCommentsBlock } from "../planner/prompt";
 import type { PlanIssueInput } from "../planner/generate";
 
 const MAX_BODY_CHARS = 20_000;
@@ -24,6 +25,7 @@ function issueHeader(issue: PlanIssueInput): string[] {
     issue.labels.length > 0 ? `Labels: ${issue.labels.join(", ")}` : "",
     ``,
     body ? `--- Issue body ---\n${body}\n--- End issue body ---` : `(The issue has no body.)`,
+    renderCommentsBlock(issue.comments) ?? "",
   ];
 }
 

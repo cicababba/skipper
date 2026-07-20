@@ -1,4 +1,5 @@
 import type { CodingEvent, IssuePlan } from "@skipper/shared";
+import type { IssueComment } from "../adapters/types";
 import type { LLMProviderInterface } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import { parseJsonReply } from "../llm/json";
@@ -12,6 +13,8 @@ export interface PlanIssueInput {
   url: string;
   labels: string[];
   body?: string;
+  /** Issue comments in ascending chronological order, fetched at plan/code time (#144). */
+  comments?: IssueComment[];
 }
 
 export interface GeneratePlanOptions {
