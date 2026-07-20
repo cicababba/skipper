@@ -11,6 +11,7 @@ import { StateBadge } from "./state-badge";
 import { BlockedByBadges } from "./blocked-by";
 import { CiBadge } from "./ci-badge";
 import { ItemActions } from "./item-actions";
+import { StaleRepoBadge } from "./stale-repo-badge";
 
 function openExternal(url: string) {
   void window.skipper?.openExternal(url);
@@ -106,7 +107,12 @@ export function InboxTable({
                     </button>
                   </div>
                 </td>
-                <td className="px-3 py-2 text-muted whitespace-nowrap">{repoKey(item.repo)}</td>
+                <td className="px-3 py-2 text-muted whitespace-nowrap">
+                  <div className="flex items-center gap-1.5">
+                    {repoKey(item.repo)}
+                    <StaleRepoBadge item={item} />
+                  </div>
+                </td>
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <StateBadge item={item} />

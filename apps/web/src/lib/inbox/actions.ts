@@ -11,19 +11,21 @@ export type ItemActionId =
   | "close"
   | "pin"
   | "unpin"
-  | "archive";
+  | "archive"
+  | "untrack";
 
 export type ItemAction =
   | { id: ItemActionId; kind: "transition"; to: LifecycleState }
   | { id: "openPr"; kind: "openPr" }
   | { id: "pin" | "unpin"; kind: "pin"; pinned: boolean }
-  | { id: "archive"; kind: "archive" };
+  | { id: "archive"; kind: "archive" }
+  | { id: "untrack"; kind: "untrack" };
 
 function transition(id: ItemActionId, item: TrackedItem, to: LifecycleState): ItemAction[] {
   return canTransition(item.state, to) ? [{ id, kind: "transition", to }] : [];
 }
 
-export function actionsFor(item: TrackedItem): ItemAction[] {
+function baseActionsFor(item: TrackedItem): ItemAction[] {
   const close = transition("close", item, "closed");
   switch (item.state) {
     case "triage":
@@ -66,4 +68,10 @@ export function actionsFor(item: TrackedItem): ItemAction[] {
       // PR states live on the platform (link-out only); merged/closed are settled.
       return [];
   }
+}
+
+export function actionsFor(item: TrackedItem): ItemAction[] {
+  // Untrack (#120) is offered in every state — including the otherwise-empty ones
+  // (merged, PR states, archived closed) — since removal is always available.
+  return [...baseActionsFor(item), { id: "untrack", kind: "untrack" }];
 }

@@ -9,6 +9,7 @@ import { useT } from "@/lib/app-i18n";
 import { repoKey } from "@/lib/inbox/model";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { StateBadge } from "../state-badge";
+import { StaleRepoBadge } from "../stale-repo-badge";
 
 // Detail tab (#112): the issue body rendered as GFM markdown, plus the shared
 // per-view header. Prop-less self-lookup like the sibling tab views.
@@ -60,6 +61,7 @@ export function IssueDetailView() {
         </div>
         <div className="flex items-center gap-2 flex-wrap text-[12px] text-muted">
           <span>{repoKey(item.repo)}</span>
+          <StaleRepoBadge item={item} />
           <StateBadge item={item} />
           <span className="text-[11px] font-medium px-1.5 py-0.5 rounded border bg-card text-muted border-border uppercase">
             {item.source}

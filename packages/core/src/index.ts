@@ -169,6 +169,7 @@ export {
   saveOrchestratorManifest,
   DEFAULT_ORCHESTRATOR_SETTINGS,
   reconcile,
+  remapProjectItems,
   resolveProjectRepos,
   compareQueueCandidates,
 } from "./orchestrator";
@@ -178,6 +179,7 @@ export type {
   AdmissionPolicy,
   ReconcileOutcome,
   ReconcilePoll,
+  RemapProjectItemsResult,
   ResolveProjectReposResult,
   QueueCandidate,
 } from "./orchestrator";

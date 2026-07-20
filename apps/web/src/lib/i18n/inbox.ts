@@ -71,10 +71,24 @@ const en = {
     pin: "Pin to front of queue",
     unpin: "Unpin",
     archive: "Archive",
+    untrack: "Untrack",
   },
   archive: {
     confirmDirty: (n: number) =>
       `The worktree has ${n} uncommitted change${n === 1 ? "" : "s"} that will be lost. Archive anyway?`,
+  },
+  untrack: {
+    confirm: (hasWorktree: boolean, hasPr: boolean) =>
+      "Stop tracking this issue? It may return on a later poll." +
+      (hasWorktree ? " Its worktree will be pruned (uncommitted changes are lost)." : "") +
+      (hasPr ? " Its PR stays open on the platform." : ""),
+  },
+  refresh: {
+    fullHint: "Shift-click: reset cursors and refetch everything",
+  },
+  staleRepo: {
+    badge: "repo changed",
+    tooltip: "This project now maps to a different repo, but this item is pinned to the old one.",
   },
   intake: {
     paused: "New issues paused",
@@ -362,10 +376,24 @@ const it: typeof en = {
     pin: "Fissa in cima alla coda",
     unpin: "Sblocca",
     archive: "Archivia",
+    untrack: "Rimuovi",
   },
   archive: {
     confirmDirty: (n: number) =>
       `Il worktree ha ${n} ${n === 1 ? "modifica non salvata" : "modifiche non salvate"} che andranno perse. Archiviare comunque?`,
+  },
+  untrack: {
+    confirm: (hasWorktree, hasPr) =>
+      "Smettere di tracciare questa issue? Potrebbe tornare a un poll successivo." +
+      (hasWorktree ? " Il suo worktree verrà eliminato (le modifiche non salvate vanno perse)." : "") +
+      (hasPr ? " La sua PR resta aperta sulla piattaforma." : ""),
+  },
+  refresh: {
+    fullHint: "Shift-click: azzera i cursori e riscarica tutto",
+  },
+  staleRepo: {
+    badge: "repo cambiato",
+    tooltip: "Questo progetto ora è associato a un altro repo, ma questo item resta legato al vecchio.",
   },
   intake: {
     paused: "Nuove issue in pausa",
@@ -653,10 +681,24 @@ const fr: typeof en = {
     pin: "Épingler en tête de file",
     unpin: "Désépingler",
     archive: "Archiver",
+    untrack: "Retirer",
   },
   archive: {
     confirmDirty: (n: number) =>
       `Le worktree a ${n} ${n === 1 ? "modification non validée" : "modifications non validées"} qui seront perdues. Archiver quand même ?`,
+  },
+  untrack: {
+    confirm: (hasWorktree, hasPr) =>
+      "Arrêter de suivre cette issue ? Elle peut revenir à un poll ultérieur." +
+      (hasWorktree ? " Son worktree sera supprimé (les modifications non validées sont perdues)." : "") +
+      (hasPr ? " Sa PR reste ouverte sur la plateforme." : ""),
+  },
+  refresh: {
+    fullHint: "Shift-clic : réinitialiser les curseurs et tout recharger",
+  },
+  staleRepo: {
+    badge: "dépôt changé",
+    tooltip: "Ce projet pointe désormais vers un autre dépôt, mais cet item reste lié à l'ancien.",
   },
   intake: {
     paused: "Nouvelles issues en pause",
@@ -945,10 +987,24 @@ const es: typeof en = {
     pin: "Fijar al frente de la cola",
     unpin: "Desfijar",
     archive: "Archivar",
+    untrack: "Quitar",
   },
   archive: {
     confirmDirty: (n: number) =>
       `El worktree tiene ${n} ${n === 1 ? "cambio sin confirmar" : "cambios sin confirmar"} que se perderán. ¿Archivar de todos modos?`,
+  },
+  untrack: {
+    confirm: (hasWorktree, hasPr) =>
+      "¿Dejar de rastrear esta issue? Puede volver en un poll posterior." +
+      (hasWorktree ? " Su worktree se eliminará (los cambios sin confirmar se pierden)." : "") +
+      (hasPr ? " Su PR sigue abierta en la plataforma." : ""),
+  },
+  refresh: {
+    fullHint: "Shift-clic: reinicia los cursores y vuelve a descargar todo",
+  },
+  staleRepo: {
+    badge: "repo cambiado",
+    tooltip: "Este proyecto ahora apunta a otro repo, pero este item sigue vinculado al anterior.",
   },
   intake: {
     paused: "Nuevas issues en pausa",

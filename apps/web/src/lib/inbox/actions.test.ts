@@ -42,9 +42,17 @@ describe("actionsFor", () => {
     }
   });
 
+  it("untrack is appended in every state, including the otherwise-empty ones (#120)", () => {
+    for (const state of ALL_STATES) {
+      const actions = actionsFor(item({ state }));
+      expect(actions.at(-1), state).toEqual({ id: "untrack", kind: "untrack" });
+      expect(actions.filter((a) => a.kind === "untrack").length, state).toBe(1);
+    }
+  });
+
   it("plan-gate offers approve, replan, and park", () => {
     const actions = actionsFor(item({ state: "plan-gate" }));
-    expect(actions.map((a) => a.id)).toEqual(["approve", "replan", "park"]);
+    expect(actions.map((a) => a.id)).toEqual(["approve", "replan", "park", "untrack"]);
     expect(actions[2]).toEqual({ id: "park", kind: "transition", to: "needs-input" });
   });
 
@@ -74,9 +82,11 @@ describe("actionsFor", () => {
     }
   });
 
-  it("settled and platform-owned states expose no actions", () => {
+  it("settled and platform-owned states expose only untrack (#120)", () => {
     for (const state of ["merged", "closed", "pr-open", "in-review", "changes-requested"]) {
-      expect(actionsFor(item({ state: state as LifecycleState }))).toEqual([]);
+      expect(actionsFor(item({ state: state as LifecycleState }))).toEqual([
+        { id: "untrack", kind: "untrack" },
+      ]);
     }
   });
 
@@ -84,24 +94,30 @@ describe("actionsFor", () => {
     const actions = actionsFor(
       item({ state: "closed", worktree: { path: "/wt", branch: "feature/x" } }),
     );
-    expect(actions).toEqual([{ id: "archive", kind: "archive" }]);
+    expect(actions).toEqual([
+      { id: "archive", kind: "archive" },
+      { id: "untrack", kind: "untrack" },
+    ]);
   });
 
   it("offers archive on a closed item with an active plan ref (#115)", () => {
     const actions = actionsFor(item({ state: "closed", plan: { ref: "github_1.json" } }));
-    expect(actions).toEqual([{ id: "archive", kind: "archive" }]);
+    expect(actions).toEqual([
+      { id: "archive", kind: "archive" },
+      { id: "untrack", kind: "untrack" },
+    ]);
   });
 
   it("hides archive once the worktree is gone and the plan archived (#115)", () => {
-    expect(actionsFor(item({ state: "closed", plan: { ref: "archive/github_1.json" } }))).toEqual(
-      [],
-    );
-    expect(actionsFor(item({ state: "closed" }))).toEqual([]);
+    expect(actionsFor(item({ state: "closed", plan: { ref: "archive/github_1.json" } }))).toEqual([
+      { id: "untrack", kind: "untrack" },
+    ]);
+    expect(actionsFor(item({ state: "closed" }))).toEqual([{ id: "untrack", kind: "untrack" }]);
   });
 
   it("never offers archive on a merged item (#115)", () => {
     expect(
       actionsFor(item({ state: "merged", worktree: { path: "/wt", branch: "feature/x" } })),
-    ).toEqual([]);
+    ).toEqual([{ id: "untrack", kind: "untrack" }]);
   });
 });
