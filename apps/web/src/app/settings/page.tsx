@@ -8,6 +8,7 @@ import { OrchestrationSection } from "@/components/orchestration-section";
 import { CliInstallSection } from "@/components/cli-install-section";
 import { UpdatesSection } from "@/components/updates-section";
 import { LanguageSection } from "@/components/language-section";
+import { ModelSelect } from "@/components/model-select";
 import { useT } from "@/lib/app-i18n";
 import { useAuth } from "@/lib/auth-context";
 
@@ -98,17 +99,11 @@ export default function SettingsPage() {
           <div className="space-y-4 p-5 rounded-xl bg-card border border-border">
             <div>
               <label className="block text-xs text-muted/70 mb-2">{t.settings.llm.model}</label>
-              <select
+              <ModelSelect
                 value={claudeModel}
-                onChange={(e) => setClaudeModel(e.target.value)}
+                onChange={setClaudeModel}
                 className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
-              >
-                {/* Aliases — the claude CLI resolves each to the newest
-                    release of that tier, so this never needs version bumps. */}
-                <option value="opus">Claude Opus ({t.settings.llm.latest})</option>
-                <option value="sonnet">Claude Sonnet ({t.settings.llm.latest})</option>
-                <option value="haiku">Claude Haiku ({t.settings.llm.latest})</option>
-              </select>
+              />
             </div>
             <p className="text-[11px] text-muted/40 leading-relaxed">
               {t.settings.llm.claudeAuthBefore}{" "}
