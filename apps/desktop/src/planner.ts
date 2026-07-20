@@ -45,6 +45,10 @@ export interface PlannerDeps {
   ) => Promise<TrackedItem>;
   /** Sets plan.ref + the confidence-gated transition in one manifest write (#8). */
   completePlan: (itemId: string, ref: string, confidence?: ConfidenceReport) => Promise<void>;
+  /** Sets up the shared worktree so planning runs where coding will (#110). */
+  prepareWorktree: (item: TrackedItem) => Promise<{ path: string; branch: string }>;
+  /** Persists the worktree record without a transition (#110). */
+  setWorktree: (itemId: string, worktree: { path: string; branch: string }) => Promise<void>;
   /** Live orchestrator settings — planner model + confidence knobs. */
   getSettings: () => OrchestratorSettings;
   /** settings.json llm block (#59) — which provider the planner runs on. */
@@ -166,6 +170,27 @@ async function run(itemId: string): Promise<void> {
       await deps.requestTransition(itemId, "needs-input", "planner", "repo not linked", "planning");
       return;
     }
+    // #110: plan in the shared worktree so every phase has one cwd. Setup failure
+    // degrades to the shared clone — never blocks planning with needs-input.
+    let cwd = repoPath;
+    deps.emitEvent(itemId, { kind: "status", phase: "fetching" });
+    try {
+      const wt = await deps.prepareWorktree(item);
+      cwd = wt.path;
+      deps.emitEvent(itemId, { kind: "status", phase: "worktree", detail: wt.path });
+      if (item.worktree?.path !== wt.path || item.worktree.branch !== wt.branch) {
+        await deps.setWorktree(itemId, { path: wt.path, branch: wt.branch });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      deps.emitEvent(itemId, {
+        kind: "status",
+        phase: "worktree",
+        detail: `setup failed — planning in the shared clone: ${msg.slice(0, 200)}`,
+      });
+    }
+    // fetch can be slow — re-check the item wasn't cancelled/moved meanwhile.
+    if (deps.getItem(itemId)?.state !== "planning") return;
     const settings = deps.getSettings();
     const { llm: provider, model } = await resolveProvider(
       deps.getRepoSettings(item.repo).plannerModel,
@@ -183,7 +208,7 @@ async function run(itemId: string): Promise<void> {
     const memory = deps.getMemoryMcp?.(item);
     const plan = await generatePlan({
       issue,
-      repoPath,
+      repoPath: cwd,
       llm: provider,
       onEvent: (event) => deps?.emitEvent(itemId, event),
       ...(memory ? { memory } : {}),
@@ -210,7 +235,7 @@ async function run(itemId: string): Promise<void> {
       report = await computeConfidence({
         plan,
         issue,
-        repoPath,
+        repoPath: cwd,
         llm: provider,
         extraPlanRuns: settings.confidence.extraPlanRuns,
         thresholds: { high: settings.confidence.high, low: settings.confidence.low },

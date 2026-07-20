@@ -1,4 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type {
   CodingEvent,
   Issue,
@@ -60,6 +63,8 @@ function makeHarness(
       throw new Error("stop here");
     },
     completePlan: async () => {},
+    prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+    setWorktree: async () => {},
     getSettings,
     getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS }),
     emitEvent: () => {},
@@ -144,6 +149,8 @@ describe("planner provider selection (#59)", () => {
         return items[0];
       },
       completePlan: async () => {},
+      prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+      setWorktree: async () => {},
       getSettings: () => ({ ...DEFAULT_ORCHESTRATOR_SETTINGS }) as OrchestratorSettings,
       getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS, ...llm }),
       emitEvent: (_itemId: string, event: CodingEvent) => void events.push(event),
@@ -174,5 +181,134 @@ describe("planner provider selection (#59)", () => {
       reason: expect.stringContaining("OpenAI API key required"),
     });
     vi.unstubAllEnvs();
+  });
+});
+
+// #110: planning runs in the shared worktree, degrading to the shared clone when
+// setup fails. A fake agent provider captures the cwd it is handed.
+describe("planner worktree at planning (#110)", () => {
+  const VALID_PLAN = JSON.stringify({
+    summary: "do the thing",
+    files: [{ path: "a.ts", reason: "touch it" }],
+    steps: [{ title: "s", detail: "d", files: [], symbols: [] }],
+    acceptance: [],
+    risks: [],
+    openQuestions: [],
+    estimatedSize: "s",
+  });
+
+  let plansDir: string;
+  beforeEach(async () => {
+    plansDir = await mkdtemp(join(tmpdir(), "nb-planner-"));
+  });
+  afterEach(async () => {
+    await rm(plansDir, { recursive: true, force: true });
+  });
+
+  interface RunHarness {
+    deps: PlannerDeps;
+    provider: unknown;
+    cwds: string[];
+    setWorktreeCalls: { path: string; branch: string; sessionId?: string }[];
+    transitions: { to: LifecycleState }[];
+    /** Resolves once run() reaches completePlan — all plansDir writes are done by then. */
+    done: Promise<void>;
+  }
+
+  function makeRunHarness(opts: {
+    item: TrackedItem;
+    prepareWorktree: PlannerDeps["prepareWorktree"];
+  }): RunHarness {
+    const items = [opts.item];
+    const cwds: string[] = [];
+    const setWorktreeCalls: RunHarness["setWorktreeCalls"] = [];
+    const transitions: RunHarness["transitions"] = [];
+    let resolveDone: () => void;
+    const done = new Promise<void>((r) => (resolveDone = r));
+    // agent capture stands in for the whole provider — computeConfidence's
+    // extra runs reuse it, its askStructured throws (critic degrades safely).
+    const provider = {
+      name: "fake",
+      agent: async (_prompt: string, agentOpts: { cwd: string }) => {
+        cwds.push(agentOpts.cwd);
+        return { text: VALID_PLAN };
+      },
+      askStructured: async () => {
+        throw new Error("no structured mode in the fake");
+      },
+    };
+    const deps: PlannerDeps = {
+      listItems: () => items,
+      getItem: (id: string) => items.find((i) => i.id === id),
+      getIssue: () => ({ labels: [] }) as unknown as Issue,
+      getRepoPath: () => "/repo",
+      getRepoSettings: () =>
+        resolveRepoOrchestratorSettings({}, { ...DEFAULT_ORCHESTRATOR_SETTINGS } as OrchestratorSettings),
+      requestTransition: async (_itemId: string, to: LifecycleState) => {
+        transitions.push({ to });
+        return items[0];
+      },
+      completePlan: async () => void resolveDone(),
+      prepareWorktree: opts.prepareWorktree,
+      setWorktree: async (_itemId: string, worktree: { path: string; branch: string; sessionId?: string }) =>
+        void setWorktreeCalls.push(worktree),
+      getSettings: () => ({ ...DEFAULT_ORCHESTRATOR_SETTINGS }) as OrchestratorSettings,
+      getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS }),
+      emitEvent: () => {},
+      plansDir,
+    } as unknown as PlannerDeps;
+    return { deps, provider, cwds, setWorktreeCalls, transitions, done };
+  }
+
+  it("plans in the worktree and records it once", async () => {
+    const h = makeRunHarness({
+      item: makeItem("planning"),
+      prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+    });
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await h.done;
+    expect(h.cwds.length).toBeGreaterThan(0);
+    expect(h.cwds.every((c) => c === "/wt/issue-1")).toBe(true);
+    expect(h.setWorktreeCalls).toEqual([{ path: "/wt/issue-1", branch: "feature/issue-1" }]);
+    expect(h.setWorktreeCalls[0]).not.toHaveProperty("sessionId");
+    expect(h.transitions).toEqual([]); // no needs-input
+  });
+
+  it("degrades to the shared clone when worktree setup fails", async () => {
+    const events: CodingEvent[] = [];
+    const h = makeRunHarness({
+      item: makeItem("planning"),
+      prepareWorktree: async () => {
+        throw new Error("offline");
+      },
+    });
+    (h.deps as { emitEvent: PlannerDeps["emitEvent"] }).emitEvent = (_id, event) =>
+      void events.push(event);
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await h.done;
+    expect(h.cwds.every((c) => c === "/repo")).toBe(true);
+    expect(h.cwds.length).toBeGreaterThan(0);
+    expect(h.setWorktreeCalls).toEqual([]);
+    expect(h.transitions).toEqual([]); // never needs-input on degrade
+    expect(
+      events.some(
+        (e) => e.kind === "status" && e.phase === "worktree" && /shared clone/.test(e.detail ?? ""),
+      ),
+    ).toBe(true);
+  });
+
+  it("skips the worktree write when the record already matches", async () => {
+    const item = makeItem("planning");
+    item.worktree = { path: "/wt/issue-1", branch: "feature/issue-1", sessionId: "s" };
+    const h = makeRunHarness({
+      item,
+      prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+    });
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await h.done;
+    expect(h.setWorktreeCalls).toEqual([]);
   });
 });
