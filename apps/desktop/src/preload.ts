@@ -212,6 +212,18 @@ contextBridge.exposeInMainWorld("skipper", {
     },
   },
 
+  // Reviewer console (issue #113): same shape as coding/planning, own channel pair.
+  review: {
+    getEvents: (itemId: string): Promise<unknown[]> =>
+      ipcRenderer.invoke("skipper:review:getEvents", itemId),
+    onEvent: (itemId: string, callback: (envelope: unknown) => void) => {
+      const channel = `skipper:review:event:${itemId}`;
+      const handler = (_e: unknown, envelope: unknown) => callback(envelope);
+      ipcRenderer.on(channel, handler);
+      return () => ipcRenderer.off(channel, handler);
+    },
+  },
+
   // Solutions memory (issue #46): the "memories used" card reads records + votes.
   memory: {
     get: (id: string): Promise<SolutionRecord | null> =>

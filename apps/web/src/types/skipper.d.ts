@@ -218,6 +218,11 @@ declare global {
         getEvents: (itemId: string) => Promise<CodingEventEnvelope[]>;
         onEvent: (itemId: string, callback: (envelope: CodingEventEnvelope) => void) => () => void;
       };
+      /** Reviewer progress stream (#113). */
+      review: {
+        getEvents: (itemId: string) => Promise<CodingEventEnvelope[]>;
+        onEvent: (itemId: string, callback: (envelope: CodingEventEnvelope) => void) => () => void;
+      };
       /** Solutions memory — "memories used" card + 👍/👎 (#46). */
       memory: {
         get: (id: string) => Promise<SolutionRecord | null>;

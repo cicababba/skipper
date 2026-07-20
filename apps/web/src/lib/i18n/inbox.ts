@@ -199,6 +199,7 @@ const en = {
     finishedOk: "Finished",
     finishedFail: "Failed",
     turns: "turns",
+    resumeRunning: "Agent running — resume disabled",
   },
   review: {
     title: "Review changes",
@@ -479,6 +480,7 @@ const it: typeof en = {
     finishedOk: "Completato",
     finishedFail: "Fallito",
     turns: "turni",
+    resumeRunning: "Agente in esecuzione — ripresa disabilitata",
   },
   review: {
     title: "Rivedi modifiche",
@@ -759,6 +761,7 @@ const fr: typeof en = {
     finishedOk: "Terminé",
     finishedFail: "Échec",
     turns: "tours",
+    resumeRunning: "Agent en cours — reprise désactivée",
   },
   review: {
     title: "Relire les changements",
@@ -1040,6 +1043,7 @@ const es: typeof en = {
     finishedOk: "Terminado",
     finishedFail: "Falló",
     turns: "turnos",
+    resumeRunning: "Agente en ejecución — reanudación desactivada",
   },
   review: {
     title: "Revisar cambios",

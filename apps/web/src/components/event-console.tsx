@@ -14,6 +14,7 @@ import {
 import type { CodingEvent, CodingEventEnvelope } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { appendLive, mergeReplay } from "@/lib/inbox/console";
+import { ConsoleMarkdown } from "./console-markdown";
 
 // Generic agent-event console (#32): renders any CodingEvent stream. Used by
 // the planner today; the coding runner (#12/#13) plugs in its own
@@ -99,15 +100,9 @@ export function EventConsole({
           </div>
         );
       case "text":
-        return <div className="whitespace-pre-wrap break-words">{event.text}</div>;
+        return <ConsoleMarkdown content={event.text} />;
       case "tool-use":
-        return (
-          <div className="flex items-center gap-2">
-            <Wrench size={13} className="shrink-0 text-muted" />
-            <span>{event.tool}</span>
-            {event.detail && <span className="truncate opacity-60">{event.detail}</span>}
-          </div>
-        );
+        return <ToolUseLine event={event} />;
       case "result":
         return (
           <div className={`flex items-center gap-2 ${event.ok ? "text-green-300" : "text-red-300"}`}>
@@ -164,6 +159,43 @@ export function EventConsole({
         {title}
       </button>
       {open && body}
+    </div>
+  );
+}
+
+// A tool-use line. When the event carries the full input (post-#113 events),
+// the header toggles a JSON expand view; older buffered events without input
+// degrade to the static single line.
+function ToolUseLine({ event }: { event: Extract<CodingEvent, { kind: "tool-use" }> }) {
+  const [expanded, setExpanded] = useState(false);
+  const header = (
+    <>
+      <Wrench size={13} className="shrink-0 text-muted" />
+      <span>{event.tool}</span>
+      {event.detail && <span className="truncate opacity-60">{event.detail}</span>}
+    </>
+  );
+
+  if (!event.input) return <div className="flex items-center gap-2">{header}</div>;
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-2 text-left hover:text-foreground transition-colors"
+      >
+        {expanded ? (
+          <ChevronDown size={13} className="shrink-0 text-muted" />
+        ) : (
+          <ChevronRight size={13} className="shrink-0 text-muted" />
+        )}
+        {header}
+      </button>
+      {expanded && (
+        <pre className="mt-1 max-h-48 overflow-auto rounded bg-card-hover p-2 text-[11px] whitespace-pre-wrap break-words">
+          {event.input}
+        </pre>
+      )}
     </div>
   );
 }

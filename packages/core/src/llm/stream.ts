@@ -2,6 +2,7 @@ import type { CodingEvent } from "@skipper/shared";
 
 const SUMMARY_MAX = 2000;
 const DETAIL_MAX = 120;
+const INPUT_MAX = 2000;
 
 // Tolerant by design: unknown types and malformed lines map to null so CLI
 // schema drift degrades to fewer events, never a crash.
@@ -56,10 +57,19 @@ function mapAssistantLine(line: Record<string, unknown>): CodingEvent[] {
         input.query,
         input.id,
       ].find((v) => typeof v === "string" && v) as string | undefined;
+      let full: string | undefined;
+      if (Object.keys(input).length > 0) {
+        try {
+          full = JSON.stringify(input, null, 2).slice(0, INPUT_MAX);
+        } catch {
+          full = undefined;
+        }
+      }
       events.push({
         kind: "tool-use",
         tool: b.name,
         ...(detail ? { detail: detail.slice(0, DETAIL_MAX) } : {}),
+        ...(full ? { input: full } : {}),
       });
     }
   }

@@ -9,6 +9,7 @@ import { useT } from "@/lib/app-i18n";
 import { repoKey } from "@/lib/inbox/model";
 import { EventConsole } from "@/components/event-console";
 import { StateBadge } from "../state-badge";
+import { ResumeSessionButton } from "./resume-session";
 
 // Coding tab (#112): the coding agent's event console, extracted from the
 // worktree view and made collapsible. Prop-less self-lookup.
@@ -63,6 +64,13 @@ export function CodingDetailView() {
           <StateBadge item={item} />
         </div>
       </div>
+
+      <ResumeSessionButton
+        itemId={id}
+        item={item}
+        sessionId={item.worktree?.sessionId}
+        running={item.state === "coding"}
+      />
 
       {window.skipper && (
         <EventConsole

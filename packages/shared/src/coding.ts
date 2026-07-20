@@ -16,6 +16,8 @@ export type CodingEvent =
       tool: string;
       /** Best-effort: file path, command, pattern, or memory query/id from the tool input. */
       detail?: string;
+      /** Full tool input, JSON-stringified and capped — the console expand view. */
+      input?: string;
     }
   | {
       kind: "result";

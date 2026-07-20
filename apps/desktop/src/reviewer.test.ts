@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type {
   AgentReview,
+  CodingEvent,
   CriticObjection,
   IssuePlan,
   LifecycleState,
@@ -109,6 +110,7 @@ function makeHarness(
     getRepoSettings: () => resolveRepoOrchestratorSettings(repoSettings, deps.getSettings()),
     getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS }),
     setReviewSessionId: async (itemId, sessionId) => void sessionCalls.push({ itemId, sessionId }),
+    emitEvent: () => {},
     ...overrides,
   };
   return { items, deps, completions, sessionCalls };
@@ -486,6 +488,26 @@ describe("reviewer session persistence (#111)", () => {
     pokeReviewer();
     await settle();
     expect(h.sessionCalls).toEqual([]);
+  });
+});
+
+// #113: the reviewer streams coarse lifecycle beats over its own event channel.
+describe("reviewer event emission (#113)", () => {
+  it("emits fetching → agent-init → result in order for an approve round", async () => {
+    const events: CodingEvent[] = [];
+    const h = makeHarness({ emitEvent: (_id, event) => void events.push(event) });
+    initReviewer(h.deps, fakeCritic("approve"));
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+
+    expect(events[0]).toMatchObject({ kind: "status", phase: "fetching" });
+    expect(events.some((e) => e.kind === "agent-init")).toBe(true);
+    const last = events[events.length - 1];
+    expect(last).toMatchObject({ kind: "result", ok: true });
+    const initIndex = events.findIndex((e) => e.kind === "agent-init");
+    const resultIndex = events.findIndex((e) => e.kind === "result");
+    expect(initIndex).toBeLessThan(resultIndex);
   });
 });
 
