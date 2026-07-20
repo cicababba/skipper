@@ -219,6 +219,16 @@ contextBridge.exposeInMainWorld("skipper", {
     },
   },
 
+  // Conversational plan review (issue #145): chat with the planning session at the gate.
+  planChat: {
+    send: (itemId: string, text: string): Promise<unknown> =>
+      ipcRenderer.invoke("skipper:planChat:send", itemId, text),
+    apply: (itemId: string): Promise<unknown> =>
+      ipcRenderer.invoke("skipper:planChat:apply", itemId),
+    getHistory: (itemId: string): Promise<unknown[]> =>
+      ipcRenderer.invoke("skipper:planChat:getHistory", itemId),
+  },
+
   // Reviewer console (issue #113): same shape as coding/planning, own channel pair.
   review: {
     getEvents: (itemId: string): Promise<unknown[]> =>

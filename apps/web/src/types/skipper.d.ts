@@ -14,6 +14,7 @@ import type {
   OrchestratorSettings,
   OrchestratorState,
   OrchestratorTransitionResult,
+  PlanChatMessage,
   RepoIntakeSettings,
   RepoLinkResult,
   RepoRef,
@@ -221,6 +222,21 @@ declare global {
       planning: {
         getEvents: (itemId: string) => Promise<CodingEventEnvelope[]>;
         onEvent: (itemId: string, callback: (envelope: CodingEventEnvelope) => void) => () => void;
+      };
+      /** Conversational plan review (#145): chat with the planning session at the gate. */
+      planChat: {
+        send: (
+          itemId: string,
+          text: string,
+        ) => Promise<
+          { ok: true; reply: string } | { ok: false; error?: string; cancelled?: boolean }
+        >;
+        apply: (
+          itemId: string,
+        ) => Promise<
+          { ok: true; stored: StoredPlan } | { ok: false; error?: string; cancelled?: boolean }
+        >;
+        getHistory: (itemId: string) => Promise<PlanChatMessage[]>;
       };
       /** Reviewer progress stream (#113). */
       review: {

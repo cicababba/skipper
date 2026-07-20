@@ -61,6 +61,31 @@ function tryParsePlan(text: string): { ok: true; plan: IssuePlan } | { ok: false
 }
 
 /**
+ * Validate an agent's final JSON reply against the plan schema, with one cheap
+ * askStructured repair round for format slips. Shared by generatePlan and the
+ * conversational plan-review apply flow (#145).
+ */
+export async function validatePlanReply(
+  llm: LLMProviderInterface,
+  raw: string,
+): Promise<IssuePlan> {
+  const first = tryParsePlan(raw);
+  if (first.ok) return first.plan;
+
+  const repaired = await llm.askStructured<unknown>(
+    buildRepairPrompt(raw, first.error),
+    planJsonSchema(),
+  );
+  const second = IssuePlanSchema.safeParse(repaired);
+  if (second.success) return second.data;
+
+  throw new PlanGenerationError(
+    `plan failed schema validation: ${summarizeZodError(second.error)}`,
+    raw,
+  );
+}
+
+/**
  * Generate one structured implementation plan by letting the agent explore
  * the repo, then validating its final JSON reply. One cheap repair round via
  * askStructured covers format slips without re-exploring. Pure and callable
@@ -82,18 +107,5 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
     ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
   });
 
-  const first = tryParsePlan(reply.text);
-  if (first.ok) return first.plan;
-
-  const repaired = await opts.llm.askStructured<unknown>(
-    buildRepairPrompt(reply.text, first.error),
-    schema,
-  );
-  const second = IssuePlanSchema.safeParse(repaired);
-  if (second.success) return second.data;
-
-  throw new PlanGenerationError(
-    `plan failed schema validation: ${summarizeZodError(second.error)}`,
-    reply.text,
-  );
+  return validatePlanReply(opts.llm, reply.text);
 }
