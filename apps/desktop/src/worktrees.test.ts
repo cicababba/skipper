@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BRANCH_ISSUE_RE, issueBranchFor } from "@skipper/shared";
@@ -170,6 +170,23 @@ describe("ensureWorktree", () => {
     expect(again.created).toBe(true);
     expect(git(worktreePath, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("feature/issue-3");
   });
+
+  it.skipIf(process.platform === "win32")(
+    "matches the registration through a symlinked path (macOS /var → /private/var)",
+    async () => {
+      const { clone } = await makeCloneWithOrigin();
+      await mkdir(join(dir, "real"));
+      await symlink(join(dir, "real"), join(dir, "link"));
+      const worktreePath = join(dir, "link", "issue-99");
+      const opts = { repoPath: clone, worktreePath, branch: "feature/issue-99", baseRef: "origin/main" };
+      await ensureWorktree(opts);
+      const again = await ensureWorktree(opts); // reuse case
+      expect(again.created).toBe(false);
+      await rm(join(dir, "real", "issue-99"), { recursive: true, force: true });
+      const readded = await ensureWorktree(opts); // stale/prune case
+      expect(readded.created).toBe(true);
+    },
+  );
 
   it("throws when the branch is checked out elsewhere", async () => {
     const { clone } = await makeCloneWithOrigin();
