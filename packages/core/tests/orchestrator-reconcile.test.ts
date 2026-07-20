@@ -237,6 +237,33 @@ describe("reconcile — issues", () => {
     expect(m.items["github:1"].state).toBe("planning");
     expect(outcome.transitions).toEqual([]);
   });
+
+  it("refreshes a body-only change and bumps updatedAt", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "planning", {
+      body: "old body",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+    });
+    const outcome = reconcile(
+      m,
+      ACCOUNT,
+      poll({ issues: [issue(1, { body: "new body" })] }),
+      openPolicy,
+    );
+    expect(m.items["github:1"].body).toBe("new body");
+    expect(m.items["github:1"].updatedAt).not.toBe("2026-07-01T00:00:00.000Z");
+    expect(outcome.transitions).toEqual([]);
+  });
+
+  it("does not refresh when the body is unchanged", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "planning", {
+      body: "same body",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+    });
+    reconcile(m, ACCOUNT, poll({ issues: [issue(1, { body: "same body" })] }), openPolicy);
+    expect(m.items["github:1"].updatedAt).toBe("2026-07-01T00:00:00.000Z");
+  });
 });
 
 describe("reconcile — pull requests", () => {

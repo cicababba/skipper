@@ -246,6 +246,8 @@ export interface TrackedItem {
   /** Present when the source numbers items (GitHub); Jira has none. */
   number?: number;
   title: string;
+  /** Issue body/description as reported by the source (GFM markdown). */
+  body?: string;
   url: string;
   state: LifecycleState;
   /** Admission time (orchestrator clock), ISO 8601. */
