@@ -4,7 +4,7 @@ import type { AgentOptions, LLMProviderInterface, LLMResponse } from "../src/llm
 import { generatePlan, PlanGenerationError, type PlanIssueInput } from "../src/planner";
 
 const ISSUE: PlanIssueInput = {
-  number: 42,
+  key: "42",
   title: "Add retry to the poller",
   url: "https://github.com/o/r/issues/42",
   labels: ["enhancement"],

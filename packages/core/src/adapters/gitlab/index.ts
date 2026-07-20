@@ -1,5 +1,6 @@
 export { pollGitLabAccount } from "./poll";
 export { gitlabIssueSource } from "./source";
+export { fetchGitLabComments } from "./comments";
 export { gitlabCodeHost } from "./code-host";
 export { gitlabGet, gitlabApiBase } from "./client";
 export { listMembershipProjects } from "./projects";

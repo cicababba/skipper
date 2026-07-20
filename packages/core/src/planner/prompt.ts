@@ -1,7 +1,51 @@
 import { displayKey } from "@skipper/shared";
+import type { IssueComment } from "../adapters/types";
 import type { PlanIssueInput } from "./generate";
 
 const MAX_BODY_CHARS = 20_000;
+
+const MAX_COMMENTS = 30;
+const MAX_COMMENTS_TOTAL_CHARS = 15_000;
+const MAX_COMMENT_CHARS = 4_000;
+
+/** Render an issue's comments (ascending chronological) as one prompt block, or
+ *  undefined when there are none. Caps: last 30 comments, 4k chars per comment,
+ *  15k total dropping oldest first, newest always kept. Never throws (#144). */
+export function renderCommentsBlock(comments: IssueComment[] | undefined): string | undefined {
+  if (!comments || comments.length === 0) return undefined;
+  const recent = comments.slice(-MAX_COMMENTS);
+  let omitted = comments.length - recent.length;
+
+  const renderEntry = (c: IssueComment): string => {
+    const body =
+      c.body.length > MAX_COMMENT_CHARS
+        ? `${c.body.slice(0, MAX_COMMENT_CHARS)}\n[... comment truncated ...]`
+        : c.body;
+    return `${c.author} (${c.createdAt}):\n${body}`;
+  };
+
+  // Walk newest→oldest within the total budget; always keep the newest.
+  const kept: string[] = [];
+  let total = 0;
+  for (let i = recent.length - 1; i >= 0; i--) {
+    const entry = renderEntry(recent[i]);
+    if (kept.length > 0 && total + entry.length > MAX_COMMENTS_TOTAL_CHARS) {
+      omitted += i + 1;
+      break;
+    }
+    kept.push(entry);
+    total += entry.length;
+  }
+  kept.reverse();
+
+  const lines = ["--- Issue comments (newest last) ---"];
+  if (omitted > 0) {
+    lines.push(`[... ${omitted} earlier comment${omitted === 1 ? "" : "s"} omitted ...]`);
+  }
+  lines.push(kept.join("\n\n"));
+  lines.push("--- End issue comments ---");
+  return lines.join("\n");
+}
 
 export const PLANNER_SYSTEM_PROMPT = `You are a senior software engineer preparing an implementation plan for a GitHub issue in the repository at your current working directory.
 
@@ -28,6 +72,7 @@ export function buildPlannerPrompt(
     ``,
     body ? `--- Issue body ---\n${body}\n--- End issue body ---` : `(The issue has no body.)`,
     ``,
+    renderCommentsBlock(issue.comments) ?? "",
     `--`,
     `Your FINAL message must be ONLY a single JSON object matching this JSON Schema. No prose, no code fences, no preamble.`,
     ``,

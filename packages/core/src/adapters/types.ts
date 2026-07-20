@@ -50,6 +50,13 @@ export interface PollResult<C = unknown> {
   rateLimit?: RateLimit;
 }
 
+/** One issue comment, fetched at plan/code time (never persisted). */
+export interface IssueComment {
+  author: string;
+  body: string;
+  createdAt: string; // ISO
+}
+
 export interface IssueSource<C = unknown> {
   readonly id: IssueSourceId;
   /** Which AuthProviderId's accounts this source polls. */
@@ -61,6 +68,15 @@ export interface IssueSource<C = unknown> {
    *  Same-tracker refs only. Adapters without dependency support omit this — the
    *  feature is then inert for that source. */
   fetchDependencies?(issue: Issue, getToken: TokenProvider, baseUrl?: string): Promise<SourceRef[]>;
+  /** Optional capability (#144): the issue's comments in ascending chronological
+   *  order, fetched fresh at plan/code time. `cloudId` routes Jira Cloud OAuth
+   *  (api.atlassian.com/ex/jira/<cloudId>); GitHub/GitLab ignore it. */
+  fetchComments?(
+    issue: Issue,
+    getToken: TokenProvider,
+    baseUrl?: string,
+    cloudId?: string,
+  ): Promise<IssueComment[]>;
 }
 
 export interface CreatePrParams {

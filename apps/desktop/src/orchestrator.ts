@@ -25,6 +25,7 @@ import {
   reconcileMemoryIndex,
   memoryFileName,
   applyFeedbackVote,
+  type IssueComment,
   type OrchestratorManifest,
   type OrchestratorSettings,
 } from "@skipper/core";
@@ -415,6 +416,23 @@ function codeHostAccountFor(codeHost: CodeHostId, preferKey?: string): Account |
     if (preferred) return preferred;
   }
   return accounts[0];
+}
+
+/** Comments for the item's issue, fetched fresh at plan/code time (#144). Best-effort
+ *  is the caller's job: adapter errors propagate so the planner/coder loop emits its
+ *  warning event (mirrors the fetchDependencies split). [] when the source has no
+ *  comment capability or the poll cache lacks the issue. */
+function fetchIssueCommentsFor(item: TrackedItem): Promise<IssueComment[]> {
+  const account = deps?.getAccounts().find((a) => a.key === item.accountId);
+  const source = account ? issueSourceForAuthProvider(account.provider) : undefined;
+  const cached = items.get(item.accountId)?.get(item.id);
+  if (!account || !source?.fetchComments || cached?.kind !== "issue") return Promise.resolve([]);
+  return source.fetchComments(
+    cached,
+    (force) => deps!.getToken(account.key, force),
+    account.baseUrl,
+    account.cloudId,
+  );
 }
 
 /** Account for cloning: explicit account key, else the code-host account behind the
@@ -1731,6 +1749,7 @@ export function initOrchestrator(
       const cached = items.get(item.accountId)?.get(item.id);
       return cached?.kind === "issue" ? cached : undefined;
     },
+    fetchIssueComments: fetchIssueCommentsFor,
     getRepoPath: repoPathFor,
     getRepoSettings: repoOrch,
     requestTransition,
@@ -1755,6 +1774,7 @@ export function initOrchestrator(
       const cached = items.get(item.accountId)?.get(item.id);
       return cached?.kind === "issue" ? cached : undefined;
     },
+    fetchIssueComments: fetchIssueCommentsFor,
     getPlan: async (item) => {
       const ref = item.plan?.ref;
       return ref ? readStoredPlan(orchestratorDeps.plansDir, ref) : null;

@@ -1,0 +1,77 @@
+import { describe, it, expect } from "vitest";
+import type { IssueComment } from "../src/adapters/types";
+import type { PlanIssueInput } from "../src/planner/generate";
+import { buildPlannerPrompt, renderCommentsBlock } from "../src/planner/prompt";
+
+const SCHEMA = { type: "object" };
+
+function baseIssue(over: Partial<PlanIssueInput> = {}): PlanIssueInput {
+  return {
+    key: "42",
+    title: "Add retry",
+    url: "https://github.com/o/r/issues/42",
+    labels: ["enhancement"],
+    body: "Retry on 429.",
+    ...over,
+  };
+}
+
+function comment(author: string, body: string, createdAt: string): IssueComment {
+  return { author, body, createdAt };
+}
+
+describe("buildPlannerPrompt — comments", () => {
+  it("renders the comments block between the body and the schema", () => {
+    const prompt = buildPlannerPrompt(
+      baseIssue({ comments: [comment("alice", "please handle 503 too", "2026-07-01T01:00:00Z")] }),
+      SCHEMA,
+    );
+    const bodyEnd = prompt.indexOf("--- End issue body ---");
+    const block = prompt.indexOf("--- Issue comments (newest last) ---");
+    const schema = prompt.indexOf("Schema:");
+    expect(block).toBeGreaterThan(bodyEnd);
+    expect(schema).toBeGreaterThan(block);
+    expect(prompt).toContain("alice (2026-07-01T01:00:00Z):\nplease handle 503 too");
+  });
+
+  it("omits the block when there are no comments", () => {
+    const prompt = buildPlannerPrompt(baseIssue(), SCHEMA);
+    expect(prompt).not.toContain("Issue comments");
+  });
+});
+
+describe("renderCommentsBlock", () => {
+  it("returns undefined for empty or undefined input", () => {
+    expect(renderCommentsBlock(undefined)).toBeUndefined();
+    expect(renderCommentsBlock([])).toBeUndefined();
+  });
+
+  it("keeps the newest 30 and reports the omitted count", () => {
+    const comments = Array.from({ length: 35 }, (_, i) =>
+      comment(`u${i}`, `comment ${i}`, `2026-07-01T00:${String(i).padStart(2, "0")}:00Z`),
+    );
+    const block = renderCommentsBlock(comments)!;
+    expect(block).toContain("[... 5 earlier comments omitted ...]");
+    expect(block).toContain("comment 34"); // newest kept
+    expect(block).toContain("comment 5"); // oldest kept
+    expect(block).not.toContain("comment 0"); // oldest dropped
+  });
+
+  it("drops oldest first under the 15k total budget but always keeps the newest", () => {
+    // Each entry is ~4k after per-comment truncation; four of them exceed the 15k
+    // total, so the oldest is dropped and the three newest survive.
+    const comments = Array.from({ length: 4 }, (_, i) =>
+      comment(`author-${i}`, `MARK${i} ${"x".repeat(5_000)}`, `2026-07-01T0${i}:00:00Z`),
+    );
+    const block = renderCommentsBlock(comments)!;
+    expect(block).toContain("[... 1 earlier comment omitted ...]");
+    expect(block).toContain("MARK3"); // newest kept
+    expect(block).not.toContain("MARK0"); // oldest dropped
+  });
+
+  it("truncates a single oversized comment at 4k", () => {
+    const block = renderCommentsBlock([comment("alice", "z".repeat(10_000), "2026-07-01T01:00:00Z")])!;
+    expect(block).toContain("[... comment truncated ...]");
+    expect(block.length).toBeLessThan(5_000);
+  });
+});

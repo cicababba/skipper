@@ -110,3 +110,26 @@ describe("buildResumePrompt", () => {
     expect(prompt).toMatch(/git status/);
   });
 });
+
+describe("issue comments in every builder", () => {
+  const withComments = {
+    ...issue,
+    comments: [{ author: "alice", body: "also support system theme", createdAt: "2026-07-01T01:00:00Z" }],
+  };
+  const objections = [{ kind: "acceptance-gap", detail: "x", blocking: true } as const];
+  const prComments = [{ body: "please rename" }];
+
+  it("includes the comments block when comments are set", () => {
+    expect(buildCoderPrompt(withComments, plan)).toContain("also support system theme");
+    expect(buildFixPrompt(withComments, objections)).toContain("also support system theme");
+    expect(buildPrFixPrompt(withComments, prComments)).toContain("also support system theme");
+    expect(buildResumePrompt(withComments)).toContain("also support system theme");
+  });
+
+  it("omits the block when there are no comments", () => {
+    expect(buildCoderPrompt(issue, plan)).not.toContain("Issue comments");
+    expect(buildFixPrompt(issue, objections)).not.toContain("Issue comments");
+    expect(buildPrFixPrompt(issue, prComments)).not.toContain("Issue comments");
+    expect(buildResumePrompt(issue)).not.toContain("Issue comments");
+  });
+});

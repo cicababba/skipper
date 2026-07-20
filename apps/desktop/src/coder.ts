@@ -8,6 +8,7 @@ import {
   CODER_SYSTEM_PROMPT,
   CodingAbortError,
   compareQueueCandidates,
+  type IssueComment,
   type MemoryMcp,
   type OrchestratorSettings,
   type QueueCandidate,
@@ -37,6 +38,8 @@ export interface CoderDeps {
   getItem: (itemId: string) => TrackedItem | undefined;
   /** Cached inbox issue for the item (labels + body), best-effort. */
   getIssue: (item: TrackedItem) => Issue | undefined;
+  /** Fresh issue comments fetched at code time (#144); may reject — the loop degrades. */
+  fetchIssueComments?: (item: TrackedItem) => Promise<IssueComment[]>;
   getPlan: (item: TrackedItem) => Promise<StoredPlan | null>;
   requestTransition: (
     itemId: string,
@@ -194,12 +197,26 @@ async function run(itemId: string, repoKey: string): Promise<void> {
     await deps.setWorktree(itemId, { ...worktree, sessionId });
 
     const cached = deps.getIssue(item);
+    let comments: IssueComment[] = [];
+    if (deps.fetchIssueComments) {
+      try {
+        comments = await deps.fetchIssueComments(item);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        deps.emitEvent(itemId, {
+          kind: "status",
+          phase: "fetching",
+          detail: `comment fetch failed — coding without comments: ${msg.slice(0, 200)}`,
+        });
+      }
+    }
     const issue = {
       key: item.key,
       title: item.title,
       url: item.url,
       labels: cached?.labels ?? [],
       body: cached?.body,
+      ...(comments.length > 0 ? { comments } : {}),
     };
     const settings = deps.getSettings();
     deps.emitEvent(itemId, { kind: "status", phase: resume ? "resuming" : "agent-start" });
