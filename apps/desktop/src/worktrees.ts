@@ -1,8 +1,8 @@
 // Worktree lifecycle for the coding runner (issue #9). Pure Node module over
 // runGit; callers inject paths. Lives in the public tree (open-core, #1/#18).
 
-import { readFile, stat, writeFile } from "node:fs/promises";
-import { isAbsolute, join, resolve, normalize, sep } from "node:path";
+import { readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, resolve, normalize, sep } from "node:path";
 import {
   slugKey,
   type RepoRef,
@@ -99,9 +99,30 @@ export async function listWorktrees(repoPath: string): Promise<WorktreeInfo[]> {
   return worktrees;
 }
 
-function samePath(a: string, b: string): boolean {
-  const na = resolve(normalize(a));
-  const nb = resolve(normalize(b));
+/**
+ * Absolute path with symlinks resolved in the longest existing prefix
+ * (the tail may not exist yet — e.g. a pruned worktree dir). Needed
+ * because git registers worktrees under their realpath, and on macOS
+ * tmp/var paths go through the /private symlink.
+ */
+async function canonicalPath(p: string): Promise<string> {
+  let prefix = resolve(normalize(p));
+  const tail: string[] = [];
+  for (;;) {
+    try {
+      const real = await realpath(prefix);
+      return tail.length ? join(real, ...tail) : real;
+    } catch {
+      const parent = dirname(prefix);
+      if (parent === prefix) return resolve(normalize(p));
+      tail.unshift(basename(prefix));
+      prefix = parent;
+    }
+  }
+}
+
+async function samePath(a: string, b: string): Promise<boolean> {
+  const [na, nb] = await Promise.all([canonicalPath(a), canonicalPath(b)]);
   return process.platform === "win32" ? na.toLowerCase() === nb.toLowerCase() : na === nb;
 }
 
@@ -126,7 +147,14 @@ export async function ensureWorktree(opts: {
 }): Promise<EnsureWorktreeResult> {
   const { repoPath, worktreePath, branch, baseRef } = opts;
 
-  const existing = (await listWorktrees(repoPath)).find((w) => samePath(w.path, worktreePath));
+  const registrations = await listWorktrees(repoPath);
+  let existing: WorktreeInfo | undefined;
+  for (const w of registrations) {
+    if (await samePath(w.path, worktreePath)) {
+      existing = w;
+      break;
+    }
+  }
   if (existing) {
     const alive = await stat(worktreePath).catch(() => null);
     if (alive?.isDirectory()) {
