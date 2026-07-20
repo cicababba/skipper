@@ -4,6 +4,7 @@ import { applySection, draftFor, sectionIsValid, splitLines } from "./plan-edit"
 
 const plan: IssuePlan = {
   summary: "do the thing",
+  context: ["a.ts:10 uses a global"],
   files: [
     { path: "src/a.ts", reason: "entry", status: "existing" },
     { path: "src/b.ts", reason: "new module", status: "new" },
@@ -12,8 +13,11 @@ const plan: IssuePlan = {
     { title: "step one", detail: "details", files: ["src/a.ts"], symbols: ["main"] },
     { title: "step two", detail: "", files: [], symbols: [] },
   ],
+  outOfScope: ["do not touch the poller"],
   acceptance: [{ criterion: "it works", addressedBy: "step one" }],
   risks: ["might break"],
+  verificationCommands: ["pnpm test"],
+  manualChecks: ["open the app"],
   openQuestions: [],
   estimatedSize: "m",
 };
@@ -28,10 +32,14 @@ describe("draftFor / applySection round-trip", () => {
   it("is identity for every section when nothing changes", () => {
     for (const section of [
       "summary",
+      "context",
       "files",
       "steps",
+      "outOfScope",
       "acceptance",
       "risks",
+      "verificationCommands",
+      "manualChecks",
       "openQuestions",
       "size",
     ] as const) {
@@ -69,6 +77,37 @@ describe("draftFor / applySection round-trip", () => {
     });
     expect(next.acceptance).toEqual(plan.acceptance);
     expect(applySection(plan, { section: "risks", lines: ["", " ok "] }).risks).toEqual(["ok"]);
+  });
+});
+
+describe("old stored plan without the new optional fields", () => {
+  const oldPlan: IssuePlan = {
+    summary: "legacy",
+    files: [{ path: "src/a.ts", reason: "entry" }],
+    steps: [{ title: "step", detail: "", files: [], symbols: [] }],
+    acceptance: [],
+    risks: [],
+    openQuestions: [],
+    estimatedSize: "s",
+  };
+
+  it("draftFor returns empty lines for each new section", () => {
+    for (const section of [
+      "context",
+      "outOfScope",
+      "verificationCommands",
+      "manualChecks",
+    ] as const) {
+      const draft = draftFor(oldPlan, section);
+      if (!("lines" in draft)) throw new Error("wrong draft");
+      expect(draft.lines).toEqual([]);
+    }
+  });
+
+  it("applySection writes the field as [] without touching other fields", () => {
+    const next = applySection(oldPlan, { section: "context", lines: [] });
+    expect(next.context).toEqual([]);
+    expect(next).toEqual({ ...oldPlan, context: [] });
   });
 });
 

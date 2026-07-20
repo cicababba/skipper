@@ -189,10 +189,14 @@ describe("planner provider selection (#59)", () => {
 describe("planner worktree at planning (#110)", () => {
   const VALID_PLAN = JSON.stringify({
     summary: "do the thing",
+    context: [],
     files: [{ path: "a.ts", reason: "touch it" }],
     steps: [{ title: "s", detail: "d", files: [], symbols: [] }],
+    outOfScope: [],
     acceptance: [],
     risks: [],
+    verificationCommands: [],
+    manualChecks: [],
     openQuestions: [],
     estimatedSize: "s",
   });

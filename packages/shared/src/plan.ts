@@ -31,10 +31,18 @@ export interface PlanAcceptance {
 
 export interface IssuePlan {
   summary: string;
+  /** Verified repo facts: gotchas, patterns, invariants (file:line where useful). */
+  context?: string[];
   files: PlanFileRef[];
   steps: PlanStep[];
+  /** What NOT to touch. */
+  outOfScope?: string[];
   acceptance: PlanAcceptance[];
   risks: string[];
+  /** lint/test/build commands that must pass. */
+  verificationCommands?: string[];
+  /** Manual verification checklist. */
+  manualChecks?: string[];
   /** Empty when the issue is unambiguous. */
   openQuestions: string[];
   estimatedSize: "xs" | "s" | "m" | "l" | "xl";

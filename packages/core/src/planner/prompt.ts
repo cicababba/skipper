@@ -53,7 +53,13 @@ Explore the repository with Read, Grep and Glob BEFORE planning. Every file path
 
 When the skipper-memory tools are available, before planning call search_memory with a short description of this issue to find similar solved issues in this repo, and get_memory(id) for the full plan + diff of a promising hit — let the established approach and conventions inform your plan.
 
-Derive acceptance criteria from the issue body when they are not explicit. List openQuestions only when the issue is genuinely ambiguous; otherwise return an empty array.`;
+Derive acceptance criteria from the issue body when they are not explicit. List openQuestions only when the issue is genuinely ambiguous; otherwise return an empty array.
+
+Also populate these fields (each may be an empty array when nothing applies):
+- context: facts you VERIFIED during repo exploration — gotchas, patterns to follow, invariants — with file:line where useful. Not a paraphrase of the issue.
+- outOfScope: what must NOT be touched, derived from the issue plus your judgment.
+- verificationCommands: REAL commands found in the repo (e.g. package.json scripts), never invented ones.
+- manualChecks: manual verification steps a human should run.`;
 
 export function buildPlannerPrompt(
   issue: PlanIssueInput,

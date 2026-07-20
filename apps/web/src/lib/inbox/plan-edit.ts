@@ -6,10 +6,14 @@ import type { IssuePlan, PlanAcceptance, PlanFileRef } from "@skipper/shared";
 
 export type SectionId =
   | "summary"
+  | "context"
   | "files"
   | "steps"
+  | "outOfScope"
   | "acceptance"
   | "risks"
+  | "verificationCommands"
+  | "manualChecks"
   | "openQuestions"
   | "size";
 
@@ -24,10 +28,14 @@ export interface StepDraft {
 
 export type SectionDraft =
   | { section: "summary"; text: string }
+  | { section: "context"; lines: string[] }
   | { section: "files"; files: PlanFileRef[] }
   | { section: "steps"; steps: StepDraft[] }
+  | { section: "outOfScope"; lines: string[] }
   | { section: "acceptance"; acceptance: PlanAcceptance[] }
   | { section: "risks"; lines: string[] }
+  | { section: "verificationCommands"; lines: string[] }
+  | { section: "manualChecks"; lines: string[] }
   | { section: "openQuestions"; lines: string[] }
   | { section: "size"; size: IssuePlan["estimatedSize"] };
 
@@ -42,6 +50,8 @@ export function draftFor(plan: IssuePlan, section: SectionId): SectionDraft {
   switch (section) {
     case "summary":
       return { section, text: plan.summary };
+    case "context":
+      return { section, lines: [...(plan.context ?? [])] };
     case "files":
       return { section, files: plan.files.map((f) => ({ ...f })) };
     case "steps":
@@ -54,10 +64,16 @@ export function draftFor(plan: IssuePlan, section: SectionId): SectionDraft {
           symbolsText: s.symbols.join("\n"),
         })),
       };
+    case "outOfScope":
+      return { section, lines: [...(plan.outOfScope ?? [])] };
     case "acceptance":
       return { section, acceptance: plan.acceptance.map((a) => ({ ...a })) };
     case "risks":
       return { section, lines: [...plan.risks] };
+    case "verificationCommands":
+      return { section, lines: [...(plan.verificationCommands ?? [])] };
+    case "manualChecks":
+      return { section, lines: [...(plan.manualChecks ?? [])] };
     case "openQuestions":
       return { section, lines: [...plan.openQuestions] };
     case "size":
@@ -108,8 +124,16 @@ export function applySection(plan: IssuePlan, draft: SectionDraft): IssuePlan {
           .map((a) => ({ criterion: a.criterion.trim(), addressedBy: a.addressedBy.trim() }))
           .filter((a) => a.criterion || a.addressedBy),
       };
+    case "context":
+      return { ...plan, context: draft.lines.map((l) => l.trim()).filter(Boolean) };
+    case "outOfScope":
+      return { ...plan, outOfScope: draft.lines.map((l) => l.trim()).filter(Boolean) };
     case "risks":
       return { ...plan, risks: draft.lines.map((l) => l.trim()).filter(Boolean) };
+    case "verificationCommands":
+      return { ...plan, verificationCommands: draft.lines.map((l) => l.trim()).filter(Boolean) };
+    case "manualChecks":
+      return { ...plan, manualChecks: draft.lines.map((l) => l.trim()).filter(Boolean) };
     case "openQuestions":
       return { ...plan, openQuestions: draft.lines.map((l) => l.trim()).filter(Boolean) };
     case "size":
