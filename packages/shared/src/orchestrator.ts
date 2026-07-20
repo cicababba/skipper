@@ -265,7 +265,8 @@ export interface TrackedItem {
   blockedByWaived?: SourceRef[];
   /** Plan + confidence seam (#7/#8). */
   plan?: { confidence?: number; ref?: string };
-  /** Coding runner (#9). sessionId is cwd-scoped: only resumable from the same worktree path. */
+  /** Shared worktree, created at planning (#110) and reused for coding/review (#9).
+   *  sessionId is cwd-scoped: only resumable from the same worktree path. */
   worktree?: { path: string; branch: string; sessionId?: string };
   /** Agent review overlay (#10). Written only via completeReview; replaced wholesale each review. */
   review?: AgentReview;

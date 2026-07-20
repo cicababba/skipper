@@ -83,10 +83,12 @@ import { initReviewer, pokeReviewer } from "./reviewer";
 import { initShepherd, pokeShepherd, openOrPushPr } from "./shepherd";
 import {
   captureWorktreeDiff,
+  discardWorktree,
   ensureWorktree,
   fetchOrigin,
   listWorktreeChanges,
   readWorktreeFileVersions,
+  refreshWorktreeBase,
   resolveBaseRef,
   worktreeDirFor,
   worktreeStatus,
@@ -401,6 +403,58 @@ function accountForRepo(owner: string, name: string, accountKey?: string): Accou
     }
   }
   return issueAccounts()[0];
+}
+
+// Planner concurrency (2) and the coder can hit the same clone at once; git
+// fetch + worktree add on a shared clone are not concurrency-safe, so serialize
+// per repo. The map is bounded by the linked-repo count.
+const repoGitLocks = new Map<string, Promise<unknown>>();
+
+function withRepoGitLock<T>(repo: RepoRef, fn: () => Promise<T>): Promise<T> {
+  const key = repoKey(repo);
+  const prev = repoGitLocks.get(key) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  repoGitLocks.set(
+    key,
+    next.catch(() => undefined),
+  );
+  return next;
+}
+
+/**
+ * Sets up the worktree that every phase (plan → coding → review) shares (#110):
+ * fetch origin, resolve the base ref, ensure the branch's worktree. Coding
+ * passes `refreshBase` so a reused, possibly-stale worktree resets to the fresh
+ * base when it has no work of its own. Serialized per repo.
+ */
+function prepareWorktreeFor(
+  item: TrackedItem,
+  opts: { refreshBase?: boolean } = {},
+): Promise<{ path: string; branch: string }> {
+  return withRepoGitLock(item.repo, async () => {
+    const link = repoLinks?.repos[repoKey(item.repo)];
+    if (!link) throw new Error(`repo ${item.repo.owner}/${item.repo.name} is not linked`);
+    const account = codeHostAccountFor(item.codeHost, item.accountId);
+    const token = account ? await deps!.getToken(account.key) : null;
+    await fetchOrigin(
+      link.localPath,
+      token ? codeHostFor(item.codeHost).pushCredentials(token) : undefined,
+    );
+    const baseRef = await resolveBaseRef(link.localPath, link.baseBranch);
+    const wt = await ensureWorktree({
+      repoPath: link.localPath,
+      worktreePath: worktreeDirFor(deps!.worktreesDir, item.repo, item.key),
+      branch: issueBranchFor(item.key),
+      baseRef,
+    });
+    // created:true = just cut from the fresh baseRef, nothing to refresh.
+    if (opts.refreshBase && !wt.created) {
+      await refreshWorktreeBase(wt.path, baseRef).catch((err) =>
+        console.warn(`base refresh skipped for ${wt.path}: ${err}`),
+      );
+    }
+    return wt;
+  });
 }
 
 function admissionPolicy(m: OrchestratorManifest): {
@@ -847,9 +901,28 @@ export async function requestTransition(
       ? { ...item, holdAutoPlan: undefined }
       : item;
   const next = applyTransition(source, to, actor, reason, { resumeTo });
-  m.items[itemId] = next;
+  // #110: an explicit user park from plan-gate discards the planning worktree.
+  // needs-input is ALSO the coder/planner failure state — never fire on those.
+  const parkedWorktree =
+    actor === "user" && prevState === "plan-gate" && to === "needs-input"
+      ? item.worktree
+      : undefined;
+  m.items[itemId] = parkedWorktree ? { ...next, worktree: undefined } : next;
   await saveOrchestratorManifest(deps.manifestFilePath, m);
   broadcast();
+  if (parkedWorktree?.path) {
+    const link = repoLinks?.repos[repoKey(item.repo)];
+    if (link) {
+      const worktreePath = parkedWorktree.path;
+      const branch = parkedWorktree.branch;
+      // Serialize with prepareWorktreeFor: a park's prune/branch-delete must not
+      // race a concurrent fetch/worktree-add for another item on the same clone.
+      void withRepoGitLock(item.repo, async () => {
+        const baseRef = await resolveBaseRef(link.localPath, link.baseBranch).catch(() => undefined);
+        await discardWorktree({ repoPath: link.localPath, worktreePath, branch, baseRef });
+      }).catch((err) => console.warn(`park cleanup failed for ${worktreePath}: ${err}`));
+    }
+  }
   if (actor !== "planner") pokePlanner();
   if (actor !== "coder") {
     // Someone else moved a live coding item — abort its run.
@@ -1446,6 +1519,8 @@ export function initOrchestrator(
     getRepoSettings: repoOrch,
     requestTransition,
     completePlan,
+    prepareWorktree: (item) => prepareWorktreeFor(item),
+    setWorktree,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
     emitEvent: emitPlanningEvent,
@@ -1469,23 +1544,7 @@ export function initOrchestrator(
     },
     requestTransition,
     setWorktree,
-    prepareWorktree: async (item) => {
-      const link = repoLinks?.repos[repoKey(item.repo)];
-      if (!link) throw new Error(`repo ${item.repo.owner}/${item.repo.name} is not linked`);
-      const account = codeHostAccountFor(item.codeHost, item.accountId);
-      const token = account ? await deps!.getToken(account.key) : null;
-      await fetchOrigin(
-        link.localPath,
-        token ? codeHostFor(item.codeHost).pushCredentials(token) : undefined,
-      );
-      const baseRef = await resolveBaseRef(link.localPath, link.baseBranch);
-      return ensureWorktree({
-        repoPath: link.localPath,
-        worktreePath: worktreeDirFor(orchestratorDeps.worktreesDir, item.repo, item.key),
-        branch: issueBranchFor(item.key),
-        baseRef,
-      });
-    },
+    prepareWorktree: (item) => prepareWorktreeFor(item, { refreshBase: true }),
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getRepoPriority: (repo) => repoOrch(repo).priority,
     getRepoWipLimit: (repo) => repoOrch(repo).wipLimit,

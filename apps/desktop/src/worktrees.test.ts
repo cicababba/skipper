@@ -8,12 +8,15 @@ import {
   captureBranchDiff,
   captureWorktreeDiff,
   commitWorktree,
+  deleteBranchIfNoUniqueCommits,
+  discardWorktree,
   ensureWorktree,
   listWorktreeChanges,
   listWorktrees,
   parseNameStatusZ,
   pushWorktreeBranch,
   readWorktreeFileVersions,
+  refreshWorktreeBase,
   removeWorktree,
   resolveBaseRef,
   resolveInsideWorktree,
@@ -414,5 +417,157 @@ describe("listWorktrees / removeWorktree", () => {
     await removeWorktree(clone, worktreePath);
     const after = await listWorktrees(clone);
     expect(after.some((w) => w.branch === "feature/issue-5")).toBe(false);
+  });
+});
+
+/** Push a new commit to origin/main from a throwaway second clone, then fetch it into `clone`. */
+async function advanceOrigin(origin: string, clone: string): Promise<string> {
+  const other = join(dir, `other-${Math.random().toString(36).slice(2)}`);
+  execFileSync("git", ["clone", "-q", origin, other]);
+  git(other, "config", "user.email", "t@t");
+  git(other, "config", "user.name", "t");
+  await writeFile(join(other, "NEXT.md"), "next\n");
+  git(other, "add", ".");
+  git(other, "commit", "-qm", "advance");
+  git(other, "push", "-q", "origin", "main");
+  git(clone, "fetch", "-q", "origin");
+  return git(clone, "rev-parse", "origin/main").trim();
+}
+
+describe("refreshWorktreeBase (#110)", () => {
+  it("fast-forwards a behind, clean worktree to the base", async () => {
+    const { origin, clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-1");
+    await ensureWorktree({ repoPath: clone, worktreePath, branch: "feature/issue-1", baseRef: "origin/main" });
+    const advanced = await advanceOrigin(origin, clone);
+    const result = await refreshWorktreeBase(worktreePath, "origin/main");
+    expect(result).toEqual({ refreshed: true });
+    expect(git(worktreePath, "rev-parse", "HEAD").trim()).toBe(advanced);
+  });
+
+  it("skips when the branch has its own commits", async () => {
+    const { origin, clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-2");
+    await ensureWorktree({ repoPath: clone, worktreePath, branch: "feature/issue-2", baseRef: "origin/main" });
+    await writeFile(join(worktreePath, "own.md"), "own\n");
+    git(worktreePath, "config", "user.email", "t@t");
+    git(worktreePath, "config", "user.name", "t");
+    git(worktreePath, "add", ".");
+    git(worktreePath, "commit", "-qm", "own work");
+    const before = git(worktreePath, "rev-parse", "HEAD").trim();
+    await advanceOrigin(origin, clone);
+    const result = await refreshWorktreeBase(worktreePath, "origin/main");
+    expect(result).toEqual({ refreshed: false, skipped: "own-commits" });
+    expect(git(worktreePath, "rev-parse", "HEAD").trim()).toBe(before);
+  });
+
+  it("skips a dirty worktree (untracked file)", async () => {
+    const { origin, clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-3");
+    await ensureWorktree({ repoPath: clone, worktreePath, branch: "feature/issue-3", baseRef: "origin/main" });
+    await advanceOrigin(origin, clone);
+    await writeFile(join(worktreePath, "stray.md"), "stray\n");
+    const result = await refreshWorktreeBase(worktreePath, "origin/main");
+    expect(result).toEqual({ refreshed: false, skipped: "dirty" });
+  });
+
+  it("skips a dirty worktree (modified tracked file)", async () => {
+    const { origin, clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-4");
+    await ensureWorktree({ repoPath: clone, worktreePath, branch: "feature/issue-4", baseRef: "origin/main" });
+    await advanceOrigin(origin, clone);
+    await writeFile(join(worktreePath, "README.md"), "changed\n");
+    const result = await refreshWorktreeBase(worktreePath, "origin/main");
+    expect(result).toEqual({ refreshed: false, skipped: "dirty" });
+  });
+});
+
+describe("deleteBranchIfNoUniqueCommits (#110)", () => {
+  it("deletes a branch with no unique commits", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    git(clone, "branch", "feature/empty", "origin/main");
+    const deleted = await deleteBranchIfNoUniqueCommits(clone, "feature/empty", "origin/main");
+    expect(deleted).toBe(true);
+    expect(git(clone, "branch", "--list", "feature/empty").trim()).toBe("");
+  });
+
+  it("keeps a branch that carries a unique commit", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-6");
+    await ensureWorktree({ repoPath: clone, worktreePath, branch: "feature/issue-6", baseRef: "origin/main" });
+    await writeFile(join(worktreePath, "own.md"), "own\n");
+    git(worktreePath, "config", "user.email", "t@t");
+    git(worktreePath, "config", "user.name", "t");
+    git(worktreePath, "add", ".");
+    git(worktreePath, "commit", "-qm", "own work");
+    await removeWorktree(clone, worktreePath);
+    const deleted = await deleteBranchIfNoUniqueCommits(clone, "feature/issue-6", "origin/main");
+    expect(deleted).toBe(false);
+    expect(git(clone, "branch", "--list", "feature/issue-6").trim()).not.toBe("");
+  });
+
+  it("returns false for a missing branch", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    expect(await deleteBranchIfNoUniqueCommits(clone, "feature/nope", "origin/main")).toBe(false);
+  });
+});
+
+describe("discardWorktree (#110)", () => {
+  it("removes the worktree and deletes an empty branch", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-7");
+    await ensureWorktree({ repoPath: clone, worktreePath, branch: "feature/issue-7", baseRef: "origin/main" });
+    const result = await discardWorktree({
+      repoPath: clone,
+      worktreePath,
+      branch: "feature/issue-7",
+      baseRef: "origin/main",
+    });
+    expect(result).toEqual({ removed: true, branchDeleted: true });
+    expect((await listWorktrees(clone)).some((w) => w.branch === "feature/issue-7")).toBe(false);
+    expect(git(clone, "branch", "--list", "feature/issue-7").trim()).toBe("");
+  });
+
+  it("keeps a branch that has unique commits", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-8");
+    await ensureWorktree({ repoPath: clone, worktreePath, branch: "feature/issue-8", baseRef: "origin/main" });
+    await writeFile(join(worktreePath, "own.md"), "own\n");
+    git(worktreePath, "config", "user.email", "t@t");
+    git(worktreePath, "config", "user.name", "t");
+    git(worktreePath, "add", ".");
+    git(worktreePath, "commit", "-qm", "own work");
+    const result = await discardWorktree({
+      repoPath: clone,
+      worktreePath,
+      branch: "feature/issue-8",
+      baseRef: "origin/main",
+    });
+    expect(result.branchDeleted).toBe(false);
+    expect(git(clone, "branch", "--list", "feature/issue-8").trim()).not.toBe("");
+  });
+
+  it("prunes and still deletes the branch when the dir is already gone", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-9");
+    await ensureWorktree({ repoPath: clone, worktreePath, branch: "feature/issue-9", baseRef: "origin/main" });
+    await rm(worktreePath, { recursive: true, force: true });
+    const result = await discardWorktree({
+      repoPath: clone,
+      worktreePath,
+      branch: "feature/issue-9",
+      baseRef: "origin/main",
+    });
+    expect(result.branchDeleted).toBe(true);
+    expect((await listWorktrees(clone)).some((w) => w.branch === "feature/issue-9")).toBe(false);
+  });
+
+  it("keeps the branch when no baseRef is given", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-10");
+    await ensureWorktree({ repoPath: clone, worktreePath, branch: "feature/issue-10", baseRef: "origin/main" });
+    const result = await discardWorktree({ repoPath: clone, worktreePath, branch: "feature/issue-10" });
+    expect(result.branchDeleted).toBe(false);
+    expect(git(clone, "branch", "--list", "feature/issue-10").trim()).not.toBe("");
   });
 });

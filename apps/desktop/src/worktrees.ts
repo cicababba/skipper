@@ -396,3 +396,76 @@ export async function removeWorktree(repoPath: string, worktreePath: string): Pr
   if (r.code !== 0) throw new Error(`git worktree remove failed: ${r.stderr.trim()}`);
   await runGit(repoPath, ["worktree", "prune"]);
 }
+
+export interface RefreshBaseResult {
+  refreshed: boolean;
+  skipped?: "own-commits" | "dirty";
+}
+
+/**
+ * Reset a reused worktree to its base ref so coding starts from fresh (#110):
+ * only when the branch has no commits of its own AND the tree is clean
+ * (untracked counts as dirty). Never destructive — anything with work is left
+ * as-is and reported via `skipped`.
+ */
+export async function refreshWorktreeBase(
+  worktreePath: string,
+  baseRef: string,
+): Promise<RefreshBaseResult> {
+  const ahead = await runGit(worktreePath, ["rev-list", "--count", `${baseRef}..HEAD`]);
+  if (ahead.code !== 0 || parseInt(ahead.stdout.trim(), 10) > 0) {
+    return { refreshed: false, skipped: "own-commits" };
+  }
+  const status = await runGit(worktreePath, ["status", "--porcelain"]);
+  if (status.code !== 0 || status.stdout.trim()) {
+    return { refreshed: false, skipped: "dirty" };
+  }
+  const reset = await runGit(worktreePath, ["reset", "--hard", baseRef]);
+  if (reset.code !== 0) {
+    throw new Error(`git reset --hard failed: ${reset.stderr.trim() || `exit ${reset.code}`}`);
+  }
+  return { refreshed: true };
+}
+
+/**
+ * Delete a local branch only when it carries no commits the base doesn't have —
+ * safe because we just proved there is nothing to lose. Returns whether it was
+ * deleted; a missing branch or any own commits leaves it in place.
+ */
+export async function deleteBranchIfNoUniqueCommits(
+  repoPath: string,
+  branch: string,
+  baseRef: string,
+): Promise<boolean> {
+  const exists = await runGit(repoPath, [
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    `refs/heads/${branch}`,
+  ]);
+  if (exists.code !== 0) return false;
+  const ahead = await runGit(repoPath, ["rev-list", "--count", `${baseRef}..refs/heads/${branch}`]);
+  if (ahead.code !== 0 || parseInt(ahead.stdout.trim(), 10) > 0) return false;
+  const del = await runGit(repoPath, ["branch", "-D", branch]);
+  return del.code === 0;
+}
+
+/**
+ * Tear down a parked planning worktree (#110): remove it (tolerating an
+ * already-deleted dir), prune, then drop the branch only when baseRef is known
+ * and the branch has no unique commits.
+ */
+export async function discardWorktree(opts: {
+  repoPath: string;
+  worktreePath: string;
+  branch: string;
+  baseRef?: string;
+}): Promise<{ removed: boolean; branchDeleted: boolean }> {
+  const { repoPath, worktreePath, branch, baseRef } = opts;
+  const remove = await runGit(repoPath, ["worktree", "remove", "--force", worktreePath]);
+  await runGit(repoPath, ["worktree", "prune"]);
+  const branchDeleted = baseRef
+    ? await deleteBranchIfNoUniqueCommits(repoPath, branch, baseRef)
+    : false;
+  return { removed: remove.code === 0, branchDeleted };
+}
