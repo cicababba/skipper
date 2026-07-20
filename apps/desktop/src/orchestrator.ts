@@ -1508,26 +1508,22 @@ export function initOrchestrator(
     broadcast();
     return { ok: true as const };
   });
-  // Pre-PR diff review (#14). The human-review gate bounds what the renderer
-  // can reach: only worktrees of items the user is actively reviewing.
-  async function reviewableWorktree(
+  // Worktree diff viewer (#114). The renderer may read and save any worktree
+  // that exists on disk, in any lifecycle state — the user owns the worktree.
+  async function usableWorktree(
     itemId: string,
   ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
     const m = await ensureManifest();
     const item = m.items[itemId];
     if (!item) return { ok: false, error: `unknown item ${itemId}` };
-    if (item.state !== "human-review") {
-      return {
-        ok: false,
-        error: `worktree is only reviewable in human-review (item is ${item.state})`,
-      };
-    }
-    if (!item.worktree?.path) return { ok: false, error: "no worktree recorded for item" };
-    return { ok: true, path: item.worktree.path };
+    const st = await worktreeStatus(item.worktree);
+    if (!st.ok) return st;
+    if (!st.present) return { ok: false, error: "worktree folder is missing on disk" };
+    return { ok: true, path: st.path };
   }
 
   ipcMain.handle("skipper:orchestrator:getWorktreeChanges", async (_e, itemId: string) => {
-    const wt = await reviewableWorktree(itemId);
+    const wt = await usableWorktree(itemId);
     if (!wt.ok) return wt;
     try {
       return { ok: true as const, files: await listWorktreeChanges(wt.path) };
@@ -1538,7 +1534,7 @@ export function initOrchestrator(
   ipcMain.handle(
     "skipper:orchestrator:readWorktreeFile",
     async (_e, itemId: string, path: string, oldPath?: string) => {
-      const wt = await reviewableWorktree(itemId);
+      const wt = await usableWorktree(itemId);
       if (!wt.ok) return wt;
       try {
         return { ok: true as const, file: await readWorktreeFileVersions(wt.path, path, oldPath) };
@@ -1550,7 +1546,7 @@ export function initOrchestrator(
   ipcMain.handle(
     "skipper:orchestrator:saveWorktreeFile",
     async (_e, itemId: string, path: string, content: string) => {
-      const wt = await reviewableWorktree(itemId);
+      const wt = await usableWorktree(itemId);
       if (!wt.ok) return wt;
       try {
         await writeWorktreeFile(wt.path, path, content);
