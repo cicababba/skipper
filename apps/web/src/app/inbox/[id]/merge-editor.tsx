@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MergeView } from "@codemirror/merge";
+import { MergeView, unifiedMergeView } from "@codemirror/merge";
 import { EditorView, lineNumbers, highlightActiveLine } from "@codemirror/view";
 import { EditorState, type Extension } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -11,14 +11,17 @@ interface MergeEditorProps {
   filePath: string;
   original: string;
   modified: string;
+  mode: "split" | "unified";
   onChange: (doc: string) => void;
 }
 
-// Side-by-side worktree diff (#14): HEAD on the left (read-only), worktree on
-// the right (editable). Mounted imperatively — @uiw/react-codemirror doesn't
-// cover MergeView. Parents mount with key={filePath} so file switches
-// destroy/recreate cleanly; `modified` only seeds the initial doc.
-export function MergeEditor({ filePath, original, modified, onChange }: MergeEditorProps) {
+// Worktree diff (#14/#114): HEAD vs worktree, worktree side editable. `split`
+// is a side-by-side MergeView (HEAD read-only left, worktree right); `unified`
+// is a single editable EditorView with inline HEAD chunks via unifiedMergeView.
+// Mounted imperatively — @uiw/react-codemirror doesn't cover either. `docRef`
+// preserves edits across the async language rebuild and split↔unified switches;
+// `modified` only seeds the initial doc.
+export function MergeEditor({ filePath, original, modified, mode, onChange }: MergeEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
   useEffect(() => {
@@ -41,6 +44,21 @@ export function MergeEditor({ filePath, original, modified, onChange }: MergeEdi
   useEffect(() => {
     if (!hostRef.current) return;
     const shared: Extension[] = [lineNumbers(), highlightActiveLine(), oneDark, ...langExt];
+    const updateListener = EditorView.updateListener.of((u) => {
+      if (u.docChanged) {
+        const doc = u.state.doc.toString();
+        docRef.current = doc;
+        onChangeRef.current(doc);
+      }
+    });
+    if (mode === "unified") {
+      const view = new EditorView({
+        parent: hostRef.current,
+        doc: docRef.current,
+        extensions: [...shared, unifiedMergeView({ original, mergeControls: false }), updateListener],
+      });
+      return () => view.destroy();
+    }
     const view = new MergeView({
       parent: hostRef.current,
       a: {
@@ -49,20 +67,11 @@ export function MergeEditor({ filePath, original, modified, onChange }: MergeEdi
       },
       b: {
         doc: docRef.current,
-        extensions: [
-          ...shared,
-          EditorView.updateListener.of((u) => {
-            if (u.docChanged) {
-              const doc = u.state.doc.toString();
-              docRef.current = doc;
-              onChangeRef.current(doc);
-            }
-          }),
-        ],
+        extensions: [...shared, updateListener],
       },
     });
     return () => view.destroy();
-  }, [original, langExt]);
+  }, [original, langExt, mode]);
 
   return <div ref={hostRef} className="h-full overflow-auto text-[13px] cm-merge-host" />;
 }
