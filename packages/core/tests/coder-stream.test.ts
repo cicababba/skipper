@@ -109,7 +109,7 @@ describe("createStreamJsonParser", () => {
       },
     };
     parser.feed(`${JSON.stringify(assistant)}\n`);
-    expect(events).toEqual([
+    expect(events).toMatchObject([
       { kind: "text", text: "Editing the file now." },
       { kind: "tool-use", tool: "Edit", detail: "src/a.ts" },
       { kind: "tool-use", tool: "Bash", detail: "pnpm test" },

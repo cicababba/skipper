@@ -7,6 +7,7 @@ import {
 } from "@skipper/core";
 import type {
   AgentReview,
+  CodingEvent,
   Issue,
   LifecycleState,
   LlmSettings,
@@ -26,9 +27,10 @@ import type { WorktreeDiff } from "./worktrees";
 //
 // Unlike the coder there is no abort path: askStructured has no signal param,
 // so a mid-review move just wastes one CLI call — results are discarded by
-// re-checking the item state after every await. No emitEvent either: a review
-// is one fast structured call, and the coding event channel's buffer-reset
-// heuristic must not see reviewer traffic.
+// re-checking the item state after every await. The review streams coarse
+// lifecycle beats over its own event channel (#113) — critiqueDiff is one
+// blocking structured call, so there is no critic prose to stream. A dedicated
+// channel keeps this traffic off the coding buffer-reset heuristic.
 
 export interface ReviewerDeps {
   listItems: () => TrackedItem[];
@@ -53,6 +55,8 @@ export interface ReviewerDeps {
   getLlmSettings: () => Promise<LlmSettings>;
   /** Records the critic round's Claude session id without a transition (#111). */
   setReviewSessionId: (itemId: string, sessionId: string) => Promise<void>;
+  /** Coarse lifecycle beats over the review console channel (#113). */
+  emitEvent: (itemId: string, event: CodingEvent) => void;
 }
 
 const REVIEW_CONCURRENCY = 2;
@@ -141,12 +145,21 @@ async function run(itemId: string): Promise<void> {
     const chained = (item.review?.pendingObjections?.length ?? 0) > 0;
     const round = chained ? item.review!.rounds + 1 : 1;
     const now = () => new Date().toISOString();
+    const emit = deps.emitEvent;
+
+    // The fetching beat resets the per-item review buffer — every round opens here.
+    emit(itemId, {
+      kind: "status",
+      phase: "fetching",
+      detail: chained ? `review round ${round}` : "capturing diff",
+    });
 
     let diff: WorktreeDiff;
     try {
       diff = await deps.getDiff(item);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      emit(itemId, { kind: "error", message });
       await complete(
         itemId,
         { rounds: round - 1 || 0, outcome: "unavailable", reason: message, at: now() },
@@ -159,6 +172,10 @@ async function run(itemId: string): Promise<void> {
     if (deps.getItem(itemId)?.state !== "agent-review") return;
 
     if (diff.stats.filesChanged === 0) {
+      emit(itemId, {
+        kind: "error",
+        message: "coding produced no changes — nothing to review",
+      });
       await complete(
         itemId,
         { rounds: round - 1 || 0, outcome: "unavailable", reason: "empty diff", at: now() },
@@ -181,6 +198,7 @@ async function run(itemId: string): Promise<void> {
         highThreshold: settings.confidence.high,
       });
       if (!decision.review) {
+        emit(itemId, { kind: "result", ok: true, summary: `review skipped: ${decision.reason}` });
         await complete(
           itemId,
           { rounds: 0, outcome: "skipped", reason: decision.reason, at: now() },
@@ -215,6 +233,8 @@ async function run(itemId: string): Promise<void> {
       const wtPath = item.worktree?.path;
       sessionId = provider.name === "claude-cli" && wtPath ? randomUUID() : undefined;
       if (sessionId) await deps.setReviewSessionId(itemId, sessionId);
+      emit(itemId, { kind: "status", phase: "agent-start", detail: `round ${round}` });
+      if (sessionId) emit(itemId, { kind: "agent-init", sessionId });
       signal = await critic(
         {
           diff: diff.diff,
@@ -227,6 +247,7 @@ async function run(itemId: string): Promise<void> {
     } catch (err) {
       if (deps.getItem(itemId)?.state !== "agent-review") return;
       const message = err instanceof Error ? err.message : String(err);
+      emit(itemId, { kind: "error", message });
       // Advisory gate down must not park the pipeline: the human reviews next
       // anyway. Contrast: a missing deliverable (getDiff) goes to needs-input.
       await complete(
@@ -246,7 +267,9 @@ async function run(itemId: string): Promise<void> {
     if (deps.getItem(itemId)?.state !== "agent-review") return;
 
     const needsFix = signal.verdict === "reject" || signal.objections.some((o) => o.blocking);
+    const summary = `round ${round}: ${signal.verdict} — ${signal.objections.length} objection(s)`;
     if (!needsFix) {
+      emit(itemId, { kind: "result", ok: true, summary });
       const note = signal.objections[0]?.detail;
       await complete(
         itemId,
@@ -261,6 +284,7 @@ async function run(itemId: string): Promise<void> {
         `agent review round ${round}: ${signal.verdict}${note ? ` — ${note}` : ""}`.slice(0, 200),
       );
     } else if (round >= repoSettings.reviewMaxRounds) {
+      emit(itemId, { kind: "result", ok: false, summary: `${summary} — did not converge` });
       const blocking = signal.objections
         .filter((o) => o.blocking)
         .map((o) => o.detail)
@@ -284,6 +308,7 @@ async function run(itemId: string): Promise<void> {
         "human-review",
       );
     } else {
+      emit(itemId, { kind: "result", ok: false, summary: `${summary} — sending back for fixes` });
       await complete(
         itemId,
         {

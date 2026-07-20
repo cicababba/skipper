@@ -227,6 +227,31 @@ function emitPlanningEvent(itemId: string, event: CodingEvent): void {
   }
 }
 
+// Reviewer console stream (#113): same machinery, own channel pair. The
+// reviewer runs no tools, so there is no memory-use bookkeeping here.
+const reviewEvents = new Map<string, CodingEventEnvelope[]>();
+const reviewEventSeq = new Map<string, number>();
+
+function emitReviewEvent(itemId: string, event: CodingEvent): void {
+  // Every review round opens with a fetching status: reset so replay never
+  // mixes rounds (mirrors the coding buffer-reset heuristic).
+  if (event.kind === "status" && event.phase === "fetching") {
+    reviewEvents.set(itemId, []);
+    reviewEventSeq.set(itemId, 0);
+  }
+  const seq = reviewEventSeq.get(itemId) ?? 0;
+  reviewEventSeq.set(itemId, seq + 1);
+  const envelope: CodingEventEnvelope = { itemId, seq, at: new Date().toISOString(), event };
+  const buffer = reviewEvents.get(itemId) ?? [];
+  buffer.push(envelope);
+  if (buffer.length > CODING_EVENT_BUFFER_MAX) buffer.shift();
+  reviewEvents.set(itemId, buffer);
+  const win = getWindow();
+  if (win && !win.isDestroyed()) {
+    win.webContents.send(`skipper:review:event:${itemId}`, envelope);
+  }
+}
+
 // "Memories used" (#46): record which solutions a run fetched in full via
 // get_memory — the ground truth for the card, persisted on the tracked item so
 // it survives restart. search_memory queries surface only in the live console.
@@ -1429,6 +1454,9 @@ export function initOrchestrator(
   ipcMain.handle("skipper:planning:getEvents", (_e, itemId: string) => {
     return planningEvents.get(itemId) ?? [];
   });
+  ipcMain.handle("skipper:review:getEvents", (_e, itemId: string) => {
+    return reviewEvents.get(itemId) ?? [];
+  });
   // Solutions memory surface (#46). get/feedback drive the "memories used" card;
   // list is the read side #47's browser will consume.
   ipcMain.handle("skipper:memory:get", async (_e, id: string) => {
@@ -1613,6 +1641,7 @@ export function initOrchestrator(
     },
     completeReview,
     setReviewSessionId,
+    emitEvent: emitReviewEvent,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getRepoSettings: repoOrch,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
