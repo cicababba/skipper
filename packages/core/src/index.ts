@@ -1,5 +1,5 @@
-export type { LLMProviderInterface, LLMResponse } from "./llm";
-export { createProvider, ClaudeCLIProvider } from "./llm";
+export type { LLMProviderInterface, LLMResponse, AgentOptions } from "./llm";
+export { createProvider, ClaudeCLIProvider, AgentAbortError } from "./llm";
 export { PROMPTS } from "./llm";
 export { MEMORY_TOOLS, buildMemoryMcpArgs } from "./llm";
 export type { MemoryMcp } from "./llm";
@@ -90,8 +90,22 @@ export type {
 export type { JiraTokenProvider, JiraTarget } from "./adapters";
 
 // Planner (issue #7)
-export { generatePlan, PlanGenerationError, IssuePlanSchema, planJsonSchema } from "./planner";
-export type { GeneratePlanOptions, PlanIssueInput } from "./planner";
+export {
+  generatePlan,
+  validatePlanReply,
+  PlanGenerationError,
+  IssuePlanSchema,
+  planJsonSchema,
+  PLAN_CHAT_SYSTEM_PROMPT,
+  discussPlan,
+  applyPlanFromDiscussion,
+} from "./planner";
+export type {
+  GeneratePlanOptions,
+  PlanIssueInput,
+  DiscussPlanOptions,
+  ApplyPlanFromDiscussionOptions,
+} from "./planner";
 
 // Confidence (issue #8)
 export {

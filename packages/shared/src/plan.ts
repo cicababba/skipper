@@ -48,6 +48,22 @@ export interface IssuePlan {
   estimatedSize: "xs" | "s" | "m" | "l" | "xl";
 }
 
+/** One turn of the plan-review chat (#145). */
+export interface PlanChatMessage {
+  role: "user" | "assistant";
+  text: string;
+  at: string; // ISO 8601
+}
+
+/** On-disk transcript of the plan-review chat, one file per tracked item (#145). */
+export interface StoredPlanChat {
+  version: 1;
+  itemId: string;
+  /** The plan generation this transcript belongs to; a replan supersedes it. */
+  planGeneratedAt: string;
+  messages: PlanChatMessage[];
+}
+
 /** On-disk envelope for a generated plan (TrackedItem.plan.ref points at it). */
 export interface StoredPlan {
   version: 2;

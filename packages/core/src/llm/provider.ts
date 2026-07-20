@@ -25,6 +25,19 @@ export interface AgentOptions {
   /** Persist the run under this session id (drops --no-session-persistence) so it
    *  can be resumed later; cwd-scoped, claude-cli only (#111). */
   sessionId?: string;
+  /** Resume an existing on-disk session (--resume); mutually exclusive with
+   *  sessionId, cwd must match the session's origin; claude-cli only (#145). */
+  resumeSessionId?: string;
+  /** Abort the run; rejects with AgentAbortError. claude-cli only (#145). */
+  signal?: AbortSignal;
+}
+
+/** Thrown by agent() when its AbortSignal fires (#145). */
+export class AgentAbortError extends Error {
+  constructor() {
+    super("agent run aborted");
+    this.name = "AgentAbortError";
+  }
 }
 
 /** Opt-in persistence + cwd for a single structured call (#111). */

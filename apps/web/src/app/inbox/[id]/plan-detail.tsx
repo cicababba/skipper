@@ -11,6 +11,7 @@ import { bandClasses, pct, ReportBody } from "@/components/confidence-popover";
 import { EventConsole } from "@/components/event-console";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { MemoriesCard } from "./memories-card";
+import { PlanChatPanel } from "./plan-chat";
 import {
   applySection,
   draftFor,
@@ -83,6 +84,7 @@ export function PlanDetailView() {
 
   const [busyAction, setBusyAction] = useState<GateAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [chatBusy, setChatBusy] = useState(false);
   const [parkOpen, setParkOpen] = useState(false);
   const [parkNote, setParkNote] = useState("");
 
@@ -184,7 +186,7 @@ export function PlanDetailView() {
   }
 
   const editBusy = editingSection !== null || saving;
-  const actionsDisabled = editBusy || busyAction !== null;
+  const actionsDisabled = editBusy || busyAction !== null || chatBusy;
 
   const section = (
     sid: Exclude<SectionId, "size">,
@@ -495,6 +497,14 @@ export function PlanDetailView() {
             refs={item.usedMemory?.planning}
             title={p.sections.memories}
           />
+          {gate && (
+            <PlanChatPanel
+              itemId={id}
+              disabled={editBusy || busyAction !== null}
+              onPlanUpdated={setStored}
+              onBusyChange={setChatBusy}
+            />
+          )}
         </div>
       )}
     </div>

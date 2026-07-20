@@ -8,6 +8,7 @@ import type {
   LLMResponse,
   StructuredOptions,
 } from "./provider";
+import { AgentAbortError } from "./provider";
 import { parseJsonReply } from "./json";
 import { createStreamJsonParser } from "./stream";
 import { MEMORY_TOOLS, buildMemoryMcpArgs } from "./memory-mcp";
@@ -76,11 +77,14 @@ export function resolveClaude(): ClaudeCmd {
   return (resolvedClaude = { file: "claude", argsPrefix: [] });
 }
 
+const SIGKILL_ESCALATION_MS = 3_000;
+
 function runClaude(
   args: string[],
   stdin?: string,
   cwd?: string,
   onStdout?: (chunk: string) => void,
+  signal?: AbortSignal,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const claude = resolveClaude();
@@ -93,6 +97,16 @@ function runClaude(
 
     let stdout = "";
     let stderr = "";
+    let aborted = false;
+
+    const onAbort = () => {
+      aborted = true;
+      proc.kill("SIGTERM");
+      // Bash-tool grandchildren linger past SIGTERM — escalate (idiom from coder/run.ts).
+      const escalate = setTimeout(() => proc.kill("SIGKILL"), SIGKILL_ESCALATION_MS);
+      escalate.unref?.();
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
 
     proc.stdout.on("data", (data) => {
       const text = data.toString();
@@ -105,7 +119,10 @@ function runClaude(
     });
 
     proc.on("close", (code) => {
-      if (code !== 0 && !stdout) {
+      signal?.removeEventListener("abort", onAbort);
+      if (aborted) {
+        reject(new AgentAbortError());
+      } else if (code !== 0 && !stdout) {
         reject(new Error(`claude exited with code ${code}: ${stderr}`));
       } else {
         resolve(stdout);
@@ -113,6 +130,7 @@ function runClaude(
     });
 
     proc.on("error", (err: NodeJS.ErrnoException) => {
+      signal?.removeEventListener("abort", onAbort);
       if (err.code === "ENOENT") {
         resolvedClaude = null; // re-resolve next time — claude may get installed mid-session
         reject(
@@ -213,7 +231,11 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       this.model,
       "--max-turns",
       String(opts.maxTurns ?? 24),
-      ...(opts.sessionId ? ["--session-id", opts.sessionId] : ["--no-session-persistence"]),
+      ...(opts.resumeSessionId
+        ? ["--resume", opts.resumeSessionId]
+        : opts.sessionId
+          ? ["--session-id", opts.sessionId]
+          : ["--no-session-persistence"]),
       "--disable-slash-commands",
       // Enable a capable but read-leaning toolset so the agent can inspect
       // local code and the web. `--tools` limits what's available (no
@@ -239,7 +261,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       return this.agentStreaming(args, prompt, opts);
     }
 
-    const stdout = await runClaude(args, prompt, opts.cwd);
+    const stdout = await runClaude(args, prompt, opts.cwd, undefined, opts.signal);
     const data = JSON.parse(stdout);
     if (data.is_error) {
       throw new Error(`Claude CLI error: ${data.result}`);
@@ -252,8 +274,13 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
             outputTokens: data.usage.output_tokens ?? 0,
           }
         : undefined,
-      ...(opts.sessionId
-        ? { sessionId: typeof data.session_id === "string" ? data.session_id : opts.sessionId }
+      ...(opts.sessionId || opts.resumeSessionId
+        ? {
+            sessionId:
+              typeof data.session_id === "string"
+                ? data.session_id
+                : opts.sessionId ?? opts.resumeSessionId,
+          }
         : {}),
     };
   }
@@ -276,7 +303,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
         if (line.type === "result") resultLine = line;
       },
     );
-    await runClaude(args, prompt, opts.cwd, (chunk) => parser.feed(chunk));
+    await runClaude(args, prompt, opts.cwd, (chunk) => parser.feed(chunk), opts.signal);
     parser.flush();
     const data = resultLine as Record<string, unknown> | null;
     if (!data) {
@@ -294,7 +321,9 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
             outputTokens: typeof usage.output_tokens === "number" ? usage.output_tokens : 0,
           }
         : undefined,
-      ...(opts.sessionId ? { sessionId: initSessionId ?? opts.sessionId } : {}),
+      ...(opts.sessionId || opts.resumeSessionId
+        ? { sessionId: initSessionId ?? opts.sessionId ?? opts.resumeSessionId }
+        : {}),
     };
   }
 

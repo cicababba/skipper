@@ -81,6 +81,14 @@ import {
 } from "./repo-links";
 import { readLlmSettings, readLlmSettingsSync } from "./llm-settings";
 import { archiveStoredPlan, readStoredPlan, updateStoredPlan } from "./plan-store";
+import { deletePlanChat } from "./plan-chat-store";
+import {
+  initPlanChat,
+  sendPlanChatMessage,
+  applyPlanChatUpdate,
+  getPlanChatHistory,
+  cancelPlanChat,
+} from "./plan-chat";
 import { initPlanner, pokePlanner } from "./planner";
 import { initCoder, pokeCoder, cancelCodingRun, killAllCodingRuns } from "./coder";
 import { initReviewer, pokeReviewer } from "./reviewer";
@@ -907,6 +915,7 @@ async function completeMergedCleanup(itemId: string, memoryRef: string): Promise
     const archivedRef = await archiveStoredPlan(deps.plansDir, plan.ref).catch(() => null);
     if (archivedRef) plan = { ...plan, ref: archivedRef };
   }
+  void deletePlanChat(deps.plansDir, itemId).catch(() => {});
   m.items[itemId] = {
     ...item,
     worktree: undefined,
@@ -1017,6 +1026,8 @@ export async function requestTransition(
     }
   }
   if (actor !== "planner") pokePlanner();
+  // Leaving plan-gate (approve/replan/park) aborts any live plan-review chat (#145).
+  if (prevState === "plan-gate") cancelPlanChat(itemId);
   if (actor !== "coder") {
     // Someone else moved a live coding item — abort its run.
     if (prevState === "coding") cancelCodingRun(itemId);
@@ -1498,6 +1509,15 @@ export function initOrchestrator(
     if (!stored) return { ok: false as const, error: "stored plan not found" };
     return { ok: true as const, stored };
   });
+  // Conversational plan review (#145): chat with the planning session at the
+  // gate. Guards (state, plan, busy) live in plan-chat.ts.
+  ipcMain.handle("skipper:planChat:send", (_e, itemId: string, text: string) =>
+    sendPlanChatMessage(itemId, text),
+  );
+  ipcMain.handle("skipper:planChat:apply", (_e, itemId: string) => applyPlanChatUpdate(itemId));
+  ipcMain.handle("skipper:planChat:getHistory", (_e, itemId: string) =>
+    getPlanChatHistory(itemId),
+  );
   // Replay for renderers that mount mid-run; live events ride the per-item channel.
   ipcMain.handle("skipper:coding:getEvents", (_e, itemId: string) => {
     return codingEvents.get(itemId) ?? [];
@@ -1662,6 +1682,7 @@ export function initOrchestrator(
         const archivedRef = await archiveStoredPlan(deps!.plansDir, plan.ref).catch(() => null);
         if (archivedRef) plan = { ...plan, ref: archivedRef };
       }
+      void deletePlanChat(deps!.plansDir, itemId).catch(() => {});
 
       // Re-read after the slow git ops so a concurrent update is not clobbered.
       const current = m.items[itemId] ?? item;
@@ -1723,6 +1744,7 @@ export function initOrchestrator(
       if (item.plan?.ref) {
         await archiveStoredPlan(deps!.plansDir, item.plan.ref).catch(() => null);
       }
+      void deletePlanChat(deps!.plansDir, itemId).catch(() => {});
 
       delete m.items[itemId];
       delete m.parked[itemId];
@@ -1758,6 +1780,29 @@ export function initOrchestrator(
     setWorktree,
     setPlanSessionId,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
+    getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
+    emitEvent: emitPlanningEvent,
+    plansDir: orchestratorDeps.plansDir,
+    getMemoryMcp: (item) =>
+      orchestratorDeps.cliBundlePath
+        ? { cliBundlePath: orchestratorDeps.cliBundlePath, repo: item.repo }
+        : undefined,
+  });
+
+  initPlanChat({
+    getItem: (itemId) => manifest?.items[itemId],
+    getIssue: (item) => {
+      const cached = items.get(item.accountId)?.get(item.id);
+      return cached?.kind === "issue" ? cached : undefined;
+    },
+    getRepoPath: repoPathFor,
+    getRepoSettings: repoOrch,
+    getStoredPlan: async (item) => {
+      const ref = item.plan?.ref;
+      return ref ? readStoredPlan(orchestratorDeps.plansDir, ref) : null;
+    },
+    updatePlan: (item, plan) => updateStoredPlan(orchestratorDeps.plansDir, item.plan!.ref!, plan),
+    setPlanSessionId,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
     emitEvent: emitPlanningEvent,
     plansDir: orchestratorDeps.plansDir,
