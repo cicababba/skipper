@@ -8,6 +8,7 @@ import {
   captureBranchDiff,
   captureWorktreeDiff,
   commitWorktree,
+  deleteBranchForce,
   deleteBranchIfNoUniqueCommits,
   discardWorktree,
   ensureWorktree,
@@ -21,6 +22,7 @@ import {
   resolveBaseRef,
   resolveInsideWorktree,
   worktreeDirFor,
+  worktreeDirtyFiles,
   worktreeStatus,
   writeWorktreeFile,
 } from "./worktrees";
@@ -569,5 +571,56 @@ describe("discardWorktree (#110)", () => {
     const result = await discardWorktree({ repoPath: clone, worktreePath, branch: "feature/issue-10" });
     expect(result.branchDeleted).toBe(false);
     expect(git(clone, "branch", "--list", "feature/issue-10").trim()).not.toBe("");
+  });
+});
+
+describe("deleteBranchForce (#115)", () => {
+  it("deletes a branch even when it carries unique commits", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-11");
+    await ensureWorktree({ repoPath: clone, worktreePath, branch: "feature/issue-11", baseRef: "origin/main" });
+    await writeFile(join(worktreePath, "own.md"), "own\n");
+    git(worktreePath, "config", "user.email", "t@t");
+    git(worktreePath, "config", "user.name", "t");
+    git(worktreePath, "add", ".");
+    git(worktreePath, "commit", "-qm", "own work");
+    await removeWorktree(clone, worktreePath);
+
+    expect(await deleteBranchForce(clone, "feature/issue-11")).toBe(true);
+    expect(git(clone, "branch", "--list", "feature/issue-11").trim()).toBe("");
+  });
+
+  it("returns false for a missing branch", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    expect(await deleteBranchForce(clone, "feature/nope")).toBe(false);
+  });
+});
+
+describe("worktreeDirtyFiles (#115)", () => {
+  it("returns [] for a clean worktree", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-12");
+    await ensureWorktree({ repoPath: clone, worktreePath, branch: "feature/issue-12", baseRef: "origin/main" });
+    expect(await worktreeDirtyFiles(worktreePath)).toEqual([]);
+  });
+
+  it("reports a modified tracked file", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-13");
+    await ensureWorktree({ repoPath: clone, worktreePath, branch: "feature/issue-13", baseRef: "origin/main" });
+    await writeFile(join(worktreePath, "README.md"), "changed\n");
+    expect(await worktreeDirtyFiles(worktreePath)).toHaveLength(1);
+  });
+
+  it("reports an untracked file", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-14");
+    await ensureWorktree({ repoPath: clone, worktreePath, branch: "feature/issue-14", baseRef: "origin/main" });
+    await writeFile(join(worktreePath, "new.md"), "new\n");
+    expect(await worktreeDirtyFiles(worktreePath)).toHaveLength(1);
+  });
+
+  it("returns null when the directory is gone", async () => {
+    expect(await worktreeDirtyFiles(join(dir, "does-not-exist"))).toBeNull();
   });
 });

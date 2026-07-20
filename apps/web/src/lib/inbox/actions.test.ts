@@ -79,4 +79,29 @@ describe("actionsFor", () => {
       expect(actionsFor(item({ state: state as LifecycleState }))).toEqual([]);
     }
   });
+
+  it("offers archive on a closed item with a worktree (#115)", () => {
+    const actions = actionsFor(
+      item({ state: "closed", worktree: { path: "/wt", branch: "feature/x" } }),
+    );
+    expect(actions).toEqual([{ id: "archive", kind: "archive" }]);
+  });
+
+  it("offers archive on a closed item with an active plan ref (#115)", () => {
+    const actions = actionsFor(item({ state: "closed", plan: { ref: "github_1.json" } }));
+    expect(actions).toEqual([{ id: "archive", kind: "archive" }]);
+  });
+
+  it("hides archive once the worktree is gone and the plan archived (#115)", () => {
+    expect(actionsFor(item({ state: "closed", plan: { ref: "archive/github_1.json" } }))).toEqual(
+      [],
+    );
+    expect(actionsFor(item({ state: "closed" }))).toEqual([]);
+  });
+
+  it("never offers archive on a merged item (#115)", () => {
+    expect(
+      actionsFor(item({ state: "merged", worktree: { path: "/wt", branch: "feature/x" } })),
+    ).toEqual([]);
+  });
 });

@@ -21,7 +21,13 @@ import type {
   TrackedItem,
   TransitionActor,
 } from "@skipper/shared";
-import { captureBranchDiff, commitWorktree, pushWorktreeBranch, removeWorktree } from "./worktrees";
+import {
+  captureBranchDiff,
+  commitWorktree,
+  deleteBranchForce,
+  pushWorktreeBranch,
+  removeWorktree,
+} from "./worktrees";
 
 export interface ShepherdDeps {
   listItems: () => TrackedItem[];
@@ -271,6 +277,8 @@ async function captureMerged(itemId: string): Promise<void> {
       await removeWorktree(repoPath, item.worktree.path).catch(() => {
         /* already gone or busy — the record is what matters */
       });
+      // Strictly after remove+prune: -D fails while the worktree still exists.
+      await deleteBranchForce(repoPath, item.worktree.branch).catch(() => {});
     }
     await deps.completeMergedCleanup(itemId, ref);
   } catch (err) {

@@ -66,6 +66,7 @@ import type {
   TrackerProjectsResult,
   TransitionActor,
   UnmappedProject,
+  ArchiveItemResult,
 } from "@skipper/shared";
 import { loadCursors, saveCursors, type InboxCursorFile } from "./inbox-cursor-store";
 import {
@@ -76,7 +77,7 @@ import {
   type RepoLinksFile,
 } from "./repo-links";
 import { readLlmSettings } from "./llm-settings";
-import { readStoredPlan, updateStoredPlan } from "./plan-store";
+import { archiveStoredPlan, readStoredPlan, updateStoredPlan } from "./plan-store";
 import { initPlanner, pokePlanner } from "./planner";
 import { initCoder, pokeCoder, cancelCodingRun, killAllCodingRuns } from "./coder";
 import { initReviewer, pokeReviewer } from "./reviewer";
@@ -91,6 +92,7 @@ import {
   refreshWorktreeBase,
   resolveBaseRef,
   worktreeDirFor,
+  worktreeDirtyFiles,
   worktreeStatus,
   writeWorktreeFile,
 } from "./worktrees";
@@ -879,9 +881,15 @@ async function completeMergedCleanup(itemId: string, memoryRef: string): Promise
   const m = await ensureManifest();
   const item = m.items[itemId];
   if (!item) throw new Error(`unknown item ${itemId}`);
+  let plan = item.plan;
+  if (plan?.ref) {
+    const archivedRef = await archiveStoredPlan(deps.plansDir, plan.ref).catch(() => null);
+    if (archivedRef) plan = { ...plan, ref: archivedRef };
+  }
   m.items[itemId] = {
     ...item,
     worktree: undefined,
+    plan,
     shepherd: { ...item.shepherd, memoryRef },
     updatedAt: new Date().toISOString(),
   };
@@ -1570,6 +1578,62 @@ export function initOrchestrator(
     await ensureRepoLinks();
     return openOrPushPr(itemId, "user");
   });
+  // Manual end-of-flow cleanup (#115): archive a closed item — discard its
+  // worktree (conservative branch delete) and archive the plan. The dirty gate
+  // needs the caller's confirmation before destroying uncommitted work.
+  ipcMain.handle(
+    "skipper:orchestrator:archiveItem",
+    async (_e, itemId: string, force?: boolean): Promise<ArchiveItemResult> => {
+      const m = await ensureManifest();
+      await ensureRepoLinks();
+      const item = m.items[itemId];
+      if (!item) return { ok: false, error: `unknown item ${itemId}` };
+      if (item.state !== "closed") {
+        return { ok: false, error: "only closed items can be archived" };
+      }
+
+      if (item.worktree) {
+        const dirty = await worktreeDirtyFiles(item.worktree.path);
+        if (dirty && dirty.length > 0 && !force) {
+          return { ok: false, needsConfirm: true, dirtyFiles: dirty.length };
+        }
+        const link = repoLinks?.repos[repoKey(item.repo)];
+        if (link) {
+          const worktreePath = item.worktree.path;
+          const branch = item.worktree.branch;
+          try {
+            await withRepoGitLock(item.repo, async () => {
+              const baseRef = await resolveBaseRef(link.localPath, link.baseBranch).catch(
+                () => undefined,
+              );
+              await discardWorktree({ repoPath: link.localPath, worktreePath, branch, baseRef });
+            });
+          } catch (err) {
+            return { ok: false, error: err instanceof Error ? err.message : String(err) };
+          }
+        }
+      }
+
+      let plan = item.plan;
+      if (plan?.ref) {
+        const archivedRef = await archiveStoredPlan(deps!.plansDir, plan.ref).catch(() => null);
+        if (archivedRef) plan = { ...plan, ref: archivedRef };
+      }
+
+      // Re-read after the slow git ops so a concurrent update is not clobbered.
+      const current = m.items[itemId] ?? item;
+      const archived: TrackedItem = {
+        ...current,
+        worktree: undefined,
+        plan,
+        updatedAt: new Date().toISOString(),
+      };
+      m.items[itemId] = archived;
+      await saveOrchestratorManifest(deps!.manifestFilePath, m);
+      broadcast();
+      return { ok: true, item: archived };
+    },
+  );
 
   initPlanner({
     listItems: () => Object.values(manifest?.items ?? {}),

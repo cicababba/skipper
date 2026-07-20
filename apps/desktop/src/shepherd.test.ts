@@ -9,7 +9,13 @@ import {
   type OrchestratorSettings,
 } from "@skipper/core";
 import { initShepherd, openOrPushPr, pokeShepherd, type ShepherdDeps } from "./shepherd";
-import { commitWorktree, pushWorktreeBranch, captureBranchDiff, removeWorktree } from "./worktrees";
+import {
+  commitWorktree,
+  pushWorktreeBranch,
+  captureBranchDiff,
+  deleteBranchForce,
+  removeWorktree,
+} from "./worktrees";
 
 vi.mock("./worktrees", () => ({
   commitWorktree: vi.fn(async () => ({ committed: true, sha: "abc123" })),
@@ -19,12 +25,14 @@ vi.mock("./worktrees", () => ({
     stats: { filesChanged: 1, totalChangedLines: 1, files: ["new.txt"] },
   })),
   removeWorktree: vi.fn(async () => undefined),
+  deleteBranchForce: vi.fn(async () => true),
 }));
 
 const commitMock = vi.mocked(commitWorktree);
 const pushMock = vi.mocked(pushWorktreeBranch);
 const captureMock = vi.mocked(captureBranchDiff);
 const removeMock = vi.mocked(removeWorktree);
+const deleteBranchMock = vi.mocked(deleteBranchForce);
 
 let memoryDir: string;
 
@@ -134,6 +142,8 @@ beforeEach(async () => {
   pushMock.mockClear();
   captureMock.mockClear();
   removeMock.mockClear();
+  deleteBranchMock.mockClear();
+  deleteBranchMock.mockResolvedValue(true);
   commitMock.mockResolvedValue({ committed: true, sha: "abc123" });
 });
 
@@ -428,6 +438,7 @@ describe("shepherd scan — merged capture", () => {
     expect(h.cleanups).toEqual([{ itemId: "github:1", memoryRef: ref }]);
     expect(captureMock).toHaveBeenCalledWith("/wt/repo/issue-1", "origin/develop");
     expect(removeMock).toHaveBeenCalledWith("/repos/repo", "/wt/repo/issue-1");
+    expect(deleteBranchMock).toHaveBeenCalledWith("/repos/repo", "feature/issue-1");
     const record = JSON.parse(await readFile(join(memoryDir, ref), "utf-8"));
     expect(record).toMatchObject({
       version: 1,

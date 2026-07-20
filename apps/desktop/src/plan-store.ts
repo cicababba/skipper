@@ -2,9 +2,12 @@
 // Pure Node module; the planner injects the directory. TrackedItem.plan.ref
 // stores the filename. Replan and user edits overwrite (no history).
 
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 import type { IssuePlan, StoredPlan } from "@skipper/shared";
+
+/** Subdirectory of plansDir where merged/archived plans are kept (#115). */
+export const PLAN_ARCHIVE_DIR = "archive";
 
 /** Item ids contain ":" which is illegal on Windows filenames. */
 export function planFileName(itemId: string): string {
@@ -31,6 +34,28 @@ export async function readStoredPlan(plansDir: string, ref: string): Promise<Sto
     return parsed.version === 2 || (parsed.version as number) === 1 ? parsed : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Move a plan JSON under plans/archive/ and return its new subpath ref
+ * ("archive/<file>.json") — readStoredPlan joins it, so the plan tab keeps
+ * rendering. Idempotent: an already-archived ref is returned unchanged.
+ * Returns null when there was nothing to archive.
+ */
+export async function archiveStoredPlan(plansDir: string, ref: string): Promise<string | null> {
+  if (ref.startsWith(`${PLAN_ARCHIVE_DIR}/`)) return ref;
+  const name = basename(ref);
+  const archivedRef = `${PLAN_ARCHIVE_DIR}/${name}`;
+  await mkdir(join(plansDir, PLAN_ARCHIVE_DIR), { recursive: true });
+  try {
+    await rename(join(plansDir, ref), join(plansDir, PLAN_ARCHIVE_DIR, name));
+    return archivedRef;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    // Source gone: a previous run may have already moved it — keep the ref if so.
+    const archived = await stat(join(plansDir, PLAN_ARCHIVE_DIR, name)).catch(() => null);
+    return archived ? archivedRef : null;
   }
 }
 

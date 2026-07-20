@@ -8,7 +8,7 @@ import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 
 export function ItemActions({ item }: { item: TrackedItem }) {
-  const { requestTransition, openPr, setPinned } = useOrchestrator();
+  const { requestTransition, openPr, archiveItem, setPinned } = useOrchestrator();
   const { t } = useT();
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -20,7 +20,11 @@ export function ItemActions({ item }: { item: TrackedItem }) {
     try {
       if (action.kind === "openPr") await openPr(item.id);
       else if (action.kind === "pin") await setPinned(item.id, action.pinned);
-      else await requestTransition(item.id, action.to);
+      else if (action.kind === "archive") {
+        const res = await archiveItem(item.id);
+        if (!res.ok && res.needsConfirm && window.confirm(t.inbox.archive.confirmDirty(res.dirtyFiles)))
+          await archiveItem(item.id, true);
+      } else await requestTransition(item.id, action.to);
     } finally {
       setBusyId(null);
     }

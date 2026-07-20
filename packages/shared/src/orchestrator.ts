@@ -439,6 +439,13 @@ export type WorktreeStatusResult =
   | { ok: true; path: string; branch: string; sessionId?: string; present: boolean }
   | { ok: false; error: string };
 
+// End-of-flow cleanup (#115): manual archive of a closed item — removes its
+// worktree and archives the plan. needsConfirm gates on uncommitted work.
+export type ArchiveItemResult =
+  | { ok: true; item: TrackedItem }
+  | { ok: false; needsConfirm: true; dirtyFiles: number }
+  | { ok: false; needsConfirm?: undefined; error: string };
+
 export type RepoLinkResult = { ok: true; localPath: string } | { ok: false; error: string };
 
 export type RepoUnlinkResult = { ok: true } | { ok: false; error: string };

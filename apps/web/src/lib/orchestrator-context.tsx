@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import type {
+  ArchiveItemResult,
   LifecycleState,
   OrchestratorSettings,
   OrchestratorState,
@@ -28,6 +29,7 @@ interface OrchestratorContextValue {
     reason?: string,
   ) => Promise<OrchestratorTransitionResult>;
   openPr: (itemId: string) => Promise<OrchestratorTransitionResult>;
+  archiveItem: (itemId: string, force?: boolean) => Promise<ArchiveItemResult>;
   setIntakePaused: (paused: boolean) => Promise<void>;
   /** Global settings writer (#62); the handler validates each key. */
   updateSettings: (patch: Partial<OrchestratorSettings>) => Promise<void>;
@@ -91,6 +93,17 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
     return result;
   }, []);
 
+  const archiveItem = useCallback(
+    async (itemId: string, force?: boolean): Promise<ArchiveItemResult> => {
+      if (!window.skipper) return { ok: false, error: "desktop only" };
+      const result = await window.skipper.orchestrator.archiveItem(itemId, force);
+      // needsConfirm is the dirty-worktree prompt, not an error — the caller drives it.
+      if (!result.ok && !result.needsConfirm) setError(result.error);
+      return result;
+    },
+    [],
+  );
+
   const setIntakePaused = useCallback(async (paused: boolean) => {
     if (!window.skipper) return;
     try {
@@ -141,6 +154,7 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
       refresh,
       requestTransition,
       openPr,
+      archiveItem,
       setIntakePaused,
       updateSettings,
       resolveResumeRite,
@@ -154,6 +168,7 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
       refresh,
       requestTransition,
       openPr,
+      archiveItem,
       setIntakePaused,
       updateSettings,
       resolveResumeRite,
