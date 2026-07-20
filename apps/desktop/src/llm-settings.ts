@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_LLM_SETTINGS, type LlmSettings } from "@skipper/shared";
 
@@ -6,11 +7,24 @@ import { DEFAULT_LLM_SETTINGS, type LlmSettings } from "@skipper/shared";
 // re-reads per call instead of caching: a provider switch in Settings has to
 // reach the planner/reviewer without an app restart.
 
+function mergeLlmSettings(raw: string): LlmSettings {
+  const saved = JSON.parse(raw);
+  return coerceProvider({ ...DEFAULT_LLM_SETTINGS, ...saved.llm });
+}
+
 export async function readLlmSettings(userDataDir: string): Promise<LlmSettings> {
   try {
-    const raw = await readFile(join(userDataDir, "settings.json"), "utf-8");
-    const saved = JSON.parse(raw);
-    return coerceProvider({ ...DEFAULT_LLM_SETTINGS, ...saved.llm });
+    return mergeLlmSettings(await readFile(join(userDataDir, "settings.json"), "utf-8"));
+  } catch {
+    return { ...DEFAULT_LLM_SETTINGS };
+  }
+}
+
+// Sync sibling for the synchronous repoOrch() path (#125): settings.json is tiny and
+// re-read per call by the same design as readLlmSettings, so a blocking read is fine.
+export function readLlmSettingsSync(userDataDir: string): LlmSettings {
+  try {
+    return mergeLlmSettings(readFileSync(join(userDataDir, "settings.json"), "utf-8"));
   } catch {
     return { ...DEFAULT_LLM_SETTINGS };
   }

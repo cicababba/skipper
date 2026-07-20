@@ -57,7 +57,7 @@ function pull(n: number, overrides: Partial<PullRequest> = {}): PullRequest {
 
 function manifest(): OrchestratorManifest {
   return {
-    version: 1,
+    version: 2,
     settings: { intakePaused: false },
     items: {},
     parked: {},

@@ -19,7 +19,7 @@ const en = {
   title: "Settings",
 
   llm: {
-    title: "LLM Provider",
+    title: "Default model",
     claudeDesc: "Uses your Claude Max subscription via CLI. No API key needed.",
     openaiDesc: "Uses OpenAI API. Requires an API key.",
     ollamaDesc: "Local models on your machine. Private, no API key.",
@@ -191,7 +191,10 @@ const en = {
       "Whether a red CI on the agent's own push sends the item back to coding with the failing checks as feedback. Capped at 2 rounds per push, then it stops at needs-input.",
     ciReentryAuto: "Auto — re-enter coding on a red CI (max 2 rounds)",
     models: "Models",
-    modelsDesc: "Which model each agent role runs on. A repo can override any of them.",
+    modelsDesc:
+      "Each role inherits the default model unless overridden here; a repo can override any of them.",
+    modelDefault: "Default model",
+    modelUseDefault: "Use default",
     plannerModel: "Planner",
     plannerModelDesc: "Writes the plan and scores its confidence.",
     coderModel: "Coder",
@@ -260,7 +263,7 @@ const it: typeof en = {
   title: "Impostazioni",
 
   llm: {
-    title: "Provider LLM",
+    title: "Modello predefinito",
     claudeDesc: "Usa il tuo abbonamento Claude Max tramite CLI. Nessuna API key richiesta.",
     openaiDesc: "Usa l'API di OpenAI. Richiede una API key.",
     ollamaDesc: "Modelli locali sulla tua macchina. Privato, senza API key.",
@@ -432,7 +435,10 @@ const it: typeof en = {
       "Se una CI rossa sul push dell'agente rimanda l'item in sviluppo con i check falliti come feedback. Massimo 2 round per push, poi si ferma a needs-input.",
     ciReentryAuto: "Auto — rientra in sviluppo su CI rossa (max 2 round)",
     models: "Modelli",
-    modelsDesc: "Su quale modello gira ogni ruolo. Ogni repo può sovrascriverli.",
+    modelsDesc:
+      "Ogni ruolo eredita il modello predefinito se non sovrascritto qui; ogni repo può sovrascriverli.",
+    modelDefault: "Modello predefinito",
+    modelUseDefault: "Usa predefinito",
     plannerModel: "Planner",
     plannerModelDesc: "Scrive il piano e ne valuta la confidenza.",
     coderModel: "Coder",
@@ -501,7 +507,7 @@ const fr: typeof en = {
   title: "Paramètres",
 
   llm: {
-    title: "Fournisseur LLM",
+    title: "Modèle par défaut",
     claudeDesc: "Utilise votre abonnement Claude Max via la CLI. Aucune clé API requise.",
     openaiDesc: "Utilise l'API OpenAI. Nécessite une clé API.",
     ollamaDesc: "Modèles locaux sur votre machine. Privé, sans clé API.",
@@ -673,7 +679,10 @@ const fr: typeof en = {
       "Si une CI rouge sur le push de l'agent renvoie l'item en codage avec les checks échoués comme feedback. Maximum 2 tours par push, puis arrêt à needs-input.",
     ciReentryAuto: "Auto — reprendre le codage sur CI rouge (max 2 tours)",
     models: "Modèles",
-    modelsDesc: "Le modèle utilisé par chaque rôle. Chaque dépôt peut les remplacer.",
+    modelsDesc:
+      "Chaque rôle hérite du modèle par défaut sauf s'il est remplacé ici ; chaque dépôt peut les remplacer.",
+    modelDefault: "Modèle par défaut",
+    modelUseDefault: "Utiliser par défaut",
     plannerModel: "Planner",
     plannerModelDesc: "Écrit le plan et évalue sa confiance.",
     coderModel: "Coder",
@@ -742,7 +751,7 @@ const es: typeof en = {
   title: "Ajustes",
 
   llm: {
-    title: "Proveedor LLM",
+    title: "Modelo predeterminado",
     claudeDesc: "Usa tu suscripción Claude Max a través de la CLI. No requiere clave de API.",
     openaiDesc: "Usa la API de OpenAI. Requiere una clave de API.",
     ollamaDesc: "Modelos locales en tu máquina. Privado, sin clave de API.",
@@ -914,7 +923,10 @@ const es: typeof en = {
       "Si una CI en rojo sobre el push del agente devuelve el ítem a codificación con los checks fallidos como feedback. Máximo 2 rondas por push, luego se detiene en needs-input.",
     ciReentryAuto: "Auto — volver a codificar con CI en rojo (máx. 2 rondas)",
     models: "Modelos",
-    modelsDesc: "Con qué modelo corre cada rol. Cada repo puede sobrescribirlos.",
+    modelsDesc:
+      "Cada rol hereda el modelo predeterminado salvo que se sobrescriba aquí; cada repo puede sobrescribirlos.",
+    modelDefault: "Modelo predeterminado",
+    modelUseDefault: "Usar predeterminado",
     plannerModel: "Planner",
     plannerModelDesc: "Escribe el plan y puntúa su confianza.",
     coderModel: "Coder",

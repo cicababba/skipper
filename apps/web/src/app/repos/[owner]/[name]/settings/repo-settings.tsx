@@ -72,12 +72,7 @@ export function RepoSettingsView() {
             />
           </Section>
           <Section title={t.settings.orchestration.models} editable={false} editing={false}>
-            <RepoModelControls
-              row={row}
-              global={global}
-              busy={busy}
-              onPatch={(p) => void patch(p)}
-            />
+            <RepoModelControls row={row} busy={busy} onPatch={(p) => void patch(p)} />
           </Section>
         </>
       )}

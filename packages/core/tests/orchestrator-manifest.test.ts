@@ -48,18 +48,15 @@ describe("orchestrator manifest", () => {
   it("returns a fresh manifest when the file is missing", async () => {
     const manifest = await loadOrCreateOrchestratorManifest(filePath);
     expect(manifest).toEqual({
-      version: 1,
+      version: 2,
       settings: {
         intakePaused: false,
         autoPlanPaused: false,
-        plannerModel: "opus",
         confidence: { high: 0.85, low: 0.4, extraPlanRuns: 2 },
-        coderModel: "opus",
         coderMaxTurns: 60,
         autoCoding: "auto",
         review: "auto",
         reviewMaxRounds: 2,
-        reviewerModel: "opus",
         shepherdRepush: "human",
         ciReentry: "off",
         codingWipPerRepo: 1,
@@ -80,14 +77,15 @@ describe("orchestrator manifest", () => {
     const manifest = await loadOrCreateOrchestratorManifest(filePath);
     expect(manifest.settings.intakePaused).toBe(true);
     expect(manifest.settings.autoPlanPaused).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.autoPlanPaused);
-    expect(manifest.settings.plannerModel).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.plannerModel);
+    // #125: the role models are no longer backfilled — absent means inherit llm.claudeModel.
+    expect(manifest.settings.plannerModel).toBeUndefined();
     expect(manifest.settings.confidence).toEqual(DEFAULT_ORCHESTRATOR_SETTINGS.confidence);
-    expect(manifest.settings.coderModel).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.coderModel);
+    expect(manifest.settings.coderModel).toBeUndefined();
     expect(manifest.settings.coderMaxTurns).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.coderMaxTurns);
     expect(manifest.settings.autoCoding).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.autoCoding);
     expect(manifest.settings.review).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.review);
     expect(manifest.settings.reviewMaxRounds).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.reviewMaxRounds);
-    expect(manifest.settings.reviewerModel).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.reviewerModel);
+    expect(manifest.settings.reviewerModel).toBeUndefined();
     expect(manifest.settings.shepherdRepush).toBe("human");
     expect(manifest.settings.codingWipPerRepo).toBe(1);
     expect(manifest.repoSettings).toEqual({});
@@ -209,15 +207,62 @@ describe("orchestrator manifest", () => {
   it("returns a fresh manifest on corrupt JSON", async () => {
     await writeFile(filePath, "{ not json", "utf-8");
     const manifest = await loadOrCreateOrchestratorManifest(filePath);
-    expect(manifest.version).toBe(1);
+    expect(manifest.version).toBe(2);
     expect(manifest.items).toEqual({});
   });
 
   it("returns a fresh manifest on version mismatch", async () => {
-    await writeFile(filePath, JSON.stringify({ version: 2, items: { x: {} } }), "utf-8");
+    await writeFile(filePath, JSON.stringify({ version: 3, items: { x: {} } }), "utf-8");
     const manifest = await loadOrCreateOrchestratorManifest(filePath);
-    expect(manifest.version).toBe(1);
+    expect(manifest.version).toBe(2);
     expect(manifest.items).toEqual({});
+  });
+
+  // #125: v1 manifests carried a materialized opus trio; the strip lets absent keys
+  // fall through to llm.claudeModel, while a deliberately non-opus role survives.
+  describe("role model inherit migration (#125)", () => {
+    it("strips the materialized opus trio from a v1 manifest, keeping non-opus roles", async () => {
+      await writeFile(
+        filePath,
+        JSON.stringify({
+          version: 1,
+          settings: {
+            intakePaused: false,
+            plannerModel: "opus",
+            coderModel: "opus",
+            reviewerModel: "haiku",
+          },
+          items: {},
+          parked: {},
+        }),
+        "utf-8",
+      );
+      const manifest = await loadOrCreateOrchestratorManifest(filePath);
+      expect(manifest.version).toBe(2);
+      expect(manifest.settings.plannerModel).toBeUndefined();
+      expect(manifest.settings.coderModel).toBeUndefined();
+      expect(manifest.settings.reviewerModel).toBe("haiku");
+    });
+
+    it("keeps an explicit opus chosen on a v2 manifest un-stripped across reloads", async () => {
+      await writeFile(
+        filePath,
+        JSON.stringify({
+          version: 2,
+          settings: { intakePaused: false, plannerModel: "opus" },
+          items: {},
+          parked: {},
+        }),
+        "utf-8",
+      );
+      const manifest = await loadOrCreateOrchestratorManifest(filePath);
+      expect(manifest.version).toBe(2);
+      expect(manifest.settings.plannerModel).toBe("opus");
+
+      await saveOrchestratorManifest(filePath, manifest);
+      const reloaded = await loadOrCreateOrchestratorManifest(filePath);
+      expect(reloaded.settings.plannerModel).toBe("opus");
+    });
   });
 
   it("migrates pre-#71 items: platform → source + codeHost, key from number", async () => {
@@ -333,7 +378,7 @@ describe("orchestrator manifest", () => {
 
   it("serializes concurrent saves — last write wins and the file stays valid", async () => {
     const base: OrchestratorManifest = {
-      version: 1,
+      version: 2,
       settings: structuredClone(DEFAULT_ORCHESTRATOR_SETTINGS),
       items: {},
       parked: {},
@@ -349,7 +394,7 @@ describe("orchestrator manifest", () => {
     await Promise.all(saves);
 
     const raw = JSON.parse(await readFile(filePath, "utf-8")) as OrchestratorManifest;
-    expect(raw.version).toBe(1);
+    expect(raw.version).toBe(2);
     expect(Object.keys(raw.parked)).toEqual(["github:9"]);
   });
 });

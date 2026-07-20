@@ -78,11 +78,9 @@ export default function SettingsPage() {
         ))}
 
         <RepositoriesSection />
-        <OrchestrationSection />
 
-        <UpdatesSection />
-
-        {/* LLM Provider */}
+        {/* Default model — the global default the orchestration roles inherit (#125),
+            so it sits above Orchestration where the per-role overrides live. */}
         <section className="mb-10">
           <h2 className="text-sm font-medium text-muted/70 uppercase tracking-wider mb-4">
             {t.settings.llm.title}
@@ -113,6 +111,10 @@ export default function SettingsPage() {
           </div>
 
         </section>
+
+        <OrchestrationSection defaultModel={claudeModel} />
+
+        <UpdatesSection />
 
         {/* Knowledge atoms */}
         <section className="mb-10">

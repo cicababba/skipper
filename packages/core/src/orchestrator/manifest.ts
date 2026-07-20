@@ -15,7 +15,7 @@ export { DEFAULT_ORCHESTRATOR_SETTINGS };
 export type { OrchestratorSettings };
 
 export interface OrchestratorManifest {
-  version: 1;
+  version: 2;
   settings: OrchestratorSettings;
   /** itemId → tracked issue. */
   items: Record<string, TrackedItem>;
@@ -47,6 +47,19 @@ function migrateReviewMode(settings: OrchestratorSettings): void {
   }
   delete legacy.reviewMode;
   settings.review ??= DEFAULT_ORCHESTRATOR_SETTINGS.review;
+}
+
+/**
+ * #125: the per-role model globals became optional overrides of llm.claudeModel.
+ * Old builds materialized the "opus" default onto disk, so a v1 manifest can't tell a
+ * deliberate opus from the old default — both strip to "inherit". Anything else was
+ * user-chosen and survives as an explicit override. One-time (v1 only) and idempotent:
+ * v2 manifests are never re-stripped, so opus chosen after the upgrade sticks.
+ */
+function migrateRoleModelInherit(settings: OrchestratorSettings): void {
+  for (const key of ["plannerModel", "coderModel", "reviewerModel"] as const) {
+    if (settings[key] === "opus") delete settings[key];
+  }
 }
 
 /**
@@ -102,7 +115,7 @@ function resolveAccountKeys(
 
 function freshManifest(): OrchestratorManifest {
   return {
-    version: 1,
+    version: 2,
     settings: structuredClone(DEFAULT_ORCHESTRATOR_SETTINGS),
     items: {},
     parked: {},
@@ -119,8 +132,10 @@ export async function loadOrCreateOrchestratorManifest(
   try {
     const raw = await readFile(filePath, "utf-8");
     const parsed = JSON.parse(raw) as OrchestratorManifest;
+    // On-disk version can lag the current literal, so read it as a plain number.
+    const version = parsed.version as number;
     if (
-      parsed.version === 1 &&
+      (version === 1 || version === 2) &&
       typeof parsed.settings === "object" &&
       parsed.settings !== null &&
       typeof parsed.items === "object" &&
@@ -130,17 +145,19 @@ export async function loadOrCreateOrchestratorManifest(
     ) {
       // Additive settings (#8, #9, #10, #62): fill defaults into older manifests.
       parsed.settings.autoPlanPaused ??= DEFAULT_ORCHESTRATOR_SETTINGS.autoPlanPaused;
-      parsed.settings.plannerModel ??= DEFAULT_ORCHESTRATOR_SETTINGS.plannerModel;
       parsed.settings.confidence ??= structuredClone(DEFAULT_ORCHESTRATOR_SETTINGS.confidence);
-      parsed.settings.coderModel ??= DEFAULT_ORCHESTRATOR_SETTINGS.coderModel;
       parsed.settings.coderMaxTurns ??= DEFAULT_ORCHESTRATOR_SETTINGS.coderMaxTurns;
       parsed.settings.autoCoding ??= DEFAULT_ORCHESTRATOR_SETTINGS.autoCoding;
       migrateReviewMode(parsed.settings);
       parsed.settings.reviewMaxRounds ??= DEFAULT_ORCHESTRATOR_SETTINGS.reviewMaxRounds;
-      parsed.settings.reviewerModel ??= DEFAULT_ORCHESTRATOR_SETTINGS.reviewerModel;
       parsed.settings.shepherdRepush ??= DEFAULT_ORCHESTRATOR_SETTINGS.shepherdRepush;
       parsed.settings.ciReentry ??= DEFAULT_ORCHESTRATOR_SETTINGS.ciReentry;
       parsed.settings.codingWipPerRepo ??= DEFAULT_ORCHESTRATOR_SETTINGS.codingWipPerRepo;
+      // #125: strip the materialized opus trio once, then pin v2 so it never re-strips.
+      if (version === 1) {
+        migrateRoleModelInherit(parsed.settings);
+        parsed.version = 2;
+      }
       parsed.repoSettings ??= {};
       parsed.projectMappings ??= {};
       for (const item of Object.values(parsed.items)) migrateTwoAxisItem(item);

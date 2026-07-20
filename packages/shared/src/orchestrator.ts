@@ -11,6 +11,7 @@ import {
 } from "./confidence";
 import type { CodeHostId, Issue, IssueSourceId, PullRequest, RepoRef, SourceRef } from "./inbox";
 import type { StoredPlan } from "./plan";
+import { DEFAULT_LLM_SETTINGS } from "./types";
 
 export type AgentReviewOutcome = CriticVerdict | "skipped" | "unavailable";
 
@@ -115,12 +116,13 @@ export interface OrchestratorSettings {
    * does nothing because a repo overrides it is worse than no toggle.
    */
   autoPlanPaused: boolean;
-  /** Model handed to the planner's LLM provider (also scores confidence, #8). */
-  plannerModel: string;
+  /** Model handed to the planner's LLM provider (also scores confidence, #8).
+   *  #125: absent = inherit llm.claudeModel. */
+  plannerModel?: string;
   /** Gate thresholds + convergence sample count (#8). Hand-editable by design (#62). */
   confidence: ConfidenceThresholds & { extraPlanRuns: number };
-  /** Model handed to the coding agent (#9). */
-  coderModel: string;
+  /** Model handed to the coding agent (#9). #125: absent = inherit llm.claudeModel. */
+  coderModel?: string;
   /** Max agent turns per coding run (#9). Not reviewMaxRounds. */
   coderMaxTurns: number;
   /** #62: on = always queue, off = always plan-gate, auto = composite >= confidence.high. */
@@ -129,8 +131,8 @@ export interface OrchestratorSettings {
   review: GateMode;
   /** #62: review rounds per fix chain. Applies to on + auto, irrelevant under off. */
   reviewMaxRounds: number;
-  /** Model handed to the diff critic (#10). */
-  reviewerModel: string;
+  /** Model handed to the diff critic (#10). #125: absent = inherit llm.claudeModel. */
+  reviewerModel?: string;
   /** After a change-request fix round (#11): hold at human-review or repush unattended. */
   shepherdRepush: "human" | "auto";
   /** auto = a red CI on the agent's own push re-enters coding (round-capped). off = evidence only. */
@@ -142,14 +144,11 @@ export interface OrchestratorSettings {
 export const DEFAULT_ORCHESTRATOR_SETTINGS: OrchestratorSettings = {
   intakePaused: false,
   autoPlanPaused: false,
-  plannerModel: "opus",
   confidence: { ...DEFAULT_CONFIDENCE_THRESHOLDS, extraPlanRuns: DEFAULT_EXTRA_PLAN_RUNS },
-  coderModel: "opus",
   coderMaxTurns: 60,
   autoCoding: "auto",
   review: "auto",
   reviewMaxRounds: 2,
-  reviewerModel: "opus",
   shepherdRepush: "human",
   ciReentry: "off",
   codingWipPerRepo: 1,
@@ -217,7 +216,11 @@ export interface ResolvedRepoOrchestratorSettings extends ResolvedRepoIntakeSett
 export function resolveRepoOrchestratorSettings(
   repo: RepoIntakeSettings | undefined,
   global: OrchestratorSettings,
+  defaultModel?: string,
 ): ResolvedRepoOrchestratorSettings {
+  // #125: the per-role globals are optional overrides of llm.claudeModel. The floor
+  // covers a hand-edited "" and an omitted arg, so modelForRole never receives "".
+  const dm = defaultModel?.trim() || DEFAULT_LLM_SETTINGS.claudeModel;
   return {
     ...resolveRepoIntakeSettings(repo),
     wipLimit: repo?.wipLimit ?? global.codingWipPerRepo,
@@ -225,9 +228,9 @@ export function resolveRepoOrchestratorSettings(
     review: repo?.review ?? global.review,
     reviewMaxRounds: repo?.reviewMaxRounds ?? global.reviewMaxRounds,
     ciReentry: repo?.ciReentry ?? global.ciReentry,
-    plannerModel: repo?.plannerModel ?? global.plannerModel,
-    coderModel: repo?.coderModel ?? global.coderModel,
-    reviewerModel: repo?.reviewerModel ?? global.reviewerModel,
+    plannerModel: repo?.plannerModel ?? global.plannerModel ?? dm,
+    coderModel: repo?.coderModel ?? global.coderModel ?? dm,
+    reviewerModel: repo?.reviewerModel ?? global.reviewerModel ?? dm,
   };
 }
 
