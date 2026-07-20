@@ -3,6 +3,7 @@ import type { IssuePlan } from "@skipper/shared";
 
 export const IssuePlanSchema = z.object({
   summary: z.string().min(1),
+  context: z.array(z.string()),
   files: z
     .array(
       z.object({
@@ -22,6 +23,7 @@ export const IssuePlanSchema = z.object({
       }),
     )
     .min(1),
+  outOfScope: z.array(z.string()),
   acceptance: z.array(
     z.object({
       criterion: z.string(),
@@ -29,6 +31,8 @@ export const IssuePlanSchema = z.object({
     }),
   ),
   risks: z.array(z.string()),
+  verificationCommands: z.array(z.string()),
+  manualChecks: z.array(z.string()),
   openQuestions: z.array(z.string()),
   estimatedSize: z.enum(["xs", "s", "m", "l", "xl"]),
 }) satisfies z.ZodType<IssuePlan>;

@@ -41,6 +41,9 @@ export function buildCoderPrompt(issue: PlanIssueInput, plan: IssuePlan): string
     `Files:`,
     ...plan.files.map((f) => `- ${f.path}${f.status === "new" ? " (new)" : ""} — ${f.reason}`),
     ``,
+    plan.context?.length
+      ? `Context (verified repo facts):\n${plan.context.map((c) => `- ${c}`).join("\n")}\n`
+      : "",
     `Steps:`,
     ...plan.steps.map((s, i) => {
       const refs = [
@@ -52,12 +55,23 @@ export function buildCoderPrompt(issue: PlanIssueInput, plan: IssuePlan): string
       return `${i + 1}. ${s.title} — ${s.detail}${refs ? ` (${refs})` : ""}`;
     }),
     ``,
+    plan.outOfScope?.length
+      ? `Out of scope — do NOT touch:\n${plan.outOfScope.map((o) => `- ${o}`).join("\n")}`
+      : "",
     plan.acceptance.length > 0
       ? `Acceptance criteria:\n${plan.acceptance
           .map((a) => `- ${a.criterion} (addressed by: ${a.addressedBy})`)
           .join("\n")}`
       : "",
     plan.risks.length > 0 ? `Risks:\n${plan.risks.map((r) => `- ${r}`).join("\n")}` : "",
+    plan.verificationCommands?.length
+      ? `Before reporting done, run these commands and make sure they pass:\n${plan.verificationCommands
+          .map((c) => `- ${c}`)
+          .join("\n")}`
+      : "",
+    plan.manualChecks?.length
+      ? `Manual checks (for the human reviewer):\n${plan.manualChecks.map((m) => `- ${m}`).join("\n")}`
+      : "",
     `--- End plan ---`,
   ];
   return lines.filter((l) => l !== "").join("\n");

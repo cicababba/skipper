@@ -364,6 +364,18 @@ export function PlanDetailView() {
             ) : null,
           )}
           {section(
+            "context",
+            p.sections.context,
+            plan.context?.length,
+            <LinesView lines={plan.context ?? []} />,
+            draft?.section === "context" ? (
+              <LinesEditor
+                lines={draft.lines}
+                onChange={(lines) => setDraft({ section: "context", lines })}
+              />
+            ) : null,
+          )}
+          {section(
             "files",
             p.sections.files,
             plan.files.length,
@@ -388,6 +400,18 @@ export function PlanDetailView() {
             ) : null,
           )}
           {section(
+            "outOfScope",
+            p.sections.outOfScope,
+            plan.outOfScope?.length,
+            <LinesView lines={plan.outOfScope ?? []} />,
+            draft?.section === "outOfScope" ? (
+              <LinesEditor
+                lines={draft.lines}
+                onChange={(lines) => setDraft({ section: "outOfScope", lines })}
+              />
+            ) : null,
+          )}
+          {section(
             "acceptance",
             p.sections.acceptance,
             plan.acceptance.length,
@@ -408,6 +432,30 @@ export function PlanDetailView() {
               <LinesEditor
                 lines={draft.lines}
                 onChange={(lines) => setDraft({ section: "risks", lines })}
+              />
+            ) : null,
+          )}
+          {section(
+            "verificationCommands",
+            p.sections.verificationCommands,
+            plan.verificationCommands?.length,
+            <LinesView lines={plan.verificationCommands ?? []} />,
+            draft?.section === "verificationCommands" ? (
+              <LinesEditor
+                lines={draft.lines}
+                onChange={(lines) => setDraft({ section: "verificationCommands", lines })}
+              />
+            ) : null,
+          )}
+          {section(
+            "manualChecks",
+            p.sections.manualChecks,
+            plan.manualChecks?.length,
+            <LinesView lines={plan.manualChecks ?? []} />,
+            draft?.section === "manualChecks" ? (
+              <LinesEditor
+                lines={draft.lines}
+                onChange={(lines) => setDraft({ section: "manualChecks", lines })}
               />
             ) : null,
           )}

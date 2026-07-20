@@ -70,6 +70,39 @@ describe("buildCoderPrompt", () => {
     const prompt = buildCoderPrompt({ ...issue, body: undefined }, plan);
     expect(prompt).toContain("(The issue has no body.)");
   });
+
+  it("renders context, out of scope and verification sections when present", () => {
+    const rich: IssuePlan = {
+      ...plan,
+      context: ["src/app.tsx:3 wraps everything in Providers"],
+      outOfScope: ["the routing layer"],
+      verificationCommands: ["pnpm test", "pnpm lint"],
+      manualChecks: ["toggle dark mode and reload"],
+    };
+    const prompt = buildCoderPrompt(issue, rich);
+    expect(prompt).toContain("Context (verified repo facts):");
+    expect(prompt).toContain("- src/app.tsx:3 wraps everything in Providers");
+    expect(prompt).toContain("Out of scope — do NOT touch:");
+    expect(prompt).toContain("- the routing layer");
+    expect(prompt).toContain("Before reporting done, run these commands and make sure they pass:");
+    expect(prompt).toContain("- pnpm lint");
+    expect(prompt).toContain("Manual checks (for the human reviewer):");
+    expect(prompt).toContain("- toggle dark mode and reload");
+  });
+
+  it("omits the new sections when the fields are absent or empty", () => {
+    const prompt = buildCoderPrompt(issue, {
+      ...plan,
+      context: [],
+      outOfScope: undefined,
+      verificationCommands: [],
+      manualChecks: undefined,
+    });
+    expect(prompt).not.toContain("Context (verified repo facts):");
+    expect(prompt).not.toContain("Out of scope");
+    expect(prompt).not.toContain("Before reporting done");
+    expect(prompt).not.toContain("Manual checks");
+  });
 });
 
 describe("buildFixPrompt", () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { IssuePlan } from "@skipper/shared";
 import type { AgentOptions, LLMProviderInterface, LLMResponse } from "../src/llm/provider";
-import { generatePlan, PlanGenerationError, type PlanIssueInput } from "../src/planner";
+import { generatePlan, IssuePlanSchema, PlanGenerationError, type PlanIssueInput } from "../src/planner";
 
 const ISSUE: PlanIssueInput = {
   key: "42",
@@ -13,6 +13,7 @@ const ISSUE: PlanIssueInput = {
 
 const VALID_PLAN: IssuePlan = {
   summary: "Add retry with backoff to the poller",
+  context: ["src/poller.ts:12 polls on a fixed interval"],
   files: [{ path: "src/poller.ts", reason: "hosts the poll loop" }],
   steps: [
     {
@@ -22,8 +23,11 @@ const VALID_PLAN: IssuePlan = {
       symbols: ["pollNow"],
     },
   ],
+  outOfScope: ["the scheduler"],
   acceptance: [{ criterion: "retries on 429", addressedBy: "backoff in pollNow" }],
   risks: ["rate-limit interplay"],
+  verificationCommands: ["pnpm test"],
+  manualChecks: ["trigger a 429 and watch it retry"],
   openQuestions: [],
   estimatedSize: "s",
 };
@@ -53,6 +57,24 @@ function fakeLLM(opts: FakeLLMOptions): {
   } as unknown as LLMProviderInterface;
   return { llm, agent, askStructured };
 }
+
+describe("IssuePlanSchema — new required generation fields (#143)", () => {
+  it("accepts the four fields as empty arrays", () => {
+    const payload = {
+      ...VALID_PLAN,
+      context: [],
+      outOfScope: [],
+      verificationCommands: [],
+      manualChecks: [],
+    };
+    expect(IssuePlanSchema.parse(payload)).toEqual(payload);
+  });
+
+  it("rejects a payload missing one of them", () => {
+    const { context: _context, ...missingContext } = VALID_PLAN;
+    expect(IssuePlanSchema.safeParse(missingContext).success).toBe(false);
+  });
+});
 
 describe("generatePlan — deterministic repair (#50)", () => {
   it("repairs a fenced reply without spending the LLM repair round", async () => {
