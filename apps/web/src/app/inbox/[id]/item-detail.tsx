@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { EyeOff, SquareTerminal } from "lucide-react";
+import { ArrowLeft, ExternalLink, EyeOff, SquareTerminal } from "lucide-react";
 import {
+  displayKey,
   slugKey,
   type LifecycleState,
   type TrackedItem,
@@ -12,7 +14,10 @@ import {
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useTerminal } from "@/lib/terminal-context";
 import { useT } from "@/lib/app-i18n";
+import { repoKey } from "@/lib/inbox/model";
 import { confirmAndUntrack } from "../item-actions";
+import { StateBadge } from "../state-badge";
+import { StaleRepoBadge } from "../stale-repo-badge";
 import { IssueDetailView } from "./issue-detail";
 import { PlanDetailView } from "./plan-detail";
 import { CodingDetailView } from "./coding-detail";
@@ -109,7 +114,65 @@ export function ItemDetailView() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center gap-1 px-6 pt-3 border-b border-border shrink-0">
+      <div className="px-6 pt-4 space-y-2 shrink-0">
+        <Link
+          href="/inbox"
+          className="flex items-center gap-1.5 text-[12px] text-muted hover:text-foreground transition-colors w-fit"
+        >
+          <ArrowLeft size={13} />
+          {t.inbox.plan.back}
+        </Link>
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-baseline gap-2 min-w-0 flex-1">
+            <span className="font-mono text-[13px] text-muted shrink-0">
+              {displayKey(item.key)}
+            </span>
+            <h1 className="text-xl font-semibold tracking-tight min-w-0">{item.title}</h1>
+            <button
+              onClick={() => void window.skipper?.openExternal(item.url)}
+              className="p-1 rounded text-muted hover:text-accent transition-colors shrink-0 self-center"
+              title={item.url}
+            >
+              <ExternalLink size={14} />
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {showTerminal && (
+              <button
+                onClick={() => {
+                  if (terminalReady)
+                    void openTerminal(terminalReady.path, `issue-${slugKey(item.key)}`);
+                }}
+                disabled={!terminalReady}
+                className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              >
+                <SquareTerminal size={13} />
+                {t.inbox.worktree.openTerminal}
+              </button>
+            )}
+            <button
+              onClick={() => {
+                void confirmAndUntrack(item, untrackItem, t).then((done) => {
+                  if (done) router.push("/inbox");
+                });
+              }}
+              className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors"
+            >
+              <EyeOff size={13} />
+              {t.inbox.actions.untrack}
+            </button>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap text-[12px] text-muted">
+          <span>{repoKey(item.repo)}</span>
+          <StaleRepoBadge item={item} />
+          <StateBadge item={item} />
+          <span className="text-[11px] font-medium px-1.5 py-0.5 rounded border bg-card text-muted border-border uppercase">
+            {item.source}
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 px-6 pt-2 border-b border-border shrink-0">
         {tabs.map((tk) => {
           const enabled = tabEnabled(tk, item);
           const active = activeTab === tk;
@@ -130,32 +193,6 @@ export function ItemDetailView() {
             </button>
           );
         })}
-        <div className="ml-auto flex items-center gap-1.5">
-          {showTerminal && (
-            <button
-              onClick={() => {
-                if (terminalReady)
-                  void openTerminal(terminalReady.path, `issue-${slugKey(item.key)}`);
-              }}
-              disabled={!terminalReady}
-              className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-            >
-              <SquareTerminal size={13} />
-              {t.inbox.worktree.openTerminal}
-            </button>
-          )}
-          <button
-            onClick={() => {
-              void confirmAndUntrack(item, untrackItem, t).then((done) => {
-                if (done) router.push("/inbox");
-              });
-            }}
-            className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors"
-          >
-            <EyeOff size={13} />
-            {t.inbox.actions.untrack}
-          </button>
-        </div>
       </div>
       <div className="flex-1 min-h-0 overflow-auto flex flex-col">
         {activeTab === "detail" ? (

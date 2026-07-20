@@ -1,12 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   AlertTriangle,
-  ArrowLeft,
-  ExternalLink,
   FolderX,
   GitBranch,
   Inbox,
@@ -23,7 +20,6 @@ import {
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useTerminal } from "@/lib/terminal-context";
 import { useT } from "@/lib/app-i18n";
-import { repoKey } from "@/lib/inbox/model";
 import {
   buildClaudePrompt,
   changeForRelPath,
@@ -31,7 +27,6 @@ import {
   worktreeRelPath,
 } from "@/lib/inbox/worktree";
 import { FileTree } from "@/components/file-tree";
-import { StateBadge } from "../state-badge";
 import { MemoriesCard } from "./memories-card";
 import { WorktreeFileView } from "./worktree-file-view";
 import { WorktreeChangesList } from "./worktree-changes-list";
@@ -177,36 +172,14 @@ export function WorktreeDetailView() {
 
   return (
     <div className="h-full flex flex-col p-6 gap-4">
-      <div className="space-y-2 shrink-0">
-        <Link
-          href="/inbox"
-          className="flex items-center gap-1.5 text-[12px] text-muted hover:text-foreground transition-colors w-fit"
+      <div className="flex items-center gap-2 flex-wrap shrink-0 text-[12px] text-muted">
+        <span
+          className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-card font-mono text-[11px]"
+          title={ready?.path ?? worktree.path}
         >
-          <ArrowLeft size={13} />
-          {t.inbox.plan.back}
-        </Link>
-        <div className="flex items-baseline gap-2 min-w-0">
-          <span className="font-mono text-[13px] text-muted shrink-0">{displayKey(item.key)}</span>
-          <h1 className="text-xl font-semibold tracking-tight min-w-0">{item.title}</h1>
-          <button
-            onClick={() => void window.skipper?.openExternal(item.url)}
-            className="p-1 rounded text-muted hover:text-accent transition-colors shrink-0 self-center"
-            title={item.url}
-          >
-            <ExternalLink size={14} />
-          </button>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap text-[12px] text-muted">
-          <span>{repoKey(item.repo)}</span>
-          <StateBadge item={item} />
-          <span
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-card font-mono text-[11px]"
-            title={ready?.path ?? worktree.path}
-          >
-            <GitBranch size={11} />
-            {worktree.branch}
-          </span>
-        </div>
+          <GitBranch size={11} />
+          {worktree.branch}
+        </span>
       </div>
 
       {status.kind === "error" && (

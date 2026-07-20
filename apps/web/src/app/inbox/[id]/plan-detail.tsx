@@ -3,11 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ExternalLink, Inbox, Loader2, X } from "lucide-react";
-import { displayKey, type IssuePlan, type StoredPlan } from "@skipper/shared";
+import { ArrowLeft, Inbox, Loader2, X } from "lucide-react";
+import { type IssuePlan, type StoredPlan } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
-import { repoKey } from "@/lib/inbox/model";
 import { bandClasses, pct, ReportBody } from "@/components/confidence-popover";
 import { EventConsole } from "@/components/event-console";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
@@ -19,7 +18,6 @@ import {
   type SectionDraft,
   type SectionId,
 } from "@/lib/inbox/plan-edit";
-import { StateBadge } from "../state-badge";
 import {
   AcceptanceEditor,
   AcceptanceView,
@@ -212,24 +210,9 @@ export function PlanDetailView() {
 
   return (
     <div className="min-h-full p-6 space-y-4 max-w-3xl mx-auto">
-      {backLink}
-
-      {/* Header */}
-      <div className="space-y-2">
-        <div className="flex items-baseline gap-2 min-w-0">
-          <span className="font-mono text-[13px] text-muted shrink-0">{displayKey(item.key)}</span>
-          <h1 className="text-xl font-semibold tracking-tight min-w-0">{item.title}</h1>
-          <button
-            onClick={() => void window.skipper?.openExternal(item.url)}
-            className="p-1 rounded text-muted hover:text-accent transition-colors shrink-0 self-center"
-            title={item.url}
-          >
-            <ExternalLink size={14} />
-          </button>
-        </div>
+      {/* Plan meta: size + generation info (shared title header lives in the shell) */}
+      {(plan || stored) && (
         <div className="flex items-center gap-2 flex-wrap text-[12px] text-muted">
-          <span>{repoKey(item.repo)}</span>
-          <StateBadge item={item} />
           {plan &&
             (gate ? (
               <select
@@ -256,7 +239,7 @@ export function PlanDetailView() {
             </span>
           )}
         </div>
-      </div>
+      )}
 
       {/* Gate actions */}
       {gate && (

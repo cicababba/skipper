@@ -1,15 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowLeft, ExternalLink, Inbox, Loader2 } from "lucide-react";
-import { displayKey } from "@skipper/shared";
+import { AlertTriangle, Inbox, Loader2 } from "lucide-react";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
-import { repoKey } from "@/lib/inbox/model";
 import { EventConsole } from "@/components/event-console";
-import { StateBadge } from "../state-badge";
 import { ResumeSessionButton } from "./resume-session";
 
 export function ReviewDetailView() {
@@ -70,52 +66,12 @@ export function ReviewDetailView() {
     );
   }
 
-  const backLink = (
-    <Link
-      href="/inbox"
-      className="flex items-center gap-1.5 text-[12px] text-muted hover:text-foreground transition-colors w-fit"
-    >
-      <ArrowLeft size={13} />
-      {t.inbox.plan.back}
-    </Link>
-  );
-
-  if (!item) {
-    return (
-      <div className="min-h-full p-6 space-y-4 max-w-3xl mx-auto">
-        {backLink}
-        <div className="flex flex-col items-center gap-3 py-24 text-center">
-          <Inbox size={40} className="opacity-30" />
-          <p className="text-sm text-muted max-w-md">{t.inbox.plan.notFound}</p>
-        </div>
-      </div>
-    );
-  }
+  if (!item) return null;
 
   const review = item.review;
 
   return (
     <div className="min-h-full p-6 space-y-4 max-w-3xl mx-auto">
-      {backLink}
-
-      <div className="space-y-2">
-        <div className="flex items-baseline gap-2 min-w-0">
-          <span className="font-mono text-[13px] text-muted shrink-0">{displayKey(item.key)}</span>
-          <h1 className="text-xl font-semibold tracking-tight min-w-0">{item.title}</h1>
-          <button
-            onClick={() => void window.skipper?.openExternal(item.url)}
-            className="p-1 rounded text-muted hover:text-accent transition-colors shrink-0 self-center"
-            title={item.url}
-          >
-            <ExternalLink size={14} />
-          </button>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap text-[12px] text-muted">
-          <span>{repoKey(item.repo)}</span>
-          <StateBadge item={item} />
-        </div>
-      </div>
-
       <ResumeSessionButton
         itemId={id}
         item={item}
