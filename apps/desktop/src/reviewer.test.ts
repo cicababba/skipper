@@ -105,6 +105,7 @@ function makeHarness(
     getSettings: () => ({ ...DEFAULT_ORCHESTRATOR_SETTINGS, review: "on" }) as OrchestratorSettings,
     getRepoSettings: () => resolveRepoOrchestratorSettings(repoSettings, deps.getSettings()),
     getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS }),
+    setReviewSessionId: async () => {},
     ...overrides,
   };
   return { items, deps, completions };

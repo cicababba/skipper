@@ -2,7 +2,12 @@ import { execSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import type { AgentOptions, LLMProviderInterface, LLMResponse } from "./provider";
+import type {
+  AgentOptions,
+  LLMProviderInterface,
+  LLMResponse,
+  StructuredOptions,
+} from "./provider";
 import { parseJsonReply } from "./json";
 import { createStreamJsonParser } from "./stream";
 import { MEMORY_TOOLS, buildMemoryMcpArgs } from "./memory-mcp";
@@ -208,7 +213,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       this.model,
       "--max-turns",
       String(opts.maxTurns ?? 24),
-      "--no-session-persistence",
+      ...(opts.sessionId ? ["--session-id", opts.sessionId] : ["--no-session-persistence"]),
       "--disable-slash-commands",
       // Enable a capable but read-leaning toolset so the agent can inspect
       // local code and the web. `--tools` limits what's available (no
@@ -247,6 +252,9 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
             outputTokens: data.usage.output_tokens ?? 0,
           }
         : undefined,
+      ...(opts.sessionId
+        ? { sessionId: typeof data.session_id === "string" ? data.session_id : opts.sessionId }
+        : {}),
     };
   }
 
@@ -258,8 +266,12 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
     // The mapped result event truncates its summary — recover the full result
     // text (the plan JSON can exceed the cap) from the raw line instead.
     let resultLine: Record<string, unknown> | null = null;
+    let initSessionId: string | undefined;
     const parser = createStreamJsonParser(
-      (event) => opts.onEvent?.(event),
+      (event) => {
+        if (event.kind === "agent-init") initSessionId = event.sessionId;
+        opts.onEvent?.(event);
+      },
       (line) => {
         if (line.type === "result") resultLine = line;
       },
@@ -282,12 +294,14 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
             outputTokens: typeof usage.output_tokens === "number" ? usage.output_tokens : 0,
           }
         : undefined,
+      ...(opts.sessionId ? { sessionId: initSessionId ?? opts.sessionId } : {}),
     };
   }
 
   async askStructured<T>(
     prompt: string,
     schema: Record<string, unknown>,
+    opts?: StructuredOptions,
   ): Promise<T> {
     const args = [
       "-p",
@@ -298,7 +312,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       this.model,
       "--max-turns",
       "1",
-      "--no-session-persistence",
+      ...(opts?.sessionId ? ["--session-id", opts.sessionId] : ["--no-session-persistence"]),
       "--disable-slash-commands",
       "--tools",
       "",
@@ -312,7 +326,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
     // model to reply with JSON-only — then extract.
     const inlined =
       `${prompt}\n\n--\nReply with ONLY a single JSON value matching this JSON Schema. No prose, no code fences, no preamble.\n\nSchema:\n${JSON.stringify(schema)}`;
-    const stdout = await runClaude(args, inlined);
+    const stdout = await runClaude(args, inlined, opts?.cwd);
 
     const data = JSON.parse(stdout);
     if (data.is_error) {

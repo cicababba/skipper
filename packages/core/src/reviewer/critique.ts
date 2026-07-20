@@ -29,6 +29,9 @@ export interface CritiqueDiffArgs {
   issue: PlanIssueInput;
   /** The plan's acceptance mapping — what the reviewer reviews AGAINST. */
   acceptance: PlanAcceptance[];
+  /** Persist this round under a session (#111). id + cwd are bundled — a session
+   *  id is only resumable from the worktree it was minted in. */
+  session?: { id: string; cwd: string };
 }
 
 export async function critiqueDiff(
@@ -60,5 +63,6 @@ export async function critiqueDiff(
       context,
     },
     llm,
+    args.session ? { cwd: args.session.cwd, sessionId: args.session.id } : undefined,
   );
 }

@@ -72,9 +72,10 @@ export function buildCriticPrompt(input: CriticInput): string {
 export async function runCritic(
   input: CriticInput,
   llm: LLMProviderInterface,
+  opts?: { cwd?: string; sessionId?: string },
 ): Promise<CriticSignal> {
   const schema = z.toJSONSchema(CriticVerdictSchema) as Record<string, unknown>;
-  const reply = await llm.askStructured<unknown>(buildCriticPrompt(input), schema);
+  const reply = await llm.askStructured<unknown>(buildCriticPrompt(input), schema, opts);
   const parsed = CriticVerdictSchema.safeParse(reply);
   if (!parsed.success) {
     throw new CriticError(`critic returned an invalid verdict: ${parsed.error.message}`, reply);
