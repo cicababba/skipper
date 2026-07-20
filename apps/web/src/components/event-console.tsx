@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, Bot, CheckCircle2, CircleDashed, Wrench, XCircle } from "lucide-react";
+import {
+  AlertCircle,
+  Bot,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  CircleDashed,
+  Wrench,
+  XCircle,
+} from "lucide-react";
 import type { CodingEvent, CodingEventEnvelope } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { appendLive, mergeReplay } from "@/lib/inbox/console";
@@ -15,14 +24,26 @@ interface EventConsoleProps {
   getEvents: (itemId: string) => Promise<CodingEventEnvelope[]>;
   onEvent: (itemId: string, callback: (envelope: CodingEventEnvelope) => void) => () => void;
   className?: string;
+  /** Wrap the console in a chevron-toggle header (default expanded). The
+   *  subscription stays mounted while collapsed so events keep accumulating. */
+  collapsible?: boolean;
+  title?: string;
 }
 
 const STICKY_THRESHOLD = 24;
 
-export function EventConsole({ itemId, getEvents, onEvent, className }: EventConsoleProps) {
+export function EventConsole({
+  itemId,
+  getEvents,
+  onEvent,
+  className,
+  collapsible,
+  title,
+}: EventConsoleProps) {
   const { t } = useT();
   const c = t.inbox.console;
   const [envelopes, setEnvelopes] = useState<CodingEventEnvelope[]>([]);
+  const [open, setOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stuckRef = useRef(true);
 
@@ -113,7 +134,7 @@ export function EventConsole({ itemId, getEvents, onEvent, className }: EventCon
     }
   };
 
-  return (
+  const body = (
     <div
       ref={scrollRef}
       onScroll={onScroll}
@@ -128,6 +149,21 @@ export function EventConsole({ itemId, getEvents, onEvent, className }: EventCon
           ))}
         </div>
       )}
+    </div>
+  );
+
+  if (!collapsible) return body;
+
+  return (
+    <div className="space-y-2">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 text-[12px] font-medium text-muted hover:text-foreground transition-colors"
+      >
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        {title}
+      </button>
+      {open && body}
     </div>
   );
 }

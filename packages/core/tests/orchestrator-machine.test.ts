@@ -111,6 +111,11 @@ describe("admitItem", () => {
   it("throws on a repo-less issue — admission requires a resolved repo (#79)", () => {
     expect(() => admitItem(issue(1, { repo: undefined }))).toThrow(/no repo/);
   });
+
+  it("copies the issue body onto the tracked item", () => {
+    const item = admitItem(issue(1, { body: "## Body\nwith markdown" }));
+    expect(item.body).toBe("## Body\nwith markdown");
+  });
 });
 
 describe("applyTransition", () => {

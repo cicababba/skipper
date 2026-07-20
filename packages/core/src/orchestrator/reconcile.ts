@@ -121,10 +121,11 @@ export function reconcile(
       continue;
     }
 
-    if (item.title !== issue.title || item.url !== issue.url) {
+    if (item.title !== issue.title || item.url !== issue.url || item.body !== issue.body) {
       manifest.items[item.id] = {
         ...item,
         title: issue.title,
+        body: issue.body,
         url: issue.url,
         updatedAt: now.toISOString(),
       };

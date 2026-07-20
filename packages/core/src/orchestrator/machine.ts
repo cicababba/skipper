@@ -32,6 +32,7 @@ export function admitItem(issue: Issue, now: Date = new Date()): TrackedItem {
     key: issue.key,
     number: issue.number,
     title: issue.title,
+    body: issue.body,
     url: issue.url,
     state: "triage",
     createdAt: at,

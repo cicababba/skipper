@@ -223,9 +223,17 @@ const en = {
     agentReview: "Agent review",
     rounds: "rounds",
   },
+  tabs: {
+    detail: "Detail",
+    plan: "Plan",
+    coding: "Coding",
+    review: "Review",
+    worktree: "Worktree",
+  },
+  issueDetail: {
+    noBody: "No issue body available for this item.",
+  },
   worktree: {
-    detailsTab: "Details",
-    worktreeTab: "Worktree",
     openTerminal: "Open terminal",
     openClaude: "Open Claude here",
     resumeClaude: "Resume Claude session",
@@ -495,9 +503,17 @@ const it: typeof en = {
     agentReview: "Review agente",
     rounds: "giri",
   },
+  tabs: {
+    detail: "Dettagli",
+    plan: "Piano",
+    coding: "Coding",
+    review: "Review",
+    worktree: "Worktree",
+  },
+  issueDetail: {
+    noBody: "Nessuna descrizione disponibile per questo item.",
+  },
   worktree: {
-    detailsTab: "Dettagli",
-    worktreeTab: "Worktree",
     openTerminal: "Apri terminale",
     openClaude: "Apri Claude qui",
     resumeClaude: "Riprendi la sessione Claude",
@@ -768,9 +784,17 @@ const fr: typeof en = {
     agentReview: "Review agent",
     rounds: "tours",
   },
+  tabs: {
+    detail: "Détail",
+    plan: "Plan",
+    coding: "Codage",
+    review: "Review",
+    worktree: "Worktree",
+  },
+  issueDetail: {
+    noBody: "Aucune description disponible pour cet élément.",
+  },
   worktree: {
-    detailsTab: "Détails",
-    worktreeTab: "Worktree",
     openTerminal: "Ouvrir un terminal",
     openClaude: "Ouvrir Claude ici",
     resumeClaude: "Reprendre la session Claude",
@@ -1040,9 +1064,17 @@ const es: typeof en = {
     agentReview: "Review del agente",
     rounds: "rondas",
   },
+  tabs: {
+    detail: "Detalle",
+    plan: "Plan",
+    coding: "Codificación",
+    review: "Review",
+    worktree: "Worktree",
+  },
+  issueDetail: {
+    noBody: "No hay descripción disponible para este elemento.",
+  },
   worktree: {
-    detailsTab: "Detalles",
-    worktreeTab: "Worktree",
     openTerminal: "Abrir terminal",
     openClaude: "Abrir Claude aquí",
     resumeClaude: "Reanudar la sesión de Claude",
