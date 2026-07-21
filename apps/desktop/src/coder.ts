@@ -17,6 +17,7 @@ import {
   type OrchestratorSettings,
   type QueueCandidate,
 } from "@skipper/core";
+import { latestCodingTransitionAt } from "@skipper/shared";
 import type {
   CoderReport,
   CodingEvent,
@@ -58,7 +59,12 @@ export interface CoderDeps {
   ) => Promise<TrackedItem>;
   /** Sets coderReport.ref (or clears it) + the agent-review transition in one
    *  manifest write (#146). ref undefined = degrade, drop any stale report. */
-  completeCoding: (itemId: string, reportRef: string | undefined, reason: string) => Promise<void>;
+  completeCoding: (
+    itemId: string,
+    reportRef: string | undefined,
+    reason: string,
+    expectedCodingAt?: string,
+  ) => Promise<void>;
   /** Persists item.worktree (path/branch/sessionId) without a transition. */
   setWorktree: (
     itemId: string,
@@ -195,12 +201,16 @@ async function scan(): Promise<void> {
   for (const item of queuedItems) {
     const repoKey = repoKeyOf(item);
     if ((activeRepos.get(repoKey) ?? 0) >= wipLimit(item)) continue;
+    // Reserve the slot synchronously, before the transition await (B4): a second
+    // scan racing this one would otherwise see the stale count and breach WIP.
+    // run()'s finally always release()s, so a failed transition frees it below.
+    activeRepos.set(repoKey, (activeRepos.get(repoKey) ?? 0) + 1);
     try {
       await deps.requestTransition(item.id, "coding", "coder", "coding started");
     } catch {
+      release(repoKey);
       continue;
     }
-    activeRepos.set(repoKey, (activeRepos.get(repoKey) ?? 0) + 1);
     void run(item.id, repoKey);
   }
 }
@@ -212,9 +222,23 @@ async function run(itemId: string, repoKey: string): Promise<void> {
   }
   const controller = new AbortController();
   inFlight.set(itemId, controller);
+  // Run token (#159, mirrors planner): the timestamp of this entry into coding.
+  // A cancel, or an untrack → re-admit that mints a newer coding transition,
+  // makes the completion below detectably stale so a zombie can't land its
+  // report on the fresh lifecycle.
+  let codingAt: string | undefined;
+  const live = (): boolean => {
+    const cur = deps?.getItem(itemId);
+    return (
+      !controller.signal.aborted &&
+      cur?.state === "coding" &&
+      latestCodingTransitionAt(cur) === codingAt
+    );
+  };
   try {
     const item = deps.getItem(itemId);
     if (!item || item.state !== "coding") return;
+    codingAt = latestCodingTransitionAt(item);
 
     const stored = await deps.getPlan(item);
     if (!stored) {
@@ -324,8 +348,9 @@ async function run(itemId: string, repoKey: string): Promise<void> {
       });
     }
 
-    // Cooperative cancel: the item may have been closed/moved mid-run.
-    if (deps.getItem(itemId)?.state !== "coding") return;
+    // Cooperative cancel: the item may have been closed/moved mid-run, or an
+    // untrack → re-admit may have superseded this run's token (#159).
+    if (!live()) return;
     if (result.sessionId && result.sessionId !== sessionId) {
       await deps.setWorktree(itemId, { ...worktree, sessionId: result.sessionId });
     }
@@ -340,8 +365,8 @@ async function run(itemId: string, repoKey: string): Promise<void> {
         } else {
           const provider = await resolveProvider(coderModel);
           report = await repairCoderReport(provider, raw, first.error);
-          // Repair awaited — the item may have moved.
-          if (deps.getItem(itemId)?.state !== "coding") return;
+          // Repair awaited — the item may have moved or been superseded.
+          if (!live()) return;
         }
       } catch {
         report = null; // never fail the run over report format
@@ -370,12 +395,14 @@ async function run(itemId: string, repoKey: string): Promise<void> {
             report.deviations[0] ? ` — deviation: ${report.deviations[0]}` : ""
           }`.slice(0, 200)
         : result.summary.slice(0, 200) || "coding run completed";
-      await deps.completeCoding(itemId, ref, reason);
+      await deps.completeCoding(itemId, ref, reason, codingAt);
     } else {
       await fail(itemId, "failed", `coding run failed: ${(result.summary || "no result").slice(0, 500)}`);
     }
   } catch (err) {
-    if (!(err instanceof CodingAbortError) && deps?.getItem(itemId)?.state === "coding") {
+    // A cancelled/superseded run dies silently — never park the (possibly fresh)
+    // lifecycle on a zombie's failure (#159).
+    if (!(err instanceof CodingAbortError) && live()) {
       const message = err instanceof Error ? err.message : String(err);
       await fail(itemId, "failed", `coding run failed: ${message.slice(0, 500)}`);
     }
