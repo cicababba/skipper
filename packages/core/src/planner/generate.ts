@@ -1,6 +1,7 @@
 import type { CodingEvent, IssuePlan } from "@skipper/shared";
 import type { IssueComment } from "../adapters/types";
 import type { LLMProviderInterface, LLMResponse } from "../llm/provider";
+import { AgentAbortError } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import { ClaudeCliError } from "../llm/claude-cli";
 import { parseJsonReply } from "../llm/json";
@@ -37,6 +38,8 @@ export interface GeneratePlanOptions {
   memory?: MemoryMcp;
   /** Persist the primary agent run under this session id (#111); the repair round stays stateless. */
   sessionId?: string;
+  /** Abort the run; rejects with AgentAbortError. claude-cli only (#159). */
+  signal?: AbortSignal;
 }
 
 export class PlanGenerationError extends Error {
@@ -76,6 +79,7 @@ function tryParsePlan(text: string): { ok: true; plan: IssuePlan } | { ok: false
 export async function validatePlanReply(
   llm: LLMProviderInterface,
   raw: string,
+  signal?: AbortSignal,
 ): Promise<IssuePlan> {
   const first = tryParsePlan(raw);
   if (first.ok) return first.plan;
@@ -83,6 +87,7 @@ export async function validatePlanReply(
   const repaired = await llm.askStructured<unknown>(
     buildRepairPrompt(raw, first.error),
     planJsonSchema(),
+    signal ? { signal } : undefined,
   );
   const second = IssuePlanSchema.safeParse(repaired);
   if (second.success) return second.data;
@@ -105,6 +110,7 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
       `planning needs a provider with agent mode (claude-cli or ollama) — "${opts.llm.name}" has none. Pick one in Settings.`,
     );
   }
+  if (opts.signal?.aborted) throw new AgentAbortError();
   const schema = planJsonSchema();
   let reply: LLMResponse;
   try {
@@ -115,8 +121,11 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
+      ...(opts.signal ? { signal: opts.signal } : {}),
     });
   } catch (err) {
+    // AgentAbortError is not a ClaudeCliError, so an aborted primary run rethrows
+    // here without touching the salvage path (#159).
     if (
       !(err instanceof ClaudeCliError) ||
       err.subtype !== "error_max_turns" ||
@@ -131,11 +140,12 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
         maxTurns: SALVAGE_MAX_TURNS,
         resumeSessionId: opts.sessionId,
         ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+        ...(opts.signal ? { signal: opts.signal } : {}),
       });
     } catch {
       throw err;
     }
   }
 
-  return validatePlanReply(opts.llm, reply.text);
+  return validatePlanReply(opts.llm, reply.text, opts.signal);
 }

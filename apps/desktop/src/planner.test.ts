@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -13,13 +13,19 @@ import type {
 } from "@skipper/shared";
 import { DEFAULT_LLM_SETTINGS, resolveRepoOrchestratorSettings } from "@skipper/shared";
 import type { OrchestratorSettings } from "@skipper/core";
-import { DEFAULT_ORCHESTRATOR_SETTINGS } from "@skipper/core";
-import { initPlanner, pokePlanner, type PlannerDeps } from "./planner";
+import { AgentAbortError, DEFAULT_ORCHESTRATOR_SETTINGS } from "@skipper/core";
+import {
+  initPlanner,
+  pokePlanner,
+  cancelPlanningRun,
+  killAllPlanningRuns,
+  type PlannerDeps,
+} from "./planner";
 
 // The planner's scan() gate (#62). run() itself needs a real LLM, so these cover
 // the admission decision only — which is where the master switch lives.
 
-function makeItem(state: LifecycleState): TrackedItem {
+function makeItem(state: LifecycleState, planningAt?: string): TrackedItem {
   return {
     id: "github:1",
     source: "github",
@@ -34,7 +40,9 @@ function makeItem(state: LifecycleState): TrackedItem {
     state,
     createdAt: "2026-07-13T00:00:00.000Z",
     updatedAt: "2026-07-13T00:00:00.000Z",
-    transitions: [],
+    transitions: planningAt
+      ? [{ at: planningAt, from: "triage", to: "planning", actor: "user" }]
+      : [],
   };
 }
 
@@ -59,7 +67,11 @@ function makeHarness(
     getRepoSettings: () => resolveRepoOrchestratorSettings(repoSettings, getSettings()),
     requestTransition: async (itemId: string, to: LifecycleState, actor: TransitionActor) => {
       transitions.push({ itemId, to, actor });
-      // Never resolves into a real plan run: the item is gone by the time pump() looks.
+      // Model the state change so the finally-poke rescan (#159) doesn't re-enqueue
+      // an item still stuck in "planning". Throwing after keeps a manual run from
+      // proceeding into real plan generation.
+      const idx = items.findIndex((i) => i.id === itemId);
+      if (idx >= 0) items[idx] = { ...items[idx], state: to };
       throw new Error("stop here");
     },
     completePlan: async () => {},
@@ -74,6 +86,13 @@ function makeHarness(
 
 async function settle(): Promise<void> {
   for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+}
+
+async function waitFor(cond: () => boolean, max = 100): Promise<void> {
+  for (let i = 0; i < max; i++) {
+    if (cond()) return;
+    await new Promise((r) => setImmediate(r));
+  }
 }
 
 describe("planner auto-plan master switch (#62)", () => {
@@ -146,6 +165,8 @@ describe("planner provider selection (#59)", () => {
         reason?: string,
       ) => {
         transitions.push({ to, reason });
+        // Move out of "planning" so the finally-poke rescan (#159) settles.
+        items[0] = { ...items[0], state: to };
         return items[0];
       },
       completePlan: async () => {},
@@ -265,11 +286,18 @@ describe("planner worktree at planning (#110)", () => {
       getRepoPath: () => "/repo",
       getRepoSettings: () =>
         resolveRepoOrchestratorSettings({}, { ...DEFAULT_ORCHESTRATOR_SETTINGS } as OrchestratorSettings),
-      requestTransition: async (_itemId: string, to: LifecycleState) => {
+      requestTransition: async (itemId: string, to: LifecycleState) => {
         transitions.push({ to });
+        const idx = items.findIndex((i) => i.id === itemId);
+        if (idx >= 0) items[idx] = { ...items[idx], state: to };
         return items[0];
       },
-      completePlan: async () => void resolveDone(),
+      // Land the item out of "planning" so the finally-poke rescan (#159) settles.
+      completePlan: async (itemId: string) => {
+        const idx = items.findIndex((i) => i.id === itemId);
+        if (idx >= 0) items[idx] = { ...items[idx], state: "plan-gate" };
+        resolveDone();
+      },
       prepareWorktree: opts.prepareWorktree,
       setWorktree: async (_itemId: string, worktree: { path: string; branch: string; sessionId?: string }) =>
         void setWorktreeCalls.push(worktree),
@@ -391,5 +419,174 @@ describe("planner worktree at planning (#110)", () => {
     expect(h.cwds.every((c) => c === "/repo")).toBe(true);
     expect(h.planSessionIds).toEqual([]);
     expect(h.agentSessionIds[0]).toBeUndefined();
+  });
+});
+
+// #159: an in-flight planning run must die on cancel/untrack, and a zombie that
+// survives the race must never land results on a newer lifecycle. The fake
+// provider holds its agent() until the test releases it (or the signal aborts).
+describe("planner cancellation & zombie protection (#159)", () => {
+  const VALID_PLAN = JSON.stringify({
+    summary: "do the thing",
+    context: [],
+    files: [{ path: "a.ts", reason: "touch it" }],
+    steps: [{ title: "s", detail: "d", files: [], symbols: [] }],
+    outOfScope: [],
+    acceptance: [],
+    risks: [],
+    verificationCommands: [],
+    manualChecks: [],
+    openQuestions: [],
+    estimatedSize: "s",
+  });
+
+  let plansDir: string;
+  // Held runs never resolve on their own — drain them so the module-level `active`
+  // counter (intentionally not reset by initPlanner) doesn't leak across tests.
+  let drainItems: TrackedItem[] = [];
+  beforeEach(async () => {
+    plansDir = await mkdtemp(join(tmpdir(), "nb-planner-cancel-"));
+  });
+  afterEach(async () => {
+    drainItems.length = 0;
+    killAllPlanningRuns();
+    await settle();
+    await rm(plansDir, { recursive: true, force: true });
+  });
+
+  interface CancelHarness {
+    deps: PlannerDeps;
+    provider: unknown;
+    items: TrackedItem[];
+    /** Signal handed to each agent() call, in order. */
+    signals: (AbortSignal | undefined)[];
+    /** Release the currently-held agent() call with a successful plan. */
+    release: (plan?: string) => void;
+    completePlanCalls: { itemId: string; ref: string; expectedPlanningAt?: string }[];
+    transitions: { to: LifecycleState }[];
+  }
+
+  function makeCancelHarness(items: TrackedItem[]): CancelHarness {
+    drainItems = items;
+    const signals: (AbortSignal | undefined)[] = [];
+    const completePlanCalls: CancelHarness["completePlanCalls"] = [];
+    const transitions: CancelHarness["transitions"] = [];
+    let releaseFn: (plan: string) => void = () => {};
+    const provider = {
+      name: "fake",
+      agent: (_prompt: string, agentOpts: { signal?: AbortSignal }) => {
+        signals.push(agentOpts.signal);
+        return new Promise<{ text: string }>((resolve, reject) => {
+          releaseFn = (plan: string) => resolve({ text: plan });
+          agentOpts.signal?.addEventListener("abort", () => reject(new AgentAbortError()));
+        });
+      },
+      askStructured: async () => {
+        throw new Error("no structured mode in the fake");
+      },
+    };
+    const deps: PlannerDeps = {
+      listItems: () => items,
+      getItem: (id: string) => items.find((i) => i.id === id),
+      getIssue: () => ({ labels: [] }) as unknown as Issue,
+      getRepoPath: () => "/repo",
+      getRepoSettings: () =>
+        resolveRepoOrchestratorSettings({}, { ...DEFAULT_ORCHESTRATOR_SETTINGS } as OrchestratorSettings),
+      requestTransition: async (_itemId: string, to: LifecycleState) => {
+        transitions.push({ to });
+        return items[0];
+      },
+      completePlan: async (
+        itemId: string,
+        ref: string,
+        _confidence: unknown,
+        expectedPlanningAt?: string,
+      ) => {
+        completePlanCalls.push({ itemId, ref, expectedPlanningAt });
+        const idx = items.findIndex((i) => i.id === itemId);
+        if (idx >= 0) items[idx] = { ...items[idx], state: "plan-gate" };
+      },
+      prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+      setWorktree: async () => {},
+      getSettings: () => ({ ...DEFAULT_ORCHESTRATOR_SETTINGS }) as OrchestratorSettings,
+      getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS }),
+      emitEvent: () => {},
+      plansDir,
+    } as unknown as PlannerDeps;
+    return {
+      deps,
+      provider,
+      items,
+      signals,
+      release: (plan = VALID_PLAN) => releaseFn(plan),
+      completePlanCalls,
+      transitions,
+    };
+  }
+
+  it("cancel mid-run kills everything and clears the in-flight slot", async () => {
+    const item = makeItem("planning", "2026-07-21T00:00:00.000Z");
+    const h = makeCancelHarness([item]);
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await settle();
+    expect(h.signals).toHaveLength(1);
+
+    cancelPlanningRun(item.id);
+    await settle();
+
+    expect(h.signals[0]?.aborted).toBe(true);
+    expect(h.completePlanCalls).toEqual([]);
+    expect(h.transitions).toEqual([]); // no needs-input on cancel
+    expect(await readdir(plansDir)).toEqual([]); // no plan file written
+    // The finally-poke re-enqueues the still-planning item → a fresh run starts,
+    // which is only possible if the in-flight slot was cleared.
+    expect(h.signals).toHaveLength(2);
+  });
+
+  it("a zombie run cannot land on the re-admitted lifecycle", async () => {
+    const h = makeCancelHarness([makeItem("planning", "2026-07-21T00:00:00.000Z")]);
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await settle();
+    expect(h.signals).toHaveLength(1);
+
+    // Re-admit under a NEWER planning transition without aborting the zombie.
+    h.items[0] = makeItem("planning", "2026-07-21T00:05:00.000Z");
+    // The zombie finishes successfully — the pre-write live() check must reject it.
+    h.release();
+    await settle();
+
+    expect(h.completePlanCalls).toEqual([]);
+    expect(await readdir(plansDir)).toEqual([]);
+  });
+
+  it("untrack → re-admit runs a fresh plan that completes with the new token", async () => {
+    const item = makeItem("planning", "2026-07-21T00:00:00.000Z");
+    const h = makeCancelHarness([item]);
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await settle();
+    expect(h.signals).toHaveLength(1);
+
+    // Untrack: drop the item and cancel its run (mirrors orchestrator.untrackItem).
+    h.items.length = 0;
+    cancelPlanningRun(item.id);
+    await settle();
+
+    // Re-admit with a fresh planning transition, then poke.
+    h.items.push(makeItem("planning", "2026-07-21T00:05:00.000Z"));
+    pokePlanner();
+    await settle();
+    expect(h.signals.length).toBeGreaterThanOrEqual(2);
+
+    // Release the fresh run — it completes against the new token.
+    h.release();
+    await waitFor(() => h.completePlanCalls.length > 0);
+    expect(h.completePlanCalls).toHaveLength(1);
+    expect(h.completePlanCalls[0]).toMatchObject({
+      itemId: "github:1",
+      expectedPlanningAt: "2026-07-21T00:05:00.000Z",
+    });
   });
 });

@@ -1,4 +1,5 @@
 import {
+  AgentAbortError,
   computeConfidence,
   createProvider,
   generatePlan,
@@ -7,17 +8,18 @@ import {
   type MemoryMcp,
   type OrchestratorSettings,
 } from "@skipper/core";
-import type {
-  CodingEvent,
-  ConfidenceReport,
-  Issue,
-  LifecycleState,
-  LlmSettings,
-  RepoRef,
-  ResolvedRepoOrchestratorSettings,
-  StoredPlan,
-  TrackedItem,
-  TransitionActor,
+import {
+  latestPlanningTransitionAt,
+  type CodingEvent,
+  type ConfidenceReport,
+  type Issue,
+  type LifecycleState,
+  type LlmSettings,
+  type RepoRef,
+  type ResolvedRepoOrchestratorSettings,
+  type StoredPlan,
+  type TrackedItem,
+  type TransitionActor,
 } from "@skipper/shared";
 import { randomUUID } from "node:crypto";
 import { modelForRole, providerCacheKey } from "./llm-settings";
@@ -47,8 +49,14 @@ export interface PlannerDeps {
     reason?: string,
     resumeTo?: LifecycleState,
   ) => Promise<TrackedItem>;
-  /** Sets plan.ref + the confidence-gated transition in one manifest write (#8). */
-  completePlan: (itemId: string, ref: string, confidence?: ConfidenceReport) => Promise<void>;
+  /** Sets plan.ref + the confidence-gated transition in one manifest write (#8).
+   *  expectedPlanningAt is the run's token (#159) — a stale run is refused. */
+  completePlan: (
+    itemId: string,
+    ref: string,
+    confidence?: ConfidenceReport,
+    expectedPlanningAt?: string,
+  ) => Promise<void>;
   /** Sets up the shared worktree so planning runs where coding will (#110). */
   prepareWorktree: (item: TrackedItem) => Promise<{ path: string; branch: string }>;
   /** Persists the worktree record without a transition (#110). */
@@ -74,7 +82,7 @@ let llmKey: string | null = null;
 let llmInjected = false;
 const queue: string[] = [];
 const queued = new Set<string>();
-const inFlight = new Set<string>();
+const inFlight = new Map<string, AbortController>();
 let active = 0;
 let scanScheduled = false;
 
@@ -83,6 +91,22 @@ export function initPlanner(plannerDeps: PlannerDeps, provider?: LLMProviderInte
   llmInjected = provider !== undefined;
   llm = provider ?? null;
   llmKey = null;
+  // Fresh init (tests / re-init) starts with a clean queue. `active` is left
+  // alone — it self-balances via the finally block of any in-flight run.
+  inFlight.clear();
+  queued.clear();
+  queue.length = 0;
+}
+
+/** Abort a live planning run (user untracked / moved the item out of "planning"). */
+export function cancelPlanningRun(itemId: string): void {
+  queued.delete(itemId);
+  inFlight.get(itemId)?.abort();
+}
+
+/** Quit teardown — kill every live planning run. */
+export function killAllPlanningRuns(): void {
+  for (const controller of inFlight.values()) controller.abort();
 }
 
 /**
@@ -166,11 +190,26 @@ function pump(): void {
 
 async function run(itemId: string): Promise<void> {
   if (!deps || inFlight.has(itemId)) return;
-  inFlight.add(itemId);
+  const controller = new AbortController();
+  inFlight.set(itemId, controller);
   active++;
+  // Run token (#159): the timestamp of this entry into planning. A cancel, or an
+  // untrack → re-admit that mints a newer planning transition, makes every
+  // write/transition below (and the catch guard) detectably stale so a zombie
+  // can't land results on the fresh lifecycle.
+  let planningAt: string | undefined;
+  const live = (): boolean => {
+    const cur = deps?.getItem(itemId);
+    return (
+      !controller.signal.aborted &&
+      cur?.state === "planning" &&
+      latestPlanningTransitionAt(cur) === planningAt
+    );
+  };
   try {
     const item = deps.getItem(itemId);
     if (!item || item.state !== "planning") return;
+    planningAt = latestPlanningTransitionAt(item);
     const repoPath = deps.getRepoPath(item.repo);
     if (!repoPath) {
       await deps.requestTransition(itemId, "needs-input", "planner", "repo not linked", "planning");
@@ -198,7 +237,7 @@ async function run(itemId: string): Promise<void> {
       });
     }
     // fetch can be slow — re-check the item wasn't cancelled/moved meanwhile.
-    if (deps.getItem(itemId)?.state !== "planning") return;
+    if (!live()) return;
     const settings = deps.getSettings();
     const { llm: provider, model } = await resolveProvider(
       deps.getRepoSettings(item.repo).plannerModel,
@@ -249,6 +288,7 @@ async function run(itemId: string): Promise<void> {
       },
       ...(memory ? { memory } : {}),
       ...(planSessionId ? { sessionId: planSessionId } : {}),
+      signal: controller.signal,
     });
     const ref = planFileName(itemId);
     const stored: StoredPlan = {
@@ -261,10 +301,13 @@ async function run(itemId: string): Promise<void> {
       model,
       plan,
     };
+    // planFileName is deterministic — a zombie write would clobber the fresh
+    // lifecycle's plan file, so gate the write on the run being live (#159).
+    if (!live()) return;
     // Persist before the expensive scoring so the plan survives a crash mid-score.
     await writeStoredPlan(deps.plansDir, ref, stored);
     // Cooperative cancel: the item may have been closed/moved mid-generation.
-    if (deps.getItem(itemId)?.state !== "planning") return;
+    if (!live()) return;
     // Scoring failure is never fatal (#8): no report → conservative plan-gate.
     deps.emitEvent(itemId, { kind: "status", phase: "scoring" });
     let report: ConfidenceReport | undefined;
@@ -279,19 +322,23 @@ async function run(itemId: string): Promise<void> {
         // #62: score for the gate that will actually run — under on/off the
         // queued/plan-gate choice is pinned, so the extra runs often can't move it.
         autoCoding: deps.getRepoSettings(item.repo).autoCoding,
+        signal: controller.signal,
       });
       if (Object.keys(report.signals).length === 0) report = undefined;
     } catch {
       report = undefined;
     }
-    if (report) {
+    if (report && live()) {
       await writeStoredPlan(deps.plansDir, ref, { ...stored, confidence: report });
     }
-    if (deps.getItem(itemId)?.state === "planning") {
-      await deps.completePlan(itemId, ref, report);
+    if (live()) {
+      await deps.completePlan(itemId, ref, report, planningAt);
     }
   } catch (err) {
-    if (deps.getItem(itemId)?.state === "planning") {
+    // A cancelled/superseded run dies silently — never park the (possibly fresh)
+    // lifecycle on a zombie's failure (#159).
+    if (err instanceof AgentAbortError || controller.signal.aborted) return;
+    if (live()) {
       const message = err instanceof Error ? err.message : String(err);
       deps.emitEvent(itemId, { kind: "error", message: message.slice(0, 500) });
       await deps
@@ -309,6 +356,8 @@ async function run(itemId: string): Promise<void> {
   } finally {
     inFlight.delete(itemId);
     active--;
-    pump();
+    // Coalesced rescan re-enqueues a re-admitted planning item that scan()
+    // skipped while this run held the inFlight slot (#159).
+    pokePlanner();
   }
 }

@@ -72,7 +72,7 @@ export function buildCriticPrompt(input: CriticInput): string {
 export async function runCritic(
   input: CriticInput,
   llm: LLMProviderInterface,
-  opts?: { cwd?: string; sessionId?: string },
+  opts?: { cwd?: string; sessionId?: string; signal?: AbortSignal },
 ): Promise<CriticSignal> {
   const schema = z.toJSONSchema(CriticVerdictSchema) as Record<string, unknown>;
   const reply = await llm.askStructured<unknown>(buildCriticPrompt(input), schema, opts);
@@ -91,6 +91,7 @@ export async function critiquePlan(
   plan: IssuePlan,
   issue: PlanIssueInput,
   llm: LLMProviderInterface,
+  signal?: AbortSignal,
 ): Promise<CriticSignal> {
   return runCritic(
     {
@@ -106,5 +107,6 @@ export async function critiquePlan(
         .join("\n"),
     },
     llm,
+    signal ? { signal } : undefined,
   );
 }

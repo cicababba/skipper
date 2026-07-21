@@ -46,6 +46,8 @@ export interface StructuredOptions {
   cwd?: string;
   /** Persist under this session id (drops --no-session-persistence); claude-cli only. */
   sessionId?: string;
+  /** Abort the call; rejects with AgentAbortError. claude-cli only (#159). */
+  signal?: AbortSignal;
 }
 
 export interface LLMProviderInterface {

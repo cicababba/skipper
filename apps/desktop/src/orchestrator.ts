@@ -32,6 +32,7 @@ import {
 import {
   formatRepoMappingValue,
   issueBranchFor,
+  latestPlanningTransitionAt,
   mappingHost,
   parseProjectMappingKey,
   parseRepoMappingValue,
@@ -94,7 +95,7 @@ import {
   getPlanChatHistory,
   cancelPlanChat,
 } from "./plan-chat";
-import { initPlanner, pokePlanner } from "./planner";
+import { initPlanner, pokePlanner, cancelPlanningRun, killAllPlanningRuns } from "./planner";
 import { initCoder, pokeCoder, cancelCodingRun, killAllCodingRuns } from "./coder";
 import { initReviewer, pokeReviewer } from "./reviewer";
 import { initShepherd, pokeShepherd, openOrPushPr } from "./shepherd";
@@ -114,7 +115,7 @@ import {
   writeWorktreeFile,
 } from "./worktrees";
 
-export { killAllCodingRuns };
+export { killAllCodingRuns, killAllPlanningRuns };
 
 // Orchestrator loop (issue #6): absorbs the issue-#5 inbox poller. Keeps
 // per-account snapshots of assigned issues + authored PRs fresh via the core
@@ -854,11 +855,19 @@ async function completePlan(
   itemId: string,
   ref: string,
   confidence?: ConfidenceReport,
+  expectedPlanningAt?: string,
 ): Promise<void> {
   if (!deps) throw new Error("orchestrator not initialized");
   const m = await ensureManifest();
   const item = m.items[itemId];
   if (!item) throw new Error(`unknown item ${itemId}`);
+  // Refuse a stale run's result (#159): the item left planning, or a newer
+  // planning transition superseded this run's token. Return silently — a throw
+  // would bounce into the planner's catch and park the fresh lifecycle.
+  if (item.state !== "planning" || latestPlanningTransitionAt(item) !== expectedPlanningAt) {
+    console.warn(`stale plan completion refused for ${itemId}`);
+    return;
+  }
   // No score is a scoring *failure*, not a decision — #8's contract is the
   // conservative gate, so autoCoding:"on" deliberately does not apply here.
   const target = confidence
@@ -1101,7 +1110,13 @@ export async function requestTransition(
       }).catch((err) => console.warn(`park cleanup failed for ${worktreePath}: ${err}`));
     }
   }
-  if (actor !== "planner") pokePlanner();
+  if (actor !== "planner") {
+    // Someone else moved a live planning item — abort its run (#159). Guarding on
+    // actor !== "planner" keeps the planner's own needs-input failure transition
+    // from self-aborting.
+    if (prevState === "planning") cancelPlanningRun(itemId);
+    pokePlanner();
+  }
   // Leaving plan-gate (approve/replan/park) aborts any live plan-review chat (#145).
   if (prevState === "plan-gate") cancelPlanChat(itemId);
   if (actor !== "coder") {
@@ -1987,6 +2002,7 @@ export function initOrchestrator(
       }
 
       if (item.state === "coding") cancelCodingRun(itemId);
+      if (item.state === "planning") cancelPlanningRun(itemId);
 
       if (item.worktree) {
         const link = repoLinks?.repos[repoKey(item.repo)];
