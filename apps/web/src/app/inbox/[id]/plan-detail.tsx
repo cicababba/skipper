@@ -8,6 +8,7 @@ import { type IssuePlan, type StoredPlan } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { useStoredState } from "@/lib/use-stored-state";
+import { unreadCount } from "@/lib/inbox/plan-chat-unread";
 import { EventConsole } from "@/components/event-console";
 import {
   applySection,
@@ -97,7 +98,7 @@ export function PlanDetailView() {
   useEffect(() => {
     if (drawerIsOpen) setSeen(String(chatCount));
   }, [drawerIsOpen, chatCount, setSeen]);
-  const unread = Math.max(0, chatCount - Number(seen));
+  const unread = unreadCount(chatCount, seen);
 
   const plan = stored?.plan;
 
