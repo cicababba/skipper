@@ -1,5 +1,6 @@
 import { GITHUB_API_BASE_URL, sourceRefKey, type Issue, type SourceRef } from "@skipper/shared";
-import { githubGet, type GitHubResponse } from "./client";
+import { drainLinkPages } from "../http";
+import { githubGet } from "./client";
 import { parseRepoFromUrl } from "./map";
 import { ApiError } from "../types";
 import type { GitHubTokenProvider } from "./types";
@@ -36,17 +37,14 @@ async function fetchNativeDependencies(
 ): Promise<SourceRef[]> {
   if (!issue.repo) return [];
   const base = baseUrl ?? GITHUB_API_BASE_URL;
-  const refs: SourceRef[] = [];
-  let url: string | undefined = `${base}/repos/${issue.repo.owner}/${issue.repo.name}/issues/${issue.number}/dependencies/blocked_by?per_page=100`;
-  while (url) {
-    const res: GitHubResponse<GitHubDependencyPayload[]> = await githubGet(url, getToken);
-    for (const p of res.body ?? []) {
-      const repo = parseRepoFromUrl(p.repository_url);
-      refs.push({ project: `${repo.owner}/${repo.name}`, key: String(p.number) });
-    }
-    url = res.nextUrl;
-  }
-  return refs;
+  const payloads = await drainLinkPages<GitHubDependencyPayload>(
+    `${base}/repos/${issue.repo.owner}/${issue.repo.name}/issues/${issue.number}/dependencies/blocked_by?per_page=100`,
+    (url) => githubGet<GitHubDependencyPayload[]>(url, getToken),
+  );
+  return payloads.map((p) => {
+    const repo = parseRepoFromUrl(p.repository_url);
+    return { project: `${repo.owner}/${repo.name}`, key: String(p.number) };
+  });
 }
 
 /**

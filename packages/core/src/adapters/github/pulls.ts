@@ -1,7 +1,8 @@
 import { GITHUB_API_BASE_URL } from "@skipper/shared";
 import type { PrReviewComment, PullRequest, RepoRef } from "@skipper/shared";
 import type { CreatedPr, FailingCheck } from "../types";
-import { githubGet, githubPost, type GitHubResponse } from "./client";
+import { drainLinkPages } from "../http";
+import { githubGet, githubPost } from "./client";
 import type { GitHubTokenProvider } from "./types";
 
 interface CreatedPullPayload {
@@ -60,26 +61,15 @@ export interface PullReviewCommentPayload {
   created_at?: string;
 }
 
-async function fetchPaginated<T>(url: string, getToken: GitHubTokenProvider): Promise<T[]> {
-  const out: T[] = [];
-  let next: string | undefined = url;
-  while (next) {
-    const res: GitHubResponse<T[]> = await githubGet<T[]>(next, getToken);
-    out.push(...(res.body ?? []));
-    next = res.nextUrl;
-  }
-  return out;
-}
-
 export async function fetchPullReviews(
   repo: RepoRef,
   number: number,
   getToken: GitHubTokenProvider,
   baseUrl?: string,
 ): Promise<PullReviewPayload[]> {
-  return fetchPaginated<PullReviewPayload>(
+  return drainLinkPages<PullReviewPayload>(
     `${repoUrl(repo, baseUrl)}/pulls/${number}/reviews?per_page=100`,
-    getToken,
+    (url) => githubGet<PullReviewPayload[]>(url, getToken),
   );
 }
 
@@ -89,9 +79,9 @@ export async function fetchPullReviewComments(
   getToken: GitHubTokenProvider,
   baseUrl?: string,
 ): Promise<PullReviewCommentPayload[]> {
-  return fetchPaginated<PullReviewCommentPayload>(
+  return drainLinkPages<PullReviewCommentPayload>(
     `${repoUrl(repo, baseUrl)}/pulls/${number}/comments?per_page=100`,
-    getToken,
+    (url) => githubGet<PullReviewCommentPayload[]>(url, getToken),
   );
 }
 
