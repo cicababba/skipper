@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useT } from "@/lib/app-i18n";
-import { Row } from "./settings-row";
+import { Row, selectClass } from "./settings-row";
 
 /**
  * Per-repo base branch override. Worktrees are cut from origin/HEAD unless
- * this is set; the value is validated against origin before it lands. An empty
- * input clears the override back to the repository default.
+ * this is set; the value is validated against origin before it lands. The
+ * empty selection clears the override back to the repository default.
  */
 export function RepoBaseBranchControl({
   owner,
@@ -23,39 +23,46 @@ export function RepoBaseBranchControl({
   const rp = t.inbox.repoPage;
 
   const [value, setValue] = useState("");
-  const [saved, setSaved] = useState("");
+  const [branches, setBranches] = useState<string[]>([]);
+  const [defaultBranch, setDefaultBranch] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!window.skipper) return;
     window.skipper.orchestrator.listRepos().then((res) => {
-      const current = res.linked.find((r) => r.key === repoKey)?.baseBranch ?? "";
-      setValue(current);
-      setSaved(current);
+      setValue(res.linked.find((r) => r.key === repoKey)?.baseBranch ?? "");
     });
-  }, [repoKey]);
+    window.skipper.orchestrator.listRepoBranches(owner, name).then((res) => {
+      if (res.ok) {
+        setBranches(res.branches);
+        setDefaultBranch(res.defaultBranch);
+        setError(null);
+      } else {
+        setBranches([]);
+        setError(res.error);
+      }
+    });
+  }, [owner, name, repoKey]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const save = async () => {
+  const save = async (next: string) => {
     if (!window.skipper) return;
-    const trimmed = value.trim();
-    if (trimmed === saved) return;
+    const prev = value;
+    setValue(next);
     setBusy(true);
     setError(null);
     try {
       const res = await window.skipper.orchestrator.setRepoBaseBranch(
         owner,
         name,
-        trimmed === "" ? null : trimmed,
+        next === "" ? null : next,
       );
-      if (res.ok) {
-        setValue(trimmed);
-        setSaved(trimmed);
-      } else {
+      if (!res.ok) {
+        setValue(prev);
         setError(res.error);
       }
     } finally {
@@ -63,23 +70,29 @@ export function RepoBaseBranchControl({
     }
   };
 
+  // Show a deleted-but-saved override so the UI never silently drops it.
+  const options = value && !branches.includes(value) ? [value, ...branches] : branches;
+
   return (
     <div className="space-y-2">
       <Row label={rp.baseBranch} hint={rp.baseBranchDesc} busy={busy}>
         <div className="flex items-center gap-2">
           {busy && <Loader2 size={12} className="animate-spin text-muted" />}
-          <input
-            type="text"
+          <select
             value={value}
-            placeholder={rp.baseBranchPlaceholder}
             disabled={busy}
-            onChange={(e) => setValue(e.target.value)}
-            onBlur={() => void save()}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") e.currentTarget.blur();
-            }}
-            className="w-44 bg-background border border-border rounded-md px-2 py-1.5 text-sm focus:border-accent focus:outline-none disabled:opacity-50"
-          />
+            onChange={(e) => void save(e.target.value)}
+            className={`${selectClass} w-44`}
+          >
+            <option value="">
+              {defaultBranch ? rp.baseBranchDefault(defaultBranch) : rp.baseBranchPlaceholder}
+            </option>
+            {options.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
         </div>
       </Row>
       {error && <p className="text-[11px] text-red-300 leading-relaxed">{error}</p>}

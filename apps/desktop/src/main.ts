@@ -175,6 +175,12 @@ function getDataDir(): string {
   return dir;
 }
 
+function getLlmSettingsDir(): string {
+  // Dev loads the Next dev server (localhost:3000), whose settings.json fallback
+  // is <repo>/data — read the same file or the UI and the roles disagree on the model.
+  return isDev ? join(__dirname, "..", "..", "..", "data") : getDataDir();
+}
+
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = createServer();
@@ -1100,7 +1106,7 @@ app.whenReady().then(async () => {
         plansDir: join(app.getPath("userData"), "plans"),
         worktreesDir: join(app.getPath("userData"), "worktrees"),
         memoryDir: join(app.getPath("userData"), "memory"),
-        dataDir: getDataDir(),
+        dataDir: getLlmSettingsDir(),
         cliBundlePath: cliBundlePath(),
       });
       orchestratorPoke = pokeOrchestrator;
