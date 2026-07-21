@@ -22,7 +22,6 @@
   "dependencies": {
     "@skipper/shared": "workspace:*",
     "@skipper/core": "workspace:*",
-    "@skipper/sync": "workspace:*",
     "node-pty": "^1.0.0"
   },
   "devDependencies": {
