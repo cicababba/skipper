@@ -58,5 +58,12 @@ else
   REUSED=false
 fi
 
+BOARD="In Progress"
+for n in "${ISSUES[@]}"; do
+  bash ".claude/scripts/board.sh" status "$n" "In Progress" >/dev/null 2>&1 \
+    || BOARD="sync failed for #$n (set manually)"
+done
+
 echo "branch=$BRANCH"
 echo "reused=$REUSED"
+echo "board=$BOARD"

@@ -23,7 +23,7 @@ Without an argument it resolves the PR from the current branch. The script handl
 
 - squash-merge + delete branch for feature PRs; regular merge (no delete) for release PRs
 - 502-race safety: on merge failure it polls the PR state before retrying (a 502 can complete server-side; blind retry duplicates the squash commit)
-- parses `Closes/Fixes/Resolves #N` from the PR body; for each open issue: comment `Done in #PR`, then close (`gh issue close` has no `--comment` here)
+- parses `Closes/Fixes/Resolves #N` from the PR body; for each open issue: comment `Done in #PR`, then close (`gh issue close` has no `--comment` here), then set the board Status to Done (best-effort — a warning on stderr means set it manually)
 - already-merged PR → skips the merge, still closes issues and syncs (safe re-run)
 - always ends on `develop`, pulled up to date, local + remote feature branch cleaned up
 
