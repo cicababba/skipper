@@ -66,6 +66,23 @@ export interface StoredPlanChat {
   messages: PlanChatMessage[];
 }
 
+/** Per-tab agent chat kinds (#170): the coder and the reviewer, interrogated at
+ *  their own gates. The planner keeps its own StoredPlanChat surface. */
+export type AgentChatKind = "coder" | "reviewer";
+
+/** On-disk transcript of a coder/reviewer chat (#170), one file per item per kind. */
+export interface StoredAgentChat {
+  version: 1;
+  itemId: string;
+  kind: AgentChatKind;
+  /** Supersession binding: coder → worktree.path, reviewer → review.at. A new
+   *  binding supersedes the transcript (mirrors StoredPlanChat.planGeneratedAt). */
+  binding: string;
+  /** Chat's own session lineage — never item.worktree/review.sessionId (D1). */
+  sessionId?: string;
+  messages: PlanChatMessage[];
+}
+
 /** What produced a plan revision (#165). */
 export type PlanRevisionSource = "chat-apply" | "inline-edit";
 

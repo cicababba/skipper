@@ -144,6 +144,12 @@ export {
   createStreamJsonParser,
 } from "./coder";
 export type { RunCodingAgentOptions, CodingRunResult, StreamJsonParser } from "./coder";
+export { CODER_CHAT_SYSTEM_PROMPT, discussCoder, renderCoderReportBlock } from "./coder";
+export type { CoderChatContext, DiscussCoderOptions } from "./coder";
+
+// Agent chat — generic discussion dispatch shared by coder/reviewer chats (#170)
+export { runAgentDiscussion, DEFAULT_AGENT_CHAT_MAX_TURNS } from "./agent-chat";
+export type { RunAgentDiscussionOptions } from "./agent-chat";
 
 // Shepherd (issue #11)
 export { buildCommitMessage, buildPrTitle, buildPrBody } from "./shepherd";
@@ -176,6 +182,8 @@ export {
   RISKY_FILE_PATTERNS,
 } from "./reviewer";
 export type { CritiqueDiffArgs, ReviewMode, DiffStats, ReviewModeInput } from "./reviewer";
+export { REVIEWER_CHAT_SYSTEM_PROMPT, discussReviewer } from "./reviewer";
+export type { ReviewerChatContext, DiscussReviewerOptions } from "./reviewer";
 
 // Orchestrator (issue #6)
 export {

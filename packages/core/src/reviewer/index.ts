@@ -7,3 +7,5 @@ export {
   RISKY_FILE_PATTERNS,
 } from "./auto";
 export type { ReviewMode, DiffStats, ReviewModeInput } from "./auto";
+export { REVIEWER_CHAT_SYSTEM_PROMPT, discussReviewer } from "./chat";
+export type { ReviewerChatContext, DiscussReviewerOptions } from "./chat";

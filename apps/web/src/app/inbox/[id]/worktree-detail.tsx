@@ -27,6 +27,7 @@ import {
   worktreeRelPath,
 } from "@/lib/inbox/worktree";
 import { FileTree } from "@/components/file-tree";
+import { useItemChat } from "./item-chat";
 import { MemoriesCard } from "./memories-card";
 import { WorktreeFileView } from "./worktree-file-view";
 import { WorktreeChangesList } from "./worktree-changes-list";
@@ -86,6 +87,24 @@ export function WorktreeDetailView() {
 
   const ready = status.kind === "ready" ? status.status : null;
   const usable = ready?.present === true;
+
+  // Feed the coder chat (#170) the worktree-relative path of the open file, so a
+  // coder-chat turn treats it as the subject. Cleared when the tab unmounts.
+  const { setWorktreeSelection } = useItemChat();
+  useEffect(() => {
+    if (!ready) {
+      setWorktreeSelection(null);
+      return;
+    }
+    const rel =
+      selection?.kind === "changed"
+        ? selection.change.path
+        : selection?.kind === "plain"
+          ? worktreeRelPath(ready.path, selection.absPath)
+          : null;
+    setWorktreeSelection(rel);
+    return () => setWorktreeSelection(null);
+  }, [selection, ready, setWorktreeSelection]);
 
   const fetchChanges = useCallback(
     async (keepSelection: boolean) => {
