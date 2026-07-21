@@ -268,6 +268,7 @@ export function PlanDetailView() {
               onCancel={cancelEdit}
               memoryRefs={item.usedMemory?.planning}
               memoriesTitle={p.sections.memories}
+              revisions={stored!.revisions}
             />
           </div>
           {gate && !drawerIsOpen && (

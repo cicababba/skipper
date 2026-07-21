@@ -1,7 +1,8 @@
 "use client";
 
+import { useMemo } from "react";
 import { Check, ChevronDown, ChevronRight, Edit2, Loader2, X } from "lucide-react";
-import type { IssuePlan, UsedMemoryRef } from "@skipper/shared";
+import type { IssuePlan, PlanRevision, UsedMemoryRef } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { useStoredState } from "@/lib/use-stored-state";
@@ -10,7 +11,9 @@ import {
   type SectionDraft,
   type SectionId,
 } from "@/lib/inbox/plan-edit";
+import { diffCount, diffPlans } from "@/lib/inbox/plan-diff";
 import { MemoriesList } from "./memories-card";
+import { PlanChangesBody } from "./plan-changes";
 import {
   AcceptanceEditor,
   AcceptanceView,
@@ -41,6 +44,7 @@ interface PlanDocumentProps {
   onCancel: () => void;
   memoryRefs: UsedMemoryRef[] | undefined;
   memoriesTitle: string;
+  revisions?: PlanRevision[];
 }
 
 function DocSection({
@@ -155,9 +159,13 @@ export function PlanDocument({
   onCancel,
   memoryRefs,
   memoriesTitle,
+  revisions,
 }: PlanDocumentProps) {
   const { t } = useT();
   const p = t.inbox.plan;
+
+  const latest = revisions?.at(-1);
+  const changesDiff = useMemo(() => (latest ? diffPlans(latest.plan, plan) : null), [latest, plan]);
 
   const [openCsv, setOpenCsv] = useStoredState(`skipper-plan-doc-open:${itemId}`, "");
   const openSet = new Set(openCsv.split(",").filter(Boolean));
@@ -231,6 +239,21 @@ export function PlanDocument({
           <MarkdownRenderer content={plan.summary} />
         )}
       </DocSection>
+
+      {latest && changesDiff && diffCount(changesDiff) > 0 && (
+        <DocSection
+          sid="changes"
+          title={p.changes.title}
+          count={diffCount(changesDiff)}
+          collapsible
+          expanded={openSet.has("changes")}
+          onToggle={() => toggle("changes")}
+          editable={false}
+          editing={false}
+        >
+          <PlanChangesBody diff={changesDiff} source={latest.source} at={latest.at} />
+        </DocSection>
+      )}
 
       {renderDoc(
         "steps",

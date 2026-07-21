@@ -1,10 +1,11 @@
 // Generated plans, one JSON file per tracked item under <userData>/plans/.
 // Pure Node module; the planner injects the directory. TrackedItem.plan.ref
-// stores the filename. Replan and user edits overwrite (no history).
+// stores the filename. Replan builds a fresh envelope; user/chat edits overwrite
+// the plan body but snapshot the superseded one into revisions[] (#165).
 
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import type { IssuePlan, StoredPlan } from "@skipper/shared";
+import type { IssuePlan, PlanRevisionSource, StoredPlan } from "@skipper/shared";
 
 /** Subdirectory of plansDir where merged/archived plans are kept (#115). */
 export const PLAN_ARCHIVE_DIR = "archive";
@@ -63,10 +64,17 @@ export async function updateStoredPlan(
   plansDir: string,
   ref: string,
   plan: IssuePlan,
+  source: PlanRevisionSource,
 ): Promise<StoredPlan | null> {
   const stored = await readStoredPlan(plansDir, ref);
   if (!stored) return null;
-  const updated: StoredPlan = { ...stored, plan, editedAt: new Date().toISOString() };
+  const now = new Date().toISOString();
+  const updated: StoredPlan = {
+    ...stored,
+    plan,
+    editedAt: now,
+    revisions: [...(stored.revisions ?? []), { plan: stored.plan, at: now, source }],
+  };
   await writeStoredPlan(plansDir, ref, updated);
   return updated;
 }

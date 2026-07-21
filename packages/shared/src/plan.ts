@@ -66,6 +66,17 @@ export interface StoredPlanChat {
   messages: PlanChatMessage[];
 }
 
+/** What produced a plan revision (#165). */
+export type PlanRevisionSource = "chat-apply" | "inline-edit";
+
+/** A superseded plan body, snapshotted on update so the gate can diff it (#165). */
+export interface PlanRevision {
+  plan: IssuePlan;
+  /** ISO 8601 — when this snapshot was superseded (= the update's editedAt). */
+  at: string;
+  source: PlanRevisionSource;
+}
+
 /** On-disk envelope for a generated plan (TrackedItem.plan.ref points at it). */
 export interface StoredPlan {
   version: 2;
@@ -82,4 +93,6 @@ export interface StoredPlan {
   confidence?: ConfidenceReport;
   /** Set when the user edits the plan at the gate (#13). Confidence predates the edit. */
   editedAt?: string;
+  /** Superseded plan bodies, oldest first; generation-scoped; absent on pre-#165 files. */
+  revisions?: PlanRevision[];
 }
