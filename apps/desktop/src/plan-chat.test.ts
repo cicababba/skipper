@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
   CodingEvent,
+  ConfidenceReport,
   Issue,
   IssuePlan,
   LlmSettings,
@@ -39,6 +40,21 @@ const VALID_PLAN: IssuePlan = {
 };
 
 const GENERATED_AT = "2026-07-21T00:00:00.000Z";
+
+const REPORT: ConfidenceReport = {
+  version: 1,
+  composite: 0.7,
+  weights: { groundedness: 0.5, convergence: 0, critic: 0.5, clarity: 0 },
+  signals: {
+    critic: {
+      score: 0.4,
+      verdict: "concerns",
+      objections: [{ kind: "underspecified", detail: "needs a ceiling", blocking: false }],
+    },
+  },
+  errors: [],
+  computedAt: GENERATED_AT,
+};
 
 function makeItem(over: Partial<TrackedItem> = {}): TrackedItem {
   return {
@@ -193,6 +209,19 @@ describe("sendPlanChatMessage resume vs fallback", () => {
     expect(opts.resumeSessionId).toBeUndefined();
     expect(typeof opts.sessionId).toBe("string");
     expect(h.sessionWrites).toHaveLength(1); // persist-before-run
+  });
+
+  it("injects the confidence report on the first discuss turn only (resume path)", async () => {
+    const provider = fakeProvider();
+    const h = makeHarness(plansDir, makeItem());
+    h.stored.confidence = REPORT;
+    initPlanChat(h.deps, provider);
+
+    await sendPlanChatMessage("github:1", "why is the score low?");
+    expect(provider.agent.mock.calls[0][0]).toContain("Confidence report");
+
+    await sendPlanChatMessage("github:1", "and now?");
+    expect(provider.agent.mock.calls[1][0]).not.toContain("Confidence report");
   });
 
   it("retries fresh when a dead resume fails without events", async () => {
