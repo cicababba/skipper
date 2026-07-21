@@ -92,7 +92,7 @@ export interface ConfidenceReport {
    * signals — the weights renormalize over what remains (#50).
    */
   convergenceSkipped?: {
-    reason: "decisive" | "disabled";
+    reason: "decisive" | "disabled" | "rescore";
     /** e.g. "composite in [0.87, 0.91] → queued for any convergence value". */
     detail: string;
   };

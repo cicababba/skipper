@@ -95,6 +95,12 @@ import {
   getPlanChatHistory,
   cancelPlanChat,
 } from "./plan-chat";
+import {
+  initRescore,
+  startRescore,
+  cancelRescore,
+  killAllRescores,
+} from "./rescore";
 import { initPlanner, pokePlanner, cancelPlanningRun, killAllPlanningRuns } from "./planner";
 import { initCoder, pokeCoder, cancelCodingRun, killAllCodingRuns } from "./coder";
 import { initReviewer, pokeReviewer } from "./reviewer";
@@ -115,7 +121,7 @@ import {
   writeWorktreeFile,
 } from "./worktrees";
 
-export { killAllCodingRuns, killAllPlanningRuns };
+export { killAllCodingRuns, killAllPlanningRuns, killAllRescores };
 
 // Orchestrator loop (issue #6): absorbs the issue-#5 inbox poller. Keeps
 // per-account snapshots of assigned issues + authored PRs fresh via the core
@@ -331,6 +337,11 @@ async function ensureManifest(): Promise<OrchestratorManifest> {
       deps.getAccounts().map((a) => ({ id: a.id, key: a.key })),
       (msg) => console.warn(`[orchestrator] ${msg}`),
     );
+    // Crash safety (#164): a rescore run never survives a restart, so a persisted
+    // rescoring flag is always stale. Clear it before anything reads the manifest.
+    for (const item of Object.values(manifest.items)) {
+      if (item.plan?.rescoring) delete item.plan.rescoring;
+    }
   }
   return manifest;
 }
@@ -882,7 +893,8 @@ async function completePlan(
   } else {
     reason = "plan generated (confidence unavailable)";
   }
-  const withRef = { ...item, plan: { ...item.plan, ref, confidence: confidence?.composite } };
+  const { rescoring: _drop, ...planRest } = item.plan ?? {};
+  const withRef = { ...item, plan: { ...planRest, ref, confidence: confidence?.composite } };
   // Below the low floor the plan itself is broken — resume means replan.
   m.items[itemId] = applyTransition(withRef, target, "planner", reason, {
     resumeTo: target === "needs-input" ? "planning" : undefined,
@@ -1042,6 +1054,41 @@ async function setPlanSessionId(itemId: string, sessionId: string): Promise<void
   broadcast();
 }
 
+/** Marks an item as rescoring confidence (#164) without a transition — drives the
+ *  badge spinner while the detached rescore runs. */
+async function setPlanRescoring(itemId: string): Promise<void> {
+  if (!deps) throw new Error("orchestrator not initialized");
+  const m = await ensureManifest();
+  const item = m.items[itemId];
+  if (!item) return;
+  m.items[itemId] = {
+    ...item,
+    plan: { ...item.plan, rescoring: true },
+    updatedAt: new Date().toISOString(),
+  };
+  await saveOrchestratorManifest(deps.manifestFilePath, m);
+  broadcast();
+}
+
+/** Clears the rescoring flag (#164). When a fresh composite is provided AND the item
+ *  is still at the gate, it also updates plan.confidence — never a transition, so a
+ *  score jump can't auto-queue coding while a human reviews. */
+async function completeRescore(itemId: string, composite?: number): Promise<void> {
+  if (!deps) throw new Error("orchestrator not initialized");
+  const m = await ensureManifest();
+  const item = m.items[itemId];
+  if (!item) return;
+  const { rescoring: _drop, ...plan } = item.plan ?? {};
+  const setComposite = composite !== undefined && item.state === "plan-gate";
+  m.items[itemId] = {
+    ...item,
+    plan: setComposite ? { ...plan, confidence: composite } : plan,
+    updatedAt: new Date().toISOString(),
+  };
+  await saveOrchestratorManifest(deps.manifestFilePath, m);
+  broadcast();
+}
+
 /** Records the critic round's Claude session id without a transition (#111). On
  *  round 1 (no review yet) it seeds a stub review the reviewer/UI already handle;
  *  completeReview replaces it wholesale. The chained-round check reads only
@@ -1117,8 +1164,12 @@ export async function requestTransition(
     if (prevState === "planning") cancelPlanningRun(itemId);
     pokePlanner();
   }
-  // Leaving plan-gate (approve/replan/park) aborts any live plan-review chat (#145).
-  if (prevState === "plan-gate") cancelPlanChat(itemId);
+  // Leaving plan-gate (approve/replan/park) aborts any live plan-review chat (#145)
+  // and any in-flight confidence rescore (#164).
+  if (prevState === "plan-gate") {
+    cancelPlanChat(itemId);
+    cancelRescore(itemId);
+  }
   if (actor !== "coder") {
     // Someone else moved a live coding item — abort its run.
     if (prevState === "coding") cancelCodingRun(itemId);
@@ -1787,6 +1838,9 @@ export function initOrchestrator(
     }
     const stored = await updateStoredPlan(deps!.plansDir, ref, parsed.data);
     if (!stored) return { ok: false as const, error: "stored plan not found" };
+    // An inline edit supersedes the plan an in-flight rescore was scoring (#164):
+    // cancel it so the stale score stands rather than landing on the edited plan.
+    cancelRescore(itemId);
     return { ok: true as const, stored };
   });
   // Conversational plan review (#145): chat with the planning session at the
@@ -1794,7 +1848,13 @@ export function initOrchestrator(
   ipcMain.handle("skipper:planChat:send", (_e, itemId: string, text: string) =>
     sendPlanChatMessage(itemId, text),
   );
-  ipcMain.handle("skipper:planChat:apply", (_e, itemId: string) => applyPlanChatUpdate(itemId));
+  ipcMain.handle("skipper:planChat:apply", async (_e, itemId: string) => {
+    const res = await applyPlanChatUpdate(itemId);
+    // Apply re-emitted the plan — re-score it in a detached run (#164). The old
+    // confidence report described the plan the discussion just rewrote.
+    if (res.ok) startRescore(itemId, res.stored);
+    return res;
+  });
   ipcMain.handle("skipper:planChat:getHistory", (_e, itemId: string) =>
     getPlanChatHistory(itemId),
   );
@@ -2003,6 +2063,7 @@ export function initOrchestrator(
 
       if (item.state === "coding") cancelCodingRun(itemId);
       if (item.state === "planning") cancelPlanningRun(itemId);
+      cancelRescore(itemId);
 
       if (item.worktree) {
         const link = repoLinks?.repos[repoKey(item.repo)];
@@ -2091,6 +2152,23 @@ export function initOrchestrator(
       orchestratorDeps.cliBundlePath
         ? { cliBundlePath: orchestratorDeps.cliBundlePath, repo: item.repo }
         : undefined,
+  });
+
+  initRescore({
+    getItem: (itemId) => manifest?.items[itemId],
+    getIssue: (item) => {
+      const cached = items.get(item.accountId)?.get(item.id);
+      return cached?.kind === "issue" ? cached : undefined;
+    },
+    fetchIssueComments: fetchIssueCommentsFor,
+    getRepoPath: repoPathFor,
+    getRepoSettings: repoOrch,
+    getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
+    getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
+    emitEvent: emitPlanningEvent,
+    plansDir: orchestratorDeps.plansDir,
+    setPlanRescoring,
+    completeRescore,
   });
 
   initCoder({

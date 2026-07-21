@@ -36,6 +36,7 @@ let updaterRecheck: (() => void) | null = null;
 let orchestratorPoke: (() => void) | null = null;
 let coderKillAll: (() => void) | null = null;
 let plannerKillAll: (() => void) | null = null;
+let rescoreKillAll: (() => void) | null = null;
 
 // On macOS, packaged Electron apps don't inherit the user's shell PATH —
 // they get a minimal PATH like /usr/bin:/bin which doesn't include common
@@ -1084,6 +1085,7 @@ app.whenReady().then(async () => {
           shuttingDown = true;
           coderKillAll?.();
           plannerKillAll?.();
+          rescoreKillAll?.();
           killAllPtySessions();
           await killNextServer();
         },
@@ -1097,7 +1099,7 @@ app.whenReady().then(async () => {
     // the ESM @skipper/core; a broken bundle must never block startup.
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { initOrchestrator, pokeOrchestrator, killAllCodingRuns, killAllPlanningRuns } = require("./orchestrator.cjs") as typeof import("./orchestrator");
+      const { initOrchestrator, pokeOrchestrator, killAllCodingRuns, killAllPlanningRuns, killAllRescores } = require("./orchestrator.cjs") as typeof import("./orchestrator");
       initOrchestrator(() => mainWindow, {
         getAccounts: () => authManager?.getState().accounts ?? [],
         getToken: (key, force) =>
@@ -1114,6 +1116,7 @@ app.whenReady().then(async () => {
       orchestratorPoke = pokeOrchestrator;
       coderKillAll = killAllCodingRuns;
       plannerKillAll = killAllPlanningRuns;
+      rescoreKillAll = killAllRescores;
     } catch (e) {
       console.warn("[orchestrator] bundle unavailable:", e instanceof Error ? e.message : e);
     }
@@ -1151,6 +1154,7 @@ app.on("before-quit", () => {
   // the dock" zombie.
   coderKillAll?.();
   plannerKillAll?.();
+  rescoreKillAll?.();
   killAllPtySessions();
   armQuitFailsafe();
 });

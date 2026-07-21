@@ -52,6 +52,7 @@ export function PlanDetailView() {
 
   const planRef = item?.plan?.ref;
   const composite = item?.plan?.confidence;
+  const rescoring = item?.plan?.rescoring;
   useEffect(() => {
     if (!window.skipper || !planRef) {
       setStored(null);
@@ -75,7 +76,10 @@ export function PlanDetailView() {
     return () => {
       cancelled = true;
     };
-  }, [id, planRef, composite]);
+    // rescoring is load-bearing twice (#164): the flag-set broadcast refetches the
+    // applied plan even if onPlanUpdated was missed mid-navigation, and the
+    // flag-clear guarantees a refetch even when the new composite equals the old.
+  }, [id, planRef, composite, rescoring]);
 
   const [editingSection, setEditingSection] = useState<SectionId | null>(null);
   const [draft, setDraft] = useState<SectionDraft | null>(null);
@@ -474,18 +478,35 @@ export function PlanDetailView() {
             ) : null,
           )}
           <Section title={p.sections.confidence} editable={false} editing={false}>
+            {stored?.editedAt &&
+              (!stored.confidence || stored.confidence.computedAt < stored.editedAt) && (
+                <p className="mb-3 text-[11px] text-amber-300/80">{p.edited}</p>
+              )}
             {stored?.confidence ? (
               <div className="space-y-3 text-[12px]">
                 <div className="flex items-center justify-between">
                   <span className="font-medium text-foreground">{t.inbox.popover.composite}</span>
-                  <span
-                    className={`text-[11px] font-medium px-1.5 py-0.5 rounded border ${bandClasses(stored.confidence.composite)}`}
-                  >
-                    {pct(stored.confidence.composite)}
-                  </span>
+                  {rescoring ? (
+                    <span className="flex items-center gap-1.5 text-[11px] text-muted">
+                      <Loader2 size={12} className="animate-spin" />
+                      {p.rescoring}
+                    </span>
+                  ) : (
+                    <span
+                      className={`text-[11px] font-medium px-1.5 py-0.5 rounded border ${bandClasses(stored.confidence.composite)}`}
+                    >
+                      {pct(stored.confidence.composite)}
+                    </span>
+                  )}
                 </div>
-                {stored.editedAt && <p className="text-[11px] text-amber-300/80">{p.edited}</p>}
-                <ReportBody report={stored.confidence} />
+                <div className={rescoring ? "opacity-60" : undefined}>
+                  <ReportBody report={stored.confidence} />
+                </div>
+              </div>
+            ) : rescoring ? (
+              <div className="flex items-center gap-1.5 text-sm text-muted">
+                <Loader2 size={13} className="animate-spin" />
+                {p.rescoring}
               </div>
             ) : (
               <p className="text-sm text-muted">{t.inbox.popover.reportUnavailable}</p>

@@ -276,7 +276,7 @@ export interface TrackedItem {
   blockedByWaived?: SourceRef[];
   /** Plan + confidence seam (#7/#8). sessionId is the last plan run's Claude session,
    *  cwd-scoped to worktree.path, overwritten each run (#111). */
-  plan?: { confidence?: number; ref?: string; sessionId?: string };
+  plan?: { confidence?: number; ref?: string; sessionId?: string; rescoring?: boolean };
   /** Structured coder report (#146). ref into plansDir; overwritten each run,
    *  deleted when a run degrades to a prose summary. */
   coderReport?: { ref: string };

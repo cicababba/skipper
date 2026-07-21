@@ -39,6 +39,13 @@ export interface ComputeConfidenceOptions {
   autoCoding?: GateMode;
   /** Abort scoring (critic + extra plan runs); claude-cli only (#159). */
   signal?: AbortSignal;
+  /**
+   * Skip the convergence extra runs outright, recording this reason (#164). Used
+   * when re-scoring a chat-revised plan: the convergence signal measured the
+   * original generation, so re-running it would compare against plans that no
+   * longer describe the work. Bypasses shouldSkipConvergence.
+   */
+  skipConvergence?: { reason: "rescore"; detail: string };
   deps?: { generatePlan?: typeof realGeneratePlan };
 }
 
@@ -116,7 +123,8 @@ export async function computeConfidence(
   // Bail before the expensive extra plan runs if the caller aborted; the planner's
   // outer catch absorbs this into report = undefined (#159).
   if (opts.signal?.aborted) throw new AgentAbortError();
-  const skip = shouldSkipConvergence(report.signals, extraRuns, thresholds, autoCoding);
+  const skip =
+    opts.skipConvergence ?? shouldSkipConvergence(report.signals, extraRuns, thresholds, autoCoding);
   if (skip) {
     report.convergenceSkipped = skip;
   } else {
