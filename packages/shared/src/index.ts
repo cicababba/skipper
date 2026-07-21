@@ -11,3 +11,4 @@ export * from "./coder-report";
 export * from "./confidence";
 export * from "./coding";
 export * from "./memory";
+export * from "./window-skipper";

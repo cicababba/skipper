@@ -1,9 +1,16 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
+  AgentChatKind,
   ArchiveItemResult,
   AuthProviderId,
   AuthProviderMeta,
   AuthState,
+  CliStatus,
+  CodingEventEnvelope,
+  CreateTerminalResult,
+  FsEntry,
+  GitOpResult,
+  GitStatus,
   IssuePlan,
   LifecycleState,
   FollowCandidatesResult,
@@ -13,6 +20,7 @@ import type {
   OrchestratorSettings,
   OrchestratorState,
   OrchestratorTransitionResult,
+  PlanChatMessage,
   RepoIntakeSettings,
   RepoLinkResult,
   RepoRef,
@@ -27,16 +35,12 @@ import type {
   TrackerProjectsResult,
   UntrackItemResult,
   UpdatePlanResult,
+  UpdateState,
+  WindowSkipper,
   WorktreeChangesResult,
   WorktreeFileResult,
   WorktreeStatusResult,
 } from "@skipper/shared";
-
-interface GitOpResult {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
-}
 
 // Mark HTML element so web UI can adjust for native chrome
 window.addEventListener("DOMContentLoaded", () => {
@@ -46,18 +50,7 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-interface FsEntry {
-  name: string;
-  path: string;
-  isDirectory: boolean;
-}
-
-interface CreateTerminalResult {
-  id: string;
-  cwd: string;
-}
-
-contextBridge.exposeInMainWorld("skipper", {
+const api = {
   isElectron: true,
   platform: process.platform,
 
@@ -235,11 +228,11 @@ contextBridge.exposeInMainWorld("skipper", {
 
   // Coding runner (issue #9): per-item progress stream + replay buffer.
   coding: {
-    getEvents: (itemId: string): Promise<unknown[]> =>
+    getEvents: (itemId: string): Promise<CodingEventEnvelope[]> =>
       ipcRenderer.invoke("skipper:coding:getEvents", itemId),
-    onEvent: (itemId: string, callback: (envelope: unknown) => void) => {
+    onEvent: (itemId: string, callback: (envelope: CodingEventEnvelope) => void) => {
       const channel = `skipper:coding:event:${itemId}`;
-      const handler = (_e: unknown, envelope: unknown) => callback(envelope);
+      const handler = (_e: unknown, envelope: CodingEventEnvelope) => callback(envelope);
       ipcRenderer.on(channel, handler);
       return () => ipcRenderer.off(channel, handler);
     },
@@ -247,11 +240,11 @@ contextBridge.exposeInMainWorld("skipper", {
 
   // Planner console (issue #32): same shape as coding, own channel pair.
   planning: {
-    getEvents: (itemId: string): Promise<unknown[]> =>
+    getEvents: (itemId: string): Promise<CodingEventEnvelope[]> =>
       ipcRenderer.invoke("skipper:planning:getEvents", itemId),
-    onEvent: (itemId: string, callback: (envelope: unknown) => void) => {
+    onEvent: (itemId: string, callback: (envelope: CodingEventEnvelope) => void) => {
       const channel = `skipper:planning:event:${itemId}`;
-      const handler = (_e: unknown, envelope: unknown) => callback(envelope);
+      const handler = (_e: unknown, envelope: CodingEventEnvelope) => callback(envelope);
       ipcRenderer.on(channel, handler);
       return () => ipcRenderer.off(channel, handler);
     },
@@ -259,33 +252,42 @@ contextBridge.exposeInMainWorld("skipper", {
 
   // Conversational plan review (issue #145): chat with the planning session at the gate.
   planChat: {
-    send: (itemId: string, text: string): Promise<unknown> =>
+    send: (
+      itemId: string,
+      text: string,
+    ): Promise<{ ok: true; reply: string } | { ok: false; error?: string; cancelled?: boolean }> =>
       ipcRenderer.invoke("skipper:planChat:send", itemId, text),
-    apply: (itemId: string): Promise<unknown> =>
-      ipcRenderer.invoke("skipper:planChat:apply", itemId),
-    getHistory: (itemId: string): Promise<unknown[]> =>
+    apply: (
+      itemId: string,
+    ): Promise<
+      { ok: true; stored: StoredPlan } | { ok: false; error?: string; cancelled?: boolean }
+    > => ipcRenderer.invoke("skipper:planChat:apply", itemId),
+    getHistory: (itemId: string): Promise<PlanChatMessage[]> =>
       ipcRenderer.invoke("skipper:planChat:getHistory", itemId),
   },
 
   // Per-tab agent chat (issue #170): interrogate the coder / reviewer at their tabs.
   agentChat: {
     send: (
-      kind: string,
+      kind: AgentChatKind,
       itemId: string,
       text: string,
       ctx?: { selectedFile?: string },
-    ): Promise<unknown> => ipcRenderer.invoke("skipper:agentChat:send", kind, itemId, text, ctx),
-    getHistory: (kind: string, itemId: string): Promise<unknown[]> =>
+    ): Promise<
+      | { ok: true; reply: string; mode: "resumed" | "fresh" }
+      | { ok: false; error?: string; cancelled?: boolean }
+    > => ipcRenderer.invoke("skipper:agentChat:send", kind, itemId, text, ctx),
+    getHistory: (kind: AgentChatKind, itemId: string): Promise<PlanChatMessage[]> =>
       ipcRenderer.invoke("skipper:agentChat:getHistory", kind, itemId),
   },
 
   // Reviewer console (issue #113): same shape as coding/planning, own channel pair.
   review: {
-    getEvents: (itemId: string): Promise<unknown[]> =>
+    getEvents: (itemId: string): Promise<CodingEventEnvelope[]> =>
       ipcRenderer.invoke("skipper:review:getEvents", itemId),
-    onEvent: (itemId: string, callback: (envelope: unknown) => void) => {
+    onEvent: (itemId: string, callback: (envelope: CodingEventEnvelope) => void) => {
       const channel = `skipper:review:event:${itemId}`;
-      const handler = (_e: unknown, envelope: unknown) => callback(envelope);
+      const handler = (_e: unknown, envelope: CodingEventEnvelope) => callback(envelope);
       ipcRenderer.on(channel, handler);
       return () => ipcRenderer.off(channel, handler);
     },
@@ -325,27 +327,12 @@ contextBridge.exposeInMainWorld("skipper", {
   // a branch chip next to project folders. Returns null when the path
   // isn't a git repo top, so the caller can cheaply ask first.
   git: {
-    status: (
-      repoPath: string,
-    ): Promise<{
-      branch: string;
-      ahead: number;
-      behind: number;
-      files: Record<string, { index: string; worktree: string }>;
-      hasUpstream: boolean;
-    } | null> => ipcRenderer.invoke("skipper:git:status", repoPath),
+    status: (repoPath: string): Promise<GitStatus | null> =>
+      ipcRenderer.invoke("skipper:git:status", repoPath),
     findRepo: (
       anyPath: string,
-    ): Promise<{
-      repoPath: string;
-      status: {
-        branch: string;
-        ahead: number;
-        behind: number;
-        files: Record<string, { index: string; worktree: string }>;
-        hasUpstream: boolean;
-      };
-    } | null> => ipcRenderer.invoke("skipper:git:findRepo", anyPath),
+    ): Promise<{ repoPath: string; status: GitStatus } | null> =>
+      ipcRenderer.invoke("skipper:git:findRepo", anyPath),
     stage: (repoPath: string, paths: string[]): Promise<GitOpResult> =>
       ipcRenderer.invoke("skipper:git:stage", repoPath, paths),
     unstage: (repoPath: string, paths: string[]): Promise<GitOpResult> =>
@@ -376,11 +363,11 @@ contextBridge.exposeInMainWorld("skipper", {
 
   // Auto-update (official builds; inert in source builds)
   updates: {
-    getState: (): Promise<unknown> => ipcRenderer.invoke("skipper:updates:getState"),
-    check: (): Promise<unknown> => ipcRenderer.invoke("skipper:updates:check"),
+    getState: (): Promise<UpdateState> => ipcRenderer.invoke("skipper:updates:getState"),
+    check: (): Promise<UpdateState> => ipcRenderer.invoke("skipper:updates:check"),
     restart: (): Promise<void> => ipcRenderer.invoke("skipper:updates:restart"),
-    onStateChanged: (callback: (state: unknown) => void) => {
-      const handler = (_e: unknown, state: unknown) => callback(state);
+    onStateChanged: (callback: (state: UpdateState) => void) => {
+      const handler = (_e: unknown, state: UpdateState) => callback(state);
       ipcRenderer.on("skipper:updates:stateChanged", handler);
       return () => ipcRenderer.off("skipper:updates:stateChanged", handler);
     },
@@ -388,15 +375,9 @@ contextBridge.exposeInMainWorld("skipper", {
 
   // CLI on PATH (Install / Uninstall)
   cli: {
-    status: (): Promise<{
-      supported: boolean;
-      target: string | null;
-      source: string;
-      installed: boolean;
-      stale: boolean;
-    }> => ipcRenderer.invoke("skipper:cli:status"),
-    install: () => ipcRenderer.invoke("skipper:cli:install"),
-    uninstall: () => ipcRenderer.invoke("skipper:cli:uninstall"),
+    status: (): Promise<CliStatus> => ipcRenderer.invoke("skipper:cli:status"),
+    install: (): Promise<CliStatus> => ipcRenderer.invoke("skipper:cli:install"),
+    uninstall: (): Promise<CliStatus> => ipcRenderer.invoke("skipper:cli:uninstall"),
   },
 
   // Terminal
@@ -421,4 +402,6 @@ contextBridge.exposeInMainWorld("skipper", {
       return () => ipcRenderer.off(channel, handler);
     },
   },
-});
+} satisfies WindowSkipper;
+
+contextBridge.exposeInMainWorld("skipper", api);

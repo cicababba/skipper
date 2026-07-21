@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { dirname, normalize, resolve } from "node:path";
 import type { IpcMain } from "electron";
+import type { GitOpResult, GitStatus } from "@skipper/shared";
 
 // Public git engine (issue #1 — open-core boundary redraw).
 //
@@ -9,20 +10,6 @@ import type { IpcMain } from "electron";
 // They shell out to the user's `git` binary: auth (push/pull) rides on the
 // machine's credential helpers / SSH keys — we never see or store secrets.
 // The IPC contract mirrors apps/desktop/src/preload.ts `git:` verbatim.
-
-interface GitOpResult {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
-}
-
-interface GitStatus {
-  branch: string;
-  ahead: number;
-  behind: number;
-  files: Record<string, { index: string; worktree: string }>;
-  hasUpstream: boolean;
-}
 
 interface RunResult {
   code: number;
