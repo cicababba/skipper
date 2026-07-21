@@ -50,6 +50,7 @@ export function buildCoderPrompt(issue: PlanIssueInput, plan: IssuePlan): string
       const refs = [
         s.files.length > 0 ? `files: ${s.files.join(", ")}` : "",
         s.symbols.length > 0 ? `symbols: ${s.symbols.join(", ")}` : "",
+        s.createdSymbols?.length ? `creates: ${s.createdSymbols.join(", ")}` : "",
       ]
         .filter(Boolean)
         .join("; ");

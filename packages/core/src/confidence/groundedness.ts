@@ -39,13 +39,22 @@ export async function scoreGroundedness(
     else missingFiles.push(original);
   }
 
+  // Symbols the plan declares it creates are exempt plan-wide — they don't exist yet.
+  const created = new Set<string>();
+  for (const step of plan.steps) {
+    for (const s of step.createdSymbols ?? []) if (s.trim()) created.add(s.trim());
+  }
+
   // Symbols cited by steps whose files are all "new" are exempt — they don't exist yet.
   const symbols = new Set<string>();
   for (const step of plan.steps) {
     const normed = step.files.map(normalizeRepoPath);
     const allNew = step.files.length > 0 && normed.every((n) => n !== null && newFiles.has(n));
     if (allNew) continue;
-    for (const s of step.symbols) if (s.trim()) symbols.add(s.trim());
+    for (const s of step.symbols) {
+      const sym = s.trim();
+      if (sym && !created.has(sym)) symbols.add(sym);
+    }
   }
 
   const foundSymbols = await findSymbols(repoPath, symbols, existingFiles);
@@ -68,6 +77,7 @@ export async function scoreGroundedness(
     missingFiles: missingFiles.sort(),
     missingSymbols,
     newFiles: [...newFiles].sort(),
+    createdSymbols: [...created].sort(),
   };
 }
 

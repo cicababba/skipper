@@ -61,6 +61,28 @@ describe("draftFor / applySection round-trip", () => {
     ]);
   });
 
+  it("steps draft round-trip preserves createdSymbols", () => {
+    const withCreated: IssuePlan = {
+      ...plan,
+      steps: [
+        { title: "wire", detail: "", files: ["src/a.ts"], symbols: ["main"], createdSymbols: ["newFn"] },
+      ],
+    };
+    const draft = draftFor(withCreated, "steps");
+    if (draft.section !== "steps") throw new Error("wrong draft");
+    expect(draft.steps[0].createdSymbolsText).toBe("newFn");
+    expect(applySection(withCreated, draft)).toEqual(withCreated);
+  });
+
+  it("absent createdSymbols stays absent after a steps round-trip", () => {
+    const draft = draftFor(plan, "steps");
+    if (draft.section !== "steps") throw new Error("wrong draft");
+    expect(draft.steps[0].createdSymbolsText).toBe("");
+    const next = applySection(plan, draft);
+    expect(next.steps.every((s) => !("createdSymbols" in s))).toBe(true);
+    expect(next).toEqual(plan);
+  });
+
   it("does not mutate the source plan", () => {
     const before = JSON.parse(JSON.stringify(plan));
     const draft = draftFor(plan, "files");

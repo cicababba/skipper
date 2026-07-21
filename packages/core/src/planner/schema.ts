@@ -20,6 +20,7 @@ export const IssuePlanSchema = z.object({
         detail: z.string(),
         files: z.array(z.string()),
         symbols: z.array(z.string()),
+        createdSymbols: z.array(z.string()).optional(),
       }),
     )
     .min(1),

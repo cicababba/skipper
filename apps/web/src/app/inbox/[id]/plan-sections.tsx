@@ -194,9 +194,11 @@ export function StepsView({ steps }: { steps: PlanStep[] }) {
           <div className="min-w-0 space-y-1">
             <p className="text-sm font-medium text-foreground">{step.title}</p>
             {step.detail && <p className="text-sm text-muted whitespace-pre-wrap">{step.detail}</p>}
-            {(step.files.length > 0 || step.symbols.length > 0) && (
+            {(step.files.length > 0 ||
+              step.symbols.length > 0 ||
+              (step.createdSymbols?.length ?? 0) > 0) && (
               <p className="font-mono text-[11px] text-muted/70 break-all">
-                {[...step.files, ...step.symbols].join(" · ")}
+                {[...step.files, ...step.symbols, ...(step.createdSymbols ?? [])].join(" · ")}
               </p>
             )}
           </div>
@@ -241,7 +243,7 @@ export function StepsEditor({
             rows={3}
             className={`${inputClasses} resize-y`}
           />
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-3 gap-1.5">
             <label className="space-y-1">
               <span className="text-[10px] uppercase tracking-wide text-muted/60">
                 {p.stepFiles} — {p.onePerLine}
@@ -264,12 +266,26 @@ export function StepsEditor({
                 className={`${inputClasses} font-mono text-[12px] resize-y`}
               />
             </label>
+            <label className="space-y-1">
+              <span className="text-[10px] uppercase tracking-wide text-muted/60">
+                {p.stepCreates} — {p.onePerLine}
+              </span>
+              <textarea
+                value={step.createdSymbolsText}
+                onChange={(e) => update(i, { createdSymbolsText: e.target.value })}
+                rows={3}
+                className={`${inputClasses} font-mono text-[12px] resize-y`}
+              />
+            </label>
           </div>
         </div>
       ))}
       <AddButton
         onClick={() =>
-          onChange([...steps, { title: "", detail: "", filesText: "", symbolsText: "" }])
+          onChange([
+            ...steps,
+            { title: "", detail: "", filesText: "", symbolsText: "", createdSymbolsText: "" },
+          ])
         }
       />
     </div>
