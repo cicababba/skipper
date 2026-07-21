@@ -3,7 +3,12 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StoredPlan } from "@skipper/shared";
-import { archiveStoredPlan, readStoredPlan, writeStoredPlan } from "./plan-store";
+import {
+  archiveStoredPlan,
+  readStoredPlan,
+  updateStoredPlan,
+  writeStoredPlan,
+} from "./plan-store";
 
 let dir: string;
 
@@ -59,5 +64,71 @@ describe("archiveStoredPlan (#115)", () => {
 
   it("returns null when both source and target are missing", async () => {
     expect(await archiveStoredPlan(dir, "github_1.json")).toBeNull();
+  });
+});
+
+describe("updateStoredPlan (#165)", () => {
+  const ref = "github_1.json";
+
+  it("snapshots the superseded body with the given source at editedAt", async () => {
+    const original = makePlan("github:1");
+    await writeStoredPlan(dir, ref, original);
+
+    const updated = await updateStoredPlan(
+      dir,
+      ref,
+      { ...original.plan, summary: "edited" },
+      "inline-edit",
+    );
+    expect(updated?.plan.summary).toBe("edited");
+    expect(updated?.revisions).toHaveLength(1);
+    const rev = updated!.revisions![0];
+    expect(rev.plan).toEqual(original.plan);
+    expect(rev.source).toBe("inline-edit");
+    expect(rev.at).toBe(updated!.editedAt);
+  });
+
+  it("accumulates revisions oldest-first across updates", async () => {
+    const original = makePlan("github:1");
+    await writeStoredPlan(dir, ref, original);
+
+    await updateStoredPlan(dir, ref, { ...original.plan, summary: "v2" }, "inline-edit");
+    const second = await updateStoredPlan(dir, ref, { ...original.plan, summary: "v3" }, "chat-apply");
+
+    expect(second?.revisions).toHaveLength(2);
+    expect(second!.revisions![0].plan.summary).toBe("s");
+    expect(second!.revisions![0].source).toBe("inline-edit");
+    expect(second!.revisions![1].plan.summary).toBe("v2");
+    expect(second!.revisions![1].source).toBe("chat-apply");
+    expect(await readStoredPlan(dir, ref)).toEqual(second);
+  });
+
+  it("preserves the rest of the envelope", async () => {
+    const original = makePlan("github:1");
+    await writeStoredPlan(dir, ref, original);
+
+    const updated = await updateStoredPlan(
+      dir,
+      ref,
+      { ...original.plan, summary: "edited" },
+      "inline-edit",
+    );
+    expect(updated?.generatedAt).toBe(original.generatedAt);
+    expect(updated?.model).toBe(original.model);
+    expect(updated?.version).toBe(2);
+  });
+
+  it("starts a one-element array on a legacy file without revisions", async () => {
+    const original = makePlan("github:1");
+    await writeStoredPlan(dir, ref, original);
+    expect(original.revisions).toBeUndefined();
+
+    const updated = await updateStoredPlan(
+      dir,
+      ref,
+      { ...original.plan, summary: "edited" },
+      "chat-apply",
+    );
+    expect(updated?.revisions).toHaveLength(1);
   });
 });

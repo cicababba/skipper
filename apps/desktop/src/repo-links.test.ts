@@ -278,27 +278,33 @@ describe("plan store", () => {
     await writeStoredPlan(plansDir, ref, stored);
 
     const edited = { ...stored.plan, summary: "edited" };
-    const updated = await updateStoredPlan(plansDir, ref, edited);
+    const updated = await updateStoredPlan(plansDir, ref, edited, "inline-edit");
     expect(updated?.plan.summary).toBe("edited");
     expect(updated?.editedAt).toBeTruthy();
     expect(updated?.confidence).toEqual(stored.confidence);
     expect(updated?.generatedAt).toBe(stored.generatedAt);
     expect(updated?.version).toBe(2);
+    expect(updated?.revisions).toHaveLength(1);
     expect(await readStoredPlan(plansDir, ref)).toEqual(updated);
   });
 
   it("returns null when updating a missing ref", async () => {
     const plansDir = join(dir, "plans");
     expect(
-      await updateStoredPlan(plansDir, "missing.json", {
-        summary: "s",
-        files: [{ path: "a.ts", reason: "r" }],
-        steps: [{ title: "t", detail: "d", files: [], symbols: [] }],
-        acceptance: [],
-        risks: [],
-        openQuestions: [],
-        estimatedSize: "s",
-      }),
+      await updateStoredPlan(
+        plansDir,
+        "missing.json",
+        {
+          summary: "s",
+          files: [{ path: "a.ts", reason: "r" }],
+          steps: [{ title: "t", detail: "d", files: [], symbols: [] }],
+          acceptance: [],
+          risks: [],
+          openQuestions: [],
+          estimatedSize: "s",
+        },
+        "inline-edit",
+      ),
     ).toBeNull();
   });
 });

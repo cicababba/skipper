@@ -1836,7 +1836,7 @@ export function initOrchestrator(
     if (!parsed.success) {
       return { ok: false as const, error: `invalid plan: ${parsed.error.issues[0]?.message ?? "schema mismatch"}` };
     }
-    const stored = await updateStoredPlan(deps!.plansDir, ref, parsed.data);
+    const stored = await updateStoredPlan(deps!.plansDir, ref, parsed.data, "inline-edit");
     if (!stored) return { ok: false as const, error: "stored plan not found" };
     // An inline edit supersedes the plan an in-flight rescore was scoring (#164):
     // cancel it so the stale score stands rather than landing on the edited plan.
@@ -2143,7 +2143,8 @@ export function initOrchestrator(
       const ref = item.plan?.ref;
       return ref ? readStoredPlan(orchestratorDeps.plansDir, ref) : null;
     },
-    updatePlan: (item, plan) => updateStoredPlan(orchestratorDeps.plansDir, item.plan!.ref!, plan),
+    updatePlan: (item, plan) =>
+      updateStoredPlan(orchestratorDeps.plansDir, item.plan!.ref!, plan, "chat-apply"),
     setPlanSessionId,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
     emitEvent: emitPlanningEvent,
