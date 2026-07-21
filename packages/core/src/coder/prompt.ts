@@ -1,6 +1,7 @@
 import { displayKey, type CriticObjection, type IssuePlan, type PrReviewComment } from "@skipper/shared";
 import { renderCommentsBlock } from "../planner/prompt";
 import type { PlanIssueInput } from "../planner/generate";
+import { reportContractBlock } from "./report";
 
 const MAX_BODY_CHARS = 20_000;
 
@@ -12,7 +13,7 @@ When the skipper-memory tools are available, before writing code call search_mem
 
 Do NOT run git commit, git push, or any branch operation (checkout, branch, merge, rebase) — your changes are reviewed as uncommitted working-tree modifications. Run the project's tests with Bash where cheap to verify your work.
 
-Your final message must be a concise summary of the changes you made and any deviations from the plan.`;
+Your final message must be ONLY a single JSON object matching the schema given in the task prompt — no prose, no code fences. Record every file you changed under "done", declare every deviation from the plan under "deviations" (empty array if none), record each verification command you ran with its outcome under "verification", and list any unresolved conflicts, questions, or skipped steps under "open".`;
 
 function issueHeader(issue: PlanIssueInput): string[] {
   const body =
@@ -73,6 +74,8 @@ export function buildCoderPrompt(issue: PlanIssueInput, plan: IssuePlan): string
       ? `Manual checks (for the human reviewer):\n${plan.manualChecks.map((m) => `- ${m}`).join("\n")}`
       : "",
     `--- End plan ---`,
+    ``,
+    reportContractBlock(),
   ];
   return lines.filter((l) => l !== "").join("\n");
 }
@@ -93,7 +96,9 @@ export function buildFixPrompt(issue: PlanIssueInput, objections: CriticObjectio
     ),
     `--- End objections ---`,
     ``,
-    `Inspect the working tree (git status, git diff) to see the current implementation, then fix. The same rules apply: no git commit/push/branch operations; finish with a concise summary of all changes.`,
+    `Inspect the working tree (git status, git diff) to see the current implementation, then fix. The same rules apply: no git commit/push/branch operations.`,
+    ``,
+    reportContractBlock(),
   ]
     .filter((l) => l !== "")
     .join("\n");
@@ -116,7 +121,9 @@ export function buildPrFixPrompt(issue: PlanIssueInput, comments: PrReviewCommen
     }),
     `--- End review feedback ---`,
     ``,
-    `The pushed commits are already on this branch. Inspect the working tree and history (git status, git diff, git log) to see the current implementation, then address the feedback. The same rules apply: no git commit/push/branch operations; finish with a concise summary of all changes.`,
+    `The pushed commits are already on this branch. Inspect the working tree and history (git status, git diff, git log) to see the current implementation, then address the feedback. The same rules apply: no git commit/push/branch operations.`,
+    ``,
+    reportContractBlock(),
   ]
     .filter((l) => l !== "")
     .join("\n");
@@ -129,7 +136,9 @@ export function buildResumePrompt(issue: PlanIssueInput): string {
     ``,
     ...issueHeader(issue),
     ``,
-    `Inspect the working tree (git status, git diff) to see what has already been done, then complete the remaining work. The same rules apply: no git commit/push/branch operations; finish with a concise summary of all changes.`,
+    `Inspect the working tree (git status, git diff) to see what has already been done, then complete the remaining work. The same rules apply: no git commit/push/branch operations.`,
+    ``,
+    reportContractBlock(),
   ]
     .filter((l) => l !== "")
     .join("\n");

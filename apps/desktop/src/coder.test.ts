@@ -1,6 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
+  DEFAULT_LLM_SETTINGS,
   resolveRepoOrchestratorSettings,
+  type CoderReport,
   type CodingEvent,
   type IssuePlan,
   type LifecycleState,
@@ -9,9 +14,23 @@ import {
   type TrackedItem,
   type TransitionActor,
 } from "@skipper/shared";
-import type { RunCodingAgentOptions, CodingRunResult, OrchestratorSettings } from "@skipper/core";
+import type {
+  RunCodingAgentOptions,
+  CodingRunResult,
+  LLMProviderInterface,
+  OrchestratorSettings,
+} from "@skipper/core";
 import { DEFAULT_ORCHESTRATOR_SETTINGS, CodingAbortError } from "@skipper/core";
 import { initCoder, pokeCoder, cancelCodingRun, type CoderDeps } from "./coder";
+import { reportFileName } from "./report-store";
+
+const validReport: CoderReport = {
+  done: [{ path: "src/a.ts", summary: "did it" }],
+  deviations: [],
+  verification: [{ command: "pnpm test", passed: true }],
+  open: [],
+};
+const REPORT_JSON = JSON.stringify(validReport);
 
 const plan: IssuePlan = {
   summary: "do the thing",
@@ -68,7 +87,10 @@ interface Harness {
   }[];
   worktreeWrites: { itemId: string; sessionId?: string }[];
   events: { itemId: string; event: CodingEvent }[];
+  reports: { itemId: string; reportRef?: string; reason: string }[];
 }
+
+let plansDir: string;
 
 function makeHarness(
   overrides: Partial<CoderDeps> = {},
@@ -78,6 +100,7 @@ function makeHarness(
   const transitions: Harness["transitions"] = [];
   const worktreeWrites: Harness["worktreeWrites"] = [];
   const events: Harness["events"] = [];
+  const reports: Harness["reports"] = [];
   const deps: CoderDeps = {
     listItems: () => [...items.values()],
     getItem: (id) => items.get(id),
@@ -89,6 +112,23 @@ function makeHarness(
       const next = { ...item, state: to, transitions: [...item.transitions, { at: new Date().toISOString(), from: item.state, to, actor }] };
       items.set(itemId, next);
       return next;
+    },
+    // Mirrors the orchestrator's completeCoding: agent-review transition +
+    // coderReport bookkeeping in one step.
+    completeCoding: async (itemId, reportRef, reason) => {
+      reports.push({ itemId, reportRef, reason });
+      transitions.push({ itemId, to: "agent-review", actor: "coder", reason });
+      const item = items.get(itemId)!;
+      const { coderReport: _drop, ...rest } = item;
+      items.set(itemId, {
+        ...rest,
+        state: "agent-review",
+        ...(reportRef ? { coderReport: { ref: reportRef } } : {}),
+        transitions: [
+          ...item.transitions,
+          { at: new Date().toISOString(), from: item.state, to: "agent-review", actor: "coder" },
+        ],
+      });
     },
     setWorktree: async (itemId, worktree) => {
       worktreeWrites.push({ itemId, sessionId: worktree.sessionId });
@@ -108,24 +148,49 @@ function makeHarness(
     // overrides getSettings still sees its coderModel (#58).
     getRepoSettings: () => resolveRepoOrchestratorSettings(repoSettings, deps.getSettings()),
     emitEvent: (itemId, event) => events.push({ itemId, event }),
+    getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS }),
+    plansDir,
     ...overrides,
   };
-  return { items, deps, transitions, worktreeWrites, events };
+  return { items, deps, transitions, worktreeWrites, events, reports };
 }
 
-function okRunner(summary = "all done") {
+/** A successful run whose final message is a valid structured report (#146). */
+function okRunner(resultText = REPORT_JSON) {
   return vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
-    opts.onEvent({ kind: "result", ok: true, summary });
-    return { ok: true, summary, sessionId: opts.sessionId ?? opts.resumeSessionId ?? "" };
+    opts.onEvent({ kind: "result", ok: true, summary: resultText });
+    return {
+      ok: true,
+      summary: resultText,
+      resultText,
+      sessionId: opts.sessionId ?? opts.resumeSessionId ?? "",
+    };
   });
 }
 
-async function settle(): Promise<void> {
-  for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+/** ok result carrying a valid report — for inline runners in ordering tests. */
+function okReport(opts: RunCodingAgentOptions): CodingRunResult {
+  return {
+    ok: true,
+    summary: REPORT_JSON,
+    resultText: REPORT_JSON,
+    sessionId: opts.sessionId ?? opts.resumeSessionId ?? "",
+  };
 }
 
-beforeEach(() => {
+async function settle(): Promise<void> {
+  // setTimeout (not setImmediate) so the report-store's real fs writes on the
+  // libuv threadpool have wall-clock time to land before assertions/afterEach.
+  for (let i = 0; i < 30; i++) await new Promise((r) => setTimeout(r, 1));
+}
+
+beforeEach(async () => {
+  plansDir = await mkdtemp(join(tmpdir(), "nb-coder-plans-"));
   initCoder(makeHarness().deps); // reset module state; each test re-inits
+});
+
+afterEach(async () => {
+  await rm(plansDir, { recursive: true, force: true });
 });
 
 describe("coder driver", () => {
@@ -140,7 +205,7 @@ describe("coder driver", () => {
 
     expect(h.transitions.map((t) => t.to)).toEqual(["coding", "agent-review"]);
     expect(h.transitions[1].actor).toBe("coder");
-    expect(h.transitions[1].reason).toBe("all done");
+    expect(h.transitions[1].reason).toBe("1 file(s) done");
     // worktree + session persisted BEFORE the runner started
     expect(h.worktreeWrites).toHaveLength(1);
     expect(h.worktreeWrites[0].sessionId).toBeTruthy();
@@ -207,7 +272,7 @@ describe("coder driver", () => {
     const runner = vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
       order.push(opts.cwd);
       await gate;
-      return { ok: true, summary: "done", sessionId: opts.sessionId ?? "" };
+      return okReport(opts);
     });
     initCoder(h.deps, runner);
     h.items.set("github:2", makeItem(2, "queued"));
@@ -238,7 +303,7 @@ describe("coder driver", () => {
       vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
         order.push(opts.cwd);
         await gate;
-        return { ok: true, summary: "done", sessionId: opts.sessionId ?? "" };
+        return okReport(opts);
       }),
     );
     h.items.set("github:1", makeItem(1, "queued"));
@@ -262,7 +327,7 @@ describe("coder driver", () => {
       vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
         order.push(opts.cwd);
         await gate;
-        return { ok: true, summary: "done", sessionId: opts.sessionId ?? "" };
+        return okReport(opts);
       }),
     );
     h.items.set("github:1", makeItem(1, "queued")); // older queued time
@@ -284,7 +349,7 @@ describe("coder driver", () => {
       h.deps,
       vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
         order.push(opts.cwd);
-        return { ok: true, summary: "done", sessionId: opts.sessionId ?? "" };
+        return okReport(opts);
       }),
     );
     h.items.set("github:1", makeItem(1, "queued")); // older, normal-priority repo
@@ -305,7 +370,7 @@ describe("coder driver", () => {
       vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
         order.push(opts.cwd);
         await gate;
-        return { ok: true, summary: "done", sessionId: opts.sessionId ?? opts.resumeSessionId ?? "" };
+        return okReport(opts);
       }),
     );
     h.items.set("github:1", makeItem(1, "queued")); // queued earlier than the re-entry
@@ -388,7 +453,7 @@ describe("coder driver", () => {
       h.deps,
       vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
         await gate;
-        return { ok: true, summary: "done", sessionId: opts.sessionId ?? "" };
+        return okReport(opts);
       }),
     );
     h.items.set("github:1", makeItem(1, "queued"));
@@ -448,8 +513,8 @@ describe("coder driver", () => {
     const runner = vi
       .fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
         if (opts.resumeSessionId) throw new Error("No conversation found");
-        opts.onEvent({ kind: "result", ok: true, summary: "fresh run done" });
-        return { ok: true, summary: "fresh run done", sessionId: opts.sessionId ?? "" };
+        opts.onEvent({ kind: "result", ok: true, summary: REPORT_JSON });
+        return okReport(opts);
       });
     initCoder(h.deps, runner);
     const item = makeItem(1, "coding");
@@ -535,7 +600,7 @@ describe("coder driver", () => {
     const gate = new Promise<void>((r) => (release = r));
     const runner = vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
       await gate;
-      return { ok: true, summary: "done", sessionId: opts.sessionId ?? opts.resumeSessionId ?? "" };
+      return okReport(opts);
     });
     initCoder(h.deps, runner);
     // Re-entered item occupies the repo's single slot...
@@ -561,7 +626,7 @@ describe("coder driver", () => {
     const h = makeHarness();
     const runner = vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
       if (opts.resumeSessionId) throw new Error("No conversation found");
-      return { ok: true, summary: "fixed", sessionId: opts.sessionId ?? "" };
+      return okReport(opts);
     });
     initCoder(h.deps, runner);
     const item = makeItem(1, "coding");
@@ -584,5 +649,91 @@ describe("coder driver", () => {
     expect(runner).toHaveBeenCalledTimes(2);
     expect(runner.mock.calls[1][0].prompt).toContain("independent reviewer");
     expect(h.transitions.map((t) => t.to)).toEqual(["agent-review"]);
+  });
+});
+
+// #146: the success path parses the final JSON into a structured report,
+// persists it, derives the transition reason from it, and degrades to the
+// prose summary when the report cannot be recovered.
+describe("structured coder report (#146)", () => {
+  it("persists a parsed report and derives the reason from it", async () => {
+    const h = makeHarness();
+    initCoder(h.deps, okRunner());
+    h.items.set("github:1", makeItem(1, "queued"));
+
+    pokeCoder();
+    await settle();
+
+    const ref = reportFileName("github:1");
+    expect(h.reports).toEqual([{ itemId: "github:1", reportRef: ref, reason: "1 file(s) done" }]);
+    expect(h.items.get("github:1")!.coderReport).toEqual({ ref });
+    const onDisk = JSON.parse(await readFile(join(plansDir, ref), "utf-8"));
+    expect(onDisk.version).toBe(1);
+    expect(onDisk.report.done[0].path).toBe("src/a.ts");
+    expect(onDisk.model).toBe("sonnet");
+  });
+
+  it("folds the first deviation into the transition reason", async () => {
+    const withDeviation: CoderReport = { ...validReport, deviations: ["renamed foo to bar"] };
+    const h = makeHarness();
+    initCoder(h.deps, okRunner(JSON.stringify(withDeviation)));
+    h.items.set("github:1", makeItem(1, "queued"));
+
+    pokeCoder();
+    await settle();
+
+    expect(h.reports[0].reason).toBe("1 file(s) done — deviation: renamed foo to bar");
+  });
+
+  it("degrades to the prose summary when the report is unparseable and repair fails", async () => {
+    const h = makeHarness();
+    const runner = vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      opts.onEvent({ kind: "result", ok: true, summary: "just prose, no JSON here" });
+      return {
+        ok: true,
+        summary: "just prose, no JSON here",
+        resultText: "just prose, no JSON here",
+        sessionId: opts.sessionId ?? "",
+      };
+    });
+    const rejectingProvider = {
+      name: "fake",
+      ask: vi.fn(),
+      askStructured: vi.fn(async () => {
+        throw new Error("repair failed");
+      }),
+    } as unknown as LLMProviderInterface;
+    initCoder(h.deps, runner, rejectingProvider);
+    h.items.set("github:1", makeItem(1, "queued"));
+
+    pokeCoder();
+    await settle();
+
+    expect(h.reports).toEqual([
+      { itemId: "github:1", reportRef: undefined, reason: "just prose, no JSON here" },
+    ]);
+    expect(h.items.get("github:1")!.state).toBe("agent-review");
+    expect(h.items.get("github:1")!.coderReport).toBeUndefined();
+  });
+
+  it("writes a report on a fix round too", async () => {
+    const h = makeHarness();
+    initCoder(h.deps, okRunner());
+    h.items.set("github:1", {
+      ...makeItem(1, "coding"),
+      worktree: { path: "/wt/repo/issue-1", branch: "feature/issue-1", sessionId: "old-session" },
+      review: {
+        rounds: 1,
+        outcome: "reject",
+        pendingObjections: [{ kind: "acceptance-gap", detail: "criterion not met", blocking: true }],
+        at: "2026-07-13T00:00:00.000Z",
+      },
+    });
+
+    pokeCoder();
+    await settle();
+
+    expect(h.reports[0].reportRef).toBe(reportFileName("github:1"));
+    expect(h.items.get("github:1")!.coderReport).toEqual({ ref: reportFileName("github:1") });
   });
 });

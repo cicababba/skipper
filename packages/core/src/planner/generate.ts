@@ -41,7 +41,7 @@ export class PlanGenerationError extends Error {
   }
 }
 
-function summarizeZodError(error: { issues: Array<{ path: PropertyKey[]; message: string }> }): string {
+export function summarizeZodError(error: { issues: Array<{ path: PropertyKey[]; message: string }> }): string {
   return error.issues
     .slice(0, 10)
     .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)

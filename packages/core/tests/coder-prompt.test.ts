@@ -42,6 +42,29 @@ describe("CODER_SYSTEM_PROMPT", () => {
     expect(CODER_SYSTEM_PROMPT).toMatch(/do not run git commit/i);
     expect(CODER_SYSTEM_PROMPT).toMatch(/uncommitted working-tree/i);
   });
+
+  it("mandates the structured JSON report (#146)", () => {
+    expect(CODER_SYSTEM_PROMPT).toMatch(/single JSON object/i);
+    expect(CODER_SYSTEM_PROMPT).toContain('"deviations"');
+  });
+});
+
+describe("structured report contract in every builder (#146)", () => {
+  const builders = {
+    coder: () => buildCoderPrompt(issue, plan),
+    fix: () => buildFixPrompt(issue, [{ kind: "risk", detail: "x", blocking: false }]),
+    prFix: () => buildPrFixPrompt(issue, [{ body: "please rename" }]),
+    resume: () => buildResumePrompt(issue),
+  };
+
+  for (const [name, build] of Object.entries(builders)) {
+    it(`${name} appends the single-JSON clause, deviations field, and schema`, () => {
+      const prompt = build();
+      expect(prompt).toContain("Your FINAL message must be ONLY a single JSON object");
+      expect(prompt).toContain('"deviations"');
+      expect(prompt).toContain("Schema:");
+    });
+  }
 });
 
 describe("buildCoderPrompt", () => {

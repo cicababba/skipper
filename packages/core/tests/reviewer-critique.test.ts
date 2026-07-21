@@ -103,4 +103,57 @@ describe("critiqueDiff", () => {
     await critiqueDiff({ diff: "+1", issue, acceptance: [] }, llm);
     expect(askStructured.mock.calls[0][2]).toBeUndefined();
   });
+
+  // #146: the coder report threads deviations + verification into the critic
+  // context, but never gates the verdict.
+  it("renders declared deviations and verification lines from the report", async () => {
+    const { llm, askStructured } = fakeLLM();
+    await critiqueDiff(
+      {
+        diff: "+1",
+        issue,
+        acceptance: [],
+        report: {
+          done: [{ path: "src/a.ts", summary: "did it" }],
+          deviations: ["skipped the cache layer"],
+          verification: [
+            { command: "pnpm test", passed: true },
+            { command: "pnpm lint", passed: false, detail: "2 errors" },
+          ],
+          open: [],
+        },
+      },
+      llm,
+    );
+    const prompt = askStructured.mock.calls[0][0] as string;
+    expect(prompt).toContain("Coder-declared deviations from the plan:");
+    expect(prompt).toContain("- skipped the cache layer");
+    expect(prompt).toContain("Verification commands the coder ran:");
+    expect(prompt).toContain("- [PASS] pnpm test");
+    expect(prompt).toContain("- [FAIL] pnpm lint — 2 errors");
+  });
+
+  it("flags empty deviations as undeclared-drift context", async () => {
+    const { llm, askStructured } = fakeLLM();
+    await critiqueDiff(
+      {
+        diff: "+1",
+        issue,
+        acceptance: [],
+        report: { done: [], deviations: [], verification: [], open: [] },
+      },
+      llm,
+    );
+    const prompt = askStructured.mock.calls[0][0] as string;
+    expect(prompt).toContain("declared NO deviations from the plan");
+    expect(prompt).not.toContain("Verification commands the coder ran:");
+  });
+
+  it("includes none of the report blocks when no report is passed", async () => {
+    const { llm, askStructured } = fakeLLM();
+    await critiqueDiff({ diff: "+1", issue, acceptance: [] }, llm);
+    const prompt = askStructured.mock.calls[0][0] as string;
+    expect(prompt).not.toContain("deviations from the plan");
+    expect(prompt).not.toContain("Verification commands the coder ran:");
+  });
 });

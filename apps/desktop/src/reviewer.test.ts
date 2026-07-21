@@ -7,6 +7,7 @@ import type {
   LifecycleState,
   LlmSettings,
   RepoIntakeSettings,
+  StoredCoderReport,
   StoredPlan,
   TrackedItem,
 } from "@skipper/shared";
@@ -101,6 +102,7 @@ function makeHarness(
         plan,
       }) as StoredPlan,
     getDiff: async () => smallDiff,
+    getCoderReport: async () => null,
     completeReview: async (itemId, review, to, reason, resumeTo) => {
       completions.push({ itemId, review, to, reason, resumeTo });
       const item = items.get(itemId)!;
@@ -488,6 +490,68 @@ describe("reviewer session persistence (#111)", () => {
     pokeReviewer();
     await settle();
     expect(h.sessionCalls).toEqual([]);
+  });
+});
+
+// #146: the reviewer threads the coder's structured report into the critic as
+// context. A rejecting/absent report just means the critic runs without it.
+describe("reviewer coder report threading (#146)", () => {
+  const stored: StoredCoderReport = {
+    version: 1,
+    itemId: "github:1",
+    repo: { owner: "owner", name: "repo" },
+    generatedAt: "2026-07-13T00:00:00.000Z",
+    model: "opus",
+    report: {
+      done: [{ path: "src/a.ts", summary: "did it" }],
+      deviations: ["skipped cache"],
+      verification: [],
+      open: [],
+    },
+  };
+
+  function capturingCritic() {
+    let seen: { report?: unknown } | undefined;
+    const critic = vi.fn(async (args: { report?: unknown }) => {
+      seen = args;
+      return { score: 1, verdict: "approve" as const, objections: [] };
+    }) as unknown as typeof critiqueDiff & { calls: () => typeof seen };
+    return { critic, get: () => seen };
+  }
+
+  it("passes the report to the critic when one is stored", async () => {
+    const h = makeHarness({ getCoderReport: async () => stored });
+    const { critic, get } = capturingCritic();
+    initReviewer(h.deps, critic);
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+    expect(get()?.report).toEqual(stored.report);
+  });
+
+  it("runs without a report when none is stored", async () => {
+    const h = makeHarness({ getCoderReport: async () => null });
+    const { critic, get } = capturingCritic();
+    initReviewer(h.deps, critic);
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+    expect(get()?.report).toBeUndefined();
+  });
+
+  it("survives a rejecting getCoderReport", async () => {
+    const h = makeHarness({
+      getCoderReport: async () => {
+        throw new Error("disk gone");
+      },
+    });
+    const { critic, get } = capturingCritic();
+    initReviewer(h.deps, critic);
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+    expect(critic).toHaveBeenCalledOnce();
+    expect(get()?.report).toBeUndefined();
   });
 });
 

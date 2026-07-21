@@ -7,6 +7,7 @@ import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { EventConsole } from "@/components/event-console";
 import { ResumeSessionButton } from "./resume-session";
+import { CoderReportCard } from "./report-card";
 
 export function ReviewDetailView() {
   const params = useParams();
@@ -95,6 +96,8 @@ export function ReviewDetailView() {
           title={r.agentReview}
         />
       )}
+
+      <CoderReportCard item={item} />
 
       {review && (
         <div className="rounded-lg border border-border bg-card px-4 py-3 space-y-1.5 text-[12px]">

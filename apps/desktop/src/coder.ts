@@ -8,15 +8,21 @@ import {
   CODER_SYSTEM_PROMPT,
   CodingAbortError,
   compareQueueCandidates,
+  createProvider,
+  tryParseCoderReport,
+  repairCoderReport,
   type IssueComment,
+  type LLMProviderInterface,
   type MemoryMcp,
   type OrchestratorSettings,
   type QueueCandidate,
 } from "@skipper/core";
 import type {
+  CoderReport,
   CodingEvent,
   Issue,
   LifecycleState,
+  LlmSettings,
   RepoPriority,
   RepoRef,
   ResolvedRepoOrchestratorSettings,
@@ -24,6 +30,8 @@ import type {
   TrackedItem,
   TransitionActor,
 } from "@skipper/shared";
+import { modelForRole, providerCacheKey } from "./llm-settings";
+import { reportFileName, writeStoredCoderReport } from "./report-store";
 
 // Coding runner loop (issue #9): consumes "queued" items — the approval gate's
 // output — one at a time per repo. Creates/reuses an isolated git worktree,
@@ -48,6 +56,9 @@ export interface CoderDeps {
     reason?: string,
     resumeTo?: LifecycleState,
   ) => Promise<TrackedItem>;
+  /** Sets coderReport.ref (or clears it) + the agent-review transition in one
+   *  manifest write (#146). ref undefined = degrade, drop any stale report. */
+  completeCoding: (itemId: string, reportRef: string | undefined, reason: string) => Promise<void>;
   /** Persists item.worktree (path/branch/sessionId) without a transition. */
   setWorktree: (
     itemId: string,
@@ -66,19 +77,53 @@ export interface CoderDeps {
   emitEvent: (itemId: string, event: CodingEvent) => void;
   /** skipper-memory MCP for this item's repo (#45); undefined = no CLI bundle. */
   getMemoryMcp?: (item: TrackedItem) => MemoryMcp | undefined;
+  /** settings.json llm block (#59) — which provider the report repair runs on. */
+  getLlmSettings: () => Promise<LlmSettings>;
+  /** Where structured coder reports are persisted (#146) — shared plansDir. */
+  plansDir: string;
 }
 
 let deps: CoderDeps | null = null;
 let runner: typeof runCodingAgent = runCodingAgent;
+let llm: LLMProviderInterface | null = null;
+let llmKey: string | null = null;
+let llmInjected = false;
 const inFlight = new Map<string, AbortController>();
 const activeRepos = new Map<string, number>();
 let scanScheduled = false;
 
-export function initCoder(coderDeps: CoderDeps, runnerImpl?: typeof runCodingAgent): void {
+export function initCoder(
+  coderDeps: CoderDeps,
+  runnerImpl?: typeof runCodingAgent,
+  provider?: LLMProviderInterface,
+): void {
   deps = coderDeps;
   runner = runnerImpl ?? runCodingAgent;
+  llmInjected = provider !== undefined;
+  llm = provider ?? null;
+  llmKey = null;
   inFlight.clear();
   activeRepos.clear();
+}
+
+/** Injected provider (tests) wins; otherwise the provider picked in Settings
+ *  (#59), cached per provider+model. Only the report repair path constructs it
+ *  (#146). Mirrors reviewer.ts. */
+async function resolveProvider(roleModel: string): Promise<LLMProviderInterface> {
+  if (llmInjected && llm) return llm;
+  const settings = await deps!.getLlmSettings();
+  const model = modelForRole(settings, roleModel);
+  const key = providerCacheKey(settings, model);
+  if (!llm || llmKey !== key) {
+    llm = createProvider({
+      provider: settings.provider,
+      model,
+      maxTurns: 5,
+      apiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
+    });
+    llmKey = key;
+  }
+  return llm;
 }
 
 /** Coalesced re-scan — fired after polls, transitions and completed runs. */
@@ -285,12 +330,47 @@ async function run(itemId: string, repoKey: string): Promise<void> {
       await deps.setWorktree(itemId, { ...worktree, sessionId: result.sessionId });
     }
     if (result.ok) {
-      await deps.requestTransition(
-        itemId,
-        "agent-review",
-        "coder",
-        result.summary.slice(0, 200) || "coding run completed",
-      );
+      const coderModel = deps.getRepoSettings(item.repo).coderModel;
+      const raw = result.resultText ?? result.summary;
+      let report: CoderReport | null = null;
+      try {
+        const first = tryParseCoderReport(raw);
+        if (first.ok) {
+          report = first.report;
+        } else {
+          const provider = await resolveProvider(coderModel);
+          report = await repairCoderReport(provider, raw, first.error);
+          // Repair awaited — the item may have moved.
+          if (deps.getItem(itemId)?.state !== "coding") return;
+        }
+      } catch {
+        report = null; // never fail the run over report format
+      }
+      let ref: string | undefined;
+      if (report) {
+        ref = reportFileName(itemId);
+        try {
+          await writeStoredCoderReport(deps.plansDir, ref, {
+            version: 1,
+            itemId,
+            repo: item.repo,
+            issueKey: item.key,
+            ...(item.number !== undefined ? { issueNumber: item.number } : {}),
+            generatedAt: new Date().toISOString(),
+            model: coderModel,
+            report,
+          });
+        } catch {
+          ref = undefined; // disk failure → degrade to a prose reason
+          report = null;
+        }
+      }
+      const reason = report
+        ? `${report.done.length} file(s) done${
+            report.deviations[0] ? ` — deviation: ${report.deviations[0]}` : ""
+          }`.slice(0, 200)
+        : result.summary.slice(0, 200) || "coding run completed";
+      await deps.completeCoding(itemId, ref, reason);
     } else {
       await fail(itemId, "failed", `coding run failed: ${(result.summary || "no result").slice(0, 500)}`);
     }

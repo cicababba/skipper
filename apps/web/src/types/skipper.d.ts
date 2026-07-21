@@ -23,6 +23,7 @@ import type {
   ResumeRiteAction,
   SaveWorktreeFileResult,
   SolutionRecord,
+  StoredCoderReport,
   StoredPlan,
   TrackerProjectsResult,
   UntrackItemResult,
@@ -195,6 +196,7 @@ declare global {
         unlinkRepo: (owner: string, name: string) => Promise<RepoUnlinkResult>;
         listRepos: () => Promise<ListReposResult>;
         getPlan: (itemId: string) => Promise<StoredPlan | null>;
+        getCoderReport: (itemId: string) => Promise<StoredCoderReport | null>;
         updatePlan: (itemId: string, plan: IssuePlan) => Promise<UpdatePlanResult>;
         openPr: (itemId: string) => Promise<OrchestratorTransitionResult>;
         archiveItem: (itemId: string, force?: boolean) => Promise<ArchiveItemResult>;

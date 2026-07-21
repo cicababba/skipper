@@ -273,6 +273,9 @@ export interface TrackedItem {
   /** Plan + confidence seam (#7/#8). sessionId is the last plan run's Claude session,
    *  cwd-scoped to worktree.path, overwritten each run (#111). */
   plan?: { confidence?: number; ref?: string; sessionId?: string };
+  /** Structured coder report (#146). ref into plansDir; overwritten each run,
+   *  deleted when a run degrades to a prose summary. */
+  coderReport?: { ref: string };
   /** Shared worktree, created at planning (#110) and reused for coding/review (#9).
    *  sessionId is cwd-scoped: only resumable from the same worktree path. */
   worktree?: { path: string; branch: string; sessionId?: string };

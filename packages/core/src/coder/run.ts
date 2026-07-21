@@ -40,6 +40,9 @@ export interface RunCodingAgentOptions {
 export interface CodingRunResult {
   ok: boolean;
   summary: string;
+  /** Full untruncated final message — the structured report path reads this,
+   *  since summary is capped at SUMMARY_MAX (#146). */
+  resultText?: string;
   /** From the init event (authoritative). */
   sessionId: string;
   turns?: number;
@@ -135,18 +138,27 @@ export function runCodingAgent(
       opts.signal?.removeEventListener("abort", onAbort);
     };
 
-    const parser = createStreamJsonParser((event) => {
-      if (event.kind === "agent-init") sessionId = event.sessionId;
-      if (event.kind === "result") {
-        result = {
-          ok: event.ok,
-          summary: event.summary ?? "",
-          sessionId,
-          ...(event.turns !== undefined ? { turns: event.turns } : {}),
-        };
-      }
-      opts.onEvent(event);
-    });
+    // onLine fires before the mapped result event for the same line, so the
+    // full untruncated result text is already captured when we build result.
+    let resultText: string | undefined;
+    const parser = createStreamJsonParser(
+      (event) => {
+        if (event.kind === "agent-init") sessionId = event.sessionId;
+        if (event.kind === "result") {
+          result = {
+            ok: event.ok,
+            summary: event.summary ?? "",
+            sessionId,
+            ...(resultText !== undefined ? { resultText } : {}),
+            ...(event.turns !== undefined ? { turns: event.turns } : {}),
+          };
+        }
+        opts.onEvent(event);
+      },
+      (line) => {
+        if (line.type === "result" && typeof line.result === "string") resultText = line.result;
+      },
+    );
 
     proc.stdout.on("data", (data: Buffer) => {
       resetInactivity();
