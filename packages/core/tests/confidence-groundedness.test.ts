@@ -122,6 +122,110 @@ describe("scoreGroundedness", () => {
     await expect(scoreGroundedness(plan(), join(repo, "src", "poller.ts"))).rejects.toThrow();
   });
 
+  it("exempts createdSymbols in a mixed new+existing step and reports them", async () => {
+    const s = await scoreGroundedness(
+      plan({
+        files: [
+          { path: "src/poller.ts", reason: "r" },
+          { path: "src/created.ts", reason: "r", status: "new" },
+        ],
+        steps: [
+          {
+            title: "t",
+            detail: "d",
+            files: ["src/poller.ts", "src/created.ts"],
+            symbols: ["pollNow", "brandNewFn"],
+            createdSymbols: ["brandNewFn"],
+          },
+        ],
+      }),
+      repo,
+    );
+    expect(s.symbolsChecked).toBe(1);
+    expect(s.symbolsFound).toBe(1);
+    expect(s.missingSymbols).toEqual([]);
+    expect(s.createdSymbols).toEqual(["brandNewFn"]);
+    expect(s.score).toBeCloseTo(1);
+  });
+
+  it("exempts a created symbol cited in a later existing-files-only step (plan-wide)", async () => {
+    const s = await scoreGroundedness(
+      plan({
+        files: [
+          { path: "src/poller.ts", reason: "r" },
+          { path: "src/created.ts", reason: "r", status: "new" },
+        ],
+        steps: [
+          {
+            title: "create",
+            detail: "d",
+            files: ["src/created.ts"],
+            symbols: [],
+            createdSymbols: ["brandNewFn"],
+          },
+          {
+            title: "wire",
+            detail: "d",
+            files: ["src/poller.ts"],
+            symbols: ["brandNewFn"],
+          },
+        ],
+      }),
+      repo,
+    );
+    expect(s.symbolsChecked).toBe(0);
+    expect(s.createdSymbols).toEqual(["brandNewFn"]);
+    expect(s.score).toBeCloseTo(1);
+  });
+
+  it("still counts a genuinely missing symbol not in createdSymbols", async () => {
+    const s = await scoreGroundedness(
+      plan({
+        files: [
+          { path: "src/poller.ts", reason: "r" },
+          { path: "src/created.ts", reason: "r", status: "new" },
+        ],
+        steps: [
+          {
+            title: "t",
+            detail: "d",
+            files: ["src/poller.ts", "src/created.ts"],
+            symbols: ["brandNewFn", "ghostFn"],
+            createdSymbols: ["brandNewFn"],
+          },
+        ],
+      }),
+      repo,
+    );
+    expect(s.symbolsChecked).toBe(1);
+    expect(s.missingSymbols).toEqual(["ghostFn"]);
+    expect(s.score).toBeCloseTo(0.7);
+  });
+
+  it("counts a mixed step's symbols as before when createdSymbols is absent", async () => {
+    const s = await scoreGroundedness(
+      plan({
+        files: [
+          { path: "src/poller.ts", reason: "r" },
+          { path: "src/created.ts", reason: "r", status: "new" },
+        ],
+        steps: [
+          {
+            title: "t",
+            detail: "d",
+            files: ["src/poller.ts", "src/created.ts"],
+            symbols: ["brandNewFn"],
+          },
+        ],
+      }),
+      repo,
+    );
+    expect(s.symbolsChecked).toBe(1);
+    expect(s.missingSymbols).toEqual(["brandNewFn"]);
+    expect(s.createdSymbols).toEqual([]);
+    expect(s.score).toBeCloseTo(0.7);
+  });
+
   it("scores empty denominators as 1", async () => {
     const s = await scoreGroundedness(
       plan({

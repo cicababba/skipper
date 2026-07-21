@@ -24,6 +24,8 @@ export interface StepDraft {
   filesText: string;
   /** One symbol per line. */
   symbolsText: string;
+  /** One created symbol per line. */
+  createdSymbolsText: string;
 }
 
 export type SectionDraft =
@@ -62,6 +64,7 @@ export function draftFor(plan: IssuePlan, section: SectionId): SectionDraft {
           detail: s.detail,
           filesText: s.files.join("\n"),
           symbolsText: s.symbols.join("\n"),
+          createdSymbolsText: (s.createdSymbols ?? []).join("\n"),
         })),
       };
     case "outOfScope":
@@ -110,12 +113,16 @@ export function applySection(plan: IssuePlan, draft: SectionDraft): IssuePlan {
     case "steps":
       return {
         ...plan,
-        steps: draft.steps.map((s) => ({
-          title: s.title.trim(),
-          detail: s.detail.trim(),
-          files: splitLines(s.filesText),
-          symbols: splitLines(s.symbolsText),
-        })),
+        steps: draft.steps.map((s) => {
+          const createdSymbols = splitLines(s.createdSymbolsText);
+          return {
+            title: s.title.trim(),
+            detail: s.detail.trim(),
+            files: splitLines(s.filesText),
+            symbols: splitLines(s.symbolsText),
+            ...(createdSymbols.length ? { createdSymbols } : {}),
+          };
+        }),
       };
     case "acceptance":
       return {

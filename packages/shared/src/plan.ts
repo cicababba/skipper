@@ -20,6 +20,8 @@ export interface PlanStep {
   files: string[];
   /** Functions/classes/exports this step touches. */
   symbols: string[];
+  /** Symbols this step creates — exempt from groundedness (#158). */
+  createdSymbols?: string[];
 }
 
 export interface PlanAcceptance {

@@ -13,6 +13,8 @@ export interface GroundednessSignal {
   missingSymbols: string[];
   /** Paths declared status:"new" by the plan — exempt from the check. */
   newFiles: string[];
+  /** Symbols the plan declares it creates — exempt from the check (#158). */
+  createdSymbols?: string[];
 }
 
 export interface ConvergenceSignal {
