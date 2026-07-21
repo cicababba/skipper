@@ -1,6 +1,7 @@
 export {};
 
 import type {
+  AgentChatKind,
   ArchiveItemResult,
   AuthProviderId,
   AuthProviderMeta,
@@ -263,6 +264,19 @@ declare global {
           { ok: true; stored: StoredPlan } | { ok: false; error?: string; cancelled?: boolean }
         >;
         getHistory: (itemId: string) => Promise<PlanChatMessage[]>;
+      };
+      /** Per-tab agent chat (#170): interrogate the coder / reviewer at their tabs. */
+      agentChat: {
+        send: (
+          kind: AgentChatKind,
+          itemId: string,
+          text: string,
+          ctx?: { selectedFile?: string },
+        ) => Promise<
+          | { ok: true; reply: string; mode: "resumed" | "fresh" }
+          | { ok: false; error?: string; cancelled?: boolean }
+        >;
+        getHistory: (kind: AgentChatKind, itemId: string) => Promise<PlanChatMessage[]>;
       };
       /** Reviewer progress stream (#113). */
       review: {

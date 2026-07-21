@@ -7,8 +7,6 @@ import { ArrowLeft, Inbox, Loader2, X } from "lucide-react";
 import { type IssuePlan, type StoredPlan } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
-import { useStoredState } from "@/lib/use-stored-state";
-import { unreadCount } from "@/lib/inbox/plan-chat-unread";
 import { EventConsole } from "@/components/event-console";
 import {
   applySection,
@@ -18,7 +16,7 @@ import {
 } from "@/lib/inbox/plan-edit";
 import { PlanDocument } from "./plan-document";
 import { DecisionRail, type GateAction } from "./decision-rail";
-import { PlanChatDrawer, PlanChatFab } from "./plan-chat-drawer";
+import { useItemChat } from "./item-chat";
 
 export function PlanDetailView() {
   const params = useParams();
@@ -73,7 +71,7 @@ export function PlanDetailView() {
 
   const [busyAction, setBusyAction] = useState<GateAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [chatBusy, setChatBusy] = useState(false);
+  const { registerPlanDrawer, chatBusy } = useItemChat();
 
   // Rescore delta (#164): snapshot the composite the instant rescoring starts so
   // the rail can show "↑/↓ from X%" once the new score lands. Client-only —
@@ -91,16 +89,20 @@ export function PlanDetailView() {
     wasRescoring.current = false;
   }, [id]);
 
-  const [chatCount, setChatCount] = useState(0);
-  const [drawerOpen, setDrawerOpen] = useStoredState(`skipper-plan-drawer:${id}`, "0");
-  const [seen, setSeen] = useStoredState(`skipper-plan-chat-seen:${id}`, "0");
-  const drawerIsOpen = drawerOpen === "1";
-  useEffect(() => {
-    if (drawerIsOpen) setSeen(String(chatCount));
-  }, [drawerIsOpen, chatCount, setSeen]);
-  const unread = unreadCount(chatCount, seen);
-
   const plan = stored?.plan;
+
+  // Feed the shell's FAB/drawer (#170): the plan chat is available at the gate
+  // with a plan loaded, and locked while a section edit or gate action runs.
+  const planChatAvailable = gate && stored?.plan != null;
+  const planChatDisabled = editingSection !== null || saving || busyAction !== null;
+  useEffect(() => {
+    registerPlanDrawer({
+      available: planChatAvailable,
+      disabled: planChatDisabled,
+      onPlanUpdated: setStored,
+    });
+    return () => registerPlanDrawer(null);
+  }, [planChatAvailable, planChatDisabled, registerPlanDrawer]);
 
   const startEdit = (section: SectionId) => {
     if (!plan) return;
@@ -194,7 +196,7 @@ export function PlanDetailView() {
   }
 
   const editBusy = editingSection !== null || saving;
-  const actionsDisabled = editBusy || busyAction !== null || chatBusy;
+  const actionsDisabled = editBusy || busyAction !== null || chatBusy.plan;
 
   return (
     <div className="min-h-full p-6">
@@ -271,20 +273,6 @@ export function PlanDetailView() {
               revisions={stored!.revisions}
             />
           </div>
-          {gate && !drawerIsOpen && (
-            <PlanChatFab unread={unread} busy={chatBusy} onClick={() => setDrawerOpen("1")} />
-          )}
-          {gate && (
-            <PlanChatDrawer
-              open={drawerIsOpen}
-              onClose={() => setDrawerOpen("0")}
-              itemId={id}
-              disabled={editBusy || busyAction !== null}
-              onPlanUpdated={setStored}
-              onBusyChange={setChatBusy}
-              onCountChange={setChatCount}
-            />
-          )}
         </>
       )}
     </div>
