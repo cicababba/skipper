@@ -1,0 +1,207 @@
+import { afterEach, describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import type { ConfidenceReport, IssuePlan, StoredPlan } from "@skipper/shared";
+import { DecisionRail } from "./decision-rail";
+
+const basePlan: IssuePlan = {
+  summary: "s",
+  files: [],
+  steps: [],
+  acceptance: [],
+  risks: [],
+  openQuestions: [],
+  estimatedSize: "m",
+};
+
+function makeReport(partial: Partial<ConfidenceReport> = {}): ConfidenceReport {
+  return {
+    version: 1,
+    composite: 0.8,
+    weights: { groundedness: 0.4, convergence: 0.2, critic: 0.3, clarity: 0.1 },
+    signals: {},
+    errors: [],
+    computedAt: "2026-07-21T10:00:00.000Z",
+    ...partial,
+  };
+}
+
+function makeStored(confidence?: ConfidenceReport, extra?: Partial<StoredPlan>): StoredPlan {
+  return {
+    version: 2,
+    itemId: "item-1",
+    repo: { host: "github", owner: "o", name: "r" },
+    generatedAt: "2026-07-21T10:00:00.000Z",
+    model: "claude",
+    plan: basePlan,
+    confidence,
+    ...extra,
+  } as StoredPlan;
+}
+
+const cleanGroundedness = {
+  score: 0.9,
+  filesChecked: 3,
+  filesFound: 3,
+  symbolsChecked: 2,
+  symbolsFound: 2,
+  missingFiles: [] as string[],
+  missingSymbols: [] as string[],
+  newFiles: [] as string[],
+};
+const approveCritic = { score: 0.9, verdict: "approve" as const, objections: [] };
+
+function renderRail(overrides: Partial<React.ComponentProps<typeof DecisionRail>> = {}) {
+  const props: React.ComponentProps<typeof DecisionRail> = {
+    itemId: "item-1",
+    stored: makeStored(makeReport()),
+    plan: basePlan,
+    gate: false,
+    rescoring: false,
+    prevComposite: null,
+    editBusy: false,
+    actionsDisabled: false,
+    busyAction: null,
+    actionError: null,
+    saving: false,
+    onAction: () => {},
+    onSizeChange: () => {},
+    ...overrides,
+  };
+  return render(<DecisionRail {...props} />);
+}
+
+const fullReportToggle = () => screen.queryByRole("button", { name: /Full report/ });
+
+afterEach(() => {
+  localStorage.clear();
+});
+
+describe("DecisionRail — rescore delta", () => {
+  it("shows no delta line when there is no prior composite", () => {
+    renderRail({ stored: makeStored(makeReport({ composite: 0.78 })), prevComposite: null });
+    expect(screen.queryByText(/from 7\d%|from 8\d%/)).toBeNull();
+  });
+
+  it("renders an ↑ delta from the prior percentage when the score rose", () => {
+    renderRail({ stored: makeStored(makeReport({ composite: 0.78 })), prevComposite: 0.74 });
+    expect(screen.getByText("↑ from 74%")).toBeTruthy();
+  });
+
+  it("renders a ↓ delta when the score dropped", () => {
+    renderRail({ stored: makeStored(makeReport({ composite: 0.78 })), prevComposite: 0.8 });
+    expect(screen.getByText("↓ from 80%")).toBeTruthy();
+  });
+
+  it("shows no delta when the composite is unchanged", () => {
+    renderRail({ stored: makeStored(makeReport({ composite: 0.78 })), prevComposite: 0.78 });
+    expect(screen.queryByText(/↑ from|↓ from/)).toBeNull();
+  });
+
+  it("shows the rescoring spinner and no delta while rescoring", () => {
+    renderRail({
+      stored: makeStored(makeReport({ composite: 0.78 })),
+      prevComposite: 0.74,
+      rescoring: true,
+    });
+    expect(screen.getByText("Rescoring confidence…")).toBeTruthy();
+    expect(screen.queryByText(/↑ from|↓ from/)).toBeNull();
+  });
+});
+
+describe("DecisionRail — Full report anomaly gating", () => {
+  it("hides the Full report toggle when nothing is anomalous", () => {
+    renderRail({
+      stored: makeStored(
+        makeReport({
+          signals: {
+            groundedness: cleanGroundedness,
+            convergence: {
+              score: 0.8,
+              planCount: 3,
+              fileJaccard: 0.9,
+              sizeAgreement: 1,
+              stepCountAgreement: 1,
+              divergent: false,
+              sharedFiles: [],
+              disputedFiles: [],
+            },
+            critic: approveCritic,
+            clarity: {
+              score: 0.8,
+              bodyPresent: true,
+              hasAcceptanceCriteria: true,
+              hasReproSteps: true,
+              openQuestionCount: 0,
+            },
+          },
+        }),
+      ),
+    });
+    expect(fullReportToggle()).toBeNull();
+  });
+
+  it("lists groundedness misses truncated at five with a +N remainder", () => {
+    const { container } = renderRail({
+      stored: makeStored(
+        makeReport({
+          signals: {
+            groundedness: {
+              ...cleanGroundedness,
+              score: 0.4,
+              missingFiles: ["f1", "f2", "f3", "f4", "f5", "f6", "f7"],
+            },
+            critic: approveCritic,
+          },
+        }),
+      ),
+    });
+    fireEvent.click(fullReportToggle()!);
+    const text = container.textContent ?? "";
+    expect(text).toContain("Missing:");
+    expect(text).toContain("+2 more");
+    expect(text).not.toContain("f6");
+    expect(text).not.toContain("f7");
+  });
+
+  it("renders every critic objection with kind, BLOCKING tag, and full detail", () => {
+    const { container } = renderRail({
+      stored: makeStored(
+        makeReport({
+          signals: {
+            groundedness: cleanGroundedness,
+            critic: {
+              score: 0.2,
+              verdict: "reject",
+              objections: [
+                { kind: "missing-step", detail: "no rollback path", blocking: true },
+                { kind: "risk", detail: "perf regression", blocking: false },
+              ],
+            },
+          },
+        }),
+      ),
+    });
+    fireEvent.click(fullReportToggle()!);
+    const text = container.textContent ?? "";
+    expect(text).toContain("reject");
+    expect(text).toContain("missing-step");
+    expect(text).toContain("blocking");
+    expect(text).toContain("no rollback path");
+    // A non-blocking objection is still shown.
+    expect(text).toContain("risk");
+    expect(text).toContain("perf regression");
+  });
+
+  it("shows the skip detail line for a convergence-skipped report", () => {
+    const { container } = renderRail({
+      stored: makeStored(
+        makeReport({
+          signals: { groundedness: cleanGroundedness, critic: approveCritic },
+          convergenceSkipped: { reason: "decisive", detail: "composite decisive already" },
+        }),
+      ),
+    });
+    fireEvent.click(fullReportToggle()!);
+    expect(container.textContent ?? "").toContain("composite decisive already");
+  });
+});

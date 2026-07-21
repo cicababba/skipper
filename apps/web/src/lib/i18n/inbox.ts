@@ -211,6 +211,16 @@ const en = {
     finishEditing: "Finish editing first",
     saveFailed: "Could not save the plan",
     readOnly: "Read-only — the plan is only editable at the gate.",
+    rail: {
+      attention: "Needs your attention",
+      attentionRisks: (n: number) => `${n} risk${n === 1 ? "" : "s"} flagged`,
+      attentionOpenQuestions: (n: number) => `${n} open question${n === 1 ? "" : "s"}`,
+      attentionObjections: (n: number) => `${n} blocking objection${n === 1 ? "" : "s"}`,
+      fullReport: "Full report",
+      deltaUp: (from: string) => `↑ from ${from}`,
+      deltaDown: (from: string) => `↓ from ${from}`,
+      recomputed: (when: string) => `Recomputed ${when}`,
+    },
     chat: {
       title: "Discuss the plan",
       empty: "Ask a question about this plan before deciding.",
@@ -224,6 +234,9 @@ const en = {
       failed: "The chat turn failed",
       applyFailed: "Could not update the plan",
       freshSession: "The planning session is gone — answering from the plan and issue.",
+      open: "Discuss the plan",
+      close: "Close",
+      unread: (n: number) => `${n} unread message${n === 1 ? "" : "s"}`,
     },
     memories: {
       consulted: "Memories consulted",
@@ -558,6 +571,17 @@ const it: typeof en = {
     finishEditing: "Prima termina la modifica",
     saveFailed: "Impossibile salvare il piano",
     readOnly: "Sola lettura — il piano è modificabile solo al gate.",
+    rail: {
+      attention: "Richiede la tua attenzione",
+      attentionRisks: (n: number) => `${n} rischi${n === 1 ? "o" : ""} segnalat${n === 1 ? "o" : "i"}`,
+      attentionOpenQuestions: (n: number) => `${n} domand${n === 1 ? "a" : "e"} apert${n === 1 ? "a" : "e"}`,
+      attentionObjections: (n: number) =>
+        `${n} obiezion${n === 1 ? "e" : "i"} bloccant${n === 1 ? "e" : "i"}`,
+      fullReport: "Report completo",
+      deltaUp: (from: string) => `↑ da ${from}`,
+      deltaDown: (from: string) => `↓ da ${from}`,
+      recomputed: (when: string) => `Ricalcolato ${when}`,
+    },
     chat: {
       title: "Discuti il piano",
       empty: "Fai una domanda su questo piano prima di decidere.",
@@ -571,6 +595,9 @@ const it: typeof en = {
       failed: "Il turno di chat è fallito",
       applyFailed: "Impossibile aggiornare il piano",
       freshSession: "La sessione di pianificazione non è più disponibile — rispondo dal piano e dalla issue.",
+      open: "Discuti il piano",
+      close: "Chiudi",
+      unread: (n: number) => `${n} messaggi${n === 1 ? "o" : ""} non lett${n === 1 ? "o" : "i"}`,
     },
     memories: {
       consulted: "Memorie consultate",
@@ -905,6 +932,18 @@ const fr: typeof en = {
     finishEditing: "Terminez d'abord la modification",
     saveFailed: "Impossible d'enregistrer le plan",
     readOnly: "Lecture seule — le plan n'est modifiable qu'à la validation.",
+    rail: {
+      attention: "Requiert votre attention",
+      attentionRisks: (n: number) => `${n} risque${n === 1 ? "" : "s"} signalé${n === 1 ? "" : "s"}`,
+      attentionOpenQuestions: (n: number) =>
+        `${n} question${n === 1 ? "" : "s"} ouverte${n === 1 ? "" : "s"}`,
+      attentionObjections: (n: number) =>
+        `${n} objection${n === 1 ? "" : "s"} bloquante${n === 1 ? "" : "s"}`,
+      fullReport: "Rapport complet",
+      deltaUp: (from: string) => `↑ depuis ${from}`,
+      deltaDown: (from: string) => `↓ depuis ${from}`,
+      recomputed: (when: string) => `Recalculé ${when}`,
+    },
     chat: {
       title: "Discuter du plan",
       empty: "Posez une question sur ce plan avant de décider.",
@@ -918,6 +957,9 @@ const fr: typeof en = {
       failed: "Le tour de discussion a échoué",
       applyFailed: "Impossible de mettre à jour le plan",
       freshSession: "La session de planification a disparu — réponse à partir du plan et de l'issue.",
+      open: "Discuter du plan",
+      close: "Fermer",
+      unread: (n: number) => `${n} message${n === 1 ? "" : "s"} non lu${n === 1 ? "" : "s"}`,
     },
     memories: {
       consulted: "Mémoires consultées",
@@ -1253,6 +1295,18 @@ const es: typeof en = {
     finishEditing: "Termina la edición primero",
     saveFailed: "No se pudo guardar el plan",
     readOnly: "Solo lectura — el plan solo se puede editar en la validación.",
+    rail: {
+      attention: "Requiere tu atención",
+      attentionRisks: (n: number) => `${n} riesgo${n === 1 ? "" : "s"} señalado${n === 1 ? "" : "s"}`,
+      attentionOpenQuestions: (n: number) =>
+        `${n} pregunta${n === 1 ? "" : "s"} abierta${n === 1 ? "" : "s"}`,
+      attentionObjections: (n: number) =>
+        `${n} objeción${n === 1 ? "" : "es"} bloqueante${n === 1 ? "" : "s"}`,
+      fullReport: "Informe completo",
+      deltaUp: (from: string) => `↑ desde ${from}`,
+      deltaDown: (from: string) => `↓ desde ${from}`,
+      recomputed: (when: string) => `Recalculado ${when}`,
+    },
     chat: {
       title: "Discutir el plan",
       empty: "Haz una pregunta sobre este plan antes de decidir.",
@@ -1266,6 +1320,9 @@ const es: typeof en = {
       failed: "El turno de chat falló",
       applyFailed: "No se pudo actualizar el plan",
       freshSession: "La sesión de planificación ya no está disponible — respondiendo desde el plan y la issue.",
+      open: "Discutir el plan",
+      close: "Cerrar",
+      unread: (n: number) => `${n} mensaje${n === 1 ? "" : "s"} sin leer`,
     },
     memories: {
       consulted: "Memorias consultadas",

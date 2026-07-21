@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Send, Sparkles, X } from "lucide-react";
+import { Loader2, Send, X } from "lucide-react";
 import type { PlanChatMessage, StoredPlan } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { EventConsole } from "@/components/event-console";
@@ -17,11 +17,20 @@ interface PlanChatPanelProps {
   disabled: boolean;
   onPlanUpdated: (stored: StoredPlan) => void;
   onBusyChange: (busy: boolean) => void;
+  onCountChange?: (count: number) => void;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 const STICKY_THRESHOLD = 24;
 
-export function PlanChatPanel({ itemId, disabled, onPlanUpdated, onBusyChange }: PlanChatPanelProps) {
+export function PlanChatPanel({
+  itemId,
+  disabled,
+  onPlanUpdated,
+  onBusyChange,
+  onCountChange,
+  inputRef,
+}: PlanChatPanelProps) {
   const { t } = useT();
   const chat = t.inbox.plan.chat;
 
@@ -37,6 +46,10 @@ export function PlanChatPanel({ itemId, disabled, onPlanUpdated, onBusyChange }:
   useEffect(() => {
     onBusyChange(busy !== null);
   }, [busy, onBusyChange]);
+
+  useEffect(() => {
+    onCountChange?.(messages.length);
+  }, [messages.length, onCountChange]);
 
   useEffect(() => {
     if (!window.skipper) return;
@@ -99,42 +112,38 @@ export function PlanChatPanel({ itemId, disabled, onPlanUpdated, onBusyChange }:
   };
 
   return (
-    <section className="rounded-lg border border-card-hover bg-card overflow-hidden">
-      <header className="flex items-center gap-2 px-5 py-3 border-b border-card-hover">
-        <Sparkles size={13} className="text-accent" />
-        <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted">{chat.title}</h2>
-      </header>
-      <div className="p-4 space-y-3">
-        <div
-          ref={scrollRef}
-          onScroll={onScroll}
-          className="max-h-96 overflow-y-auto space-y-2 text-sm"
-        >
-          {messages.length === 0 && !busy ? (
-            <p className="text-[12px] text-muted/70">{chat.empty}</p>
-          ) : (
-            messages.map((m, i) =>
-              m.role === "user" ? (
-                <div key={i} className="flex justify-end">
-                  <div className="max-w-[85%] rounded-lg bg-card-hover/40 px-3 py-2 whitespace-pre-wrap break-words">
-                    {m.text}
-                  </div>
+    <div className="flex flex-col h-full min-h-0">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="flex-1 overflow-y-auto p-4 space-y-2 text-sm"
+      >
+        {messages.length === 0 && !busy ? (
+          <p className="text-[12px] text-muted/70">{chat.empty}</p>
+        ) : (
+          messages.map((m, i) =>
+            m.role === "user" ? (
+              <div key={i} className="flex justify-end">
+                <div className="max-w-[85%] rounded-lg bg-card-hover/40 px-3 py-2 whitespace-pre-wrap break-words">
+                  {m.text}
                 </div>
-              ) : (
-                <div key={i} className="max-w-[90%] text-foreground/90">
-                  <ConsoleMarkdown content={m.text} />
-                </div>
-              ),
-            )
-          )}
-          {busy === "send" && (
-            <div className="flex items-center gap-2 text-[12px] text-muted">
-              <Loader2 size={13} className="animate-spin" />
-              {chat.thinking}
-            </div>
-          )}
-        </div>
+              </div>
+            ) : (
+              <div key={i} className="max-w-[90%] text-foreground/90">
+                <ConsoleMarkdown content={m.text} />
+              </div>
+            ),
+          )
+        )}
+        {busy === "send" && (
+          <div className="flex items-center gap-2 text-[12px] text-muted">
+            <Loader2 size={13} className="animate-spin" />
+            {chat.thinking}
+          </div>
+        )}
+      </div>
 
+      <div className="shrink-0 border-t border-card-hover p-4 space-y-3">
         {busy && (
           <EventConsole
             itemId={itemId}
@@ -147,6 +156,7 @@ export function PlanChatPanel({ itemId, disabled, onPlanUpdated, onBusyChange }:
 
         <div className="flex items-center gap-2">
           <input
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -188,6 +198,6 @@ export function PlanChatPanel({ itemId, disabled, onPlanUpdated, onBusyChange }:
           </div>
         )}
       </div>
-    </section>
+    </div>
   );
 }

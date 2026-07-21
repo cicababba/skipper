@@ -1,39 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Inbox, Loader2, X } from "lucide-react";
 import { type IssuePlan, type StoredPlan } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
-import { bandClasses, pct, ReportBody } from "@/components/confidence-popover";
+import { useStoredState } from "@/lib/use-stored-state";
+import { unreadCount } from "@/lib/inbox/plan-chat-unread";
 import { EventConsole } from "@/components/event-console";
-import { MarkdownRenderer } from "@/components/markdown-renderer";
-import { MemoriesCard } from "./memories-card";
-import { PlanChatPanel } from "./plan-chat";
 import {
   applySection,
   draftFor,
-  sectionIsValid,
   type SectionDraft,
   type SectionId,
 } from "@/lib/inbox/plan-edit";
-import {
-  AcceptanceEditor,
-  AcceptanceView,
-  FilesEditor,
-  FilesView,
-  LinesEditor,
-  LinesView,
-  Section,
-  StepsEditor,
-  StepsView,
-} from "./plan-sections";
-
-const SIZES: IssuePlan["estimatedSize"][] = ["xs", "s", "m", "l", "xl"];
-
-type GateAction = "approve" | "replan" | "park";
+import { PlanDocument } from "./plan-document";
+import { DecisionRail, type GateAction } from "./decision-rail";
+import { PlanChatDrawer, PlanChatFab } from "./plan-chat-drawer";
 
 export function PlanDetailView() {
   const params = useParams();
@@ -89,8 +74,31 @@ export function PlanDetailView() {
   const [busyAction, setBusyAction] = useState<GateAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [chatBusy, setChatBusy] = useState(false);
-  const [parkOpen, setParkOpen] = useState(false);
-  const [parkNote, setParkNote] = useState("");
+
+  // Rescore delta (#164): snapshot the composite the instant rescoring starts so
+  // the rail can show "↑/↓ from X%" once the new score lands. Client-only —
+  // resets on remount and when switching items.
+  const [prevComposite, setPrevComposite] = useState<number | null>(null);
+  const wasRescoring = useRef(false);
+  useEffect(() => {
+    if (rescoring && !wasRescoring.current) {
+      setPrevComposite(stored?.confidence?.composite ?? null);
+    }
+    wasRescoring.current = !!rescoring;
+  }, [rescoring, stored]);
+  useEffect(() => {
+    setPrevComposite(null);
+    wasRescoring.current = false;
+  }, [id]);
+
+  const [chatCount, setChatCount] = useState(0);
+  const [drawerOpen, setDrawerOpen] = useStoredState(`skipper-plan-drawer:${id}`, "0");
+  const [seen, setSeen] = useStoredState(`skipper-plan-chat-seen:${id}`, "0");
+  const drawerIsOpen = drawerOpen === "1";
+  useEffect(() => {
+    if (drawerIsOpen) setSeen(String(chatCount));
+  }, [drawerIsOpen, chatCount, setSeen]);
+  const unread = unreadCount(chatCount, seen);
 
   const plan = stored?.plan;
 
@@ -133,9 +141,9 @@ export function PlanDetailView() {
     await persist(applySection(plan, { section: "size", size }));
   };
 
-  const runAction = async (action: GateAction) => {
+  const runAction = async (action: GateAction, note?: string) => {
     const to = action === "approve" ? "queued" : action === "replan" ? "planning" : "needs-input";
-    const reason = action === "park" ? parkNote.trim() || undefined : undefined;
+    const reason = action === "park" ? note?.trim() || undefined : undefined;
     setBusyAction(action);
     setActionError(null);
     try {
@@ -167,20 +175,16 @@ export function PlanDetailView() {
     );
   }
 
-  const backLink = (
-    <Link
-      href="/inbox"
-      className="flex items-center gap-1.5 text-[12px] text-muted hover:text-foreground transition-colors w-fit"
-    >
-      <ArrowLeft size={13} />
-      {p.back}
-    </Link>
-  );
-
   if (!item) {
     return (
       <div className="min-h-full p-6 space-y-4 max-w-3xl mx-auto">
-        {backLink}
+        <Link
+          href="/inbox"
+          className="flex items-center gap-1.5 text-[12px] text-muted hover:text-foreground transition-colors w-fit"
+        >
+          <ArrowLeft size={13} />
+          {p.back}
+        </Link>
         <div className="flex flex-col items-center gap-3 py-24 text-center">
           <Inbox size={40} className="opacity-30" />
           <p className="text-sm text-muted max-w-md">{p.notFound}</p>
@@ -192,129 +196,10 @@ export function PlanDetailView() {
   const editBusy = editingSection !== null || saving;
   const actionsDisabled = editBusy || busyAction !== null || chatBusy;
 
-  const section = (
-    sid: Exclude<SectionId, "size">,
-    title: string,
-    count: number | undefined,
-    view: React.ReactNode,
-    edit: React.ReactNode,
-  ) => (
-    <Section
-      title={title}
-      count={count}
-      editable={gate && !!plan && editingSection === null}
-      editing={editingSection === sid}
-      valid={draft ? sectionIsValid(draft) : false}
-      saving={saving}
-      onEdit={() => startEdit(sid)}
-      onSave={() => void saveEdit()}
-      onCancel={cancelEdit}
-    >
-      {editingSection === sid && draft ? edit : view}
-    </Section>
-  );
-
   return (
-    <div className="min-h-full p-6 space-y-4 max-w-3xl mx-auto">
-      {/* Plan meta: size + generation info (shared title header lives in the shell) */}
-      {(plan || stored) && (
-        <div className="flex items-center gap-2 flex-wrap text-[12px] text-muted">
-          {plan &&
-            (gate ? (
-              <select
-                value={plan.estimatedSize}
-                onChange={(e) => void saveSize(e.target.value as IssuePlan["estimatedSize"])}
-                disabled={saving}
-                className="bg-card border border-border rounded px-1.5 py-0.5 text-[11px] font-medium uppercase text-foreground focus:outline-none focus:border-accent disabled:opacity-50"
-                title={p.size}
-              >
-                {SIZES.map((s) => (
-                  <option key={s} value={s}>
-                    {s.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span className="text-[11px] font-medium px-1.5 py-0.5 rounded border bg-card text-muted border-border uppercase">
-                {plan.estimatedSize}
-              </span>
-            ))}
-          {stored && (
-            <span className="text-muted/60">
-              {p.generated}: {new Date(stored.generatedAt).toLocaleString()} · {stored.model}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Gate actions */}
-      {gate && (
-        <div className="rounded-lg border border-accent/30 bg-accent/5 px-4 py-3 space-y-2">
-          {parkOpen ? (
-            <div className="flex items-center gap-2">
-              <input
-                autoFocus
-                value={parkNote}
-                onChange={(e) => setParkNote(e.target.value)}
-                placeholder={p.parkNotePlaceholder}
-                className="flex-1 bg-card-hover/40 border border-card-hover focus:border-accent outline-none rounded-md px-2 py-1.5 text-sm"
-              />
-              <button
-                onClick={() => void runAction("park")}
-                disabled={actionsDisabled}
-                className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-50 whitespace-nowrap"
-              >
-                {busyAction === "park" && <Loader2 size={11} className="animate-spin" />}
-                {p.parkConfirm}
-              </button>
-              <button
-                onClick={() => {
-                  setParkOpen(false);
-                  setParkNote("");
-                }}
-                className="p-1.5 rounded text-muted hover:text-foreground transition-colors"
-                title={p.cancel}
-              >
-                <X size={14} />
-              </button>
-            </div>
-          ) : (
-            <div
-              className="flex items-center gap-2 flex-wrap"
-              title={editBusy ? p.finishEditing : undefined}
-            >
-              <button
-                onClick={() => void runAction("approve")}
-                disabled={actionsDisabled}
-                className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50"
-              >
-                {busyAction === "approve" && <Loader2 size={11} className="animate-spin" />}
-                {t.inbox.actions.approve}
-              </button>
-              <button
-                onClick={() => void runAction("replan")}
-                disabled={actionsDisabled}
-                className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-50"
-              >
-                {busyAction === "replan" && <Loader2 size={11} className="animate-spin" />}
-                {t.inbox.actions.replan}
-              </button>
-              <button
-                onClick={() => setParkOpen(true)}
-                disabled={actionsDisabled}
-                className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-50"
-              >
-                {t.inbox.actions.park}
-              </button>
-            </div>
-          )}
-          {actionError && <p className="text-[12px] text-red-300 break-all">{actionError}</p>}
-        </div>
-      )}
-      {!gate && plan && <p className="text-[12px] text-muted/70">{p.readOnly}</p>}
-
+    <div className="min-h-full p-6">
       {saveError && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 text-red-300 px-3 py-2 text-sm">
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 text-red-300 px-3 py-2 text-sm">
           <span className="flex-1 break-all">
             {p.saveFailed}: {saveError}
           </span>
@@ -324,9 +209,8 @@ export function PlanDetailView() {
         </div>
       )}
 
-      {/* Body */}
       {item.state === "planning" ? (
-        <div className="space-y-3">
+        <div className="max-w-[720px] mx-auto space-y-3">
           <div className="flex items-center gap-2 text-sm text-muted">
             <Loader2 size={16} className="animate-spin" />
             {t.inbox.states.planning}…
@@ -354,179 +238,53 @@ export function PlanDetailView() {
           </div>
         )
       ) : (
-        <div className="space-y-4">
-          {section(
-            "summary",
-            p.sections.summary,
-            undefined,
-            <MarkdownRenderer content={plan.summary} />,
-            draft?.section === "summary" ? (
-              <textarea
-                value={draft.text}
-                onChange={(e) => setDraft({ section: "summary", text: e.target.value })}
-                rows={6}
-                className="w-full bg-card-hover/40 border border-card-hover focus:border-accent outline-none rounded-md p-3 text-sm resize-y"
-              />
-            ) : null,
+        <>
+          <div className="flex flex-col gap-4 wide:grid wide:grid-cols-[minmax(0,1fr)_300px] wide:gap-8 wide:items-start">
+            <DecisionRail
+              itemId={id}
+              stored={stored!}
+              plan={plan}
+              gate={gate}
+              rescoring={rescoring}
+              prevComposite={prevComposite}
+              editBusy={editBusy}
+              actionsDisabled={actionsDisabled}
+              busyAction={busyAction}
+              actionError={actionError}
+              saving={saving}
+              onAction={(action, note) => void runAction(action, note)}
+              onSizeChange={(size) => void saveSize(size)}
+            />
+            <PlanDocument
+              itemId={id}
+              plan={plan}
+              gate={gate}
+              editingSection={editingSection}
+              draft={draft}
+              saving={saving}
+              onStartEdit={startEdit}
+              onDraftChange={setDraft}
+              onSave={() => void saveEdit()}
+              onCancel={cancelEdit}
+              memoryRefs={item.usedMemory?.planning}
+              memoriesTitle={p.sections.memories}
+            />
+          </div>
+          {gate && !drawerIsOpen && (
+            <PlanChatFab unread={unread} busy={chatBusy} onClick={() => setDrawerOpen("1")} />
           )}
-          {section(
-            "context",
-            p.sections.context,
-            plan.context?.length,
-            <LinesView lines={plan.context ?? []} />,
-            draft?.section === "context" ? (
-              <LinesEditor
-                lines={draft.lines}
-                onChange={(lines) => setDraft({ section: "context", lines })}
-              />
-            ) : null,
-          )}
-          {section(
-            "files",
-            p.sections.files,
-            plan.files.length,
-            <FilesView files={plan.files} />,
-            draft?.section === "files" ? (
-              <FilesEditor
-                files={draft.files}
-                onChange={(files) => setDraft({ section: "files", files })}
-              />
-            ) : null,
-          )}
-          {section(
-            "steps",
-            p.sections.steps,
-            plan.steps.length,
-            <StepsView steps={plan.steps} />,
-            draft?.section === "steps" ? (
-              <StepsEditor
-                steps={draft.steps}
-                onChange={(steps) => setDraft({ section: "steps", steps })}
-              />
-            ) : null,
-          )}
-          {section(
-            "outOfScope",
-            p.sections.outOfScope,
-            plan.outOfScope?.length,
-            <LinesView lines={plan.outOfScope ?? []} />,
-            draft?.section === "outOfScope" ? (
-              <LinesEditor
-                lines={draft.lines}
-                onChange={(lines) => setDraft({ section: "outOfScope", lines })}
-              />
-            ) : null,
-          )}
-          {section(
-            "acceptance",
-            p.sections.acceptance,
-            plan.acceptance.length,
-            <AcceptanceView rows={plan.acceptance} />,
-            draft?.section === "acceptance" ? (
-              <AcceptanceEditor
-                rows={draft.acceptance}
-                onChange={(acceptance) => setDraft({ section: "acceptance", acceptance })}
-              />
-            ) : null,
-          )}
-          {section(
-            "risks",
-            p.sections.risks,
-            plan.risks.length,
-            <LinesView lines={plan.risks} />,
-            draft?.section === "risks" ? (
-              <LinesEditor
-                lines={draft.lines}
-                onChange={(lines) => setDraft({ section: "risks", lines })}
-              />
-            ) : null,
-          )}
-          {section(
-            "verificationCommands",
-            p.sections.verificationCommands,
-            plan.verificationCommands?.length,
-            <LinesView lines={plan.verificationCommands ?? []} />,
-            draft?.section === "verificationCommands" ? (
-              <LinesEditor
-                lines={draft.lines}
-                onChange={(lines) => setDraft({ section: "verificationCommands", lines })}
-              />
-            ) : null,
-          )}
-          {section(
-            "manualChecks",
-            p.sections.manualChecks,
-            plan.manualChecks?.length,
-            <LinesView lines={plan.manualChecks ?? []} />,
-            draft?.section === "manualChecks" ? (
-              <LinesEditor
-                lines={draft.lines}
-                onChange={(lines) => setDraft({ section: "manualChecks", lines })}
-              />
-            ) : null,
-          )}
-          {section(
-            "openQuestions",
-            p.sections.openQuestions,
-            plan.openQuestions.length,
-            <LinesView lines={plan.openQuestions} />,
-            draft?.section === "openQuestions" ? (
-              <LinesEditor
-                lines={draft.lines}
-                onChange={(lines) => setDraft({ section: "openQuestions", lines })}
-              />
-            ) : null,
-          )}
-          <Section title={p.sections.confidence} editable={false} editing={false}>
-            {stored?.editedAt &&
-              (!stored.confidence || stored.confidence.computedAt < stored.editedAt) && (
-                <p className="mb-3 text-[11px] text-amber-300/80">{p.edited}</p>
-              )}
-            {stored?.confidence ? (
-              <div className="space-y-3 text-[12px]">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-foreground">{t.inbox.popover.composite}</span>
-                  {rescoring ? (
-                    <span className="flex items-center gap-1.5 text-[11px] text-muted">
-                      <Loader2 size={12} className="animate-spin" />
-                      {p.rescoring}
-                    </span>
-                  ) : (
-                    <span
-                      className={`text-[11px] font-medium px-1.5 py-0.5 rounded border ${bandClasses(stored.confidence.composite)}`}
-                    >
-                      {pct(stored.confidence.composite)}
-                    </span>
-                  )}
-                </div>
-                <div className={rescoring ? "opacity-60" : undefined}>
-                  <ReportBody report={stored.confidence} />
-                </div>
-              </div>
-            ) : rescoring ? (
-              <div className="flex items-center gap-1.5 text-sm text-muted">
-                <Loader2 size={13} className="animate-spin" />
-                {p.rescoring}
-              </div>
-            ) : (
-              <p className="text-sm text-muted">{t.inbox.popover.reportUnavailable}</p>
-            )}
-          </Section>
-          <MemoriesCard
-            itemId={id}
-            phase="planning"
-            refs={item.usedMemory?.planning}
-            title={p.sections.memories}
-          />
           {gate && (
-            <PlanChatPanel
+            <PlanChatDrawer
+              open={drawerIsOpen}
+              onClose={() => setDrawerOpen("0")}
               itemId={id}
               disabled={editBusy || busyAction !== null}
               onPlanUpdated={setStored}
               onBusyChange={setChatBusy}
+              onCountChange={setChatCount}
             />
           )}
-        </div>
+        </>
       )}
     </div>
   );
