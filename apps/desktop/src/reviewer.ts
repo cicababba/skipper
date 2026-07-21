@@ -13,6 +13,7 @@ import type {
   LlmSettings,
   RepoRef,
   ResolvedRepoOrchestratorSettings,
+  StoredCoderReport,
   StoredPlan,
   TrackedItem,
 } from "@skipper/shared";
@@ -39,6 +40,8 @@ export interface ReviewerDeps {
   getIssue: (item: TrackedItem) => Issue | undefined;
   /** Acceptance criteria source. */
   getPlan: (item: TrackedItem) => Promise<StoredPlan | null>;
+  /** The coder's structured report (#146), threaded into the critic as context. */
+  getCoderReport: (item: TrackedItem) => Promise<StoredCoderReport | null>;
   getDiff: (item: TrackedItem) => Promise<WorktreeDiff>;
   /** Sets item.review + the transition in ONE manifest write (mirrors completePlan). */
   completeReview: (
@@ -211,6 +214,8 @@ async function run(itemId: string): Promise<void> {
 
     const stored = await deps.getPlan(item);
     if (deps.getItem(itemId)?.state !== "agent-review") return;
+    const storedReport = await deps.getCoderReport(item).catch(() => null);
+    if (deps.getItem(itemId)?.state !== "agent-review") return;
     const cached = deps.getIssue(item);
     const issue = {
       key: item.key,
@@ -240,6 +245,7 @@ async function run(itemId: string): Promise<void> {
           diff: diff.diff,
           issue,
           acceptance: stored?.plan.acceptance ?? [],
+          ...(storedReport ? { report: storedReport.report } : {}),
           ...(sessionId ? { session: { id: sessionId, cwd: wtPath! } } : {}),
         },
         provider,

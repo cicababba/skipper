@@ -20,6 +20,7 @@ import type {
   ResumeRiteAction,
   SaveWorktreeFileResult,
   SolutionRecord,
+  StoredCoderReport,
   StoredPlan,
   TrackerProjectsResult,
   UntrackItemResult,
@@ -172,6 +173,8 @@ contextBridge.exposeInMainWorld("skipper", {
       ipcRenderer.invoke("skipper:orchestrator:listRepos"),
     getPlan: (itemId: string): Promise<StoredPlan | null> =>
       ipcRenderer.invoke("skipper:orchestrator:getPlan", itemId),
+    getCoderReport: (itemId: string): Promise<StoredCoderReport | null> =>
+      ipcRenderer.invoke("skipper:orchestrator:getCoderReport", itemId),
     updatePlan: (itemId: string, plan: IssuePlan): Promise<UpdatePlanResult> =>
       ipcRenderer.invoke("skipper:orchestrator:updatePlan", itemId, plan),
     openPr: (itemId: string): Promise<OrchestratorTransitionResult> =>

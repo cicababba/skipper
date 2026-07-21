@@ -1,4 +1,4 @@
-import { displayKey, type CriticSignal, type PlanAcceptance } from "@skipper/shared";
+import { displayKey, type CoderReport, type CriticSignal, type PlanAcceptance } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm";
 import type { PlanIssueInput } from "../planner";
 import { runCritic } from "../confidence";
@@ -29,6 +29,9 @@ export interface CritiqueDiffArgs {
   issue: PlanIssueInput;
   /** The plan's acceptance mapping — what the reviewer reviews AGAINST. */
   acceptance: PlanAcceptance[];
+  /** The coder's structured report (#146) — declared deviations + verification
+   *  as review context, never a verdict gate. */
+  report?: CoderReport;
   /** Persist this round under a session (#111). id + cwd are bundled — a session
    *  id is only resumable from the worktree it was minted in. */
   session?: { id: string; cwd: string };
@@ -43,6 +46,18 @@ export async function critiqueDiff(
     issue.body && issue.body.length > MAX_BODY_CHARS
       ? `${issue.body.slice(0, MAX_BODY_CHARS)}\n[... issue body truncated ...]`
       : issue.body;
+  const report = args.report;
+  const deviationsBlock = report
+    ? report.deviations.length > 0
+      ? `Coder-declared deviations from the plan:\n${report.deviations.map((d) => `- ${d}`).join("\n")}`
+      : `The coder declared NO deviations from the plan — treat any drift you find in the diff as silent, undeclared drift.`
+    : "";
+  const verificationBlock =
+    report && report.verification.length > 0
+      ? `Verification commands the coder ran:\n${report.verification
+          .map((v) => `- [${v.passed ? "PASS" : "FAIL"}] ${v.command}${v.detail ? ` — ${v.detail}` : ""}`)
+          .join("\n")}`
+      : "";
   const context = [
     `Issue ${displayKey(issue.key)}: ${issue.title}`,
     issue.labels.length > 0 ? `Labels: ${issue.labels.join(", ")}` : "",
@@ -51,6 +66,8 @@ export async function critiqueDiff(
     acceptance.length > 0
       ? `Acceptance criteria:\n${acceptance.map((a) => `- ${a.criterion}`).join("\n")}`
       : `(No explicit acceptance criteria — review strictly against the issue body.)`,
+    deviationsBlock,
+    verificationBlock,
   ]
     .filter((l) => l !== "")
     .join("\n");

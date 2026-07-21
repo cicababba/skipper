@@ -81,6 +81,7 @@ import {
 } from "./repo-links";
 import { readLlmSettings, readLlmSettingsSync } from "./llm-settings";
 import { archiveStoredPlan, readStoredPlan, updateStoredPlan } from "./plan-store";
+import { readStoredCoderReport } from "./report-store";
 import { deletePlanChat } from "./plan-chat-store";
 import {
   initPlanChat,
@@ -831,6 +832,28 @@ async function completePlan(
 }
 
 /**
+ * Sets coderReport.ref + the agent-review transition in a single manifest write
+ * (#146). A degraded run (no parseable report) passes reportRef undefined —
+ * the field is deleted so a stale report never shows against a new diff.
+ */
+async function completeCoding(
+  itemId: string,
+  reportRef: string | undefined,
+  reason: string,
+): Promise<void> {
+  if (!deps) throw new Error("orchestrator not initialized");
+  const m = await ensureManifest();
+  const item = m.items[itemId];
+  if (!item) throw new Error(`unknown item ${itemId}`);
+  const { coderReport: _drop, ...rest } = item;
+  const withReport = reportRef ? { ...rest, coderReport: { ref: reportRef } } : rest;
+  m.items[itemId] = applyTransition(withReport, "agent-review", "coder", reason);
+  await saveOrchestratorManifest(deps.manifestFilePath, m);
+  broadcast();
+  pokeReviewer();
+}
+
+/**
  * Sets item.review + the transition in a single manifest write (#10) — atomic
  * rounds+transition so a crash can never burn a review round.
  */
@@ -1490,6 +1513,12 @@ export function initOrchestrator(
     if (!ref) return null;
     return readStoredPlan(deps!.plansDir, ref);
   });
+  ipcMain.handle("skipper:orchestrator:getCoderReport", async (_e, itemId: string) => {
+    const m = await ensureManifest();
+    const ref = m.items[itemId]?.coderReport?.ref;
+    if (!ref) return null;
+    return readStoredCoderReport(deps!.plansDir, ref);
+  });
   // Persist a user-edited plan at the gate (#13). Only legal while the item sits
   // in plan-gate — during a replan the item is back in planning, so stale saves lose.
   ipcMain.handle("skipper:orchestrator:updatePlan", async (_e, itemId: string, plan: unknown) => {
@@ -1825,6 +1854,7 @@ export function initOrchestrator(
       return ref ? readStoredPlan(orchestratorDeps.plansDir, ref) : null;
     },
     requestTransition,
+    completeCoding,
     setWorktree,
     prepareWorktree: (item) => prepareWorktreeFor(item, { refreshBase: true }),
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
@@ -1836,6 +1866,8 @@ export function initOrchestrator(
       orchestratorDeps.cliBundlePath
         ? { cliBundlePath: orchestratorDeps.cliBundlePath, repo: item.repo }
         : undefined,
+    getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
+    plansDir: orchestratorDeps.plansDir,
   });
 
   initReviewer({
@@ -1855,6 +1887,10 @@ export function initOrchestrator(
     },
     completeReview,
     setReviewSessionId,
+    getCoderReport: (item) =>
+      item.coderReport?.ref
+        ? readStoredCoderReport(orchestratorDeps.plansDir, item.coderReport.ref)
+        : Promise.resolve(null),
     emitEvent: emitReviewEvent,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getRepoSettings: repoOrch,

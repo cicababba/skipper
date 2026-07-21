@@ -94,9 +94,29 @@ describe("runCodingAgent", () => {
     expect(result).toEqual({
       ok: true,
       summary: "done",
+      resultText: "done",
       sessionId: "11111111-1111-4111-8111-111111111111",
       turns: 3,
     });
+  });
+
+  it("captures the full result text while summary stays truncated (#146)", async () => {
+    const big = "x".repeat(3000);
+    const bigResultLine = JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: big,
+      num_turns: 1,
+    });
+    const { child, spawnImpl } = fakeSpawn();
+    const promise = runCodingAgent(baseOpts(), spawnImpl);
+    child.stdout.emit("data", Buffer.from(`${initLine}\n${bigResultLine}\n`));
+    child.emit("close", 0);
+    const result = await promise;
+    expect(result.resultText).toBe(big);
+    expect(result.resultText!.length).toBe(3000);
+    expect(result.summary.length).toBe(2000);
   });
 
   it("rejects on nonzero exit without a result", async () => {

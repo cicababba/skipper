@@ -134,6 +134,12 @@ export {
   buildResumePrompt,
   buildFixPrompt,
   buildPrFixPrompt,
+  CoderReportSchema,
+  coderReportJsonSchema,
+  tryParseCoderReport,
+  repairCoderReport,
+  reportContractBlock,
+  CoderReportParseError,
   mapStreamLine,
   createStreamJsonParser,
 } from "./coder";
