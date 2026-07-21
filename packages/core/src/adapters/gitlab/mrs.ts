@@ -1,7 +1,8 @@
 import { GITLAB_BASE_URL } from "@skipper/shared";
 import type { PrReviewComment, PullRequest, RepoRef } from "@skipper/shared";
 import type { CreatedPr, FailingCheck } from "../types";
-import { gitlabApiBase, gitlabGet, gitlabPost, type GitLabResponse } from "./client";
+import { drainLinkPages } from "../http";
+import { gitlabApiBase, gitlabGet, gitlabPost } from "./client";
 import { ciStatusFromPipeline, type GitLabApprovalsPayload } from "./map";
 import type { GitLabTokenProvider } from "./types";
 
@@ -44,17 +45,6 @@ export interface GitLabJobPayload {
 function projectUrl(repo: RepoRef, baseUrl?: string): string {
   const projectPath = encodeURIComponent(`${repo.owner}/${repo.name}`);
   return `${gitlabApiBase(baseUrl)}/projects/${projectPath}`;
-}
-
-async function fetchPaginated<T>(url: string, getToken: GitLabTokenProvider): Promise<T[]> {
-  const out: T[] = [];
-  let next: string | undefined = url;
-  while (next) {
-    const res: GitLabResponse<T[]> = await gitlabGet<T[]>(next, getToken);
-    out.push(...(res.body ?? []));
-    next = res.nextUrl;
-  }
-  return out;
 }
 
 export async function createMergeRequest(
@@ -117,9 +107,9 @@ export function fetchMrDiscussions(
   getToken: GitLabTokenProvider,
   baseUrl?: string,
 ): Promise<GitLabDiscussionPayload[]> {
-  return fetchPaginated<GitLabDiscussionPayload>(
+  return drainLinkPages<GitLabDiscussionPayload>(
     `${projectUrl(repo, baseUrl)}/merge_requests/${iid}/discussions?per_page=100`,
-    getToken,
+    (url) => gitlabGet<GitLabDiscussionPayload[]>(url, getToken),
   );
 }
 
@@ -194,9 +184,9 @@ export async function fetchFailingChecks(
 ): Promise<FailingCheck[]> {
   const pipeline = await fetchLatestPipeline(repo, sha, getToken, baseUrl);
   if (!pipeline) return [];
-  const jobs = await fetchPaginated<GitLabJobPayload>(
+  const jobs = await drainLinkPages<GitLabJobPayload>(
     `${projectUrl(repo, baseUrl)}/pipelines/${pipeline.id}/jobs?scope[]=failed&per_page=100`,
-    getToken,
+    (url) => gitlabGet<GitLabJobPayload[]>(url, getToken),
   );
   return jobs
     .filter((job) => job.allow_failure !== true)

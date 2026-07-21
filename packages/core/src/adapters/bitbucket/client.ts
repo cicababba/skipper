@@ -1,4 +1,4 @@
-import { ApiError, AuthError } from "../types";
+import { vendorRequest, type VendorHttpConfig } from "../http";
 import type { BitbucketTokenProvider } from "./types";
 
 interface BitbucketPage<T> {
@@ -23,47 +23,18 @@ async function errorDetail(res: Response): Promise<string> {
   return text;
 }
 
+const CONFIG: VendorHttpConfig = {
+  vendor: "Bitbucket",
+  errorDetail,
+};
+
 async function bitbucketRequest<T>(
   method: "GET" | "POST",
   url: string,
   getToken: BitbucketTokenProvider,
   body?: unknown,
 ): Promise<T> {
-  const doFetch = async (token: string) => {
-    const headers: Record<string, string> = { authorization: `Bearer ${token}` };
-    if (body !== undefined) headers["content-type"] = "application/json";
-    return fetch(url, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-  };
-
-  const token = await getToken();
-  if (!token) throw new AuthError("no Bitbucket token available");
-
-  let res = await doFetch(token);
-  if (res.status === 401) {
-    const fresh = await getToken(true);
-    if (!fresh) throw new AuthError("no Bitbucket token available after refresh");
-    res = await doFetch(fresh);
-    if (res.status === 401) {
-      throw new AuthError("Bitbucket rejected the token (401) — re-authentication needed");
-    }
-  }
-
-  if (res.status === 429) {
-    const retryAfter = res.headers.get("retry-after");
-    const retryAfterSeconds = retryAfter != null ? Number(retryAfter) : undefined;
-    const text = await res.text().catch(() => "");
-    throw new ApiError(`Bitbucket rate limited (429): ${text}`, 429, undefined, retryAfterSeconds);
-  }
-
-  if (!res.ok) {
-    throw new ApiError(`Bitbucket API error: ${res.status} ${await errorDetail(res)}`, res.status);
-  }
-
-  return (await res.json()) as T;
+  return (await vendorRequest<T>(CONFIG, method, url, getToken, { body })).body as T;
 }
 
 export async function bitbucketGet<T>(url: string, getToken: BitbucketTokenProvider): Promise<T> {

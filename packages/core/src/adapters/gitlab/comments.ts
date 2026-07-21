@@ -1,5 +1,6 @@
 import type { Issue } from "@skipper/shared";
-import { gitlabApiBase, gitlabGet, type GitLabResponse } from "./client";
+import { drainLinkPages } from "../http";
+import { gitlabApiBase, gitlabGet } from "./client";
 import type { IssueComment } from "../types";
 import type { GitLabTokenProvider } from "./types";
 
@@ -19,19 +20,15 @@ export async function fetchGitLabComments(
 ): Promise<IssueComment[]> {
   if (issue.number == null || !issue.sourceRef.project) return [];
   const project = encodeURIComponent(issue.sourceRef.project);
-  const out: IssueComment[] = [];
-  let url: string | undefined = `${gitlabApiBase(baseUrl)}/projects/${project}/issues/${issue.number}/notes?sort=asc&order_by=created_at&per_page=100`;
-  while (url) {
-    const res: GitLabResponse<GitLabNotePayload[]> = await gitlabGet(url, getToken);
-    for (const n of res.body ?? []) {
-      if (n.system) continue;
-      out.push({
-        author: n.author?.username ?? "unknown",
-        body: n.body ?? "",
-        createdAt: n.created_at,
-      });
-    }
-    url = res.nextUrl;
-  }
-  return out;
+  const notes = await drainLinkPages<GitLabNotePayload>(
+    `${gitlabApiBase(baseUrl)}/projects/${project}/issues/${issue.number}/notes?sort=asc&order_by=created_at&per_page=100`,
+    (url) => gitlabGet<GitLabNotePayload[]>(url, getToken),
+  );
+  return notes
+    .filter((n) => !n.system)
+    .map((n) => ({
+      author: n.author?.username ?? "unknown",
+      body: n.body ?? "",
+      createdAt: n.created_at,
+    }));
 }

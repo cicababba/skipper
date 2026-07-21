@@ -1,5 +1,6 @@
 import { GITHUB_API_BASE_URL } from "@skipper/shared";
-import { githubGet, type GitHubResponse } from "./client";
+import { drainLinkPages } from "../http";
+import { githubGet } from "./client";
 import type { GitHubTokenProvider } from "./types";
 
 // GitHub App installations visible to the user token (#15). User-to-server
@@ -31,36 +32,21 @@ interface InstallationRepoPayload {
   owner: { login: string };
 }
 
-async function walkPages<T>(
-  firstUrl: string,
-  getToken: GitHubTokenProvider,
-  pick: (body: unknown) => T[],
-): Promise<T[]> {
-  const out: T[] = [];
-  let url: string | undefined = firstUrl;
-  while (url) {
-    const res: GitHubResponse<unknown> = await githubGet<unknown>(url, getToken);
-    if (res.body !== undefined) out.push(...pick(res.body));
-    url = res.nextUrl;
-  }
-  return out;
-}
-
 export async function listUserInstallationRepos(
   getToken: GitHubTokenProvider,
 ): Promise<InstallationsResult> {
-  const installations = await walkPages<InstallationPayload>(
+  const installations = await drainLinkPages<InstallationPayload>(
     `${GITHUB_API_BASE_URL}/user/installations?per_page=100`,
-    getToken,
+    (url) => githubGet<unknown>(url, getToken),
     (body) => (body as { installations?: InstallationPayload[] }).installations ?? [],
   );
 
   const repos: InstallationRepo[] = [];
   const seen = new Set<string>();
   for (const installation of installations) {
-    const payloads = await walkPages<InstallationRepoPayload>(
+    const payloads = await drainLinkPages<InstallationRepoPayload>(
       `${GITHUB_API_BASE_URL}/user/installations/${installation.id}/repositories?per_page=100`,
-      getToken,
+      (url) => githubGet<unknown>(url, getToken),
       (body) => (body as { repositories?: InstallationRepoPayload[] }).repositories ?? [],
     );
     for (const repo of payloads) {
