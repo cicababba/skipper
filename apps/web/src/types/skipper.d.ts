@@ -188,13 +188,29 @@ declare global {
           itemIds?: string[],
         ) => Promise<OrchestratorState>;
         setPinned: (itemId: string, pinned: boolean) => Promise<OrchestratorTransitionResult>;
-        linkRepo: (owner: string, name: string, localPath: string) => Promise<RepoLinkResult>;
+        linkRepo: (
+          owner: string,
+          name: string,
+          localPath: string,
+          baseBranch?: string,
+        ) => Promise<RepoLinkResult>;
         cloneRepo: (
           owner: string,
           name: string,
           destParent: string,
           accountId?: string,
+          baseBranch?: string,
         ) => Promise<RepoLinkResult>;
+        inspectLinkTarget: (
+          owner: string,
+          name: string,
+          localPath: string,
+        ) => Promise<ListRepoBranchesResult>;
+        listRemoteBranches: (
+          owner: string,
+          name: string,
+          accountId?: string,
+        ) => Promise<ListRepoBranchesResult>;
         unlinkRepo: (owner: string, name: string) => Promise<RepoUnlinkResult>;
         setRepoBaseBranch: (
           owner: string,
