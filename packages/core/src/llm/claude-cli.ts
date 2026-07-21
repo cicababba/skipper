@@ -91,6 +91,25 @@ export function cliErrorMessage(data: Record<string, unknown>): string {
   return `Claude CLI error: ${typeof data.subtype === "string" ? data.subtype : "unknown failure"}`;
 }
 
+export class ClaudeCliError extends Error {
+  constructor(
+    message: string,
+    readonly subtype?: string,
+    readonly numTurns?: number,
+  ) {
+    super(message);
+    this.name = "ClaudeCliError";
+  }
+}
+
+function claudeCliError(data: Record<string, unknown>): ClaudeCliError {
+  return new ClaudeCliError(
+    cliErrorMessage(data),
+    typeof data.subtype === "string" ? data.subtype : undefined,
+    typeof data.num_turns === "number" ? data.num_turns : undefined,
+  );
+}
+
 const SIGKILL_ESCALATION_MS = 3_000;
 
 function runClaude(
@@ -210,7 +229,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
     const data = JSON.parse(stdout);
 
     if (data.is_error) {
-      throw new Error(cliErrorMessage(data));
+      throw claudeCliError(data);
     }
 
     return {
@@ -278,7 +297,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
     const stdout = await runClaude(args, prompt, opts.cwd, undefined, opts.signal);
     const data = JSON.parse(stdout);
     if (data.is_error) {
-      throw new Error(cliErrorMessage(data));
+      throw claudeCliError(data);
     }
     return {
       text: data.result ?? "",
@@ -324,7 +343,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       throw new Error("Claude CLI stream ended without a result");
     }
     if (data.is_error) {
-      throw new Error(cliErrorMessage(data));
+      throw claudeCliError(data);
     }
     const usage = data.usage as Record<string, unknown> | undefined;
     return {
@@ -373,7 +392,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
 
     const data = JSON.parse(stdout);
     if (data.is_error) {
-      throw new Error(cliErrorMessage(data));
+      throw claudeCliError(data);
     }
 
     return parseJsonReply<T>(data.result ?? "");

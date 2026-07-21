@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cliErrorMessage } from "./claude-cli";
+import { ClaudeCliError, cliErrorMessage } from "./claude-cli";
 
 describe("cliErrorMessage", () => {
   it("prefers a non-empty result string", () => {
@@ -28,5 +28,16 @@ describe("cliErrorMessage", () => {
 
   it("falls back to unknown failure with neither result nor subtype", () => {
     expect(cliErrorMessage({})).toBe("Claude CLI error: unknown failure");
+  });
+});
+
+describe("ClaudeCliError", () => {
+  it("carries subtype and numTurns and a stable name", () => {
+    const err = new ClaudeCliError("boom", "error_max_turns", 41);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.name).toBe("ClaudeCliError");
+    expect(err.message).toBe("boom");
+    expect(err.subtype).toBe("error_max_turns");
+    expect(err.numTurns).toBe(41);
   });
 });

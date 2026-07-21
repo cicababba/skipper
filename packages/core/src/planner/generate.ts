@@ -1,10 +1,18 @@
 import type { CodingEvent, IssuePlan } from "@skipper/shared";
 import type { IssueComment } from "../adapters/types";
-import type { LLMProviderInterface } from "../llm/provider";
+import type { LLMProviderInterface, LLMResponse } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
+import { ClaudeCliError } from "../llm/claude-cli";
 import { parseJsonReply } from "../llm/json";
 import { IssuePlanSchema, planJsonSchema } from "./schema";
-import { PLANNER_SYSTEM_PROMPT, buildPlannerPrompt, buildRepairPrompt } from "./prompt";
+import {
+  PLANNER_SYSTEM_PROMPT,
+  buildPlannerPrompt,
+  buildRepairPrompt,
+  buildSalvagePrompt,
+} from "./prompt";
+
+const SALVAGE_MAX_TURNS = 4;
 
 export interface PlanIssueInput {
   /** Work-item display key: "42" (GitHub) or "PROJ-123" (Jira). */
@@ -98,14 +106,36 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
     );
   }
   const schema = planJsonSchema();
-  const reply = await opts.llm.agent(buildPlannerPrompt(opts.issue, schema), {
-    systemPrompt: PLANNER_SYSTEM_PROMPT,
-    cwd: opts.repoPath,
-    maxTurns: opts.maxTurns ?? 24,
-    ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
-    ...(opts.memory ? { memory: opts.memory } : {}),
-    ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
-  });
+  let reply: LLMResponse;
+  try {
+    reply = await opts.llm.agent(buildPlannerPrompt(opts.issue, schema), {
+      systemPrompt: PLANNER_SYSTEM_PROMPT,
+      cwd: opts.repoPath,
+      maxTurns: opts.maxTurns ?? 24,
+      ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+      ...(opts.memory ? { memory: opts.memory } : {}),
+      ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
+    });
+  } catch (err) {
+    if (
+      !(err instanceof ClaudeCliError) ||
+      err.subtype !== "error_max_turns" ||
+      !opts.sessionId
+    ) {
+      throw err;
+    }
+    try {
+      reply = await opts.llm.agent(buildSalvagePrompt(schema), {
+        systemPrompt: PLANNER_SYSTEM_PROMPT,
+        cwd: opts.repoPath,
+        maxTurns: SALVAGE_MAX_TURNS,
+        resumeSessionId: opts.sessionId,
+        ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+      });
+    } catch {
+      throw err;
+    }
+  }
 
   return validatePlanReply(opts.llm, reply.text);
 }

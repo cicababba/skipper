@@ -59,7 +59,17 @@ Also populate these fields (each may be an empty array when nothing applies):
 - context: facts you VERIFIED during repo exploration — gotchas, patterns to follow, invariants — with file:line where useful. Not a paraphrase of the issue.
 - outOfScope: what must NOT be touched, derived from the issue plus your judgment.
 - verificationCommands: REAL commands found in the repo (e.g. package.json scripts), never invented ones.
-- manualChecks: manual verification steps a human should run.`;
+- manualChecks: manual verification steps a human should run.
+
+You have a limited budget of agent turns for this task. Batch independent tool calls in ONE message — several Grep/Glob/Read calls at once — instead of one call per turn. Prefer targeted greps over reading whole files. Once you have learned enough to write a correct plan, stop exploring and emit the plan.`;
+
+export function buildSalvagePrompt(schema: Record<string, unknown>): string {
+  return [
+    `You ran out of your tool-call budget while exploring. Do NOT call any more tools. Using only what you have already learned in this session, reply NOW with the implementation-plan JSON. Reply with ONLY the JSON, no prose. Schema: ${JSON.stringify(schema)}`,
+    ``,
+    `For any file you did not verify, either omit it or surface the uncertainty in openQuestions/risks — never invent paths or symbols.`,
+  ].join("\n");
+}
 
 export function buildPlannerPrompt(
   issue: PlanIssueInput,
