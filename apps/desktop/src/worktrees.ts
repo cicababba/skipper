@@ -78,6 +78,22 @@ export async function resolveBaseRef(repoPath: string, override?: string): Promi
   );
 }
 
+/**
+ * Branch names from `for-each-ref --format=%(refname:short) refs/remotes/origin`:
+ * strip the `origin/` prefix, drop `origin/HEAD`, dedupe, sort. Exported for tests.
+ */
+export function parseRemoteBranches(stdout: string): string[] {
+  const branches = new Set<string>();
+  for (const line of stdout.split("\n")) {
+    const ref = line.trim();
+    if (!ref) continue;
+    const branch = ref.replace(/^origin\//, "");
+    if (!branch || branch === "HEAD") continue;
+    branches.add(branch);
+  }
+  return [...branches].sort();
+}
+
 export interface WorktreeInfo {
   path: string;
   branch?: string;

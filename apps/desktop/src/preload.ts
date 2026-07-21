@@ -7,6 +7,7 @@ import type {
   IssuePlan,
   LifecycleState,
   FollowCandidatesResult,
+  ListRepoBranchesResult,
   ListReposResult,
   MemoryPhase,
   OrchestratorSettings,
@@ -178,6 +179,8 @@ contextBridge.exposeInMainWorld("skipper", {
       ipcRenderer.invoke("skipper:orchestrator:setRepoBaseBranch", owner, name, baseBranch),
     listRepos: (): Promise<ListReposResult> =>
       ipcRenderer.invoke("skipper:orchestrator:listRepos"),
+    listRepoBranches: (owner: string, name: string): Promise<ListRepoBranchesResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:listRepoBranches", owner, name),
     getPlan: (itemId: string): Promise<StoredPlan | null> =>
       ipcRenderer.invoke("skipper:orchestrator:getPlan", itemId),
     getCoderReport: (itemId: string): Promise<StoredCoderReport | null> =>

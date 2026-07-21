@@ -15,6 +15,7 @@ import {
   listWorktreeChanges,
   listWorktrees,
   parseNameStatusZ,
+  parseRemoteBranches,
   pushWorktreeBranch,
   readWorktreeFileVersions,
   refreshWorktreeBase,
@@ -327,6 +328,19 @@ describe("parseNameStatusZ (#14)", () => {
 
   it("returns [] for empty output", () => {
     expect(parseNameStatusZ("")).toEqual([]);
+  });
+});
+
+describe("parseRemoteBranches", () => {
+  it("strips origin/, drops HEAD, dedupes and sorts", () => {
+    expect(
+      parseRemoteBranches("origin/main\norigin/HEAD\norigin/develop\norigin/main\n"),
+    ).toEqual(["develop", "main"]);
+  });
+
+  it("ignores blank lines and returns [] for empty output", () => {
+    expect(parseRemoteBranches("\n  \n")).toEqual([]);
+    expect(parseRemoteBranches("")).toEqual([]);
   });
 });
 

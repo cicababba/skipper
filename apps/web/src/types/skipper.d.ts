@@ -9,6 +9,7 @@ import type {
   IssuePlan,
   LifecycleState,
   FollowCandidatesResult,
+  ListRepoBranchesResult,
   ListReposResult,
   MemoryPhase,
   OrchestratorSettings,
@@ -201,6 +202,7 @@ declare global {
           baseBranch: string | null,
         ) => Promise<SetRepoBaseBranchResult>;
         listRepos: () => Promise<ListReposResult>;
+        listRepoBranches: (owner: string, name: string) => Promise<ListRepoBranchesResult>;
         getPlan: (itemId: string) => Promise<StoredPlan | null>;
         getCoderReport: (itemId: string) => Promise<StoredCoderReport | null>;
         updatePlan: (itemId: string, plan: IssuePlan) => Promise<UpdatePlanResult>;

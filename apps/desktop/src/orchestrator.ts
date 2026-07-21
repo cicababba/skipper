@@ -101,6 +101,7 @@ import {
   ensureWorktree,
   fetchOrigin,
   listWorktreeChanges,
+  parseRemoteBranches,
   readWorktreeFileVersions,
   refreshWorktreeBase,
   resolveBaseRef,
@@ -1519,6 +1520,33 @@ export function initOrchestrator(
         link.baseBranch = trimmed;
         await saveRepoLinks(deps!.repoLinksFilePath, links);
         return { ok: true as const };
+      } catch (err) {
+        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
+  ipcMain.handle(
+    "skipper:orchestrator:listRepoBranches",
+    async (_e, owner: string, name: string) => {
+      try {
+        const links = await ensureRepoLinks();
+        const link = links.repos[repoKey({ owner, name })];
+        if (!link) return { ok: false as const, error: "repo not linked" };
+
+        const refs = await runGit(link.localPath, [
+          "for-each-ref",
+          "--format=%(refname:short)",
+          "refs/remotes/origin",
+        ]);
+        if (refs.code !== 0) {
+          return { ok: false as const, error: refs.stderr.trim() || `git exit ${refs.code}` };
+        }
+
+        const branches = parseRemoteBranches(refs.stdout);
+        const defaultBranch = await resolveBaseRef(link.localPath, undefined)
+          .then((ref) => ref.replace(/^origin\//, ""))
+          .catch(() => undefined);
+        return { ok: true as const, branches, defaultBranch };
       } catch (err) {
         return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
       }

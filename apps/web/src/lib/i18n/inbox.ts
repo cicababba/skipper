@@ -314,6 +314,7 @@ const en = {
     baseBranchDesc:
       "Branch new worktrees are cut from. Takes effect on new worktrees; existing items keep theirs until re-created.",
     baseBranchPlaceholder: "repository default branch",
+    baseBranchDefault: (branch: string) => `default (${branch})`,
     worktrees: "Active worktrees",
     worktreesEmpty: "No active worktrees for this repo.",
     open: "Open",
@@ -649,6 +650,7 @@ const it: typeof en = {
     baseBranchDesc:
       "Branch da cui vengono creati i nuovi worktree. Ha effetto sui nuovi worktree; gli item esistenti mantengono il proprio finché non viene ricreato.",
     baseBranchPlaceholder: "branch predefinito del repository",
+    baseBranchDefault: (branch) => `predefinito (${branch})`,
     worktrees: "Worktree attivi",
     worktreesEmpty: "Nessun worktree attivo per questo repo.",
     open: "Apri",
@@ -985,6 +987,7 @@ const fr: typeof en = {
     baseBranchDesc:
       "Branche depuis laquelle les nouveaux worktrees sont créés. S'applique aux nouveaux worktrees ; les items existants gardent le leur jusqu'à recréation.",
     baseBranchPlaceholder: "branche par défaut du dépôt",
+    baseBranchDefault: (branch) => `défaut (${branch})`,
     worktrees: "Worktrees actifs",
     worktreesEmpty: "Aucun worktree actif pour ce dépôt.",
     open: "Ouvrir",
@@ -1320,6 +1323,7 @@ const es: typeof en = {
     baseBranchDesc:
       "Rama desde la que se crean los nuevos worktrees. Se aplica a los nuevos worktrees; los items existentes conservan el suyo hasta recrearlo.",
     baseBranchPlaceholder: "rama por defecto del repositorio",
+    baseBranchDefault: (branch) => `por defecto (${branch})`,
     worktrees: "Worktrees activos",
     worktreesEmpty: "Ningún worktree activo para este repo.",
     open: "Abrir",
