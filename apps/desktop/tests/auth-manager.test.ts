@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { AuthProviderId, ResourceCandidate } from "@skipper/shared";
-import type { ProviderConfig, ProviderTokens } from "../src/auth/provider";
+import { OAuthError, type ProviderConfig, type ProviderTokens } from "../src/auth/provider";
 import type { AuthStoreFile } from "../src/auth/store-format";
 
 // manager.ts transitively imports electron (oauth-flow) and the disk store — mock
@@ -35,7 +35,10 @@ vi.mock("../src/auth/token-store", () => ({
   isEncryptionAvailable: () => true,
 }));
 
+import { refreshTokens } from "../src/auth/oauth-flow";
 import { AuthManager } from "../src/auth/manager";
+
+const refreshMock = vi.mocked(refreshTokens);
 
 function fakeProvider(id: AuthProviderId): ProviderConfig {
   return {
@@ -240,5 +243,95 @@ describe("AuthManager jira resource resolution (#77)", () => {
     await manager.signInWithPat("jira", "some-token");
     expect(manager.getState().flows.jira?.status).toBe("error");
     expect(manager.getState().accounts).toHaveLength(0);
+  });
+});
+
+// An expiry inside REFRESH_LEAD_MS forces getAccessToken down the refresh path.
+function expiredTokens(access: string): ProviderTokens {
+  return { accessToken: access, refreshToken: "refresh-0", expiresAt: Date.now(), scope: "", tokenType: "bearer" };
+}
+
+function seedGithubAccount(): void {
+  storeState.current = {
+    version: 2,
+    accounts: {
+      "github:1": {
+        account: { provider: "github", key: "github:1", id: "1", authMethod: "oauth" },
+        tokens: expiredTokens("stale-access"),
+        signedInAt: 100,
+      },
+    },
+  };
+}
+
+describe("AuthManager token refresh dedup + failure classification (B1/B2)", () => {
+  let manager: AuthManager;
+
+  beforeEach(async () => {
+    seedGithubAccount();
+    refreshMock.mockReset();
+    const github = { ...fakeProvider("github"), rotatesRefreshToken: true };
+    manager = new AuthManager({
+      google: fakeProvider("google"),
+      github,
+      gitlab: fakeProvider("gitlab"),
+      jira: fakeProvider("jira"),
+      bitbucket: fakeProvider("bitbucket"),
+    });
+    await manager.init();
+  });
+
+  it("coalesces concurrent refreshes onto a single in-flight request (B1)", async () => {
+    let resolveRefresh: (v: unknown) => void = () => {};
+    refreshMock.mockImplementation(() => new Promise((res) => (resolveRefresh = res)));
+
+    const a = manager.getAccessToken("github:1");
+    const b = manager.getAccessToken("github:1");
+    // Both callers park on the one pending refresh — the single-use token is
+    // fetched exactly once, not raced.
+    expect(refreshMock).toHaveBeenCalledTimes(1);
+
+    resolveRefresh({ accessToken: "fresh-access", expiresAt: Date.now() + 1_000_000_000, refreshToken: "refresh-1" });
+    expect(await a).toBe("fresh-access");
+    expect(await b).toBe("fresh-access");
+  });
+
+  it("clears the in-flight entry so a subsequent refresh runs again", async () => {
+    // Each refresh returns an already-expired token, so the next call must refresh anew.
+    refreshMock.mockResolvedValue({ accessToken: "a1", expiresAt: Date.now(), refreshToken: "r1" });
+    await manager.getAccessToken("github:1");
+    await manager.getAccessToken("github:1");
+    expect(refreshMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("rotates and persists the refresh token on success", async () => {
+    refreshMock.mockResolvedValue({ accessToken: "fresh", expiresAt: Date.now() + 1_000_000_000, refreshToken: "rotated" });
+    expect(await manager.getAccessToken("github:1")).toBe("fresh");
+    expect(storeState.current!.accounts["github:1"].tokens.accessToken).toBe("fresh");
+    expect(storeState.current!.accounts["github:1"].tokens.refreshToken).toBe("rotated");
+  });
+
+  it("drops the account on an invalid_grant / HTTP 400 refresh failure (B2)", async () => {
+    refreshMock.mockRejectedValue(new OAuthError("refused", undefined, { status: 400, oauthCode: "invalid_grant" }));
+    expect(await manager.getAccessToken("github:1")).toBeNull();
+    expect(manager.getState().accounts).toHaveLength(0);
+  });
+
+  it("drops the account on a 200-with-error invalid_grant body (B2)", async () => {
+    refreshMock.mockRejectedValue(new OAuthError("refused", undefined, { oauthCode: "invalid_grant" }));
+    expect(await manager.getAccessToken("github:1")).toBeNull();
+    expect(manager.getState().accounts).toHaveLength(0);
+  });
+
+  it("keeps the account on a transient 5xx refresh failure (B2)", async () => {
+    refreshMock.mockRejectedValue(new OAuthError("bad gateway", undefined, { status: 502 }));
+    expect(await manager.getAccessToken("github:1")).toBeNull();
+    expect(manager.getState().accounts.map((a) => a.key)).toEqual(["github:1"]);
+  });
+
+  it("keeps the account on a network error with no status (B2)", async () => {
+    refreshMock.mockRejectedValue(new OAuthError("fetch failed"));
+    expect(await manager.getAccessToken("github:1")).toBeNull();
+    expect(manager.getState().accounts).toHaveLength(1);
   });
 });

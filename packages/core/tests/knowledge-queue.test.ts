@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, readFile, rm, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   queuePaths,
   ensureQueueDirs,
@@ -115,5 +115,28 @@ describe("queue operations", () => {
     expect(await readFile(next, "utf-8")).toContain("Renamed atom");
     const names = await readdir(queuePaths(root).pending);
     expect(names).toHaveLength(1);
+  });
+
+  // #178 B6: the rename must derive the parent from dirname(), not lastIndexOf("/"),
+  // so it stays in the same directory (and works on Windows separators).
+  it("keeps the renamed atom in the original directory", async () => {
+    await writePendingAtom(root, atom());
+    const [entry] = await listPending(root);
+    const next = await updatePendingAtom(entry.filePath, {
+      ...entry.atom,
+      id: "renamed-atom",
+      title: "Renamed atom",
+    });
+    expect(dirname(next)).toBe(dirname(entry.filePath));
+    expect(dirname(next)).toBe(queuePaths(root).pending);
+  });
+
+  it("updatePendingAtom returns the same path and does not rename when the slug is unchanged", async () => {
+    await writePendingAtom(root, atom());
+    const [entry] = await listPending(root);
+    const next = await updatePendingAtom(entry.filePath, { ...entry.atom, body: "Edited body." });
+    expect(next).toBe(entry.filePath);
+    expect(await readFile(next, "utf-8")).toContain("Edited body.");
+    expect(await readdir(queuePaths(root).pending)).toHaveLength(1);
   });
 });

@@ -10,7 +10,13 @@ import {
   type AuthState,
   type ResourceCandidate,
 } from "@skipper/shared";
-import { OAuthError, applyRefreshedTokens, type ProviderConfig, type ProviderTokens } from "./provider";
+import {
+  OAuthError,
+  applyRefreshedTokens,
+  isRefreshRevocation,
+  type ProviderConfig,
+  type ProviderTokens,
+} from "./provider";
 import { runOAuthFlow, refreshTokens } from "./oauth-flow";
 import { PROVIDERS } from "./providers";
 import { accountKey, emptyStore, type AuthStoreFile, type StoredAccount } from "./store-format";
@@ -39,6 +45,9 @@ export class AuthManager {
   private listeners = new Set<Listener>();
   private signInAborts = new Map<AuthProviderId, AbortController>();
   private pendingResourceChoices = new Map<AuthProviderId, PendingResourceChoice>();
+  // Per-account in-flight refresh (B1): a rotating refresh token is single-use,
+  // so concurrent callers must share one refresh instead of racing on it.
+  private refreshInFlight = new Map<string, Promise<string | null>>();
 
   constructor(private readonly providers: Record<AuthProviderId, ProviderConfig> = PROVIDERS) {
     for (const id of AUTH_PROVIDER_IDS) {
@@ -292,19 +301,39 @@ export class AuthManager {
     if (!forceRefresh && stored.tokens.expiresAt - REFRESH_LEAD_MS > Date.now()) {
       return stored.tokens.accessToken;
     }
+    // Coalesce concurrent refreshes for this account onto one in-flight promise
+    // (B1): a parallel poll must not race the single-use refresh token.
+    const existing = this.refreshInFlight.get(key);
+    if (existing) return existing;
+    const promise = this.refreshAccount(key).finally(() => this.refreshInFlight.delete(key));
+    this.refreshInFlight.set(key, promise);
+    return promise;
+  }
+
+  private async refreshAccount(key: string): Promise<string | null> {
+    const stored = this.store.accounts[key];
+    if (!stored) return null;
     const provider = stored.account.provider;
     const config = this.providers[provider];
     try {
       const refreshed = await refreshTokens(config, stored.tokens.refreshToken, stored.account.baseUrl);
-      const next = applyRefreshedTokens(stored.tokens, refreshed, config.rotatesRefreshToken);
-      this.store.accounts[key] = { ...stored, tokens: next };
+      // Re-read: signOut (or another mutation) may have run while we awaited.
+      const cur = this.store.accounts[key];
+      if (!cur) return null;
+      const next = applyRefreshedTokens(cur.tokens, refreshed, config.rotatesRefreshToken);
+      this.store.accounts[key] = { ...cur, tokens: next };
       // Persist immediately: losing a rotated refresh token kills the grant.
       await saveStore(this.store);
       return next.accessToken;
     } catch (err) {
-      console.error(`[auth] ${provider} refresh failed, dropping account:`, err);
-      // Refresh token revoked / expired — the account must re-authenticate.
-      await this.signOut(key);
+      if (isRefreshRevocation(err)) {
+        console.error(`[auth] ${provider} refresh rejected (grant revoked), dropping account:`, err);
+        await this.signOut(key);
+        return null;
+      }
+      // Transient (network / 5xx / rate limit): keep the account so the next
+      // poll retries — a dropped account here would sign the user out on a blip (B2).
+      console.warn(`[auth] ${provider} refresh failed transiently, keeping account:`, err);
       return null;
     }
   }

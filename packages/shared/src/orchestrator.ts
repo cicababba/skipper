@@ -355,6 +355,20 @@ export function latestPlanningTransitionAt(item: TrackedItem): string | undefine
   return undefined;
 }
 
+/**
+ * Timestamp of the item's most recent entry into coding — the coder's run token
+ * (#159, mirrors latestPlanningTransitionAt). An untrack → re-admit that mints a
+ * newer coding transition makes a zombie run captured against the older token
+ * detectably stale, so it can't land its report on the fresh lifecycle.
+ * `undefined` when the item never entered coding.
+ */
+export function latestCodingTransitionAt(item: TrackedItem): string | undefined {
+  for (let i = item.transitions.length - 1; i >= 0; i--) {
+    if (item.transitions[i].to === "coding") return item.transitions[i].at;
+  }
+  return undefined;
+}
+
 // Renderer-facing orchestrator snapshot (pushed on skipper:orchestrator:stateChanged).
 
 export interface OrchestratorAccountState {

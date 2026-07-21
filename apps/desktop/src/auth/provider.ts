@@ -76,10 +76,32 @@ export interface ProviderConfig {
 }
 
 export class OAuthError extends Error {
-  constructor(message: string, public readonly cause?: unknown) {
+  /** HTTP status of the token-endpoint response, when the failure came from one. */
+  readonly status?: number;
+  /** OAuth2 `error` code (e.g. "invalid_grant"), when the response carried one. */
+  readonly oauthCode?: string;
+
+  constructor(
+    message: string,
+    public readonly cause?: unknown,
+    meta?: { status?: number; oauthCode?: string },
+  ) {
     super(message);
     this.name = "OAuthError";
+    this.status = meta?.status;
+    this.oauthCode = meta?.oauthCode;
   }
+}
+
+/**
+ * A refresh failure is a definitive grant revocation — the account must
+ * re-authenticate — only for an invalid_grant, which RFC 6749 returns as HTTP
+ * 400. Network errors (no status), 5xx, and 429 are transient: the account
+ * stays and the next poll retries.
+ */
+export function isRefreshRevocation(err: unknown): boolean {
+  if (!(err instanceof OAuthError)) return false;
+  return err.oauthCode === "invalid_grant" || err.status === 400;
 }
 
 export function applyRefreshedTokens(

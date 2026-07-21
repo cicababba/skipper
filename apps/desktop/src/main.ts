@@ -12,7 +12,7 @@ import {
   safeStorage,
 } from "electron";
 import { createServer } from "node:net";
-import { join, dirname, resolve, sep } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import {
   existsSync,
   mkdirSync,
@@ -29,6 +29,7 @@ import { providerMetadata } from "./auth/providers";
 import { AUTH_PROVIDER_IDS, type AuthProviderId, type AuthProviderMeta, type AuthState } from "@skipper/shared";
 import { registerGitHandlers } from "./git";
 import { registerTerminalHandlers, type TerminalApi } from "./terminal";
+import { assertInsideWorktrees as assertInsideWorktreesRoot, looksBinary } from "./fs-guard";
 
 // Set once the lazy updater bundle loads; lets auth changes refresh the
 // update credentials + "via" label immediately.
@@ -568,9 +569,12 @@ ipcMain.handle(
 );
 
 // ===== File read/write for the in-app editor =====
-// Both handlers enforce that the target path is inside the worktrees root,
-// so the renderer cannot read or write arbitrary files elsewhere on the
-// user's disk even if the preload is compromised.
+// Sandbox boundary (intentional): skipper:fs:list above enumerates any
+// directory, because the repo file-tree legitimately browses checkouts that
+// live outside the worktrees root. Everything that reads file *contents* or
+// mutates the disk (readFile/writeFile/createDir/delete/rename) is locked to
+// the worktrees root via assertInsideWorktrees — so a compromised preload can
+// list paths but cannot read or write arbitrary files elsewhere.
 const MAX_EDITABLE_BYTES = 1024 * 1024; // 1 MiB hard cap for the editor
 
 interface ReadFileResult {
@@ -585,23 +589,7 @@ function worktreesRoot(): string {
 }
 
 function assertInsideWorktrees(targetPath: string): string {
-  const root = worktreesRoot();
-  const abs = resolve(targetPath);
-  if (abs !== root && !abs.startsWith(root + sep)) {
-    throw new Error(
-      `Refusing to access path outside the worktrees root: ${abs}`,
-    );
-  }
-  return abs;
-}
-
-function looksBinary(buf: Buffer): boolean {
-  // Cheap heuristic: null byte in the first 8KB → binary
-  const len = Math.min(buf.length, 8192);
-  for (let i = 0; i < len; i++) {
-    if (buf[i] === 0) return true;
-  }
-  return false;
+  return assertInsideWorktreesRoot(targetPath, worktreesRoot());
 }
 
 ipcMain.handle(

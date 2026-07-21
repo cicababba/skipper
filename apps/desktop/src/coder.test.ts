@@ -737,3 +737,88 @@ describe("structured coder report (#146)", () => {
     expect(h.items.get("github:1")!.coderReport).toEqual({ ref: reportFileName("github:1") });
   });
 });
+
+// #178: a zombie run (untrack -> re-admit) must not land on the fresh lifecycle,
+// and overlapping scans must not breach a per-repo WIP limit.
+describe("coder stale-run token + WIP reservation (#178)", () => {
+  it("refuses to complete a run whose coding token was superseded (B3)", async () => {
+    const h = makeHarness();
+    // Two gates: the first (zombie) run parks on gate1, the re-admitted run that
+    // the finally-rescan starts parks on gate2 — so releasing gate1 exercises the
+    // zombie's completion in isolation.
+    let releaseZombie: () => void = () => {};
+    const gate1 = new Promise<void>((r) => (releaseZombie = r));
+    const gate2 = new Promise<void>(() => {});
+    let call = 0;
+    initCoder(
+      h.deps,
+      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+        await (++call === 1 ? gate1 : gate2);
+        return okReport(opts);
+      }),
+    );
+    // In coding, with a coding transition that is this run's token.
+    h.items.set("github:1", {
+      ...makeItem(1, "coding"),
+      worktree: { path: "/wt/repo/issue-1", branch: "feature/issue-1", sessionId: "s1" },
+      transitions: [{ at: "2026-07-13T00:00:00.000Z", from: "queued", to: "coding", actor: "coder" }],
+    });
+
+    pokeCoder();
+    await settle();
+
+    // Untrack -> re-admit: a newer coding transition supersedes the run's token.
+    const cur = h.items.get("github:1")!;
+    h.items.set("github:1", {
+      ...cur,
+      transitions: [
+        ...cur.transitions,
+        { at: "2026-07-13T02:00:00.000Z", from: "queued", to: "coding", actor: "coder" },
+      ],
+    });
+
+    releaseZombie();
+    await settle();
+
+    // The zombie completion is refused; the re-admitted run (parked on gate2) has
+    // not completed either, so nothing landed on the fresh lifecycle.
+    expect(h.reports).toEqual([]);
+    expect(call).toBe(2); // the finally-rescan started the fresh run
+    expect(h.items.get("github:1")!.state).toBe("coding");
+  });
+
+  it("reserves the repo slot before the transition await so overlapping scans can't breach WIP=1 (B4)", async () => {
+    const h = makeHarness();
+    let releaseTransition: () => void = () => {};
+    const transitionGate = new Promise<void>((r) => (releaseTransition = r));
+    const transitionCalls: string[] = [];
+    const origRT = h.deps.requestTransition;
+    h.deps.requestTransition = async (itemId, to, actor, reason, resumeTo) => {
+      transitionCalls.push(itemId);
+      await transitionGate; // park every admission so a second scan can race in
+      return origRT(itemId, to, actor, reason, resumeTo);
+    };
+    const held = new Promise<void>(() => {}); // runner never resolves — holds the slot
+    const runner = vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      await held;
+      return okReport(opts);
+    });
+    initCoder(h.deps, runner);
+    h.items.set("github:1", makeItem(1, "queued"));
+    h.items.set("github:2", makeItem(2, "queued")); // same repo
+
+    pokeCoder();
+    await settle();
+    pokeCoder(); // overlapping scan while the first admission is still parked
+    await settle();
+
+    releaseTransition();
+    await settle();
+
+    // The overlapping scan saw the reservation and admitted nothing more: exactly
+    // one transition requested, one run, the second queued item still waiting.
+    expect(transitionCalls).toEqual(["github:1"]);
+    expect(runner).toHaveBeenCalledTimes(1);
+    expect(h.items.get("github:2")!.state).toBe("queued");
+  });
+});

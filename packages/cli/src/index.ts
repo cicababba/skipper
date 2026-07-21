@@ -218,15 +218,12 @@ knowledge
     try {
       const root = knowledgeRoot();
       const minScore = Math.max(0, Math.min(10, parseInt(options.minScore, 10) || 0));
-      let entries = (await listPending(root)).filter((e) => e.atom.score >= minScore);
+      const entries = (await listPending(root)).filter((e) => e.atom.score >= minScore);
       if (entries.length === 0) {
         console.log("(nothing to review)");
         return;
       }
       const rl = createInterface({ input, output });
-      const reload = async () => {
-        entries = (await listPending(root)).filter((e) => e.atom.score >= minScore);
-      };
       let acceptedN = 0,
         rejectedN = 0,
         editedN = 0,
@@ -289,7 +286,6 @@ knowledge
         rl.close();
       }
       console.log(`\nSummary: ${acceptedN} accepted, ${rejectedN} rejected, ${editedN} edited, ${skippedN} skipped`);
-      void reload;
     } catch (error) {
       console.error(`✗ ${error instanceof Error ? error.message : error}`);
       process.exit(1);

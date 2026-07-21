@@ -54,4 +54,18 @@ describe("parseJsonReply", () => {
   it("throws when the JSON is truncated beyond deterministic repair", () => {
     expect(() => parseJsonReply('{"a":1,"b":')).toThrow(/No parseable JSON in model reply/);
   });
+
+  it("unwraps an unlabeled fence", () => {
+    expect(parseJsonReply('```\n{"a":1}\n```')).toEqual({ a: 1 });
+  });
+
+  it("falls through to the balanced scan when the fence body is not JSON", () => {
+    const reply = "```\nnot json here\n```\nThe plan is: {\"a\":1} trailing chatter";
+    expect(parseJsonReply(reply)).toEqual({ a: 1 });
+  });
+
+  it("balanced scan starts at the first opener and ignores openers inside strings", () => {
+    const reply = 'noise {"path":"a[0].b","n":2} more {"ignored":true}';
+    expect(parseJsonReply(reply)).toEqual({ path: "a[0].b", n: 2 });
+  });
 });

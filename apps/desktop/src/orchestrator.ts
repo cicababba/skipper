@@ -32,6 +32,7 @@ import {
 import {
   formatRepoMappingValue,
   issueBranchFor,
+  latestCodingTransitionAt,
   latestPlanningTransitionAt,
   mappingHost,
   parseProjectMappingKey,
@@ -922,11 +923,19 @@ async function completeCoding(
   itemId: string,
   reportRef: string | undefined,
   reason: string,
+  expectedCodingAt?: string,
 ): Promise<void> {
   if (!deps) throw new Error("orchestrator not initialized");
   const m = await ensureManifest();
   const item = m.items[itemId];
   if (!item) throw new Error(`unknown item ${itemId}`);
+  // Refuse a stale run's result (#159): the item left coding, or an untrack →
+  // re-admit minted a newer coding transition superseding this run's token.
+  // Return silently — a throw would bounce into the coder's catch.
+  if (item.state !== "coding" || latestCodingTransitionAt(item) !== expectedCodingAt) {
+    console.warn(`stale coding completion refused for ${itemId}`);
+    return;
+  }
   const { coderReport: _drop, ...rest } = item;
   const withReport = reportRef ? { ...rest, coderReport: { ref: reportRef } } : rest;
   m.items[itemId] = applyTransition(withReport, "agent-review", "coder", reason);
