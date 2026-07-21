@@ -6,11 +6,22 @@ const SKIP_DIRS = new Set([".git", "node_modules", "dist", "release", ".next", "
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_FILES_WALKED = 20_000;
 
+/**
+ * Throws unless repoPath is an existing directory. Without this a vanished repo
+ * (e.g. a worktree removed mid-run) reads as "every cited file missing" and
+ * fabricates an all-missing score of 0 — worse than no score at all (#157).
+ */
+export async function assertRepoDir(repoPath: string): Promise<void> {
+  const info = await stat(repoPath).catch(() => null);
+  if (!info?.isDirectory()) throw new Error(`repoPath is not a directory: ${repoPath}`);
+}
+
 /** Cheap FS check, no LLM: do the files/symbols the plan cites actually exist? */
 export async function scoreGroundedness(
   plan: IssuePlan,
   repoPath: string,
 ): Promise<GroundednessSignal> {
+  await assertRepoDir(repoPath);
   const newFiles = new Set(
     plan.files.filter((f) => f.status === "new").map((f) => normalizeRepoPath(f.path) ?? f.path),
   );
