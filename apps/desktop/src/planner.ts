@@ -238,6 +238,7 @@ async function run(itemId: string): Promise<void> {
       issue,
       repoPath: cwd,
       llm: provider,
+      maxTurns: settings.plannerMaxTurns,
       onEvent: (event) => {
         // The minted id is authoritative; if the CLI reports a different session
         // in its init line, reconcile to the real on-disk id (#111).

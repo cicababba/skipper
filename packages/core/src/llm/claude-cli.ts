@@ -77,6 +77,20 @@ export function resolveClaude(): ClaudeCmd {
   return (resolvedClaude = { file: "claude", argsPrefix: [] });
 }
 
+// The CLI's result event carries `result` on success and on most failures, but
+// a max-turns death sets is_error with no result field — so `${data.result}`
+// renders "undefined". Derive a message from the subtype instead.
+export function cliErrorMessage(data: Record<string, unknown>): string {
+  if (typeof data.result === "string" && data.result.length > 0) {
+    return `Claude CLI error: ${data.result}`;
+  }
+  if (data.subtype === "error_max_turns") {
+    const turns = typeof data.num_turns === "number" ? ` after ${data.num_turns} turns` : "";
+    return `Claude CLI error: agent hit the max-turns limit${turns}`;
+  }
+  return `Claude CLI error: ${typeof data.subtype === "string" ? data.subtype : "unknown failure"}`;
+}
+
 const SIGKILL_ESCALATION_MS = 3_000;
 
 function runClaude(
@@ -196,7 +210,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
     const data = JSON.parse(stdout);
 
     if (data.is_error) {
-      throw new Error(`Claude CLI error: ${data.result}`);
+      throw new Error(cliErrorMessage(data));
     }
 
     return {
@@ -264,7 +278,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
     const stdout = await runClaude(args, prompt, opts.cwd, undefined, opts.signal);
     const data = JSON.parse(stdout);
     if (data.is_error) {
-      throw new Error(`Claude CLI error: ${data.result}`);
+      throw new Error(cliErrorMessage(data));
     }
     return {
       text: data.result ?? "",
@@ -310,7 +324,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       throw new Error("Claude CLI stream ended without a result");
     }
     if (data.is_error) {
-      throw new Error(`Claude CLI error: ${data.result}`);
+      throw new Error(cliErrorMessage(data));
     }
     const usage = data.usage as Record<string, unknown> | undefined;
     return {
@@ -359,7 +373,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
 
     const data = JSON.parse(stdout);
     if (data.is_error) {
-      throw new Error(`Claude CLI error: ${data.result}`);
+      throw new Error(cliErrorMessage(data));
     }
 
     return parseJsonReply<T>(data.result ?? "");

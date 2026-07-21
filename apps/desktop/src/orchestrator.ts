@@ -372,6 +372,7 @@ const SETTINGS_VALIDATORS: {
   coderModel: nonEmptyString,
   reviewerModel: nonEmptyString,
   coderMaxTurns: clampInt(10, 200),
+  plannerMaxTurns: clampInt(10, 200),
 };
 
 const REPO_SETTINGS_VALIDATORS: {
