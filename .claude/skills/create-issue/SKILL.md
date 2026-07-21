@@ -52,7 +52,7 @@ bash <skill-base-dir>/scripts/create-issue.sh --title "<scope>:<type>: <descript
 
 The script validates the title format and scopes, derives labels (scope names as-is; type per conventions: feat→enhancement, fix→bug, refactor→refactor, test→testing, docs→documentation, chore→none), and creates the issue.
 
-Summary keys printed: `issue`, `url`, `labels`.
+Summary keys printed: `issue`, `url`, `labels`, `board`.
 
 ### 5. Output summary
 
@@ -69,5 +69,6 @@ Summary keys printed: `issue`, `url`, `labels`.
 ## Notes
 
 - Conventions sourced from `.claude/rules/conventions.md` (single source of truth)
-- No project board in this repo — issue state is derived from git/GitHub
+- The script also adds the issue to the project board with Status=Backlog (best-effort;
+  a `board=sync failed` line means add it manually) — board contract in conventions.md
 - The convention applies to **new** issues only — existing issues stay as-is

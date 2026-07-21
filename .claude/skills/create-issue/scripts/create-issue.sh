@@ -46,6 +46,13 @@ LABELS="$SCOPES"
 URL=$(gh issue create --title "$TITLE" --body-file "$BODY_FILE" --label "$LABELS")
 NUMBER="${URL##*/}"
 
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+BOARD="added (Backlog)"
+if [[ -z "$ROOT" ]] || ! bash "$ROOT/.claude/scripts/board.sh" status "$NUMBER" Backlog >/dev/null 2>&1; then
+  BOARD="sync failed (add manually)"
+fi
+
 echo "issue=$NUMBER"
 echo "url=$URL"
 echo "labels=$LABELS"
+echo "board=$BOARD"
