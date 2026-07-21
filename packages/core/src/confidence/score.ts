@@ -138,6 +138,9 @@ export async function computeConfidence(
         }),
       ),
     );
+    // An abort during the extra runs must propagate, not fold into a persisted
+    // low-convergence score (#159): re-check the signal now that they settled.
+    if (opts.signal?.aborted) throw new AgentAbortError();
     const extra = settled
       .filter((r): r is PromiseFulfilledResult<IssuePlan> => r.status === "fulfilled")
       .map((r) => r.value);

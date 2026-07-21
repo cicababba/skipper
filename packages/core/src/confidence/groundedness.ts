@@ -89,6 +89,32 @@ function normalizeRepoPath(p: string): string | null {
   return norm;
 }
 
+const IDENT_CHAR = /[A-Za-z0-9_$]/;
+
+/**
+ * Whole-symbol presence, not a raw substring: an unbounded includes() counts
+ * short symbols ('id', 'run') as found inside unrelated words ('valid',
+ * 'running') and inflates groundedness. Require an identifier boundary on any
+ * edge whose own character is identifier-like; symbols ending in punctuation
+ * (foo(), a.b) keep substring semantics on that edge.
+ */
+function symbolPresent(text: string, sym: string): boolean {
+  if (!sym) return false;
+  const leftBounded = IDENT_CHAR.test(sym[0]);
+  const rightBounded = IDENT_CHAR.test(sym[sym.length - 1]);
+  let from = 0;
+  for (;;) {
+    const i = text.indexOf(sym, from);
+    if (i < 0) return false;
+    const before = text[i - 1];
+    const after = text[i + sym.length];
+    const leftOk = !leftBounded || before === undefined || !IDENT_CHAR.test(before);
+    const rightOk = !rightBounded || after === undefined || !IDENT_CHAR.test(after);
+    if (leftOk && rightOk) return true;
+    from = i + 1;
+  }
+}
+
 async function isFile(path: string): Promise<boolean> {
   try {
     return (await stat(path)).isFile();
@@ -114,7 +140,7 @@ async function findSymbols(
       const text = await readFile(path, "utf-8");
       if (text.includes("\0")) return;
       for (const sym of [...pending]) {
-        if (text.includes(sym)) {
+        if (symbolPresent(text, sym)) {
           found.add(sym);
           pending.delete(sym);
         }

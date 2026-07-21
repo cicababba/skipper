@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
-import { embed, cosineSimilarity } from "./embedder";
+import { embed, cosineSimilarity, EMBEDDING_MODEL } from "./embedder";
 
 interface VectorEntry {
   id: string;
@@ -27,7 +27,7 @@ interface VectorIndex {
 const INDEX_FILE = "vector-index.json";
 
 export class VectorStore {
-  private index: VectorIndex = { entries: [], modelName: "all-MiniLM-L6-v2", updatedAt: "" };
+  private index: VectorIndex = { entries: [], modelName: EMBEDDING_MODEL, updatedAt: "" };
   private indexPath: string;
   private loaded = false;
 
@@ -41,7 +41,13 @@ export class VectorStore {
       const raw = await readFile(this.indexPath, "utf-8");
       this.index = JSON.parse(raw);
     } catch {
-      this.index = { entries: [], modelName: "all-MiniLM-L6-v2", updatedAt: "" };
+      this.index = { entries: [], modelName: EMBEDDING_MODEL, updatedAt: "" };
+    }
+    // Drop an index built by a different embedding model: its vectors are
+    // incomparable with the live model's, so searching them scores garbage.
+    // Force an empty index that the next reindex rebuilds cleanly.
+    if (this.index.entries.length > 0 && this.index.modelName !== EMBEDDING_MODEL) {
+      this.index = { entries: [], modelName: EMBEDDING_MODEL, updatedAt: "" };
     }
     this.loaded = true;
   }

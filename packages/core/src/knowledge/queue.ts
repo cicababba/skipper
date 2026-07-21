@@ -13,7 +13,7 @@
 // (not deleted) so the user can re-pickup if they change their mind.
 
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { atomFilename, parseAtom, serializeAtom, type KnowledgeAtom } from "./atom";
 
 export interface QueuePaths {
@@ -128,8 +128,7 @@ export async function updatePendingAtom(
   oldPath: string,
   updated: KnowledgeAtom,
 ): Promise<string> {
-  const dir = oldPath.slice(0, oldPath.lastIndexOf("/")) || "/";
-  const next = join(dir, atomFilename(updated));
+  const next = join(dirname(oldPath), atomFilename(updated));
   await writeFile(oldPath, serializeAtom(updated), "utf-8");
   if (next !== oldPath) {
     await rename(oldPath, next);
