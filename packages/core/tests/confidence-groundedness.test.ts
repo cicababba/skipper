@@ -239,3 +239,43 @@ describe("scoreGroundedness", () => {
     expect(s.score).toBeCloseTo(1);
   });
 });
+
+// #178 B7: a short symbol must match as a whole identifier, not as a substring
+// inside an unrelated word — an unbounded includes() inflated groundedness.
+describe("scoreGroundedness symbol matching (#178 B7)", () => {
+  function symPlan(symbols: string[]): IssuePlan {
+    return plan({ steps: [{ title: "t", detail: "d", files: ["src/poller.ts"], symbols }] });
+  }
+
+  it("does not count a short symbol found only inside a larger word", async () => {
+    await writeFile(join(repo, "src", "words.ts"), "const isValid = true;\nfunction runner() {}\n", "utf-8");
+    const s = await scoreGroundedness(symPlan(["id", "run"]), repo);
+    expect(s.missingSymbols).toEqual(["id", "run"]);
+    expect(s.symbolsFound).toBe(0);
+  });
+
+  it("counts a symbol present as a whole identifier", async () => {
+    await writeFile(join(repo, "src", "words.ts"), "export const id = 1;\n", "utf-8");
+    const s = await scoreGroundedness(symPlan(["id"]), repo);
+    expect(s.symbolsFound).toBe(1);
+    expect(s.missingSymbols).toEqual([]);
+  });
+
+  it("matches a punctuation-edged symbol by substring on that edge", async () => {
+    await writeFile(join(repo, "src", "words.ts"), "obj.doThing();\n", "utf-8");
+    const s = await scoreGroundedness(symPlan([".doThing"]), repo);
+    expect(s.symbolsFound).toBe(1);
+  });
+
+  it("skips a binary file, so a symbol only present there reads as missing", async () => {
+    await writeFile(join(repo, "src", "blob.dat"), Buffer.from("uniqueSym\0more", "utf-8"));
+    const s = await scoreGroundedness(symPlan(["uniqueSym"]), repo);
+    expect(s.missingSymbols).toEqual(["uniqueSym"]);
+  });
+
+  it("skips a file over the byte cap, so a symbol only there reads as missing", async () => {
+    await writeFile(join(repo, "src", "big.ts"), "x".repeat(1024 * 1024 + 16) + " hugeSym\n", "utf-8");
+    const s = await scoreGroundedness(symPlan(["hugeSym"]), repo);
+    expect(s.missingSymbols).toEqual(["hugeSym"]);
+  });
+});
