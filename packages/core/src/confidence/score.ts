@@ -12,7 +12,7 @@ import { scoreClarity } from "./clarity";
 import { scoreConvergence } from "./convergence";
 import { critiquePlan } from "./critic";
 import { DEFAULT_CONFIDENCE_THRESHOLDS, resolveGate } from "./gate";
-import { scoreGroundedness } from "./groundedness";
+import { assertRepoDir, scoreGroundedness } from "./groundedness";
 
 export const DEFAULT_CONFIDENCE_WEIGHTS: ConfidenceWeights = {
   groundedness: 0.35,
@@ -67,15 +67,18 @@ function presentSignals(
 }
 
 /**
- * Composite, verifiable confidence (issue #8). Never throws: each signal is
- * scored independently, failures land in report.errors and the weights
- * renormalize over what succeeded. An all-failed report has composite 0 and
- * empty signals — the caller treats that as "no score" and falls back to the
- * conservative gate.
+ * Composite, verifiable confidence (issue #8). Signal failures never throw:
+ * each signal is scored independently, failures land in report.errors and the
+ * weights renormalize over what succeeded. An all-failed report has composite 0
+ * and empty signals — the caller treats that as "no score" and falls back to
+ * the conservative gate. Throws only when the scoring context itself is invalid
+ * (repoPath missing or not a directory), so the caller gets no report rather
+ * than a fabricated all-missing one (#157).
  */
 export async function computeConfidence(
   opts: ComputeConfidenceOptions,
 ): Promise<ConfidenceReport> {
+  await assertRepoDir(opts.repoPath);
   const extraRuns = opts.extraPlanRuns ?? DEFAULT_EXTRA_PLAN_RUNS;
   const thresholds = opts.thresholds ?? DEFAULT_CONFIDENCE_THRESHOLDS;
   const autoCoding = opts.autoCoding ?? "auto";

@@ -114,6 +114,14 @@ describe("scoreGroundedness", () => {
     expect(s.missingFiles).toEqual(["../outside.ts", "/etc/passwd"]);
   });
 
+  it("throws when repoPath does not exist instead of fabricating an all-missing score", async () => {
+    await expect(scoreGroundedness(plan(), join(repo, "does-not-exist"))).rejects.toThrow();
+  });
+
+  it("throws when repoPath points at a file", async () => {
+    await expect(scoreGroundedness(plan(), join(repo, "src", "poller.ts"))).rejects.toThrow();
+  });
+
   it("scores empty denominators as 1", async () => {
     const s = await scoreGroundedness(
       plan({

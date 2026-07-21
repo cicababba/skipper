@@ -304,24 +304,18 @@ describe("computeConfidence — adaptive convergence (#50)", () => {
     expect(report.convergenceSkipped).toBeUndefined();
   });
 
-  it("runs convergence when every other signal failed", async () => {
+  it("throws instead of returning a report when repoPath does not exist (#157)", async () => {
     const generatePlan = vi.fn(async () => plan());
-    const llm = {
-      name: "claude-cli",
-      ask: async (): Promise<LLMResponse> => ({ text: "" }),
-      askStructured: vi.fn(async () => {
-        throw new Error("no cli");
+    await expect(
+      computeConfidence({
+        plan: plan(),
+        issue: ISSUE,
+        repoPath: join(repo, "does-not-exist"),
+        llm: fakeLLM(APPROVE),
+        extraPlanRuns: 2,
+        deps: { generatePlan },
       }),
-    } as unknown as LLMProviderInterface;
-    const report = await computeConfidence({
-      plan: plan(),
-      issue: ISSUE,
-      repoPath: "/nonexistent-repo-path",
-      llm,
-      extraPlanRuns: 2,
-      deps: { generatePlan },
-    });
-    expect(generatePlan).toHaveBeenCalledTimes(2);
-    expect(report.convergenceSkipped).toBeUndefined();
+    ).rejects.toThrow();
+    expect(generatePlan).not.toHaveBeenCalled();
   });
 });
