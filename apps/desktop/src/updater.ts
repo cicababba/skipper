@@ -1,5 +1,8 @@
 import { app, ipcMain, type BrowserWindow } from "electron";
+import type { UpdateState } from "@skipper/shared";
 import { UPDATE_BASE_URL, UPDATE_CHANNEL_KEY } from "./update-config";
+
+export type { UpdateState };
 
 // VS Code-style transparent auto-update, official builds only.
 //
@@ -8,20 +11,6 @@ import { UPDATE_BASE_URL, UPDATE_CHANNEL_KEY } from "./update-config";
 // update server rejects requests anyway. Flow: check on launch + every 6h →
 // download silently in the background → tell the renderer to show a
 // "Restart to update" toast → install on restart or on next quit.
-
-export interface UpdateState {
-  /** Why the updater is or isn't running. */
-  status: "disabled" | "dev" | "idle" | "checking" | "downloading" | "ready" | "error";
-  /** Running app version. */
-  current: string;
-  /** Newest version known from the feed (when found). */
-  available?: string;
-  /** Download progress 0..100 while status === "downloading". */
-  percent?: number;
-  error?: string;
-  /** Strongest entitlement attached to the last check. */
-  via?: "account" | "build";
-}
 
 /** Per-plan proof attached to feed requests (phase 2 entitlement). */
 export interface UpdateCredentials {

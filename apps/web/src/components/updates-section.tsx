@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { RefreshCw, Loader2, CheckCircle2, AlertCircle, Download } from "lucide-react";
+import type { UpdateState } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 
 // Settings → Updates. Shows the auto-update status and a manual check.

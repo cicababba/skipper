@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import type { UpdateState } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 
 // VS Code-style update toast: appears bottom-right when a new version has been

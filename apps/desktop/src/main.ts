@@ -26,7 +26,14 @@ import {
 import { execSync, spawn } from "node:child_process";
 import { AuthManager } from "./auth";
 import { providerMetadata } from "./auth/providers";
-import { AUTH_PROVIDER_IDS, type AuthProviderId, type AuthProviderMeta, type AuthState } from "@skipper/shared";
+import {
+  AUTH_PROVIDER_IDS,
+  type AuthProviderId,
+  type AuthProviderMeta,
+  type AuthState,
+  type CliStatus,
+  type FsEntry,
+} from "@skipper/shared";
 import { registerGitHandlers } from "./git";
 import { registerTerminalHandlers, type TerminalApi } from "./terminal";
 import { assertInsideWorktrees as assertInsideWorktreesRoot, looksBinary } from "./fs-guard";
@@ -522,12 +529,6 @@ function killAllPtySessions(): void {
 }
 
 // === Directory listing (for file tree) ===
-interface FsEntry {
-  name: string;
-  path: string;
-  isDirectory: boolean;
-}
-
 function isHiddenOrIgnored(name: string): boolean {
   return (
     name.startsWith(".") ||
@@ -800,15 +801,6 @@ function cliBundlePath(): string | null {
     ? join(process.resourcesPath, "web", "apps", "web", "skipper.bundle.cjs")
     : join(__dirname, "../../../packages/cli/dist/skipper.bundle.cjs");
   return existsSync(bundle) ? bundle : null;
-}
-
-interface CliStatus {
-  supported: boolean;
-  target: string | null;
-  source: string;
-  installed: boolean;
-  /** True when target exists but points at the wrong place (e.g. app moved). */
-  stale: boolean;
 }
 
 async function getCliStatus(): Promise<CliStatus> {
