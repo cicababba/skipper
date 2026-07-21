@@ -190,10 +190,14 @@ export function StepsView({ steps }: { steps: PlanStep[] }) {
     <ol className="space-y-3">
       {steps.map((step, i) => (
         <li key={i} className="flex gap-3">
-          <span className="font-mono text-[11px] text-muted/60 pt-0.5 shrink-0">{i + 1}.</span>
-          <div className="min-w-0 space-y-1">
+          <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded border border-card-hover font-mono text-[11px] text-muted/70">
+            {i + 1}
+          </span>
+          <div className="min-w-0 space-y-1 pt-px">
             <p className="text-sm font-medium text-foreground">{step.title}</p>
-            {step.detail && <p className="text-sm text-muted whitespace-pre-wrap">{step.detail}</p>}
+            {step.detail && (
+              <p className="text-[13px] text-muted whitespace-pre-wrap">{step.detail}</p>
+            )}
             {(step.files.length > 0 ||
               step.symbols.length > 0 ||
               (step.createdSymbols?.length ?? 0) > 0) && (

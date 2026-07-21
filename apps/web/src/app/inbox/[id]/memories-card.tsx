@@ -31,6 +31,23 @@ export function MemoriesCard({
   refs: UsedMemoryRef[] | undefined;
   title: string;
 }) {
+  if (!refs || refs.length === 0) return null;
+  return (
+    <Section title={title} count={refs.length} editable={false} editing={false}>
+      <MemoriesList itemId={itemId} phase={phase} refs={refs} />
+    </Section>
+  );
+}
+
+export function MemoriesList({
+  itemId,
+  phase,
+  refs,
+}: {
+  itemId: string;
+  phase: MemoryPhase;
+  refs: UsedMemoryRef[] | undefined;
+}) {
   const { t } = useT();
   const m = t.inbox.plan.memories;
   const [records, setRecords] = useState<Record<string, RecordState>>({});
@@ -74,68 +91,66 @@ export function MemoriesCard({
   };
 
   return (
-    <Section title={title} count={refs.length} editable={false} editing={false}>
-      <ul className="space-y-2 text-[12px]">
-        {refs.map((ref) => {
-          const rec = records[ref.id];
-          return (
-            <li key={ref.id} className="flex items-center gap-2">
-              <div className="min-w-0 flex-1">
-                {rec === undefined ? (
-                  <span className="flex items-center gap-1.5 text-muted">
-                    <Loader2 size={12} className="animate-spin" />
-                  </span>
-                ) : rec === "error" ? (
-                  <span className="text-muted/70">{m.loadFailed}</span>
-                ) : (
-                  <div className="flex items-center gap-2 min-w-0">
-                    <button
-                      onClick={() => void window.skipper?.openExternal(rec.url)}
-                      className="flex items-center gap-1.5 min-w-0 text-left hover:text-accent transition-colors"
-                      title={rec.url}
-                    >
-                      <span className="font-mono text-muted shrink-0">
-                        {displayKey(rec.issueKey ?? String(rec.issueNumber))}
-                      </span>
-                      <span className="truncate">{rec.title}</span>
-                      <ExternalLink size={11} className="shrink-0 opacity-50" />
-                    </button>
-                    <button
-                      onClick={() => void window.skipper?.openExternal(rec.pr.url)}
-                      className="flex items-center gap-1 shrink-0 font-mono text-[11px] text-muted hover:text-accent transition-colors"
-                      title={rec.pr.url}
-                    >
-                      <GitPullRequest size={11} />
-                      {rec.pr.number}
-                    </button>
-                  </div>
-                )}
-              </div>
-              {rec !== "error" && (
-                <div className="flex items-center gap-1 shrink-0">
-                  <VoteButton
-                    active={ref.vote === "up"}
-                    disabled={pending === ref.id}
-                    label={m.helpful}
-                    onClick={() => void vote(ref, "up")}
+    <ul className="space-y-2 text-[12px]">
+      {refs.map((ref) => {
+        const rec = records[ref.id];
+        return (
+          <li key={ref.id} className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              {rec === undefined ? (
+                <span className="flex items-center gap-1.5 text-muted">
+                  <Loader2 size={12} className="animate-spin" />
+                </span>
+              ) : rec === "error" ? (
+                <span className="text-muted/70">{m.loadFailed}</span>
+              ) : (
+                <div className="flex items-center gap-2 min-w-0">
+                  <button
+                    onClick={() => void window.skipper?.openExternal(rec.url)}
+                    className="flex items-center gap-1.5 min-w-0 text-left hover:text-accent transition-colors"
+                    title={rec.url}
                   >
-                    <ThumbsUp size={13} />
-                  </VoteButton>
-                  <VoteButton
-                    active={ref.vote === "down"}
-                    disabled={pending === ref.id}
-                    label={m.notHelpful}
-                    onClick={() => void vote(ref, "down")}
+                    <span className="font-mono text-muted shrink-0">
+                      {displayKey(rec.issueKey ?? String(rec.issueNumber))}
+                    </span>
+                    <span className="truncate">{rec.title}</span>
+                    <ExternalLink size={11} className="shrink-0 opacity-50" />
+                  </button>
+                  <button
+                    onClick={() => void window.skipper?.openExternal(rec.pr.url)}
+                    className="flex items-center gap-1 shrink-0 font-mono text-[11px] text-muted hover:text-accent transition-colors"
+                    title={rec.pr.url}
                   >
-                    <ThumbsDown size={13} />
-                  </VoteButton>
+                    <GitPullRequest size={11} />
+                    {rec.pr.number}
+                  </button>
                 </div>
               )}
-            </li>
-          );
-        })}
-      </ul>
-    </Section>
+            </div>
+            {rec !== "error" && (
+              <div className="flex items-center gap-1 shrink-0">
+                <VoteButton
+                  active={ref.vote === "up"}
+                  disabled={pending === ref.id}
+                  label={m.helpful}
+                  onClick={() => void vote(ref, "up")}
+                >
+                  <ThumbsUp size={13} />
+                </VoteButton>
+                <VoteButton
+                  active={ref.vote === "down"}
+                  disabled={pending === ref.id}
+                  label={m.notHelpful}
+                  onClick={() => void vote(ref, "down")}
+                >
+                  <ThumbsDown size={13} />
+                </VoteButton>
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
