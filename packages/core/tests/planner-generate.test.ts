@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { IssuePlan } from "@skipper/shared";
 import type { AgentOptions, LLMProviderInterface, LLMResponse } from "../src/llm/provider";
+import { ClaudeCliError } from "../src/llm";
 import { generatePlan, IssuePlanSchema, PlanGenerationError, type PlanIssueInput } from "../src/planner";
 
 const ISSUE: PlanIssueInput = {
@@ -184,5 +185,67 @@ describe("generatePlan", () => {
     await expect(generatePlan({ issue: ISSUE, repoPath: "/repo", llm })).rejects.toThrow(
       /planning needs a provider with agent mode/,
     );
+  });
+});
+
+describe("generatePlan — max-turns salvage round", () => {
+  const SESSION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+  function salvageLLM(agentImpl: (opts: AgentOptions) => Promise<LLMResponse>): {
+    llm: LLMProviderInterface;
+    agent: ReturnType<typeof vi.fn>;
+  } {
+    const agent = vi.fn(async (_prompt: string, opts: AgentOptions = {}) => agentImpl(opts));
+    const llm = {
+      name: "claude-cli",
+      ask: async (): Promise<LLMResponse> => ({ text: "" }),
+      askStructured: vi.fn(),
+      agent,
+    } as unknown as LLMProviderInterface;
+    return { llm, agent };
+  }
+
+  it("resumes the session and emits the plan when the primary run hits max-turns", async () => {
+    const { llm, agent } = salvageLLM(async (opts) => {
+      if (opts.resumeSessionId) return { text: JSON.stringify(VALID_PLAN) };
+      throw new ClaudeCliError("agent hit the max-turns limit", "error_max_turns", 41);
+    });
+    const plan = await generatePlan({ issue: ISSUE, repoPath: "/repo", llm, sessionId: SESSION });
+    expect(plan).toEqual(VALID_PLAN);
+    expect(agent).toHaveBeenCalledTimes(2);
+    const [, salvageOpts] = agent.mock.calls[1] as [string, AgentOptions];
+    expect(salvageOpts.resumeSessionId).toBe(SESSION);
+    expect(salvageOpts.maxTurns).toBe(4);
+  });
+
+  it("rejects with the original error and skips salvage when no session was persisted", async () => {
+    const { llm, agent } = salvageLLM(async () => {
+      throw new ClaudeCliError("agent hit the max-turns limit", "error_max_turns", 41);
+    });
+    await expect(generatePlan({ issue: ISSUE, repoPath: "/repo", llm })).rejects.toThrow(
+      /max-turns limit/,
+    );
+    expect(agent).toHaveBeenCalledOnce();
+  });
+
+  it("does not salvage a non-max-turns ClaudeCliError", async () => {
+    const { llm, agent } = salvageLLM(async () => {
+      throw new ClaudeCliError("failed", "error_during_execution");
+    });
+    await expect(
+      generatePlan({ issue: ISSUE, repoPath: "/repo", llm, sessionId: SESSION }),
+    ).rejects.toThrow(/failed/);
+    expect(agent).toHaveBeenCalledOnce();
+  });
+
+  it("rejects with the original max-turns error when salvage also throws", async () => {
+    const { llm, agent } = salvageLLM(async (opts) => {
+      if (opts.resumeSessionId) throw new ClaudeCliError("salvage boom", "error_max_turns", 4);
+      throw new ClaudeCliError("original max-turns", "error_max_turns", 41);
+    });
+    await expect(
+      generatePlan({ issue: ISSUE, repoPath: "/repo", llm, sessionId: SESSION }),
+    ).rejects.toThrow(/original max-turns/);
+    expect(agent).toHaveBeenCalledTimes(2);
   });
 });

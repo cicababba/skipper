@@ -19,6 +19,7 @@ import type {
   RepoUnlinkResult,
   ResumeRiteAction,
   SaveWorktreeFileResult,
+  SetRepoBaseBranchResult,
   SolutionRecord,
   StoredCoderReport,
   StoredPlan,
@@ -169,6 +170,12 @@ contextBridge.exposeInMainWorld("skipper", {
       ipcRenderer.invoke("skipper:orchestrator:cloneRepo", owner, name, destParent, accountId),
     unlinkRepo: (owner: string, name: string): Promise<RepoUnlinkResult> =>
       ipcRenderer.invoke("skipper:orchestrator:unlinkRepo", owner, name),
+    setRepoBaseBranch: (
+      owner: string,
+      name: string,
+      baseBranch: string | null,
+    ): Promise<SetRepoBaseBranchResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:setRepoBaseBranch", owner, name, baseBranch),
     listRepos: (): Promise<ListReposResult> =>
       ipcRenderer.invoke("skipper:orchestrator:listRepos"),
     getPlan: (itemId: string): Promise<StoredPlan | null> =>

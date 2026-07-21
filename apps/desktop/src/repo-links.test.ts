@@ -141,6 +141,20 @@ describe("repo links store", () => {
     const loaded = await loadRepoLinks(filePath);
     expect(loaded).toEqual(fresh);
   });
+
+  it("persists a baseBranch override and round-trips deleting it", async () => {
+    const filePath = join(dir, "repo-links.json");
+    const key = repoKey({ owner: "o", name: "r" });
+    const links = await loadRepoLinks(filePath);
+    links.repos[key] = { localPath: "/x", linkedAt: "2026-07-11T10:00:00.000Z", baseBranch: "develop" };
+    await saveRepoLinks(filePath, links);
+    expect((await loadRepoLinks(filePath)).repos[key].baseBranch).toBe("develop");
+
+    delete links.repos[key].baseBranch;
+    await saveRepoLinks(filePath, links);
+    const cleared = await loadRepoLinks(filePath);
+    expect("baseBranch" in cleared.repos[key]).toBe(false);
+  });
 });
 
 describe("plan store", () => {

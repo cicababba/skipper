@@ -72,6 +72,7 @@ import type {
   UntrackItemResult,
 } from "@skipper/shared";
 import { loadCursors, saveCursors, type InboxCursorFile } from "./inbox-cursor-store";
+import { runGit } from "./git";
 import {
   cloneRepo,
   loadRepoLinks,
@@ -1489,6 +1490,40 @@ export function initOrchestrator(
       return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
     }
   });
+  ipcMain.handle(
+    "skipper:orchestrator:setRepoBaseBranch",
+    async (_e, owner: string, name: string, baseBranch: string | null) => {
+      try {
+        const links = await ensureRepoLinks();
+        const key = repoKey({ owner, name });
+        const link = links.repos[key];
+        if (!link) return { ok: false as const, error: "repo not linked" };
+
+        const trimmed = baseBranch?.trim() ?? "";
+        if (trimmed === "") {
+          delete link.baseBranch;
+          await saveRepoLinks(deps!.repoLinksFilePath, links);
+          return { ok: true as const };
+        }
+
+        const onOrigin = async (): Promise<boolean> =>
+          (await runGit(link.localPath, ["rev-parse", "--verify", "--quiet", `origin/${trimmed}`]))
+            .code === 0;
+        if (!(await onOrigin())) {
+          await fetchOrigin(link.localPath).catch(() => {});
+          if (!(await onOrigin())) {
+            return { ok: false as const, error: `branch '${trimmed}' not found on origin` };
+          }
+        }
+
+        link.baseBranch = trimmed;
+        await saveRepoLinks(deps!.repoLinksFilePath, links);
+        return { ok: true as const };
+      } catch (err) {
+        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
   ipcMain.handle("skipper:orchestrator:listRepos", async () => {
     const links = await ensureRepoLinks();
     const seen = new Map<string, RepoRef>();
@@ -1501,6 +1536,7 @@ export function initOrchestrator(
       key,
       localPath: link.localPath,
       linkedAt: link.linkedAt,
+      baseBranch: link.baseBranch,
       linked: true as const,
     }));
     const unlinked = [...seen.entries()]
