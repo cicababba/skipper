@@ -6,11 +6,21 @@ import { FolderGit2, Loader2, X } from "lucide-react";
 import type { ListReposResult } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 
+type PendingPick = {
+  mode: "link" | "clone";
+  key: string;
+  path: string;
+  branches: string[];
+  defaultBranch?: string;
+  selected: string;
+};
+
 export function RepoManagerModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { t } = useT();
   const [repos, setRepos] = useState<ListReposResult | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingPick | null>(null);
 
   const load = useCallback(async () => {
     if (!window.skipper) return;
@@ -25,6 +35,7 @@ export function RepoManagerModal({ isOpen, onClose }: { isOpen: boolean; onClose
     if (!isOpen) return;
     setRepos(null);
     setError(null);
+    setPending(null);
     void load();
   }, [isOpen, load]);
 
@@ -52,7 +63,17 @@ export function RepoManagerModal({ isOpen, onClose }: { isOpen: boolean; onClose
       const localPath = await window.skipper!.selectDirectory();
       if (!localPath) return { ok: true };
       const [owner, name] = splitKey(key);
-      return window.skipper!.orchestrator.linkRepo(owner, name, localPath);
+      const res = await window.skipper!.orchestrator.inspectLinkTarget(owner, name, localPath);
+      if (!res.ok) return res;
+      setPending({
+        mode: "link",
+        key,
+        path: localPath,
+        branches: res.branches,
+        defaultBranch: res.defaultBranch,
+        selected: res.defaultBranch ?? res.branches[0] ?? "",
+      });
+      return { ok: true };
     });
 
   const clone = (key: string) =>
@@ -60,8 +81,32 @@ export function RepoManagerModal({ isOpen, onClose }: { isOpen: boolean; onClose
       const destParent = await window.skipper!.selectDirectory();
       if (!destParent) return { ok: true };
       const [owner, name] = splitKey(key);
-      return window.skipper!.orchestrator.cloneRepo(owner, name, destParent);
+      const res = await window.skipper!.orchestrator.listRemoteBranches(owner, name);
+      if (!res.ok) return res;
+      setPending({
+        mode: "clone",
+        key,
+        path: destParent,
+        branches: res.branches,
+        defaultBranch: res.defaultBranch,
+        selected: res.defaultBranch ?? res.branches[0] ?? "",
+      });
+      return { ok: true };
     });
+
+  const confirmPick = () => {
+    if (!pending) return;
+    const p = pending;
+    void run(p.key, async () => {
+      const [owner, name] = splitKey(p.key);
+      const result =
+        p.mode === "link"
+          ? await window.skipper!.orchestrator.linkRepo(owner, name, p.path, p.selected)
+          : await window.skipper!.orchestrator.cloneRepo(owner, name, p.path, undefined, p.selected);
+      if (result.ok) setPending(null);
+      return result;
+    });
+  };
 
   const unlink = (key: string) =>
     run(key, () => {
@@ -111,7 +156,52 @@ export function RepoManagerModal({ isOpen, onClose }: { isOpen: boolean; onClose
               {error}
             </p>
           )}
-          {!repos ? (
+          {pending ? (
+            <div className="space-y-3">
+              <div className="min-w-0">
+                <h3 className="text-sm font-medium">{t.inbox.repos.chooseBranchTitle}</h3>
+                <p className="truncate text-[11px] text-muted">{pending.key}</p>
+                <p
+                  className="truncate text-[11px] text-muted font-mono"
+                  title={pending.path}
+                >
+                  {pending.path}
+                </p>
+              </div>
+              <select
+                value={pending.selected}
+                disabled={busyKey !== null || pending.branches.length === 0}
+                onChange={(e) => setPending({ ...pending, selected: e.target.value })}
+                className="w-full rounded-md border border-border bg-card-hover px-2 py-1.5 text-sm disabled:opacity-50"
+              >
+                {pending.branches.map((b) => (
+                  <option key={b} value={b}>
+                    {b === pending.defaultBranch ? t.inbox.repos.branchDefault(b) : b}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-muted leading-relaxed">
+                {t.inbox.repos.chooseBranchHint}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={confirmPick}
+                  disabled={busyKey !== null || pending.selected === ""}
+                  className="flex items-center gap-1 text-[11px] font-medium px-3 py-1.5 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50"
+                >
+                  {busyKey === pending.key && <Loader2 size={11} className="animate-spin" />}
+                  {t.inbox.repos.confirm}
+                </button>
+                <button
+                  onClick={() => setPending(null)}
+                  disabled={busyKey !== null}
+                  className="text-[11px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-50"
+                >
+                  {t.inbox.repos.cancel}
+                </button>
+              </div>
+            </div>
+          ) : !repos ? (
             <div className="flex items-center gap-2 text-sm text-muted">
               <Loader2 size={16} className="animate-spin" />
             </div>

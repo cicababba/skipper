@@ -52,6 +52,7 @@ import type {
   FollowCandidatesResult,
   Issue,
   LifecycleState,
+  ListRepoBranchesResult,
   MemoryPhase,
   OrchestratorAccountState,
   OrchestratorState,
@@ -75,11 +76,13 @@ import { loadCursors, saveCursors, type InboxCursorFile } from "./inbox-cursor-s
 import { runGit } from "./git";
 import {
   cloneRepo,
+  listRemoteHeads,
   loadRepoLinks,
   saveRepoLinks,
   validateRepoOrigin,
   type RepoLinksFile,
 } from "./repo-links";
+import { resolveBaseChangeActions, type WorktreeProbe } from "./base-change";
 import { readLlmSettings, readLlmSettingsSync } from "./llm-settings";
 import { archiveStoredPlan, readStoredPlan, updateStoredPlan } from "./plan-store";
 import { readStoredCoderReport } from "./report-store";
@@ -463,6 +466,53 @@ function accountForRepo(owner: string, name: string, accountKey?: string): Accou
     }
   }
   return issueAccounts()[0];
+}
+
+/** Confirms localPath is a clone of owner/name on some registered code host, trying
+ *  each host's cloud default and its accounts' self-hosted baseUrls. Throws the last
+ *  origin-mismatch error when nothing matches. */
+async function detectHostForLocalPath(
+  owner: string,
+  name: string,
+  localPath: string,
+): Promise<void> {
+  const repo = { owner, name };
+  const accounts = deps?.getAccounts() ?? [];
+  let lastErr: unknown;
+  for (const host of Object.values(codeHosts)) {
+    const urls = accounts
+      .filter((a) => a.provider === host.authProvider)
+      .map((a) => a.baseUrl)
+      .filter((u): u is string => u !== undefined);
+    // undefined (the host's cloud/fixed default) stays first; self-hosted baseUrls follow.
+    for (const baseUrl of [undefined, ...new Set(urls)]) {
+      try {
+        await validateRepoOrigin(localPath, repo, host, baseUrl);
+        return;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+/** Branch list + default branch of a local clone's origin, shared by the branch-listing
+ *  and link-inspect IPC handlers. */
+async function branchesForLocalClone(localPath: string): Promise<ListRepoBranchesResult> {
+  const refs = await runGit(localPath, [
+    "for-each-ref",
+    "--format=%(refname:short)",
+    "refs/remotes/origin",
+  ]);
+  if (refs.code !== 0) {
+    return { ok: false, error: refs.stderr.trim() || `git exit ${refs.code}` };
+  }
+  const branches = parseRemoteBranches(refs.stdout);
+  const defaultBranch = await resolveBaseRef(localPath, undefined)
+    .then((ref) => ref.replace(/^origin\//, ""))
+    .catch(() => undefined);
+  return { ok: true, branches, defaultBranch };
 }
 
 // Planner concurrency (2) and the coder can hit the same clone at once; git
@@ -1417,36 +1467,27 @@ export function initOrchestrator(
   });
   ipcMain.handle(
     "skipper:orchestrator:linkRepo",
-    async (_e, owner: string, name: string, localPath: string) => {
+    async (_e, owner: string, name: string, localPath: string, baseBranch?: string) => {
       try {
-        // No code-host axis on a link request, so detect it from the origin remote:
-        // accept the first registered host whose parseOrigin matches.
-        const repo = { owner, name };
-        const accounts = deps?.getAccounts() ?? [];
-        let matched = false;
-        let lastErr: unknown;
-        outer: for (const host of Object.values(codeHosts)) {
-          const urls = accounts
-            .filter((a) => a.provider === host.authProvider)
-            .map((a) => a.baseUrl)
-            .filter((u): u is string => u !== undefined);
-          // undefined (the host's cloud/fixed default) stays first so gitlab.com,
-          // GitHub and Bitbucket behavior is unchanged; self-hosted baseUrls follow.
-          for (const baseUrl of [undefined, ...new Set(urls)]) {
-            try {
-              await validateRepoOrigin(localPath, repo, host, baseUrl);
-              matched = true;
-              break outer;
-            } catch (err) {
-              lastErr = err;
+        await detectHostForLocalPath(owner, name, localPath);
+        const trimmed = baseBranch?.trim();
+        if (trimmed) {
+          const onOrigin = async (): Promise<boolean> =>
+            (await runGit(localPath, ["rev-parse", "--verify", "--quiet", `origin/${trimmed}`]))
+              .code === 0;
+          if (!(await onOrigin())) {
+            await fetchOrigin(localPath).catch(() => {});
+            if (!(await onOrigin())) {
+              return { ok: false as const, error: `branch '${trimmed}' not found on origin` };
             }
           }
         }
-        if (!matched) {
-          throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
-        }
         const links = await ensureRepoLinks();
-        links.repos[repoKey({ owner, name })] = { localPath, linkedAt: new Date().toISOString() };
+        links.repos[repoKey({ owner, name })] = {
+          localPath,
+          linkedAt: new Date().toISOString(),
+          ...(trimmed ? { baseBranch: trimmed } : {}),
+        };
         await saveRepoLinks(deps!.repoLinksFilePath, links);
         await reconcileFromCache();
         return { ok: true as const, localPath };
@@ -1457,7 +1498,14 @@ export function initOrchestrator(
   );
   ipcMain.handle(
     "skipper:orchestrator:cloneRepo",
-    async (_e, owner: string, name: string, destParent: string, accountId?: string) => {
+    async (
+      _e,
+      owner: string,
+      name: string,
+      destParent: string,
+      accountId?: string,
+      baseBranch?: string,
+    ) => {
       try {
         const account = accountForRepo(owner, name, accountId);
         const token = account ? await deps!.getToken(account.key) : null;
@@ -1471,13 +1519,79 @@ export function initOrchestrator(
           host.pushCredentials(token),
           account?.baseUrl,
         );
+        // Fresh full clone carries every remote branch — one rev-parse settles it.
+        const trimmed = baseBranch?.trim();
+        if (trimmed) {
+          const onOrigin =
+            (await runGit(localPath, ["rev-parse", "--verify", "--quiet", `origin/${trimmed}`]))
+              .code === 0;
+          if (!onOrigin) {
+            return { ok: false as const, error: `branch '${trimmed}' not found on origin` };
+          }
+        }
         const links = await ensureRepoLinks();
-        links.repos[repoKey({ owner, name })] = { localPath, linkedAt: new Date().toISOString() };
+        links.repos[repoKey({ owner, name })] = {
+          localPath,
+          linkedAt: new Date().toISOString(),
+          ...(trimmed ? { baseBranch: trimmed } : {}),
+        };
         await saveRepoLinks(deps!.repoLinksFilePath, links);
         await reconcileFromCache();
         return { ok: true as const, localPath };
       } catch (err) {
         return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
+  ipcMain.handle(
+    "skipper:orchestrator:inspectLinkTarget",
+    async (
+      _e,
+      owner: string,
+      name: string,
+      localPath: string,
+    ): Promise<ListRepoBranchesResult> => {
+      try {
+        await detectHostForLocalPath(owner, name, localPath);
+        // Best-effort authed fetch so the branch list + default are current; a
+        // fetch failure never fails the inspect (offline link still works).
+        const account = accountForRepo(owner, name);
+        const token = account ? await deps!.getToken(account.key) : null;
+        const creds =
+          token && account
+            ? codeHostFor(codeHostForProvider(account.provider) ?? "github").pushCredentials(token)
+            : undefined;
+        await fetchOrigin(localPath, creds, 60_000).catch(() => {});
+        return await branchesForLocalClone(localPath);
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
+  ipcMain.handle(
+    "skipper:orchestrator:listRemoteBranches",
+    async (
+      _e,
+      owner: string,
+      name: string,
+      accountId?: string,
+    ): Promise<ListRepoBranchesResult> => {
+      try {
+        const account = accountForRepo(owner, name, accountId);
+        const token = account ? await deps!.getToken(account.key) : null;
+        if (!token || !account) {
+          return { ok: false, error: "no account token available for this repo" };
+        }
+        const host = codeHostFor(codeHostForProvider(account.provider) ?? "github");
+        const { branches, defaultBranch } = await listRemoteHeads(
+          host,
+          { owner, name },
+          host.pushCredentials(token),
+          account.baseUrl,
+        );
+        return { ok: true, branches, defaultBranch };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
     },
   );
@@ -1499,27 +1613,98 @@ export function initOrchestrator(
         const key = repoKey({ owner, name });
         const link = links.repos[key];
         if (!link) return { ok: false as const, error: "repo not linked" };
+        const repo = { owner, name };
 
+        const oldBase = link.baseBranch;
         const trimmed = baseBranch?.trim() ?? "";
-        if (trimmed === "") {
-          delete link.baseBranch;
-          await saveRepoLinks(deps!.repoLinksFilePath, links);
-          return { ok: true as const };
-        }
+        const newBase = trimmed === "" ? undefined : trimmed;
 
-        const onOrigin = async (): Promise<boolean> =>
-          (await runGit(link.localPath, ["rev-parse", "--verify", "--quiet", `origin/${trimmed}`]))
-            .code === 0;
-        if (!(await onOrigin())) {
-          await fetchOrigin(link.localPath).catch(() => {});
+        if (newBase) {
+          const onOrigin = async (): Promise<boolean> =>
+            (await runGit(link.localPath, ["rev-parse", "--verify", "--quiet", `origin/${newBase}`]))
+              .code === 0;
           if (!(await onOrigin())) {
-            return { ok: false as const, error: `branch '${trimmed}' not found on origin` };
+            await fetchOrigin(link.localPath).catch(() => {});
+            if (!(await onOrigin())) {
+              return { ok: false as const, error: `branch '${newBase}' not found on origin` };
+            }
           }
         }
 
-        link.baseBranch = trimmed;
+        // Effective-change check: only the resolved ref matters (setting the
+        // override to what origin/HEAD already points at is a no-op). A throw on
+        // either side is treated as a change so the reaction still runs.
+        const resolveEff = (ref?: string): Promise<string | null> =>
+          resolveBaseRef(link.localPath, ref).catch(() => null);
+        const [oldEff, newEff] = await Promise.all([resolveEff(oldBase), resolveEff(newBase)]);
+        const changed = oldEff === null || newEff === null || oldEff !== newEff;
+
+        // Persist first so any planning that starts now already cuts from the new base.
+        if (newBase) link.baseBranch = newBase;
+        else delete link.baseBranch;
         await saveRepoLinks(deps!.repoLinksFilePath, links);
-        return { ok: true as const };
+        if (!changed) return { ok: true as const };
+
+        const m = await ensureManifest();
+        // Probe + discard under one repo git lock (nesting requestTransition here
+        // would self-deadlock via the planner's prepareWorktreeFor).
+        const actions = await withRepoGitLock(repo, async () => {
+          const oldBaseRef = await resolveBaseRef(link.localPath, oldBase).catch(() => null);
+          const probes = new Map<string, WorktreeProbe>();
+          for (const item of Object.values(m.items)) {
+            if (repoKey(item.repo) !== key || !item.worktree) continue;
+            const dirtyFiles = await worktreeDirtyFiles(item.worktree.path);
+            const dirty = dirtyFiles === null ? null : dirtyFiles.length > 0;
+            let aheadOfOldBase: number | null = null;
+            if (oldBaseRef) {
+              const rl = await runGit(link.localPath, [
+                "rev-list",
+                "--count",
+                `${oldBaseRef}..refs/heads/${item.worktree.branch}`,
+              ]);
+              aheadOfOldBase = rl.code === 0 ? parseInt(rl.stdout.trim(), 10) : null;
+            }
+            probes.set(item.id, { dirty, aheadOfOldBase });
+          }
+          const resolved = resolveBaseChangeActions(Object.values(m.items), key, probes);
+          for (const d of resolved.discard) {
+            await discardWorktree({
+              repoPath: link.localPath,
+              worktreePath: d.worktree.path,
+              branch: d.worktree.branch,
+              baseRef: oldBaseRef ?? undefined,
+            }).catch((err) =>
+              console.warn(`base-change discard failed for ${d.worktree.path}: ${err}`),
+            );
+          }
+          return resolved;
+        });
+
+        // Clear the worktree record on discarded items in one manifest pass.
+        if (actions.discard.length > 0) {
+          for (const d of actions.discard) {
+            const item = m.items[d.id];
+            if (item) m.items[d.id] = { ...item, worktree: undefined, updatedAt: new Date().toISOString() };
+          }
+          await saveOrchestratorManifest(deps!.manifestFilePath, m);
+          broadcast();
+        }
+
+        // Transitions AFTER the lock (requestTransition pokes the planner, which
+        // takes the same lock). Each poke re-enqueues the item on the new base.
+        const replanned: string[] = [];
+        const skipped = [...actions.skipped];
+        for (const id of actions.replan) {
+          const item = m.items[id];
+          if (!item) continue;
+          try {
+            await requestTransition(id, "planning", "user", "base branch changed");
+            replanned.push(id);
+          } catch {
+            skipped.push({ id, key: item.key, reason: "illegal-transition" });
+          }
+        }
+        return { ok: true as const, replan: { replanned, skipped } };
       } catch (err) {
         return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
       }
@@ -1527,28 +1712,14 @@ export function initOrchestrator(
   );
   ipcMain.handle(
     "skipper:orchestrator:listRepoBranches",
-    async (_e, owner: string, name: string) => {
+    async (_e, owner: string, name: string): Promise<ListRepoBranchesResult> => {
       try {
         const links = await ensureRepoLinks();
         const link = links.repos[repoKey({ owner, name })];
-        if (!link) return { ok: false as const, error: "repo not linked" };
-
-        const refs = await runGit(link.localPath, [
-          "for-each-ref",
-          "--format=%(refname:short)",
-          "refs/remotes/origin",
-        ]);
-        if (refs.code !== 0) {
-          return { ok: false as const, error: refs.stderr.trim() || `git exit ${refs.code}` };
-        }
-
-        const branches = parseRemoteBranches(refs.stdout);
-        const defaultBranch = await resolveBaseRef(link.localPath, undefined)
-          .then((ref) => ref.replace(/^origin\//, ""))
-          .catch(() => undefined);
-        return { ok: true as const, branches, defaultBranch };
+        if (!link) return { ok: false, error: "repo not linked" };
+        return await branchesForLocalClone(link.localPath);
       } catch (err) {
-        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
     },
   );

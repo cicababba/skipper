@@ -181,3 +181,66 @@ export async function cloneRepo(
   await validateRepoOrigin(dest, repo, host, baseUrl);
   return dest;
 }
+
+/**
+ * Parse `git ls-remote --symref <url> HEAD refs/heads/*` output. Exported for tests.
+ * The `ref: refs/heads/<b>\tHEAD` symref line gives the default branch; the
+ * `<sha>\trefs/heads/<b>` lines give the branches. Without a symref line, a
+ * unique sha match against the `<sha>\tHEAD` line recovers the default; an
+ * ambiguous match leaves it undefined.
+ */
+export function parseLsRemoteHeads(stdout: string): {
+  branches: string[];
+  defaultBranch?: string;
+} {
+  const branches = new Set<string>();
+  const shaByBranch = new Map<string, string>();
+  let defaultBranch: string | undefined;
+  let headSha: string | undefined;
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const symref = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/.exec(trimmed);
+    if (symref) {
+      defaultBranch = symref[1];
+      continue;
+    }
+    const [left, right] = trimmed.split("\t");
+    if (!right) continue;
+    if (right === "HEAD") {
+      headSha = left;
+      continue;
+    }
+    const head = /^refs\/heads\/(.+)$/.exec(right);
+    if (head) {
+      branches.add(head[1]);
+      shaByBranch.set(head[1], left);
+    }
+  }
+  if (!defaultBranch && headSha) {
+    const matches = [...shaByBranch.entries()].filter(([, sha]) => sha === headSha);
+    if (matches.length === 1) defaultBranch = matches[0][0];
+  }
+  return { branches: [...branches].sort(), defaultBranch };
+}
+
+/**
+ * Branch names + default branch of a remote, without a local clone (#156):
+ * `git ls-remote --symref <cloneUrl> HEAD refs/heads/*` under GIT_ASKPASS. The
+ * two refspecs keep GitHub's refs/pull/* namespace out.
+ */
+export async function listRemoteHeads(
+  host: Pick<CodeHost, "cloneUrl">,
+  repo: RepoRef,
+  credentials: PushCredentials,
+  baseUrl?: string,
+): Promise<{ branches: string[]; defaultBranch?: string }> {
+  const url = host.cloneUrl(repo, baseUrl);
+  const r = await withAskpass(credentials, (env) =>
+    run("git", ["ls-remote", "--symref", url, "HEAD", "refs/heads/*"], { env, timeout: 60_000 }),
+  );
+  if (r.code !== 0) {
+    throw new Error(`git ls-remote failed: ${r.stderr.trim() || `exit ${r.code}`}`);
+  }
+  return parseLsRemoteHeads(r.stdout);
+}

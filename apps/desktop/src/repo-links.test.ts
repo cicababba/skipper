@@ -6,7 +6,13 @@ import { join } from "node:path";
 import { githubCodeHost, codeHostFor } from "@skipper/core";
 import type { CodeHost } from "@skipper/core";
 import { repoKey } from "@skipper/shared";
-import { cloneRepo, loadRepoLinks, saveRepoLinks, validateRepoOrigin } from "./repo-links";
+import {
+  cloneRepo,
+  loadRepoLinks,
+  parseLsRemoteHeads,
+  saveRepoLinks,
+  validateRepoOrigin,
+} from "./repo-links";
 import { planFileName, readStoredPlan, updateStoredPlan, writeStoredPlan } from "./plan-store";
 import type { StoredPlan } from "@skipper/shared";
 
@@ -127,6 +133,53 @@ describe("cloneRepo — baseUrl threading", () => {
 
     expect(seenBaseUrl).toBe("https://gitlab.acme.com");
     expect(localPath).toBe(join(destParent, "repo"));
+  });
+});
+
+describe("parseLsRemoteHeads", () => {
+  it("reads the symref default and strips/dedupes/sorts heads", () => {
+    const out =
+      "ref: refs/heads/main\tHEAD\n" +
+      "aaa\tHEAD\n" +
+      "aaa\trefs/heads/main\n" +
+      "aaa\trefs/heads/main\n" + // duplicate line — dedupe
+      "ccc\trefs/heads/develop\n" +
+      "bbb\trefs/heads/zeta\n";
+    const r = parseLsRemoteHeads(out);
+    expect(r.defaultBranch).toBe("main");
+    expect(r.branches).toEqual(["develop", "main", "zeta"]);
+  });
+
+  it("ignores tags and peeled refs", () => {
+    const out =
+      "ref: refs/heads/main\tHEAD\n" +
+      "aaa\tHEAD\n" +
+      "aaa\trefs/heads/main\n" +
+      "ddd\trefs/tags/v1.0\n" +
+      "eee\trefs/tags/v1.0^{}\n";
+    const r = parseLsRemoteHeads(out);
+    expect(r.branches).toEqual(["main"]);
+    expect(r.defaultBranch).toBe("main");
+  });
+
+  it("recovers the default from a unique sha match when no symref line", () => {
+    const out = "aaa\tHEAD\n" + "aaa\trefs/heads/main\n" + "bbb\trefs/heads/develop\n";
+    const r = parseLsRemoteHeads(out);
+    expect(r.defaultBranch).toBe("main");
+    expect(r.branches).toEqual(["develop", "main"]);
+  });
+
+  it("leaves the default undefined when the HEAD sha matches more than one branch", () => {
+    const out = "aaa\tHEAD\n" + "aaa\trefs/heads/main\n" + "aaa\trefs/heads/trunk\n";
+    const r = parseLsRemoteHeads(out);
+    expect(r.defaultBranch).toBeUndefined();
+    expect(r.branches).toEqual(["main", "trunk"]);
+  });
+
+  it("returns nothing for empty output", () => {
+    const r = parseLsRemoteHeads("");
+    expect(r.branches).toEqual([]);
+    expect(r.defaultBranch).toBeUndefined();
   });
 });
 

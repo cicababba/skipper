@@ -160,15 +160,40 @@ contextBridge.exposeInMainWorld("skipper", {
       ipcRenderer.invoke("skipper:orchestrator:resolveResumeRite", action, itemIds),
     setPinned: (itemId: string, pinned: boolean): Promise<OrchestratorTransitionResult> =>
       ipcRenderer.invoke("skipper:orchestrator:setPinned", itemId, pinned),
-    linkRepo: (owner: string, name: string, localPath: string): Promise<RepoLinkResult> =>
-      ipcRenderer.invoke("skipper:orchestrator:linkRepo", owner, name, localPath),
+    linkRepo: (
+      owner: string,
+      name: string,
+      localPath: string,
+      baseBranch?: string,
+    ): Promise<RepoLinkResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:linkRepo", owner, name, localPath, baseBranch),
     cloneRepo: (
       owner: string,
       name: string,
       destParent: string,
       accountId?: string,
+      baseBranch?: string,
     ): Promise<RepoLinkResult> =>
-      ipcRenderer.invoke("skipper:orchestrator:cloneRepo", owner, name, destParent, accountId),
+      ipcRenderer.invoke(
+        "skipper:orchestrator:cloneRepo",
+        owner,
+        name,
+        destParent,
+        accountId,
+        baseBranch,
+      ),
+    inspectLinkTarget: (
+      owner: string,
+      name: string,
+      localPath: string,
+    ): Promise<ListRepoBranchesResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:inspectLinkTarget", owner, name, localPath),
+    listRemoteBranches: (
+      owner: string,
+      name: string,
+      accountId?: string,
+    ): Promise<ListRepoBranchesResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:listRemoteBranches", owner, name, accountId),
     unlinkRepo: (owner: string, name: string): Promise<RepoUnlinkResult> =>
       ipcRenderer.invoke("skipper:orchestrator:unlinkRepo", owner, name),
     setRepoBaseBranch: (

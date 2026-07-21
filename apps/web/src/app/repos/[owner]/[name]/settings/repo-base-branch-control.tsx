@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
+import type { BaseChangeReport } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { Row, selectClass } from "./settings-row";
 
@@ -27,6 +28,7 @@ export function RepoBaseBranchControl({
   const [defaultBranch, setDefaultBranch] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [report, setReport] = useState<BaseChangeReport | null>(null);
 
   const load = useCallback(() => {
     if (!window.skipper) return;
@@ -55,6 +57,7 @@ export function RepoBaseBranchControl({
     setValue(next);
     setBusy(true);
     setError(null);
+    setReport(null);
     try {
       const res = await window.skipper.orchestrator.setRepoBaseBranch(
         owner,
@@ -64,6 +67,8 @@ export function RepoBaseBranchControl({
       if (!res.ok) {
         setValue(prev);
         setError(res.error);
+      } else if (res.replan) {
+        setReport(res.replan);
       }
     } finally {
       setBusy(false);
@@ -96,6 +101,12 @@ export function RepoBaseBranchControl({
         </div>
       </Row>
       {error && <p className="text-[11px] text-red-300 leading-relaxed">{error}</p>}
+      {report && (
+        <p className="text-[11px] text-muted leading-relaxed">
+          {rp.baseBranchReplanned(report.replanned.length)}
+          {report.skipped.length > 0 ? ` · ${rp.baseBranchSkipped(report.skipped.length)}` : ""}
+        </p>
+      )}
     </div>
   );
 }

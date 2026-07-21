@@ -42,8 +42,9 @@ export async function worktreeStatus(
 export async function fetchOrigin(
   repoPath: string,
   credentials?: PushCredentials | null,
+  timeoutMs = 300_000,
 ): Promise<void> {
-  const timeout = 300_000;
+  const timeout = timeoutMs;
   const plain = await runGit(repoPath, ["fetch", "origin"], timeout);
   if (plain.code === 0) return;
   if (credentials) {

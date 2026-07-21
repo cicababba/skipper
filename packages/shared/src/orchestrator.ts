@@ -323,7 +323,7 @@ export const TRANSITIONS: Record<LifecycleState, readonly LifecycleState[]> = {
   triage: ["planning", "needs-input", "blocked", "closed"],
   planning: ["plan-gate", "queued", "needs-input", "failed", "blocked", "closed"],
   "plan-gate": ["queued", "planning", "needs-input", "blocked", "closed"],
-  queued: ["coding", "needs-input", "blocked", "closed"],
+  queued: ["coding", "planning", "needs-input", "blocked", "closed"],
   coding: ["agent-review", "needs-input", "failed", "blocked", "closed"],
   "agent-review": ["human-review", "coding", "needs-input", "failed", "closed"],
   "human-review": ["pr-open", "coding", "needs-input", "failed", "closed"],
@@ -470,7 +470,14 @@ export type RepoLinkResult = { ok: true; localPath: string } | { ok: false; erro
 
 export type RepoUnlinkResult = { ok: true } | { ok: false; error: string };
 
-export type SetRepoBaseBranchResult = { ok: true } | { ok: false; error: string };
+export interface BaseChangeReport {
+  replanned: string[];
+  skipped: { id: string; key: string; reason: BaseChangeSkipReason }[];
+}
+export type BaseChangeSkipReason = "dirty" | "own-commits" | "unresolved-base" | "illegal-transition";
+export type SetRepoBaseBranchResult =
+  | { ok: true; replan?: BaseChangeReport }
+  | { ok: false; error: string };
 
 export type ListRepoBranchesResult =
   | { ok: true; branches: string[]; defaultBranch?: string }
