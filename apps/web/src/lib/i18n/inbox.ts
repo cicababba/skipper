@@ -78,6 +78,7 @@ const en = {
     unpin: "Unpin",
     archive: "Archive",
     untrack: "Untrack",
+    more: "More actions",
   },
   archive: {
     confirmDirty: (n: number) =>
@@ -423,6 +424,7 @@ const it: typeof en = {
     unpin: "Sblocca",
     archive: "Archivia",
     untrack: "Rimuovi",
+    more: "Altre azioni",
   },
   archive: {
     confirmDirty: (n: number) =>
@@ -768,6 +770,7 @@ const fr: typeof en = {
     unpin: "Désépingler",
     archive: "Archiver",
     untrack: "Retirer",
+    more: "Plus d'actions",
   },
   archive: {
     confirmDirty: (n: number) =>
@@ -1114,6 +1117,7 @@ const es: typeof en = {
     unpin: "Desfijar",
     archive: "Archivar",
     untrack: "Quitar",
+    more: "Más acciones",
   },
   archive: {
     confirmDirty: (n: number) =>

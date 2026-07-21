@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { LifecycleState, TrackedItem } from "@skipper/shared";
 import { canTransition, TRANSITIONS } from "@skipper/shared";
-import { actionsFor } from "./actions";
+import { actionsFor, PRIMARY_ACTION_IDS, splitActions, type ItemAction } from "./actions";
 
 const ALL_STATES = Object.keys(TRANSITIONS) as LifecycleState[];
 
@@ -119,5 +119,114 @@ describe("actionsFor", () => {
     expect(
       actionsFor(item({ state: "merged", worktree: { path: "/wt", branch: "feature/x" } })),
     ).toEqual([{ id: "untrack", kind: "untrack" }]);
+  });
+});
+
+describe("splitActions", () => {
+  const split = (overrides: Partial<TrackedItem>) => splitActions(actionsFor(item(overrides)));
+  const ids = (actions: ItemAction[]) => actions.map((a) => a.id);
+
+  it("puts plan inline on triage, the rest in the menu (#133)", () => {
+    const { primary, menu, destructive } = split({ state: "triage" });
+    expect(primary?.id).toBe("plan");
+    expect(ids(menu)).toEqual([]);
+    expect(ids(destructive)).toEqual(["close", "untrack"]);
+  });
+
+  it("puts approve inline on plan-gate, replan and park in the menu", () => {
+    const { primary, menu, destructive } = split({ state: "plan-gate" });
+    expect(primary?.id).toBe("approve");
+    expect(ids(menu)).toEqual(["replan", "park"]);
+    // plan-gate has no legal close transition.
+    expect(ids(destructive)).toEqual(["untrack"]);
+  });
+
+  it("puts resume inline on needs-input and blocked", () => {
+    for (const state of ["needs-input", "blocked"] as LifecycleState[]) {
+      const { primary, destructive } = split({ state });
+      expect(primary?.id, state).toBe("resume");
+      expect(ids(destructive), state).toEqual(["close", "untrack"]);
+    }
+  });
+
+  it("puts retry inline on failed", () => {
+    expect(split({ state: "failed" }).primary?.id).toBe("retry");
+  });
+
+  it("keeps unpin out of the inline slot on a pinned queued item (#133)", () => {
+    const { primary, menu, destructive } = split({ state: "queued", pinned: true });
+    expect(primary).toBeNull();
+    expect(ids(menu)).toEqual(["unpin"]);
+    expect(ids(destructive)).toEqual(["close", "untrack"]);
+  });
+
+  it("keeps archive out of the inline slot on a closed item (#133)", () => {
+    const { primary, menu, destructive } = split({
+      state: "closed",
+      worktree: { path: "/wt", branch: "feature/x" },
+    });
+    expect(primary).toBeNull();
+    expect(ids(menu)).toEqual(["archive"]);
+    expect(ids(destructive)).toEqual(["untrack"]);
+  });
+
+  it("leaves an already-archived closed item with untrack only", () => {
+    const { primary, menu, destructive } = split({ state: "closed" });
+    expect(primary).toBeNull();
+    expect(ids(menu)).toEqual([]);
+    expect(ids(destructive)).toEqual(["untrack"]);
+  });
+
+  it("keeps openPr in the menu on human-review", () => {
+    const { primary, menu, destructive } = split({ state: "human-review" });
+    expect(primary).toBeNull();
+    expect(ids(menu)).toEqual(["openPr"]);
+    expect(ids(destructive)).toEqual(["close", "untrack"]);
+  });
+
+  it("renders kebab-only for in-flight states", () => {
+    for (const state of ["planning", "coding", "agent-review"] as LifecycleState[]) {
+      const { primary, menu, destructive } = split({ state });
+      expect(primary, state).toBeNull();
+      expect(ids(menu), state).toEqual([]);
+      expect(ids(destructive), state).toEqual(["close", "untrack"]);
+    }
+  });
+
+  it("renders kebab-only for platform-owned and settled states", () => {
+    for (const state of [
+      "pr-open",
+      "in-review",
+      "changes-requested",
+      "merged",
+    ] as LifecycleState[]) {
+      const { primary, menu, destructive } = split({ state });
+      expect(primary, state).toBeNull();
+      expect(ids(menu), state).toEqual([]);
+      expect(ids(destructive), state).toEqual(["untrack"]);
+    }
+  });
+
+  it("partitions every action exactly once, preserving actionsFor order", () => {
+    for (const state of ALL_STATES) {
+      const actions = actionsFor(item({ state }));
+      const { primary, menu, destructive } = splitActions(actions);
+      const recombined = [...(primary ? [primary] : []), ...menu, ...destructive];
+      // No drops, no duplicates.
+      expect(recombined.length, state).toBe(actions.length);
+      for (const action of actions) expect(recombined, state).toContain(action);
+      // Each bucket is a subsequence of the input: the helper never reorders.
+      for (const bucket of [menu, destructive]) {
+        const indices = bucket.map((a) => actions.indexOf(a));
+        expect(indices, state).toEqual([...indices].sort((x, y) => x - y));
+      }
+    }
+  });
+
+  it("only ever promotes an allow-listed action to the inline slot", () => {
+    for (const state of ALL_STATES) {
+      const { primary } = splitActions(actionsFor(item({ state })));
+      if (primary) expect(PRIMARY_ACTION_IDS, state).toContain(primary.id);
+    }
   });
 });

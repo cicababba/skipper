@@ -75,3 +75,42 @@ export function actionsFor(item: TrackedItem): ItemAction[] {
   // (merged, PR states, archived closed) — since removal is always available.
   return [...baseActionsFor(item), { id: "untrack", kind: "untrack" }];
 }
+
+// Only these render inline as the accent button (#133). An allow-list (rather than a
+// "first non-destructive action" rule) keeps Unpin and Archive out of the inline slot,
+// and makes any future action id default to the kebab menu.
+export const PRIMARY_ACTION_IDS = [
+  "plan",
+  "approve",
+  "resume",
+  "retry",
+] as const satisfies readonly ItemActionId[];
+
+export const DESTRUCTIVE_ACTION_IDS = [
+  "close",
+  "untrack",
+] as const satisfies readonly ItemActionId[];
+
+export function isDestructiveAction(id: ItemActionId): boolean {
+  return (DESTRUCTIVE_ACTION_IDS as readonly ItemActionId[]).includes(id);
+}
+
+export type SplitActions = {
+  primary: ItemAction | null;
+  menu: ItemAction[];
+  destructive: ItemAction[];
+};
+
+// Placement only (#133): ordering stays owned by actionsFor. The primary must be the
+// first entry, so each bucket is a subsequence of the input and nothing is reordered.
+export function splitActions(actions: ItemAction[]): SplitActions {
+  const first = actions[0];
+  const hasPrimary =
+    first !== undefined && (PRIMARY_ACTION_IDS as readonly ItemActionId[]).includes(first.id);
+  const rest = hasPrimary ? actions.slice(1) : actions;
+  return {
+    primary: hasPrimary ? first : null,
+    menu: rest.filter((a) => !isDestructiveAction(a.id)),
+    destructive: rest.filter((a) => isDestructiveAction(a.id)),
+  };
+}
