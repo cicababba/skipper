@@ -1,5 +1,6 @@
 import type { RepoRef } from "@skipper/shared";
-import { gitlabApiBase, gitlabGet, type GitLabResponse } from "./client";
+import { drainLinkPages } from "../http";
+import { gitlabApiBase, gitlabGet } from "./client";
 import { repoRefFromPath } from "./map";
 import type { GitLabTokenProvider } from "./types";
 
@@ -19,21 +20,12 @@ export async function listMembershipProjects(
   getToken: GitLabTokenProvider,
   baseUrl?: string,
 ): Promise<MembershipProject[]> {
-  const out: MembershipProject[] = [];
-  let next: string | undefined =
-    `${gitlabApiBase(baseUrl)}/projects?membership=true&archived=false&per_page=100`;
-  while (next) {
-    const res: GitLabResponse<GitLabProjectPayload[]> = await gitlabGet<GitLabProjectPayload[]>(
-      next,
-      getToken,
-    );
-    for (const project of res.body ?? []) {
-      out.push({
-        repo: repoRefFromPath(project.path_with_namespace),
-        private: project.visibility !== "public",
-      });
-    }
-    next = res.nextUrl;
-  }
-  return out;
+  const projects = await drainLinkPages<GitLabProjectPayload>(
+    `${gitlabApiBase(baseUrl)}/projects?membership=true&archived=false&per_page=100`,
+    (url) => gitlabGet<GitLabProjectPayload[]>(url, getToken),
+  );
+  return projects.map((project) => ({
+    repo: repoRefFromPath(project.path_with_namespace),
+    private: project.visibility !== "public",
+  }));
 }
