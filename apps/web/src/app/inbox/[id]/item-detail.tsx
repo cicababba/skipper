@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ExternalLink, EyeOff, SquareTerminal } from "lucide-react";
@@ -14,6 +14,8 @@ import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useTerminal } from "@/lib/terminal-context";
 import { useT } from "@/lib/app-i18n";
 import { repoKey } from "@/lib/inbox/model";
+import { useStoredState } from "@/lib/use-stored-state";
+import { unreadCount } from "@/lib/inbox/plan-chat-unread";
 import { confirmAndUntrack } from "../item-actions";
 import { StateBadge } from "../state-badge";
 import { StaleRepoBadge } from "../stale-repo-badge";
@@ -21,6 +23,10 @@ import { OverviewDetailView } from "./overview-detail";
 import { PlanDetailView } from "./plan-detail";
 import { ReviewDetailView } from "./review-detail";
 import { WorktreeDetailView } from "./worktree-detail";
+import { ItemChatProvider, useItemChat, type ChatKind } from "./item-chat";
+import { ChatDrawer, ChatFab } from "./chat-drawer";
+import { PlanChatPanel } from "./plan-chat";
+import { AgentChatPanel } from "./agent-chat";
 
 type DetailTab = "overview" | "plan" | "review" | "worktree";
 
@@ -48,15 +54,45 @@ function defaultTabFor(item: TrackedItem): DetailTab {
   return "overview";
 }
 
+// The interlocutor the shell FAB/drawer routes to for the active tab (#170).
+function interlocutorFor(tab: DetailTab, item: TrackedItem, planAvailable: boolean): ChatKind | null {
+  switch (tab) {
+    case "plan":
+      return planAvailable ? "plan" : null;
+    case "review":
+      return item.review != null && item.state !== "agent-review" ? "reviewer" : null;
+    case "worktree":
+      return item.worktree != null && item.state !== "coding" ? "coder" : null;
+    default:
+      return null;
+  }
+}
+
 // 4-tab issue-detail shell (#169). The active tab is latched once when the item
 // first resolves, so a background state change never swaps the view mid-edit.
 export function ItemDetailView() {
+  return (
+    <ItemChatProvider>
+      <ItemDetailShell />
+    </ItemChatProvider>
+  );
+}
+
+function ItemDetailShell() {
   const params = useParams();
   const id = decodeURIComponent(String(params.id));
   const { state, untrackItem } = useOrchestrator();
   const { openTerminal } = useTerminal();
   const { t } = useT();
   const router = useRouter();
+  const {
+    chatBusy,
+    setChatBusy,
+    planAvailable,
+    planDisabled,
+    notifyPlanUpdated,
+    worktreeSelection,
+  } = useItemChat();
 
   const item = state?.items.find((i) => i.id === id);
 
@@ -78,6 +114,30 @@ export function ItemDetailView() {
     };
   }, [id, worktreePath]);
 
+  // Per-interlocutor drawer/seen (localStorage) + live message count. Plan reuses
+  // the pre-#170 keys so an in-flight discussion keeps its badge across the lift.
+  const [planOpen, setPlanOpen] = useStoredState(`skipper-plan-drawer:${id}`, "0");
+  const [planSeen, setPlanSeen] = useStoredState(`skipper-plan-chat-seen:${id}`, "0");
+  const [coderOpen, setCoderOpen] = useStoredState(`skipper-coder-drawer:${id}`, "0");
+  const [coderSeen, setCoderSeen] = useStoredState(`skipper-coder-chat-seen:${id}`, "0");
+  const [reviewerOpen, setReviewerOpen] = useStoredState(`skipper-reviewer-drawer:${id}`, "0");
+  const [reviewerSeen, setReviewerSeen] = useStoredState(`skipper-reviewer-chat-seen:${id}`, "0");
+  const [planCount, setPlanCount] = useState(0);
+  const [coderCount, setCoderCount] = useState(0);
+  const [reviewerCount, setReviewerCount] = useState(0);
+
+  useEffect(() => {
+    if (planOpen === "1") setPlanSeen(String(planCount));
+  }, [planOpen, planCount, setPlanSeen]);
+  useEffect(() => {
+    if (coderOpen === "1") setCoderSeen(String(coderCount));
+  }, [coderOpen, coderCount, setCoderSeen]);
+  useEffect(() => {
+    if (reviewerOpen === "1") setReviewerSeen(String(reviewerCount));
+  }, [reviewerOpen, reviewerCount, setReviewerSeen]);
+
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
   // Bare fallback: PlanDetailView self-handles the missing item, as before.
   if (!item) return <PlanDetailView />;
 
@@ -86,6 +146,20 @@ export function ItemDetailView() {
 
   const terminalReady = wtStatus?.present === true ? wtStatus : null;
   const showTerminal = item.worktree != null;
+
+  const interlocutor = interlocutorFor(activeTab, item, planAvailable);
+  const chatByKind: Record<ChatKind, { open: string; setOpen: typeof setPlanOpen; count: number; seen: string }> = {
+    plan: { open: planOpen, setOpen: setPlanOpen, count: planCount, seen: planSeen },
+    coder: { open: coderOpen, setOpen: setCoderOpen, count: coderCount, seen: coderSeen },
+    reviewer: { open: reviewerOpen, setOpen: setReviewerOpen, count: reviewerCount, seen: reviewerSeen },
+  };
+  const active = interlocutor ? chatByKind[interlocutor] : null;
+  const activeOpen = active?.open === "1";
+  const cc = t.inbox.chat;
+  const chatTitle =
+    interlocutor === "plan" ? cc.planTitle : interlocutor === "coder" ? cc.coderTitle : cc.reviewerTitle;
+  const fabLabel =
+    interlocutor === "plan" ? cc.openPlan : interlocutor === "coder" ? cc.openCoder : cc.openReviewer;
 
   return (
     <div className="h-full flex flex-col">
@@ -180,6 +254,44 @@ export function ItemDetailView() {
           <WorktreeDetailView />
         )}
       </div>
+
+      {interlocutor && active && !activeOpen && (
+        <ChatFab
+          unread={unreadCount(active.count, active.seen)}
+          busy={chatBusy[interlocutor]}
+          onClick={() => active.setOpen("1")}
+          label={fabLabel}
+          unreadLabel={t.inbox.plan.chat.unread}
+        />
+      )}
+      {interlocutor && active && (
+        <ChatDrawer
+          open={activeOpen}
+          onClose={() => active.setOpen("0")}
+          title={chatTitle}
+          focusRef={inputRef}
+        >
+          {interlocutor === "plan" ? (
+            <PlanChatPanel
+              itemId={id}
+              disabled={planDisabled}
+              onPlanUpdated={notifyPlanUpdated}
+              onBusyChange={(b) => setChatBusy("plan", b)}
+              onCountChange={setPlanCount}
+              inputRef={inputRef}
+            />
+          ) : (
+            <AgentChatPanel
+              kind={interlocutor}
+              itemId={id}
+              selectedFile={interlocutor === "coder" ? worktreeSelection : null}
+              onBusyChange={(b) => setChatBusy(interlocutor, b)}
+              onCountChange={interlocutor === "coder" ? setCoderCount : setReviewerCount}
+              inputRef={inputRef}
+            />
+          )}
+        </ChatDrawer>
+      )}
     </div>
   );
 }

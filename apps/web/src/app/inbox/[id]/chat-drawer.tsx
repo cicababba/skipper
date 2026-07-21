@@ -1,30 +1,36 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
+import type { ReactNode, RefObject } from "react";
 import { MessageCircle, Sparkles, X } from "lucide-react";
-import type { StoredPlan } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
-import { PlanChatPanel } from "./plan-chat";
 
-const FAB_ID = "plan-chat-fab";
+// Generic chat FAB + docked drawer (#170, generalized from #167's plan chat).
+// The panel is passed in as children so one drawer serves the plan, coder and
+// reviewer interlocutors. A single FAB (one interlocutor is active at a time)
+// owns focus return.
 
-export function PlanChatFab({
+const FAB_ID = "item-chat-fab";
+
+export function ChatFab({
   unread,
   busy,
   onClick,
+  label,
+  unreadLabel,
 }: {
   unread: number;
   busy: boolean;
   onClick: () => void;
+  label: string;
+  unreadLabel: (n: number) => string;
 }) {
-  const { t } = useT();
-  const chat = t.inbox.plan.chat;
   return (
     <button
       id={FAB_ID}
       onClick={onClick}
-      aria-label={chat.open}
-      title={chat.open}
+      aria-label={label}
+      title={label}
       className="fixed bottom-6 right-6 z-[80] flex h-12 w-12 items-center justify-center rounded-full bg-accent text-background shadow-2xl transition-colors hover:bg-accent-hover"
     >
       {busy && (
@@ -33,7 +39,7 @@ export function PlanChatFab({
       <MessageCircle size={20} />
       {unread > 0 && (
         <span
-          aria-label={chat.unread(unread)}
+          aria-label={unreadLabel(unread)}
           className="absolute -top-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white"
         >
           {unread > 9 ? "9+" : unread}
@@ -43,26 +49,22 @@ export function PlanChatFab({
   );
 }
 
-export function PlanChatDrawer({
+export function ChatDrawer({
   open,
   onClose,
-  itemId,
-  disabled,
-  onPlanUpdated,
-  onBusyChange,
-  onCountChange,
+  title,
+  focusRef,
+  children,
 }: {
   open: boolean;
   onClose: () => void;
-  itemId: string;
-  disabled: boolean;
-  onPlanUpdated: (stored: StoredPlan) => void;
-  onBusyChange: (busy: boolean) => void;
-  onCountChange: (count: number) => void;
+  title: string;
+  /** Focused when the drawer opens; the FAB regains focus on close. */
+  focusRef: RefObject<HTMLInputElement | null>;
+  children: ReactNode;
 }) {
   const { t } = useT();
   const chat = t.inbox.plan.chat;
-  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -75,11 +77,11 @@ export function PlanChatDrawer({
 
   useEffect(() => {
     if (open) {
-      inputRef.current?.focus();
+      focusRef.current?.focus();
     } else {
       document.getElementById(FAB_ID)?.focus();
     }
-  }, [open]);
+  }, [open, focusRef]);
 
   return (
     <div
@@ -91,7 +93,7 @@ export function PlanChatDrawer({
       <header className="flex shrink-0 items-center gap-2 border-b border-card-hover px-4 py-3">
         <Sparkles size={13} className="text-accent" />
         <h2 className="flex-1 text-[11px] font-medium uppercase tracking-wide text-muted">
-          {chat.title}
+          {title}
         </h2>
         <button
           onClick={onClose}
@@ -102,16 +104,7 @@ export function PlanChatDrawer({
           <X size={16} />
         </button>
       </header>
-      <div className="flex-1 min-h-0">
-        <PlanChatPanel
-          itemId={itemId}
-          disabled={disabled}
-          onPlanUpdated={onPlanUpdated}
-          onBusyChange={onBusyChange}
-          onCountChange={onCountChange}
-          inputRef={inputRef}
-        />
-      </div>
+      <div className="flex-1 min-h-0">{children}</div>
     </div>
   );
 }

@@ -307,6 +307,24 @@ const en = {
     review: "Review",
     worktree: "Worktree",
   },
+  // Per-tab agent chat (#170): shared strings across the plan / coder / reviewer
+  // interlocutors. Panels reuse inbox.plan.chat.* for send/thinking/cancelled/etc.
+  chat: {
+    planTitle: "Planning chat",
+    reviewerTitle: "Review chat",
+    coderTitle: "Development chat",
+    openPlan: "Discuss the plan",
+    openReviewer: "Discuss the review",
+    openCoder: "Discuss the code",
+    emptyCoder: "Ask the engineer who wrote these changes.",
+    emptyReviewer: "Ask the reviewer about this verdict.",
+    placeholderCoder: "Ask about the changes…",
+    placeholderReviewer: "Ask about the review…",
+    freshCoder:
+      "The coding session is gone — answering from the plan, the coder report and the worktree.",
+    freshReviewer:
+      "The review session is gone — answering from the plan, the report and the review outcome.",
+  },
   overview: {
     issueBody: "Issue",
     timeline: "Timeline",
@@ -705,6 +723,22 @@ const it: typeof en = {
     plan: "Piano",
     review: "Review",
     worktree: "Worktree",
+  },
+  chat: {
+    planTitle: "Chat sul piano",
+    reviewerTitle: "Chat sulla review",
+    coderTitle: "Chat sullo sviluppo",
+    openPlan: "Discuti il piano",
+    openReviewer: "Discuti la review",
+    openCoder: "Discuti il codice",
+    emptyCoder: "Chiedi all'ingegnere che ha scritto queste modifiche.",
+    emptyReviewer: "Chiedi al revisore di questo verdetto.",
+    placeholderCoder: "Chiedi delle modifiche…",
+    placeholderReviewer: "Chiedi della review…",
+    freshCoder:
+      "La sessione di coding non c'è più — rispondo dal piano, dal report del coder e dal worktree.",
+    freshReviewer:
+      "La sessione di review non c'è più — rispondo dal piano, dal report e dall'esito della review.",
   },
   overview: {
     issueBody: "Issue",
@@ -1107,6 +1141,22 @@ const fr: typeof en = {
     review: "Review",
     worktree: "Worktree",
   },
+  chat: {
+    planTitle: "Discussion du plan",
+    reviewerTitle: "Discussion de la review",
+    coderTitle: "Discussion du développement",
+    openPlan: "Discuter du plan",
+    openReviewer: "Discuter de la review",
+    openCoder: "Discuter du code",
+    emptyCoder: "Interrogez l'ingénieur qui a écrit ces changements.",
+    emptyReviewer: "Interrogez le relecteur sur ce verdict.",
+    placeholderCoder: "Question sur les changements…",
+    placeholderReviewer: "Question sur la review…",
+    freshCoder:
+      "La session de codage a disparu — réponse basée sur le plan, le rapport du codeur et le worktree.",
+    freshReviewer:
+      "La session de review a disparu — réponse basée sur le plan, le rapport et le résultat de la review.",
+  },
   overview: {
     issueBody: "Issue",
     timeline: "Chronologie",
@@ -1506,6 +1556,22 @@ const es: typeof en = {
     plan: "Plan",
     review: "Review",
     worktree: "Worktree",
+  },
+  chat: {
+    planTitle: "Chat del plan",
+    reviewerTitle: "Chat de la review",
+    coderTitle: "Chat del desarrollo",
+    openPlan: "Discutir el plan",
+    openReviewer: "Discutir la review",
+    openCoder: "Discutir el código",
+    emptyCoder: "Pregunta al ingeniero que escribió estos cambios.",
+    emptyReviewer: "Pregunta al revisor sobre este veredicto.",
+    placeholderCoder: "Pregunta sobre los cambios…",
+    placeholderReviewer: "Pregunta sobre la review…",
+    freshCoder:
+      "La sesión de codificación ya no existe — respondo desde el plan, el informe del coder y el worktree.",
+    freshReviewer:
+      "La sesión de review ya no existe — respondo desde el plan, el informe y el resultado de la review.",
   },
   overview: {
     issueBody: "Issue",

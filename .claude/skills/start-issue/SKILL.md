@@ -32,7 +32,7 @@ bash <skill-base-dir>/scripts/start-issue.sh [--slug <slug>] <issue> [issue...]
 - The script fetches each issue (prints one `issue={json}` line with number/title/labels), checks out `develop`, pulls, and creates `feature/issue-<first>-<slug>`.
 - If the branch already exists it reuses it and reports `reused=true` — tell the user work continues on the existing branch.
 
-Summary keys printed: `issue=` (one per issue), `branch`, `reused`.
+Summary keys printed: `issue=` (one per issue), `branch`, `reused`, `board`.
 
 ### 4. Output summary
 
@@ -54,4 +54,5 @@ Ready to code!
 
 - Conventions sourced from `.claude/rules/conventions.md` (single source of truth)
 - The script always starts from `develop` — never from `main`
-- No project board in this repo — an existing feature branch *is* the "in progress" state
+- An existing feature branch *is* the "in progress" state; the script mirrors it to the
+  project board (Status=In Progress, best-effort) — board contract in conventions.md

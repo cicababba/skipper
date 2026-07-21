@@ -267,6 +267,18 @@ contextBridge.exposeInMainWorld("skipper", {
       ipcRenderer.invoke("skipper:planChat:getHistory", itemId),
   },
 
+  // Per-tab agent chat (issue #170): interrogate the coder / reviewer at their tabs.
+  agentChat: {
+    send: (
+      kind: string,
+      itemId: string,
+      text: string,
+      ctx?: { selectedFile?: string },
+    ): Promise<unknown> => ipcRenderer.invoke("skipper:agentChat:send", kind, itemId, text, ctx),
+    getHistory: (kind: string, itemId: string): Promise<unknown[]> =>
+      ipcRenderer.invoke("skipper:agentChat:getHistory", kind, itemId),
+  },
+
   // Reviewer console (issue #113): same shape as coding/planning, own channel pair.
   review: {
     getEvents: (itemId: string): Promise<unknown[]> =>

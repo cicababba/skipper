@@ -82,6 +82,8 @@ if ! $IS_RELEASE; then
       gh issue comment "$n" --body "Done in #$PR_NUMBER"
       gh issue close "$n"
       ISSUES_CLOSED+=("$n")
+      bash ".claude/scripts/board.sh" status "$n" Done >/dev/null 2>&1 \
+        || echo "warning: board sync failed for #$n — set Done manually" >&2
     fi
   done
 fi

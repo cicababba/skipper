@@ -46,7 +46,7 @@ skipper/
 - **LLM providers** (`packages/core/src/llm/`): `claude-cli` (default — spawns the user's `claude` CLI), `openai`, `ollama`
 - **Embeddings**: `@huggingface/transformers` running ONNX locally (`Xenova/all-MiniLM-L6-v2`), in `packages/core/src/vectorstore`
 - **Auth**: multi-provider multi-account OAuth desktop flow (loopback redirect) behind a `ProviderConfig` registry in `apps/desktop/src/auth/` — registered providers: `google`, `github`, `gitlab`, `jira`, `bitbucket`. Google: PKCE, identity-only scopes — proves the email for the supporter update entitlement (`getIdToken`, Google-only path). GitHub: GitHub App user-to-server flow, fixed loopback ports 8127–8129, expiring tokens with refresh rotation — feeds the orchestrator (#5+). GitLab/Jira/Bitbucket feed the tracker/code-host adapters in `packages/core/src/adapters`. Accounts + tokens live in one `auth.enc` (v2 multi-account format, legacy single-session migrated on load) encrypted via Electron `safeStorage`.
-- **Testing**: Vitest (configured at root, very thin coverage today)
+- **Testing**: Vitest (configured at root). Coverage is solid where it counts: `packages/core/tests/` (~43 files, incl. a 54-case reconcile suite), every desktop driver loop (planner/coder/reviewer/shepherd/rescore/plan-chat via injected deps), the pure stores (worktrees, plan-store, repo-links), and `apps/web/src/lib/inbox/*` (11 pure modules, 1:1 tests). Known holes: `apps/desktop/src/orchestrator.ts` wiring (zero tests), `packages/core/src/adapters/*` (zero tests), most of the Electron shell (`main.ts`, `auth/`).
 - **Lint/format**: ESLint 9 + Prettier 3
 
 ## Key Commands
@@ -87,12 +87,12 @@ skipper memory reindex|search|serve # Solutions-memory index: rebuild, query, se
 
 ## Git Workflow
 
-Gitflow: `main` is release-only (**every push to `main` fires `.github/workflows/release.yml`** — full signed build + publish to Polar/update feed), `develop` is the integration branch, work happens on `feature/issue-<N>-<slug>` branches. Conventions for branches, commit messages, issue/PR titles, and labels live in [`.claude/rules/conventions.md`](.claude/rules/conventions.md) — the skills in `.claude/skills/` (`/create-issue`, `/start-issue`, `/plan-issue`, `/implement-plan`, `/commit`, `/pr`, `/merge-pr`, `/release`) implement the day-to-day flow and are the preferred way to run it; `/goto` (jump to code) and `/verify` (build + drive the Electron app) round out the toolbox. No project board: issue state is derived from git/GitHub (branch = in progress, PR = in review, closed = done).
+Gitflow: `main` is release-only (**every push to `main` fires `.github/workflows/release.yml`** — full signed build + publish to Polar/update feed), `develop` is the integration branch, work happens on `feature/issue-<N>-<slug>` branches. Conventions for branches, commit messages, issue/PR titles, and labels live in [`.claude/rules/conventions.md`](.claude/rules/conventions.md) — the skills in `.claude/skills/` (`/create-issue`, `/start-issue`, `/plan-issue`, `/implement-plan`, `/commit`, `/pr`, `/merge-pr`, `/release`) implement the day-to-day flow and are the preferred way to run it; `/goto` (jump to code) and `/verify` (build + drive the Electron app) round out the toolbox. Issue state is derived from git/GitHub (branch = in progress, PR = in review, closed = done); a GitHub Project board mirrors it as a prioritization view — the skills sync the board `Status` automatically via `.claude/scripts/board.sh` (contract in conventions.md).
 
 ## Coding Conventions
 
 - TypeScript everywhere. Type all exported functions; rely on inference inside function bodies.
-- ESM in `packages/*` and `apps/web`; the Electron main bundle ends up CJS (so dynamic `require` is fine when needed, e.g. lazy `node-pty`).
+- Module systems, as they actually are: `packages/cli` and `apps/web` are ESM; `packages/shared` and `packages/sync` compile to CJS (they are consumed by the CJS Electron main); the Electron main bundle ends up CJS (so dynamic `require` is fine when needed, e.g. lazy `node-pty`).
 - Use `node:fs/promises` + `node:path` for filesystem work. Use `node:path.join` with the platform separator — don't hand-build paths with `/`.
 - One responsibility per file. The `packages/core/src/<area>/index.ts` files are the public surface; siblings are internals.
 - Errors propagate inside `packages/core`. CLI commands, Next.js route handlers, and the Electron IPC layer are the boundaries that turn errors into user-facing messages.

@@ -76,14 +76,28 @@ Co-Authored-By: <current Claude model> <noreply@anthropic.com>
 - Description in imperative mood ("add" not "added"), no trailing period.
 - Co-author line uses the model actually running (e.g. `Claude Fable 5`).
 
-## Issue lifecycle (no project board)
+## Issue lifecycle & project board
 
-This repo uses **no project board**. State is derived from git/GitHub itself:
+State is derived from git/GitHub itself — the board is a **prioritization view on top**,
+never a second source of truth:
 
 - Open issue, no branch → todo
 - Feature branch exists → in progress
 - PR open referencing the issue → in review
 - Issue closed → done
+
+The GitHub Project board (user project `cicababba/#4`) tracks a single `Status` field:
+
+| Status | Meaning | Set by |
+|--------|---------|--------|
+| Backlog | not planned yet | `/create-issue` (default on creation) |
+| Todo | picked for near-term work | manually (human prioritization) |
+| In Progress | feature branch exists | `/start-issue` |
+| Done | issue closed | `/merge-pr` |
+
+Board sync lives in `.claude/scripts/board.sh` and is **best-effort**: a board failure
+warns and never blocks the git flow. If the board is recreated, re-derive the pinned IDs
+(instructions in the script header).
 
 PRs reference issues with `Closes #N` for traceability, but since feature PRs merge
 into `develop` (not the default branch), GitHub does **not** auto-close them —

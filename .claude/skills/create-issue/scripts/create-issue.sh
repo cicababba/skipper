@@ -11,14 +11,17 @@ KNOWN_SCOPES="desktop web core cli db shared sync infra epic"
 
 TITLE=""
 BODY_FILE=""
+STATUS="Backlog"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --title) TITLE="$2"; shift 2 ;;
     --body-file) BODY_FILE="$2"; shift 2 ;;
+    --status) STATUS="$2"; shift 2 ;;
     *) err "unknown argument: $1" ;;
   esac
 done
-[[ -n "$TITLE" && -n "$BODY_FILE" ]] || err "usage: create-issue.sh --title <t> --body-file <f>"
+[[ -n "$TITLE" && -n "$BODY_FILE" ]] || err "usage: create-issue.sh --title <t> --body-file <f> [--status <Backlog|Todo|In Progress|Done>]"
+case "$STATUS" in Backlog|Todo|"In Progress"|Done) ;; *) err "invalid --status '$STATUS' (Backlog|Todo|In Progress|Done)" ;; esac
 [[ -f "$BODY_FILE" ]] || err "body file not found: $BODY_FILE"
 
 TITLE_RE='^[a-z]+(,[a-z]+)*:(feat|fix|refactor|test|docs|chore): .+'
@@ -46,6 +49,13 @@ LABELS="$SCOPES"
 URL=$(gh issue create --title "$TITLE" --body-file "$BODY_FILE" --label "$LABELS")
 NUMBER="${URL##*/}"
 
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+BOARD="added ($STATUS)"
+if [[ -z "$ROOT" ]] || ! bash "$ROOT/.claude/scripts/board.sh" status "$NUMBER" "$STATUS" >/dev/null 2>&1; then
+  BOARD="sync failed (add manually)"
+fi
+
 echo "issue=$NUMBER"
 echo "url=$URL"
 echo "labels=$LABELS"
+echo "board=$BOARD"

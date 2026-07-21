@@ -89,6 +89,7 @@ import { readLlmSettings, readLlmSettingsSync } from "./llm-settings";
 import { archiveStoredPlan, readStoredPlan, updateStoredPlan } from "./plan-store";
 import { readStoredCoderReport } from "./report-store";
 import { deletePlanChat } from "./plan-chat-store";
+import { deleteAgentChats } from "./agent-chat-store";
 import {
   initPlanChat,
   sendPlanChatMessage,
@@ -96,6 +97,12 @@ import {
   getPlanChatHistory,
   cancelPlanChat,
 } from "./plan-chat";
+import {
+  initAgentChat,
+  sendAgentChatMessage,
+  getAgentChatHistory,
+  cancelAgentChat,
+} from "./agent-chat";
 import {
   initRescore,
   startRescore,
@@ -1023,6 +1030,7 @@ async function completeMergedCleanup(itemId: string, memoryRef: string): Promise
     if (archivedRef) plan = { ...plan, ref: archivedRef };
   }
   void deletePlanChat(deps.plansDir, itemId).catch(() => {});
+  void deleteAgentChats(deps.plansDir, itemId).catch(() => {});
   m.items[itemId] = {
     ...item,
     worktree: undefined,
@@ -1180,6 +1188,10 @@ export async function requestTransition(
     cancelPlanChat(itemId);
     cancelRescore(itemId);
   }
+  // Entering a blocking state aborts the matching live agent chat (#170): the
+  // coder/reviewer is about to run and the chat's read-only view no longer holds.
+  if (to === "coding") cancelAgentChat("coder", itemId);
+  if (to === "agent-review") cancelAgentChat("reviewer", itemId);
   if (actor !== "coder") {
     // Someone else moved a live coding item — abort its run.
     if (prevState === "coding") cancelCodingRun(itemId);
@@ -1868,6 +1880,21 @@ export function initOrchestrator(
   ipcMain.handle("skipper:planChat:getHistory", (_e, itemId: string) =>
     getPlanChatHistory(itemId),
   );
+  // Per-tab agent chat (#170): interrogate the coder / reviewer at their tabs.
+  // Guards (availability, binding, busy) live in agent-chat.ts.
+  ipcMain.handle(
+    "skipper:agentChat:send",
+    (_e, kind: unknown, itemId: string, text: string, ctx?: { selectedFile?: string }) => {
+      if (kind !== "coder" && kind !== "reviewer") {
+        return { ok: false as const, error: `invalid chat kind ${String(kind)}` };
+      }
+      return sendAgentChatMessage(kind, itemId, text, ctx);
+    },
+  );
+  ipcMain.handle("skipper:agentChat:getHistory", (_e, kind: unknown, itemId: string) => {
+    if (kind !== "coder" && kind !== "reviewer") return [];
+    return getAgentChatHistory(kind, itemId);
+  });
   // Replay for renderers that mount mid-run; live events ride the per-item channel.
   ipcMain.handle("skipper:coding:getEvents", (_e, itemId: string) => {
     return codingEvents.get(itemId) ?? [];
@@ -2035,6 +2062,7 @@ export function initOrchestrator(
         if (archivedRef) plan = { ...plan, ref: archivedRef };
       }
       void deletePlanChat(deps!.plansDir, itemId).catch(() => {});
+      void deleteAgentChats(deps!.plansDir, itemId).catch(() => {});
 
       // Re-read after the slow git ops so a concurrent update is not clobbered.
       const current = m.items[itemId] ?? item;
@@ -2099,6 +2127,7 @@ export function initOrchestrator(
         await archiveStoredPlan(deps!.plansDir, item.plan.ref).catch(() => null);
       }
       void deletePlanChat(deps!.plansDir, itemId).catch(() => {});
+      void deleteAgentChats(deps!.plansDir, itemId).catch(() => {});
 
       delete m.items[itemId];
       delete m.parked[itemId];
@@ -2160,6 +2189,32 @@ export function initOrchestrator(
     setPlanSessionId,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
     emitEvent: emitPlanningEvent,
+    plansDir: orchestratorDeps.plansDir,
+    getMemoryMcp: (item) =>
+      orchestratorDeps.cliBundlePath
+        ? { cliBundlePath: orchestratorDeps.cliBundlePath, repo: item.repo }
+        : undefined,
+  });
+
+  initAgentChat({
+    getItem: (itemId) => manifest?.items[itemId],
+    getIssue: (item) => {
+      const cached = items.get(item.accountId)?.get(item.id);
+      return cached?.kind === "issue" ? cached : undefined;
+    },
+    getRepoPath: repoPathFor,
+    getRepoSettings: repoOrch,
+    getStoredPlan: async (item) => {
+      const ref = item.plan?.ref;
+      return ref ? readStoredPlan(orchestratorDeps.plansDir, ref) : null;
+    },
+    getCoderReport: (item) =>
+      item.coderReport?.ref
+        ? readStoredCoderReport(orchestratorDeps.plansDir, item.coderReport.ref)
+        : Promise.resolve(null),
+    getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
+    emitEvent: (kind, itemId, e) =>
+      (kind === "coder" ? emitCodingEvent : emitReviewEvent)(itemId, e),
     plansDir: orchestratorDeps.plansDir,
     getMemoryMcp: (item) =>
       orchestratorDeps.cliBundlePath

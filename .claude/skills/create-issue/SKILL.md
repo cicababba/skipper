@@ -47,12 +47,14 @@ Wait for confirmation or edits.
 Write the issue body to a temp file, then:
 
 ```bash
-bash <skill-base-dir>/scripts/create-issue.sh --title "<scope>:<type>: <descriptive>" --body-file <f>
+bash <skill-base-dir>/scripts/create-issue.sh --title "<scope>:<type>: <descriptive>" --body-file <f> [--status <s>]
 ```
 
 The script validates the title format and scopes, derives labels (scope names as-is; type per conventions: feat→enhancement, fix→bug, refactor→refactor, test→testing, docs→documentation, chore→none), and creates the issue.
 
-Summary keys printed: `issue`, `url`, `labels`.
+Pass `--status Todo` (or another board status) when the user asks for a specific board placement — default is `Backlog`.
+
+Summary keys printed: `issue`, `url`, `labels`, `board`.
 
 ### 5. Output summary
 
@@ -69,5 +71,6 @@ Summary keys printed: `issue`, `url`, `labels`.
 ## Notes
 
 - Conventions sourced from `.claude/rules/conventions.md` (single source of truth)
-- No project board in this repo — issue state is derived from git/GitHub
+- The script also adds the issue to the project board with Status=Backlog (best-effort;
+  a `board=sync failed` line means add it manually) — board contract in conventions.md
 - The convention applies to **new** issues only — existing issues stay as-is
