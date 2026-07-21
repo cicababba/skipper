@@ -125,6 +125,9 @@ export interface OrchestratorSettings {
   coderModel?: string;
   /** Max agent turns per coding run (#9). Not reviewMaxRounds. */
   coderMaxTurns: number;
+  /** Max agent turns per plan run (#151). Guards against the planner burning its
+   *  whole budget exploring the repo and never emitting the plan JSON. */
+  plannerMaxTurns: number;
   /** #62: on = always queue, off = always plan-gate, auto = composite >= confidence.high. */
   autoCoding: GateMode;
   /** #62 (was reviewMode): auto = the mechanical skip heuristic in core/reviewer/auto.ts. */
@@ -146,6 +149,7 @@ export const DEFAULT_ORCHESTRATOR_SETTINGS: OrchestratorSettings = {
   autoPlanPaused: false,
   confidence: { ...DEFAULT_CONFIDENCE_THRESHOLDS, extraPlanRuns: DEFAULT_EXTRA_PLAN_RUNS },
   coderMaxTurns: 60,
+  plannerMaxTurns: 40,
   autoCoding: "auto",
   review: "auto",
   reviewMaxRounds: 2,

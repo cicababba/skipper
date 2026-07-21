@@ -147,6 +147,7 @@ export async function loadOrCreateOrchestratorManifest(
       parsed.settings.autoPlanPaused ??= DEFAULT_ORCHESTRATOR_SETTINGS.autoPlanPaused;
       parsed.settings.confidence ??= structuredClone(DEFAULT_ORCHESTRATOR_SETTINGS.confidence);
       parsed.settings.coderMaxTurns ??= DEFAULT_ORCHESTRATOR_SETTINGS.coderMaxTurns;
+      parsed.settings.plannerMaxTurns ??= DEFAULT_ORCHESTRATOR_SETTINGS.plannerMaxTurns;
       parsed.settings.autoCoding ??= DEFAULT_ORCHESTRATOR_SETTINGS.autoCoding;
       migrateReviewMode(parsed.settings);
       parsed.settings.reviewMaxRounds ??= DEFAULT_ORCHESTRATOR_SETTINGS.reviewMaxRounds;

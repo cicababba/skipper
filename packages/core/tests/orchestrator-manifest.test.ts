@@ -54,6 +54,7 @@ describe("orchestrator manifest", () => {
         autoPlanPaused: false,
         confidence: { high: 0.85, low: 0.4, extraPlanRuns: 2 },
         coderMaxTurns: 60,
+        plannerMaxTurns: 40,
         autoCoding: "auto",
         review: "auto",
         reviewMaxRounds: 2,
