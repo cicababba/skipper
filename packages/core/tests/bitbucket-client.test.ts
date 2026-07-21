@@ -84,6 +84,29 @@ describe("bitbucketGet", () => {
     expect(err).toBeInstanceOf(ApiError);
     expect(err.message).toContain("plain failure");
   });
+
+  it("treats a 403 with retry-after as a retryable rate limit", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      jsonResponse(403, { error: { message: "slow down" } }, { "retry-after": "120" }),
+    ));
+    const err = await bitbucketGet("https://api.bitbucket.org/2.0/user", token).catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(403);
+    expect(err.retryAfterSeconds).toBe(120);
+    expect(err.message).toContain("Bitbucket rate limited (403)");
+  });
+
+  it("treats a signal-less 403 as a generic API error", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      jsonResponse(403, { type: "error", error: { message: "forbidden" } }),
+    ));
+    const err = await bitbucketGet("https://api.bitbucket.org/2.0/user", token).catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(403);
+    expect(err.message).toContain("Bitbucket API error: 403");
+    expect(err.message).toContain("forbidden");
+    expect(err.retryAfterSeconds).toBeUndefined();
+  });
 });
 
 describe("bitbucketPaginate", () => {
