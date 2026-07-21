@@ -4,6 +4,7 @@ export {
   PLAN_CHAT_SYSTEM_PROMPT,
   discussPlan,
   applyPlanFromDiscussion,
+  renderConfidenceBlock,
 } from "./chat";
 export type { DiscussPlanOptions, ApplyPlanFromDiscussionOptions } from "./chat";
 export { IssuePlanSchema, planJsonSchema } from "./schema";

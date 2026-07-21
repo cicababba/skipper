@@ -1,5 +1,10 @@
 import { displayKey } from "@skipper/shared";
-import type { CodingEvent, IssuePlan, PlanChatMessage } from "@skipper/shared";
+import type {
+  CodingEvent,
+  ConfidenceReport,
+  IssuePlan,
+  PlanChatMessage,
+} from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import { planJsonSchema } from "./schema";
@@ -16,12 +21,15 @@ const MAX_BODY_CHARS = 20_000;
 
 export const PLAN_CHAT_SYSTEM_PROMPT = `You are the senior software engineer who wrote the implementation plan under review. A reviewer is discussing it with you before deciding whether to approve it.
 
-Answer conversationally in markdown. You may use Read, Grep and Glob to verify facts against the repository at your current working directory. Do NOT modify any files. Unless explicitly asked to update the plan, do NOT output plan JSON — just answer the question.`;
+Answer conversationally in markdown. You may use Read, Grep and Glob to verify facts against the repository at your current working directory. Do NOT modify any files. Unless explicitly asked to update the plan, do NOT output plan JSON — just answer the question.
+
+A confidence report may be included — it was computed by an external scoring pipeline after you wrote the plan; treat its signals and objections as reviewer input, not as your own claims.`;
 
 export interface PlanChatContext {
   issue: PlanIssueInput;
   plan: IssuePlan;
   history: PlanChatMessage[];
+  confidence?: ConfidenceReport;
 }
 
 export interface DiscussPlanOptions {
@@ -30,6 +38,11 @@ export interface DiscussPlanOptions {
   cwd: string;
   /** Resume the plan session (claude-cli); the model already holds the plan + repo. */
   resumeSessionId?: string;
+  /**
+   * Confidence report to inject on the RESUME path — the resumed session holds
+   * the plan + repo but NOT the score (scoring ran after the session ended).
+   */
+  confidence?: ConfidenceReport;
   /** Issue + plan + transcript — required when there is no session to resume. */
   context?: PlanChatContext;
   /** Persist the fallback run under this session id (claude-cli only). */
@@ -45,6 +58,8 @@ export interface ApplyPlanFromDiscussionOptions {
   cwd: string;
   /** The CURRENT stored plan — always embedded: the session's memory is stale after inline edits. */
   plan: IssuePlan;
+  /** Confidence report — its critic objections are the input to "address the objections". */
+  confidence?: ConfidenceReport;
   resumeSessionId?: string;
   /** Fallback context — required when there is no session to resume. */
   issue?: PlanIssueInput;
@@ -81,10 +96,100 @@ function planBlock(plan: IssuePlan): string {
   return `--- Current plan (JSON) ---\n${JSON.stringify(plan, null, 2)}\n--- End current plan ---`;
 }
 
-function buildDiscussResumePrompt(message: string): string {
+const MAX_OBJECTION_DETAIL_CHARS = 400;
+const MAX_LIST_ITEMS = 10;
+
+function n2(x: number): string {
+  return x.toFixed(2);
+}
+
+function capList(items: string[]): string {
+  if (items.length <= MAX_LIST_ITEMS) return items.join(", ");
+  return `${items.slice(0, MAX_LIST_ITEMS).join(", ")}, … +${items.length - MAX_LIST_ITEMS} more`;
+}
+
+/**
+ * Compact text rendering of the confidence report for injection into the chat
+ * context. Pure function (no I/O); only signals present in the report are shown.
+ */
+export function renderConfidenceBlock(report: ConfidenceReport): string {
+  const lines: string[] = [
+    `--- Confidence report (computed by the orchestrator's scoring pipeline after the plan was written) ---`,
+  ];
+
+  const w = report.weights;
+  const s = report.signals;
+  const weightParts: string[] = [];
+  if (s.groundedness) weightParts.push(`groundedness ${n2(w.groundedness)}`);
+  if (s.convergence) weightParts.push(`convergence ${n2(w.convergence)}`);
+  if (s.critic) weightParts.push(`critic ${n2(w.critic)}`);
+  if (s.clarity) weightParts.push(`clarity ${n2(w.clarity)}`);
+  lines.push(
+    `Composite: ${n2(report.composite)} (weighted over available signals; weights: ${weightParts.join(", ")})`,
+  );
+
+  if (s.groundedness) {
+    const g = s.groundedness;
+    const parts = [`files ${g.filesFound}/${g.filesChecked}`, `symbols ${g.symbolsFound}/${g.symbolsChecked}`];
+    if (g.missingFiles.length > 0) parts.push(`missing files: ${capList(g.missingFiles)}`);
+    if (g.missingSymbols.length > 0) parts.push(`missing symbols: ${capList(g.missingSymbols)}`);
+    if (g.newFiles.length > 0) parts.push(`new files: ${capList(g.newFiles)}`);
+    lines.push(`- groundedness ${n2(g.score)} — ${parts.join("; ")}`);
+  }
+
+  if (s.convergence) {
+    const c = s.convergence;
+    const parts = [
+      `${c.planCount} plans`,
+      `file Jaccard ${n2(c.fileJaccard)}`,
+      `size agreement ${n2(c.sizeAgreement)}`,
+      `step-count agreement ${n2(c.stepCountAgreement)}`,
+      c.divergent ? "divergent" : "convergent",
+    ];
+    if (c.disputedFiles.length > 0) parts.push(`disputed files: ${capList(c.disputedFiles)}`);
+    lines.push(`- convergence ${n2(c.score)} — ${parts.join("; ")}`);
+  }
+
+  if (s.critic) {
+    const c = s.critic;
+    lines.push(
+      `- critic ${n2(c.score)} — verdict "${c.verdict}", ${c.objections.length} objection${c.objections.length === 1 ? "" : "s"}:`,
+    );
+    c.objections.forEach((o, i) => {
+      const detail =
+        o.detail.length > MAX_OBJECTION_DETAIL_CHARS
+          ? `${o.detail.slice(0, MAX_OBJECTION_DETAIL_CHARS)}…`
+          : o.detail;
+      lines.push(`  ${i + 1}. [${o.kind}]${o.blocking ? " (blocking)" : ""} ${detail}`);
+    });
+  }
+
+  if (s.clarity) {
+    const c = s.clarity;
+    lines.push(
+      `- clarity ${n2(c.score)} — issue body present: ${c.bodyPresent ? "yes" : "no"}, acceptance criteria: ${c.hasAcceptanceCriteria ? "yes" : "no"}, repro steps: ${c.hasReproSteps ? "yes" : "no"}, open questions: ${c.openQuestionCount}`,
+    );
+  }
+
+  if (report.convergenceSkipped) {
+    lines.push(
+      `- convergence: skipped (${report.convergenceSkipped.reason}) — ${report.convergenceSkipped.detail}`,
+    );
+  }
+
+  if (report.errors.length > 0) {
+    lines.push(`- errors: ${report.errors.join("; ")}`);
+  }
+
+  lines.push(`--- End confidence report ---`);
+  return lines.join("\n");
+}
+
+function buildDiscussResumePrompt(message: string, confidence?: ConfidenceReport): string {
   return [
     `A reviewer is asking about the plan you wrote, before deciding whether to approve it.`,
     `Answer conversationally. Do NOT re-emit or modify the plan.`,
+    ...(confidence ? [``, renderConfidenceBlock(confidence)] : []),
     ``,
     `Reviewer: ${message}`,
   ].join("\n");
@@ -98,6 +203,7 @@ function buildDiscussFallbackPrompt(ctx: PlanChatContext, message: string): stri
     issueHeader(ctx.issue),
     ``,
     planBlock(ctx.plan),
+    ...(ctx.confidence ? [``, renderConfidenceBlock(ctx.confidence)] : []),
     ...(history
       ? [``, `--- Conversation so far ---`, history, `--- End conversation ---`]
       : []),
@@ -106,11 +212,16 @@ function buildDiscussFallbackPrompt(ctx: PlanChatContext, message: string): stri
   ].join("\n");
 }
 
-function buildApplyResumePrompt(plan: IssuePlan, schema: Record<string, unknown>): string {
+function buildApplyResumePrompt(
+  plan: IssuePlan,
+  schema: Record<string, unknown>,
+  confidence?: ConfidenceReport,
+): string {
   return [
     `Update the implementation plan to incorporate the conclusions reached in this discussion. Keep everything that was not discussed unchanged. Treat the JSON below as the current source of truth for the plan (it may differ from what you last emitted).`,
     ``,
     planBlock(plan),
+    ...(confidence ? [``, renderConfidenceBlock(confidence)] : []),
     ``,
     `Your FINAL message must be ONLY a single JSON object matching this JSON Schema. No prose, no code fences, no preamble.`,
     ``,
@@ -124,6 +235,7 @@ function buildApplyFallbackPrompt(
   schema: Record<string, unknown>,
   issue: PlanIssueInput,
   history: PlanChatMessage[],
+  confidence?: ConfidenceReport,
 ): string {
   const rendered = renderHistory(history);
   return [
@@ -132,6 +244,7 @@ function buildApplyFallbackPrompt(
     issueHeader(issue),
     ``,
     planBlock(plan),
+    ...(confidence ? [``, renderConfidenceBlock(confidence)] : []),
     ...(rendered
       ? [``, `--- Conversation so far ---`, rendered, `--- End conversation ---`]
       : []),
@@ -156,7 +269,7 @@ export async function discussPlan(
 
   if (opts.resumeSessionId) {
     if (!llm.agent) throw new Error("resuming a plan session needs an agent-capable provider");
-    const reply = await llm.agent(buildDiscussResumePrompt(message), {
+    const reply = await llm.agent(buildDiscussResumePrompt(message, opts.confidence), {
       systemPrompt: PLAN_CHAT_SYSTEM_PROMPT,
       cwd,
       maxTurns,
@@ -201,7 +314,7 @@ export async function applyPlanFromDiscussion(
 
   if (opts.resumeSessionId) {
     if (!llm.agent) throw new Error("resuming a plan session needs an agent-capable provider");
-    const reply = await llm.agent(buildApplyResumePrompt(plan, schema), {
+    const reply = await llm.agent(buildApplyResumePrompt(plan, schema, opts.confidence), {
       systemPrompt: PLAN_CHAT_SYSTEM_PROMPT,
       cwd,
       maxTurns,
@@ -217,7 +330,7 @@ export async function applyPlanFromDiscussion(
   if (opts.issue === undefined || opts.history === undefined) {
     throw new Error("applyPlanFromDiscussion without a session needs issue + history");
   }
-  const prompt = buildApplyFallbackPrompt(plan, schema, opts.issue, opts.history);
+  const prompt = buildApplyFallbackPrompt(plan, schema, opts.issue, opts.history, opts.confidence);
   if (llm.agent) {
     const reply = await llm.agent(prompt, {
       systemPrompt: PLAN_CHAT_SYSTEM_PROMPT,

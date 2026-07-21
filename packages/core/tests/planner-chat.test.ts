@@ -1,7 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
-import type { IssuePlan, PlanChatMessage } from "@skipper/shared";
+import type { ConfidenceReport, IssuePlan, PlanChatMessage } from "@skipper/shared";
 import type { AgentOptions, LLMProviderInterface, LLMResponse } from "../src/llm/provider";
-import { discussPlan, applyPlanFromDiscussion, type PlanIssueInput } from "../src/planner";
+import {
+  discussPlan,
+  applyPlanFromDiscussion,
+  renderConfidenceBlock,
+  type PlanIssueInput,
+} from "../src/planner";
 
 const ISSUE: PlanIssueInput = {
   key: "42",
@@ -23,6 +28,42 @@ const PLAN: IssuePlan = {
   manualChecks: [],
   openQuestions: [],
   estimatedSize: "s",
+};
+
+const REPORT: ConfidenceReport = {
+  version: 1,
+  composite: 0.7,
+  weights: { groundedness: 0.47, convergence: 0, critic: 0.4, clarity: 0.13 },
+  signals: {
+    groundedness: {
+      score: 0.96,
+      filesChecked: 8,
+      filesFound: 8,
+      symbolsChecked: 33,
+      symbolsFound: 29,
+      missingFiles: [],
+      missingSymbols: ["DESTRUCTIVE_ACTION_IDS", "pollNow"],
+      newFiles: [],
+    },
+    critic: {
+      score: 0.4,
+      verdict: "concerns",
+      objections: [
+        { kind: "wrong-approach", detail: "x".repeat(600), blocking: true },
+        { kind: "underspecified", detail: "the backoff ceiling is unspecified", blocking: false },
+      ],
+    },
+    clarity: {
+      score: 0.65,
+      bodyPresent: true,
+      hasAcceptanceCriteria: false,
+      hasReproSteps: false,
+      openQuestionCount: 0,
+    },
+  },
+  convergenceSkipped: { reason: "decisive", detail: "composite decisive for any convergence value" },
+  errors: [],
+  computedAt: "2026-07-21T00:00:00.000Z",
 };
 
 const HISTORY: PlanChatMessage[] = [
@@ -60,6 +101,41 @@ function fakeLLM(opts: FakeOpts): {
   return { llm, agent, ask, askStructured };
 }
 
+describe("renderConfidenceBlock", () => {
+  it("renders composite, present signals and objections", () => {
+    const block = renderConfidenceBlock(REPORT);
+    expect(block).toContain("Composite: 0.70");
+    expect(block).toContain("weights: groundedness 0.47, critic 0.40, clarity 0.13");
+    expect(block).not.toContain("convergence 0.00"); // absent signal omitted from weights
+    expect(block).toContain("- groundedness 0.96 — files 8/8; symbols 29/33");
+    expect(block).toContain("missing symbols: DESTRUCTIVE_ACTION_IDS, pollNow");
+    expect(block).toContain('- critic 0.40 — verdict "concerns", 2 objections:');
+    expect(block).toContain("1. [wrong-approach] (blocking)");
+    expect(block).toContain("2. [underspecified] the backoff ceiling is unspecified");
+    expect(block).toContain("- clarity 0.65 — issue body present: yes, acceptance criteria: no");
+    expect(block).toContain("- convergence: skipped (decisive)");
+  });
+
+  it("omits absent signals", () => {
+    const block = renderConfidenceBlock({
+      ...REPORT,
+      signals: { clarity: REPORT.signals.clarity },
+      convergenceSkipped: undefined,
+    });
+    expect(block).toContain("- clarity 0.65");
+    expect(block).not.toContain("groundedness");
+    expect(block).not.toContain("critic");
+  });
+
+  it("truncates long objection detail", () => {
+    const block = renderConfidenceBlock(REPORT);
+    const line = block.split("\n").find((l) => l.includes("[wrong-approach]"))!;
+    expect(line).toContain("…");
+    // 400 chars of detail + prefix + ellipsis, never the full 600.
+    expect(line).not.toContain("x".repeat(500));
+  });
+});
+
 describe("discussPlan", () => {
   it("resume path: prompt carries the message, no plan JSON, and resumeSessionId is threaded", async () => {
     const { llm, agent } = fakeLLM({ agentReply: "Because 429 means back off." });
@@ -94,6 +170,45 @@ describe("discussPlan", () => {
     expect(prompt).toContain("Is the scheduler affected?");
     expect(o.sessionId).toBe("mint-1");
     expect(o.resumeSessionId).toBeUndefined();
+  });
+
+  it("fallback path: injects the confidence block when context.confidence is set", async () => {
+    const { llm, agent } = fakeLLM({ agentReply: "answer" });
+    await discussPlan({
+      message: "why is the score so low?",
+      llm,
+      cwd: "/wt",
+      context: { issue: ISSUE, plan: PLAN, history: [], confidence: REPORT },
+    });
+    const [prompt] = agent.mock.calls[0] as [string];
+    expect(prompt).toContain("--- Confidence report");
+    expect(prompt).toContain("Composite: 0.70");
+  });
+
+  it("fallback path: no confidence block when context.confidence is absent", async () => {
+    const { llm, agent } = fakeLLM({ agentReply: "answer" });
+    await discussPlan({
+      message: "q",
+      llm,
+      cwd: "/wt",
+      context: { issue: ISSUE, plan: PLAN, history: [] },
+    });
+    const [prompt] = agent.mock.calls[0] as [string];
+    expect(prompt).not.toContain("Confidence report");
+  });
+
+  it("resume path: injects the confidence block when confidence is set", async () => {
+    const { llm, agent } = fakeLLM({ agentReply: "answer" });
+    await discussPlan({
+      message: "why so low?",
+      llm,
+      cwd: "/wt",
+      resumeSessionId: "sess-1",
+      confidence: REPORT,
+    });
+    const [prompt] = agent.mock.calls[0] as [string];
+    expect(prompt).toContain("--- Confidence report");
+    expect(prompt).toContain('verdict "concerns"');
   });
 
   it("degrades to ask() when the provider has no agent mode", async () => {
