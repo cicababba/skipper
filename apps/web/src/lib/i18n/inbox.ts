@@ -173,6 +173,7 @@ const en = {
     loadFailed: "Could not load the plan.",
     generated: "Generated",
     edited: "Edited by hand — the confidence score reflects the original plan.",
+    rescoring: "Rescoring confidence…",
     size: "Size",
     sections: {
       summary: "Summary",
@@ -519,6 +520,7 @@ const it: typeof en = {
     loadFailed: "Impossibile caricare il piano.",
     generated: "Generato",
     edited: "Modificato a mano — la confidence riflette il piano originale.",
+    rescoring: "Ricalcolo confidence…",
     size: "Taglia",
     sections: {
       summary: "Sommario",
@@ -865,6 +867,7 @@ const fr: typeof en = {
     loadFailed: "Impossible de charger le plan.",
     generated: "Généré",
     edited: "Modifié à la main — la confiance reflète le plan d'origine.",
+    rescoring: "Recalcul de la confiance…",
     size: "Taille",
     sections: {
       summary: "Résumé",
@@ -1212,6 +1215,7 @@ const es: typeof en = {
     loadFailed: "No se pudo cargar el plan.",
     generated: "Generado",
     edited: "Editado a mano — la confianza refleja el plan original.",
+    rescoring: "Recalculando confianza…",
     size: "Tamaño",
     sections: {
       summary: "Resumen",

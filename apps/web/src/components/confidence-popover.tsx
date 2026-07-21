@@ -69,14 +69,22 @@ export function ConfidenceBadge({ item }: { item: TrackedItem }) {
     };
   }, [open]);
 
-  if (composite === undefined) return <span className="text-muted/40 text-sm">—</span>;
+  const rescoring = item.plan?.rescoring;
+
+  if (composite === undefined) {
+    return rescoring ? (
+      <Loader2 size={13} className="animate-spin text-muted/60" />
+    ) : (
+      <span className="text-muted/40 text-sm">—</span>
+    );
+  }
 
   return (
     <>
       <button
         ref={triggerRef}
         onClick={() => (open ? setOpen(false) : void openPopover())}
-        className={`text-[11px] font-medium px-1.5 py-0.5 rounded border transition-colors hover:brightness-125 ${bandClasses(composite)}`}
+        className={`text-[11px] font-medium px-1.5 py-0.5 rounded border transition-colors hover:brightness-125 ${bandClasses(composite)}${rescoring ? " animate-pulse" : ""}`}
       >
         {pct(composite)}
       </button>
