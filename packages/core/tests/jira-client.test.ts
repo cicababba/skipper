@@ -71,4 +71,24 @@ describe("jiraGet", () => {
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(500);
   });
+
+  it("treats a 403 with retry-after as a retryable rate limit", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      jsonResponse(403, { message: "slow down" }, { "retry-after": "90" }),
+    ));
+    const err = await jiraGet("https://api.atlassian.com/ex/jira/c/rest", token).catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(403);
+    expect(err.retryAfterSeconds).toBe(90);
+    expect(err.message).toContain("Jira rate limited (403)");
+  });
+
+  it("treats a signal-less 403 as a generic API error", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(403, { message: "forbidden" })));
+    const err = await jiraGet("https://api.atlassian.com/ex/jira/c/rest", token).catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(403);
+    expect(err.message).toContain("Jira API error: 403");
+    expect(err.retryAfterSeconds).toBeUndefined();
+  });
 });
