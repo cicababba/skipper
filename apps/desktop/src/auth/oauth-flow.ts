@@ -227,14 +227,34 @@ async function tokenRequest(
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new OAuthError(`${label} failed (${res.status}): ${text}`);
+    throw new OAuthError(`${label} failed (${res.status}): ${text}`, undefined, {
+      status: res.status,
+      oauthCode: parseOAuthErrorCode(text),
+    });
   }
   const json = (await res.json()) as TokenResponse & { error?: string; error_description?: string };
   // GitHub returns errors as HTTP 200 with an error body.
   if (json.error) {
-    throw new OAuthError(`${label} failed: ${json.error}${json.error_description ? ` — ${json.error_description}` : ""}`);
+    throw new OAuthError(
+      `${label} failed: ${json.error}${json.error_description ? ` — ${json.error_description}` : ""}`,
+      undefined,
+      { oauthCode: json.error },
+    );
   }
   return json;
+}
+
+/** Best-effort OAuth2 `error` code from a token-endpoint error body (JSON or form). */
+function parseOAuthErrorCode(body: string): string | undefined {
+  if (!body) return undefined;
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown };
+    if (typeof parsed.error === "string") return parsed.error;
+  } catch {
+    /* not JSON — fall through to form parsing */
+  }
+  const match = /(?:^|&)error=([^&]+)/.exec(body);
+  return match ? decodeURIComponent(match[1]) : undefined;
 }
 
 async function exchangeCodeForTokens(
