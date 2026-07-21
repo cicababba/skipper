@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import type { TrackedItem, UntrackItemResult } from "@skipper/shared";
-import { actionsFor, type ItemAction } from "@/lib/inbox/actions";
+import { actionsFor, splitActions, type ItemAction } from "@/lib/inbox/actions";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT, type AppDict } from "@/lib/app-i18n";
+import { ActionMenu } from "./action-menu";
 
 // Renderer-side untrack confirm (#120): always prompt, then force-untrack (the
 // backend's needsConfirm gate stays as a safety net). Returns whether it ran.
@@ -26,6 +27,10 @@ export function ItemActions({ item }: { item: TrackedItem }) {
 
   const actions = actionsFor(item);
   if (actions.length === 0) return null;
+  const { primary, menu, destructive } = splitActions(actions);
+  // Exactly one spinner at a time: on the inline button when the primary runs, on the
+  // kebab trigger otherwise (the menu is unmounted while an action is in flight).
+  const busyInMenu = busyId !== null && busyId !== primary?.id;
 
   const run = async (action: ItemAction) => {
     setBusyId(action.id);
@@ -46,24 +51,26 @@ export function ItemActions({ item }: { item: TrackedItem }) {
 
   return (
     <div className="flex items-center gap-1.5">
-      {actions.map((action, i) => (
+      {primary && (
         <button
-          key={action.id}
           onClick={(e) => {
             e.stopPropagation();
-            void run(action);
+            void run(primary);
           }}
           disabled={busyId !== null}
-          className={`flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md border transition-colors disabled:opacity-50 whitespace-nowrap ${
-            i === 0 && action.id !== "close" && action.id !== "untrack"
-              ? "border-accent/30 bg-accent/10 text-accent hover:bg-accent/20"
-              : "border-border text-muted hover:text-foreground hover:bg-card-hover"
-          }`}
+          className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md border transition-colors disabled:opacity-50 whitespace-nowrap border-accent/30 bg-accent/10 text-accent hover:bg-accent/20"
         >
-          {busyId === action.id && <Loader2 size={11} className="animate-spin" />}
-          {t.inbox.actions[action.id]}
+          {busyId === primary.id && <Loader2 size={11} className="animate-spin" />}
+          {t.inbox.actions[primary.id]}
         </button>
-      ))}
+      )}
+      <ActionMenu
+        actions={menu}
+        destructive={destructive}
+        busyId={busyId}
+        busyInMenu={busyInMenu}
+        onSelect={(action) => void run(action)}
+      />
     </div>
   );
 }
