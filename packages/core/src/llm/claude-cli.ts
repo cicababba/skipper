@@ -120,6 +120,12 @@ function runClaude(
   signal?: AbortSignal,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
+    // An already-aborted signal never fires the { once: true } listener, so the
+    // process would run to completion — bail before spawning (#159).
+    if (signal?.aborted) {
+      reject(new AgentAbortError());
+      return;
+    }
     const claude = resolveClaude();
     const proc = spawn(claude.file, [...claude.argsPrefix, ...args], {
       cwd: cwd ?? tmpdir(),
@@ -388,7 +394,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
     // model to reply with JSON-only — then extract.
     const inlined =
       `${prompt}\n\n--\nReply with ONLY a single JSON value matching this JSON Schema. No prose, no code fences, no preamble.\n\nSchema:\n${JSON.stringify(schema)}`;
-    const stdout = await runClaude(args, inlined, opts?.cwd);
+    const stdout = await runClaude(args, inlined, opts?.cwd, undefined, opts?.signal);
 
     const data = JSON.parse(stdout);
     if (data.is_error) {

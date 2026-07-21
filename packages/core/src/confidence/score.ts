@@ -6,7 +6,7 @@ import {
   type GateMode,
   type IssuePlan,
 } from "@skipper/shared";
-import type { LLMProviderInterface } from "../llm";
+import { AgentAbortError, type LLMProviderInterface } from "../llm";
 import { generatePlan as realGeneratePlan, type PlanIssueInput } from "../planner";
 import { scoreClarity } from "./clarity";
 import { scoreConvergence } from "./convergence";
@@ -37,6 +37,8 @@ export interface ComputeConfidenceOptions {
    * choice (it skips least).
    */
   autoCoding?: GateMode;
+  /** Abort scoring (critic + extra plan runs); claude-cli only (#159). */
+  signal?: AbortSignal;
   deps?: { generatePlan?: typeof realGeneratePlan };
 }
 
@@ -106,18 +108,26 @@ export async function computeConfidence(
     scoreGroundedness(opts.plan, opts.repoPath)
       .then((s) => void (report.signals.groundedness = s))
       .catch((err) => void report.errors.push(`groundedness: ${message(err)}`)),
-    critiquePlan(opts.plan, opts.issue, opts.llm)
+    critiquePlan(opts.plan, opts.issue, opts.llm, opts.signal)
       .then((s) => void (report.signals.critic = s))
       .catch((err) => void report.errors.push(`critic: ${message(err)}`)),
   ]);
 
+  // Bail before the expensive extra plan runs if the caller aborted; the planner's
+  // outer catch absorbs this into report = undefined (#159).
+  if (opts.signal?.aborted) throw new AgentAbortError();
   const skip = shouldSkipConvergence(report.signals, extraRuns, thresholds, autoCoding);
   if (skip) {
     report.convergenceSkipped = skip;
   } else {
     const settled = await Promise.allSettled(
       Array.from({ length: extraRuns }, () =>
-        generate({ issue: opts.issue, repoPath: opts.repoPath, llm: opts.llm }),
+        generate({
+          issue: opts.issue,
+          repoPath: opts.repoPath,
+          llm: opts.llm,
+          ...(opts.signal ? { signal: opts.signal } : {}),
+        }),
       ),
     );
     const extra = settled

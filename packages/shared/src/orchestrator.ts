@@ -341,6 +341,20 @@ export function canTransition(from: LifecycleState, to: LifecycleState): boolean
   return TRANSITIONS[from].includes(to);
 }
 
+/**
+ * Timestamp of the item's most recent entry into planning — the planner's run
+ * token (#159). Any fresh re-entry (re-admit, replan, base-change, needs-input
+ * resume) mints a new transition event, so a zombie run captured against an
+ * older token is detectably stale. `undefined` when the item never entered
+ * planning (legacy/test items with an empty transition log compare equal).
+ */
+export function latestPlanningTransitionAt(item: TrackedItem): string | undefined {
+  for (let i = item.transitions.length - 1; i >= 0; i--) {
+    if (item.transitions[i].to === "planning") return item.transitions[i].at;
+  }
+  return undefined;
+}
+
 // Renderer-facing orchestrator snapshot (pushed on skipper:orchestrator:stateChanged).
 
 export interface OrchestratorAccountState {

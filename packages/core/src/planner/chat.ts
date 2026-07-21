@@ -323,7 +323,7 @@ export async function applyPlanFromDiscussion(
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
     });
-    const updated = await validatePlanReply(llm, reply.text);
+    const updated = await validatePlanReply(llm, reply.text, opts.signal);
     return { plan: updated, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
   }
 
@@ -341,10 +341,10 @@ export async function applyPlanFromDiscussion(
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
     });
-    const updated = await validatePlanReply(llm, reply.text);
+    const updated = await validatePlanReply(llm, reply.text, opts.signal);
     return { plan: updated, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
   }
-  const raw = await llm.askStructured<unknown>(prompt, schema);
-  const updated = await validatePlanReply(llm, JSON.stringify(raw));
+  const raw = await llm.askStructured<unknown>(prompt, schema, opts.signal ? { signal: opts.signal } : undefined);
+  const updated = await validatePlanReply(llm, JSON.stringify(raw), opts.signal);
   return { plan: updated };
 }
