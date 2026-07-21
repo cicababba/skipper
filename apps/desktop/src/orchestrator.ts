@@ -115,6 +115,7 @@ import {
   readWorktreeFileVersions,
   refreshWorktreeBase,
   resolveBaseRef,
+  worktreeDiffTotals,
   worktreeDirFor,
   worktreeDirtyFiles,
   worktreeStatus,
@@ -1937,7 +1938,9 @@ export function initOrchestrator(
     const wt = await usableWorktree(itemId);
     if (!wt.ok) return wt;
     try {
-      return { ok: true as const, files: await listWorktreeChanges(wt.path) };
+      const files = await listWorktreeChanges(wt.path);
+      const totals = await worktreeDiffTotals(wt.path);
+      return { ok: true as const, files, totals };
     } catch (err) {
       return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
     }

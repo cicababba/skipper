@@ -1,51 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { AlertTriangle, Inbox, Loader2 } from "lucide-react";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { EventConsole } from "@/components/event-console";
-import { ResumeSessionButton } from "./resume-session";
 import { CoderReportCard } from "./report-card";
 
 export function ReviewDetailView() {
   const params = useParams();
   const id = decodeURIComponent(String(params.id));
-  const router = useRouter();
-  const { state, requestTransition, openPr } = useOrchestrator();
+  const { state } = useOrchestrator();
   const { t } = useT();
   const r = t.inbox.review;
 
   const item = state?.items.find((i) => i.id === id);
   const live = item?.state === "human-review";
-
-  const [busyAction, setBusyAction] = useState<"openPr" | "close" | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-
-  const runOpenPr = async () => {
-    setBusyAction("openPr");
-    setActionError(null);
-    try {
-      const result = await openPr(id);
-      if (result.ok) router.push("/inbox");
-      else setActionError(result.error);
-    } finally {
-      setBusyAction(null);
-    }
-  };
-
-  const runClose = async () => {
-    setBusyAction("close");
-    setActionError(null);
-    try {
-      const result = await requestTransition(id, "closed");
-      if (result.ok) router.push("/inbox");
-      else setActionError(result.error);
-    } finally {
-      setBusyAction(null);
-    }
-  };
 
   const isElectron = typeof window !== "undefined" && !!window.skipper;
 
@@ -73,13 +43,6 @@ export function ReviewDetailView() {
 
   return (
     <div className="min-h-full p-6 space-y-4 max-w-3xl mx-auto">
-      <ResumeSessionButton
-        itemId={id}
-        item={item}
-        sessionId={item.review?.sessionId}
-        running={item.state === "agent-review"}
-      />
-
       {!live && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 px-3 py-2 text-sm">
           <AlertTriangle size={14} className="shrink-0" />
@@ -129,28 +92,6 @@ export function ReviewDetailView() {
           )}
         </div>
       )}
-
-      <div className="rounded-lg border border-accent/30 bg-accent/5 px-4 py-3 space-y-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => void runOpenPr()}
-            disabled={busyAction !== null || !live}
-            className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50"
-          >
-            {busyAction === "openPr" && <Loader2 size={11} className="animate-spin" />}
-            {t.inbox.actions.openPr}
-          </button>
-          <button
-            onClick={() => void runClose()}
-            disabled={busyAction !== null || !live}
-            className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-50"
-          >
-            {busyAction === "close" && <Loader2 size={11} className="animate-spin" />}
-            {t.inbox.actions.close}
-          </button>
-        </div>
-        {actionError && <p className="text-[12px] text-red-300 break-all">{actionError}</p>}
-      </div>
     </div>
   );
 }

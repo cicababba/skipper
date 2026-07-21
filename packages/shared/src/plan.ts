@@ -75,6 +75,8 @@ export interface PlanRevision {
   /** ISO 8601 — when this snapshot was superseded (= the update's editedAt). */
   at: string;
   source: PlanRevisionSource;
+  /** Confidence at supersede time, for the plan-revision delta (#169). Absent on pre-#169 files. */
+  confidence?: ConfidenceReport;
 }
 
 /** On-disk envelope for a generated plan (TrackedItem.plan.ref points at it). */

@@ -73,7 +73,10 @@ export async function updateStoredPlan(
     ...stored,
     plan,
     editedAt: now,
-    revisions: [...(stored.revisions ?? []), { plan: stored.plan, at: now, source }],
+    revisions: [
+      ...(stored.revisions ?? []),
+      { plan: stored.plan, at: now, source, confidence: stored.confidence },
+    ],
   };
   await writeStoredPlan(plansDir, ref, updated);
   return updated;

@@ -28,6 +28,8 @@ interface EventConsoleProps {
   /** Wrap the console in a chevron-toggle header (default expanded). The
    *  subscription stays mounted while collapsed so events keep accumulating. */
   collapsible?: boolean;
+  /** Initial expanded state when collapsible (default true). */
+  defaultOpen?: boolean;
   title?: string;
 }
 
@@ -39,12 +41,13 @@ export function EventConsole({
   onEvent,
   className,
   collapsible,
+  defaultOpen = true,
   title,
 }: EventConsoleProps) {
   const { t } = useT();
   const c = t.inbox.console;
   const [envelopes, setEnvelopes] = useState<CodingEventEnvelope[]>([]);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(defaultOpen);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stuckRef = useRef(true);
 

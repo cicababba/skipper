@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { StoredPlan } from "@skipper/shared";
+import type { ConfidenceReport, StoredPlan } from "@skipper/shared";
 import {
   archiveStoredPlan,
   readStoredPlan,
@@ -116,6 +116,27 @@ describe("updateStoredPlan (#165)", () => {
     expect(updated?.generatedAt).toBe(original.generatedAt);
     expect(updated?.model).toBe(original.model);
     expect(updated?.version).toBe(2);
+  });
+
+  it("snapshots the confidence at supersede time (#169)", async () => {
+    const original = makePlan("github:1");
+    original.confidence = { composite: 0.7 } as unknown as ConfidenceReport;
+    await writeStoredPlan(dir, ref, original);
+
+    const updated = await updateStoredPlan(
+      dir,
+      ref,
+      { ...original.plan, summary: "edited" },
+      "inline-edit",
+    );
+    expect(updated?.revisions?.[0].confidence).toEqual({ composite: 0.7 });
+  });
+
+  it("leaves the revision confidence undefined when the plan had none (#169)", async () => {
+    const original = makePlan("github:1");
+    await writeStoredPlan(dir, ref, original);
+    const updated = await updateStoredPlan(dir, ref, { ...original.plan, summary: "edited" }, "chat-apply");
+    expect(updated?.revisions?.[0].confidence).toBeUndefined();
   });
 
   it("starts a one-element array on a legacy file without revisions", async () => {

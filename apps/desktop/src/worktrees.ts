@@ -6,6 +6,7 @@ import { basename, dirname, isAbsolute, join, resolve, normalize, sep } from "no
 import {
   slugKey,
   type RepoRef,
+  type WorktreeDiffTotals,
   type WorktreeFileChange,
   type WorktreeFileContents,
   type WorktreeStatusResult,
@@ -306,6 +307,26 @@ export async function listWorktreeChanges(worktreePath: string): Promise<Worktre
     throw new Error(`git diff --name-status failed: ${r.stderr.trim() || `exit ${r.code}`}`);
   }
   return parseNameStatusZ(r.stdout);
+}
+
+/**
+ * Summed added/deleted line counts vs HEAD, for the overview diff-stat chip
+ * (#169). Assumes the caller already ran `git add -A -N` (as listWorktreeChanges
+ * does) so untracked files are counted; binary files report "-\t-" and add 0.
+ */
+export async function worktreeDiffTotals(worktreePath: string): Promise<WorktreeDiffTotals> {
+  const numstat = await runGit(worktreePath, ["diff", "HEAD", "--numstat"]);
+  if (numstat.code !== 0) {
+    throw new Error(`git diff --numstat failed: ${numstat.stderr.trim() || `exit ${numstat.code}`}`);
+  }
+  const totals: WorktreeDiffTotals = { additions: 0, deletions: 0 };
+  for (const line of numstat.stdout.split("\n")) {
+    if (!line.trim()) continue;
+    const [added, deleted] = line.split("\t");
+    totals.additions += parseInt(added, 10) || 0;
+    totals.deletions += parseInt(deleted, 10) || 0;
+  }
+  return totals;
 }
 
 function looksBinary(text: string): boolean {
