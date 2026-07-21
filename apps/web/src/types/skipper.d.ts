@@ -22,6 +22,7 @@ import type {
   RepoUnlinkResult,
   ResumeRiteAction,
   SaveWorktreeFileResult,
+  SetRepoBaseBranchResult,
   SolutionRecord,
   StoredCoderReport,
   StoredPlan,
@@ -194,6 +195,11 @@ declare global {
           accountId?: string,
         ) => Promise<RepoLinkResult>;
         unlinkRepo: (owner: string, name: string) => Promise<RepoUnlinkResult>;
+        setRepoBaseBranch: (
+          owner: string,
+          name: string,
+          baseBranch: string | null,
+        ) => Promise<SetRepoBaseBranchResult>;
         listRepos: () => Promise<ListReposResult>;
         getPlan: (itemId: string) => Promise<StoredPlan | null>;
         getCoderReport: (itemId: string) => Promise<StoredCoderReport | null>;

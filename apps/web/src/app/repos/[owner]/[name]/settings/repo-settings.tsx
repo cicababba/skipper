@@ -10,6 +10,7 @@ import { Section } from "@/app/inbox/[id]/plan-sections";
 import { useRepoParams } from "../use-repo-params";
 import { RepoIntakeControls } from "./repo-intake-controls";
 import { RepoModelControls } from "./repo-model-controls";
+import { RepoBaseBranchControl } from "./repo-base-branch-control";
 
 export function RepoSettingsView() {
   const { t } = useT();
@@ -74,6 +75,11 @@ export function RepoSettingsView() {
           <Section title={t.settings.orchestration.models} editable={false} editing={false}>
             <RepoModelControls row={row} busy={busy} onPatch={(p) => void patch(p)} />
           </Section>
+          {row.linked && (
+            <Section title={rp.baseBranch} editable={false} editing={false}>
+              <RepoBaseBranchControl owner={owner} name={name} repoKey={key} />
+            </Section>
+          )}
         </>
       )}
     </div>

@@ -470,8 +470,10 @@ export type RepoLinkResult = { ok: true; localPath: string } | { ok: false; erro
 
 export type RepoUnlinkResult = { ok: true } | { ok: false; error: string };
 
+export type SetRepoBaseBranchResult = { ok: true } | { ok: false; error: string };
+
 export interface ListReposResult {
-  linked: { key: string; localPath: string; linkedAt: string; linked: true }[];
+  linked: { key: string; localPath: string; linkedAt: string; baseBranch?: string; linked: true }[];
   unlinked: { key: string; repo: RepoRef; linked: false }[];
 }
 
