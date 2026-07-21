@@ -7,7 +7,6 @@ import { ArrowLeft, ExternalLink, EyeOff, SquareTerminal } from "lucide-react";
 import {
   displayKey,
   slugKey,
-  type LifecycleState,
   type TrackedItem,
   type WorktreeStatusResult,
 } from "@skipper/shared";
@@ -18,23 +17,20 @@ import { repoKey } from "@/lib/inbox/model";
 import { confirmAndUntrack } from "../item-actions";
 import { StateBadge } from "../state-badge";
 import { StaleRepoBadge } from "../stale-repo-badge";
-import { IssueDetailView } from "./issue-detail";
+import { OverviewDetailView } from "./overview-detail";
 import { PlanDetailView } from "./plan-detail";
-import { CodingDetailView } from "./coding-detail";
 import { ReviewDetailView } from "./review-detail";
 import { WorktreeDetailView } from "./worktree-detail";
 
-type DetailTab = "detail" | "plan" | "coding" | "review" | "worktree";
+type DetailTab = "overview" | "plan" | "review" | "worktree";
 
-const VISIBLE_TABS: DetailTab[] = ["detail", "plan", "coding", "review", "worktree"];
+const VISIBLE_TABS: DetailTab[] = ["overview", "plan", "review", "worktree"];
 
 function tabEnabled(tab: DetailTab, item: TrackedItem): boolean {
   switch (tab) {
-    case "detail":
+    case "overview":
     case "plan":
       return true;
-    case "coding":
-      return item.transitions.some((t) => t.to === "coding");
     case "review":
       return item.review != null || item.state === "agent-review" || item.state === "human-review";
     case "worktree":
@@ -42,38 +38,17 @@ function tabEnabled(tab: DetailTab, item: TrackedItem): boolean {
   }
 }
 
-function rawTabForState(state: LifecycleState, item: TrackedItem): DetailTab {
-  switch (state) {
-    case "triage":
-    case "closed":
-      return "detail";
-    case "planning":
-    case "plan-gate":
-    case "queued":
-      return "plan";
-    case "coding":
-      return "coding";
-    case "agent-review":
-    case "human-review":
-    case "pr-open":
-    case "in-review":
-    case "changes-requested":
-    case "merged":
-      return "review";
-    case "needs-input":
-    case "blocked":
-      return item.resumeTo ? rawTabForState(item.resumeTo, item) : "plan";
-    case "failed":
-      return item.transitions.some((t) => t.to === "coding") ? "coding" : "plan";
-  }
-}
-
+// Landing rule (#169, decision 4): the plan-gate — and a parked item that will
+// resume there — open on Plan; everything else opens on Overview.
 function defaultTabFor(item: TrackedItem): DetailTab {
-  const tab = rawTabForState(item.state, item);
-  return tabEnabled(tab, item) ? tab : "plan";
+  if (item.state === "plan-gate") return "plan";
+  if ((item.state === "needs-input" || item.state === "blocked") && item.resumeTo === "plan-gate") {
+    return "plan";
+  }
+  return "overview";
 }
 
-// 5-tab issue-detail shell (#112). The active tab is latched once when the item
+// 4-tab issue-detail shell (#169). The active tab is latched once when the item
 // first resolves, so a background state change never swaps the view mid-edit.
 export function ItemDetailView() {
   const params = useParams();
@@ -110,7 +85,7 @@ export function ItemDetailView() {
   const tabs = VISIBLE_TABS.filter((tk) => tk !== "worktree" || item.worktree != null);
 
   const terminalReady = wtStatus?.present === true ? wtStatus : null;
-  const showTerminal = activeTab !== "detail" && item.worktree != null;
+  const showTerminal = item.worktree != null;
 
   return (
     <div className="h-full flex flex-col">
@@ -195,12 +170,10 @@ export function ItemDetailView() {
         })}
       </div>
       <div className="flex-1 min-h-0 overflow-auto flex flex-col">
-        {activeTab === "detail" ? (
-          <IssueDetailView />
+        {activeTab === "overview" ? (
+          <OverviewDetailView onNavigateTab={(tk) => setTab(tk)} />
         ) : activeTab === "plan" ? (
           <PlanDetailView />
-        ) : activeTab === "coding" ? (
-          <CodingDetailView />
         ) : activeTab === "review" ? (
           <ReviewDetailView />
         ) : (

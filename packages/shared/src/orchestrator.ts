@@ -440,8 +440,14 @@ export interface WorktreeFileChange {
   status: WorktreeFileStatus;
 }
 
+/** Summed added/deleted line counts across a worktree diff (#169). */
+export interface WorktreeDiffTotals {
+  additions: number;
+  deletions: number;
+}
+
 export type WorktreeChangesResult =
-  | { ok: true; files: WorktreeFileChange[] }
+  | { ok: true; files: WorktreeFileChange[]; totals: WorktreeDiffTotals }
   | { ok: false; error: string };
 
 export interface WorktreeFileContents {

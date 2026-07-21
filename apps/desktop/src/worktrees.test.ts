@@ -22,6 +22,7 @@ import {
   removeWorktree,
   resolveBaseRef,
   resolveInsideWorktree,
+  worktreeDiffTotals,
   worktreeDirFor,
   worktreeDirtyFiles,
   worktreeStatus,
@@ -432,6 +433,52 @@ describe("worktree review IO (#14)", () => {
     expect(file.modified).toBe("edited\n");
     await expect(writeWorktreeFile(wt, "nope.txt", "x")).rejects.toThrow(/not a file/);
     await expect(writeWorktreeFile(wt, "../outside.txt", "x")).rejects.toThrow(/escapes/);
+  });
+});
+
+describe("worktreeDiffTotals (#169)", () => {
+  it("sums added and deleted lines, counting untracked files and ignoring binary", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-tot");
+    await ensureWorktree({
+      repoPath: clone,
+      worktreePath,
+      branch: "feature/issue-tot",
+      baseRef: "origin/main",
+    });
+    // README.md is "hello\n" at HEAD → adds 2 lines.
+    await writeFile(join(worktreePath, "README.md"), "hello\nadded1\nadded2\n");
+    await writeFile(join(worktreePath, "new.ts"), "a\nb\nc\n"); // untracked → +3
+    await writeFile(join(worktreePath, "bin.dat"), Buffer.from([0, 1, 2, 0, 3])); // binary → 0
+
+    await listWorktreeChanges(worktreePath); // intent-to-add so untracked files count
+    expect(await worktreeDiffTotals(worktreePath)).toEqual({ additions: 5, deletions: 0 });
+  });
+
+  it("counts deletions", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-del");
+    await ensureWorktree({
+      repoPath: clone,
+      worktreePath,
+      branch: "feature/issue-del",
+      baseRef: "origin/main",
+    });
+    await rm(join(worktreePath, "README.md"));
+    await listWorktreeChanges(worktreePath);
+    expect(await worktreeDiffTotals(worktreePath)).toEqual({ additions: 0, deletions: 1 });
+  });
+
+  it("reports zero totals for a clean worktree", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-clean-tot");
+    await ensureWorktree({
+      repoPath: clone,
+      worktreePath,
+      branch: "feature/issue-clean-tot",
+      baseRef: "origin/main",
+    });
+    expect(await worktreeDiffTotals(worktreePath)).toEqual({ additions: 0, deletions: 0 });
   });
 });
 
