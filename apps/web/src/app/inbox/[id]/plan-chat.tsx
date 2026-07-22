@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Send, X } from "lucide-react";
-import type { PlanChatMessage, StoredPlan } from "@skipper/shared";
+import { Check, Loader2, Send, X } from "lucide-react";
+import { isPlanChatText, type PlanChatMessage, type StoredPlan } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { EventConsole } from "@/components/event-console";
 import { ConsoleMarkdown } from "@/components/console-markdown";
@@ -22,6 +22,10 @@ interface PlanChatPanelProps {
 }
 
 const STICKY_THRESHOLD = 24;
+
+function hhmm(at: string): string {
+  return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
 export function PlanChatPanel({
   itemId,
@@ -43,13 +47,15 @@ export function PlanChatPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const stuckRef = useRef(true);
 
+  const textCount = messages.filter(isPlanChatText).length;
+
   useEffect(() => {
     onBusyChange(busy !== null);
   }, [busy, onBusyChange]);
 
   useEffect(() => {
-    onCountChange?.(messages.length);
-  }, [messages.length, onCountChange]);
+    onCountChange?.(textCount);
+  }, [textCount, onCountChange]);
 
   useEffect(() => {
     if (!window.skipper) return;
@@ -97,14 +103,16 @@ export function PlanChatPanel({
   };
 
   const apply = async () => {
-    if (busy || disabled || messages.length === 0 || !window.skipper) return;
+    if (busy || disabled || textCount === 0 || !window.skipper) return;
     setError(null);
     setNotice(null);
     setBusy("apply");
     try {
       const res = await window.skipper.planChat.apply(itemId);
-      if (res.ok) onPlanUpdated(res.stored);
-      else if (res.cancelled) setNotice(chat.cancelled);
+      if (res.ok) {
+        onPlanUpdated(res.stored);
+        setMessages(await window.skipper.planChat.getHistory(itemId));
+      } else if (res.cancelled) setNotice(chat.cancelled);
       else setError(res.error ? `${chat.applyFailed}: ${res.error}` : chat.applyFailed);
     } finally {
       setBusy(null);
@@ -122,7 +130,14 @@ export function PlanChatPanel({
           <p className="text-[12px] text-muted/70">{chat.empty}</p>
         ) : (
           messages.map((m, i) =>
-            m.role === "user" ? (
+            !isPlanChatText(m) ? (
+              <div key={i} className="flex justify-center py-1">
+                <span className="flex items-center gap-1.5 rounded-full bg-card-hover/40 px-2.5 py-0.5 text-[11px] text-muted/70">
+                  <Check size={11} className="text-emerald-400" />
+                  {chat.applied(m.changeCount)} · {hhmm(m.at)}
+                </span>
+              </div>
+            ) : m.role === "user" ? (
               <div key={i} className="flex justify-end">
                 <div className="max-w-[85%] rounded-lg bg-card-hover/40 px-3 py-2 whitespace-pre-wrap break-words">
                   {m.text}
@@ -181,7 +196,7 @@ export function PlanChatPanel({
 
         <button
           onClick={() => void apply()}
-          disabled={messages.length === 0 || !!busy || disabled}
+          disabled={textCount === 0 || !!busy || disabled}
           className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50"
         >
           {busy === "apply" && <Loader2 size={11} className="animate-spin" />}

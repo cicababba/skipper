@@ -116,6 +116,29 @@ describe("buildTimeline", () => {
     expect(kinds).toEqual(["triage", "planner-console", "plan-revision", "plan-gate"]);
   });
 
+  it("does not count an applied marker toward the through-revision message count (#201)", () => {
+    const transitions = [
+      tx("2026-07-01T00:00:00.000Z", "triage", null),
+      tx("2026-07-01T00:01:00.000Z", "planning", "triage"),
+      tx("2026-07-01T00:02:00.000Z", "plan-gate", "planning"),
+    ];
+    const messages: PlanChatMessage[] = [
+      { role: "user", text: "a", at: "2026-07-01T00:01:10.000Z" },
+      { role: "assistant", text: "b", at: "2026-07-01T00:01:20.000Z" },
+      { kind: "applied", changeCount: 3, at: "2026-07-01T00:01:25.000Z" },
+    ];
+    const plan = storedPlan({
+      confidence: report(0.8),
+      revisions: [{ plan: storedPlan().plan, at: "2026-07-01T00:01:30.000Z", source: "chat-apply", confidence: report(0.6) }],
+    });
+    const entries = buildTimeline(item(transitions), plan, messages, NOW);
+    const rev = entries.find((e) => e.artifact?.kind === "plan-revision");
+    expect(rev?.artifact?.kind).toBe("plan-revision");
+    if (rev?.artifact?.kind === "plan-revision") {
+      expect(rev.artifact.messageCount).toBe(2);
+    }
+  });
+
   it("renders failed rounds as pointers and the last round as the reviewer console", () => {
     const transitions = [
       tx("2026-07-01T00:00:00.000Z", "triage", null),

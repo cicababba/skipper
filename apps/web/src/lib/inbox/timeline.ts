@@ -1,3 +1,4 @@
+import { isPlanChatText } from "@skipper/shared";
 import type {
   LifecycleState,
   PlanChatMessage,
@@ -114,7 +115,9 @@ export function buildTimeline(
     const rev = revisions[j];
     let messageCount: number | undefined;
     if (rev.source === "chat-apply") {
-      const throughRevision = chatMessages.filter((m) => m.at <= rev.at).length;
+      const throughRevision = chatMessages.filter(
+        (m) => isPlanChatText(m) && m.at <= rev.at,
+      ).length;
       messageCount = Math.max(0, throughRevision - consumedChat);
       consumedChat = throughRevision;
     }

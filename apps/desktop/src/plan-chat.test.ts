@@ -13,7 +13,7 @@ import type {
   StoredPlan,
   TrackedItem,
 } from "@skipper/shared";
-import { DEFAULT_LLM_SETTINGS } from "@skipper/shared";
+import { DEFAULT_LLM_SETTINGS, isPlanChatText } from "@skipper/shared";
 import { AgentAbortError, type LLMProviderInterface, type LLMResponse } from "@skipper/core";
 import {
   initPlanChat,
@@ -23,7 +23,7 @@ import {
   cancelPlanChat,
   type PlanChatDeps,
 } from "./plan-chat";
-import { appendPlanChatExchange, readPlanChat } from "./plan-chat-store";
+import { appendPlanChatApplied, appendPlanChatExchange, readPlanChat } from "./plan-chat-store";
 
 const VALID_PLAN: IssuePlan = {
   summary: "do the thing",
@@ -205,7 +205,7 @@ describe("sendPlanChatMessage resume vs fallback", () => {
     expect(opts.sessionId).toBeUndefined();
     // Persisted transcript survives.
     const chat = await readPlanChat(plansDir, "github:1");
-    expect(chat?.messages.map((m) => m.text)).toEqual(["why?", "an answer"]);
+    expect(chat?.messages.filter(isPlanChatText).map((m) => m.text)).toEqual(["why?", "an answer"]);
     // Never emit agent-start (would wipe the planner replay buffer).
     expect(h.events.some((e) => e.kind === "status" && e.phase === "agent-start")).toBe(false);
   });
@@ -293,6 +293,39 @@ describe("applyPlanChatUpdate", () => {
     const res = await applyPlanChatUpdate("github:1");
     expect(res).toEqual({ ok: false, error: "no discussion to apply" });
   });
+
+  it("persists an applied marker with the change count after a successful apply (#201)", async () => {
+    const amended = { ...VALID_PLAN, summary: "amended summary" };
+    const provider = fakeProvider(async () => ({ text: JSON.stringify(amended), sessionId: "sess-1" }));
+    const h = makeHarness(plansDir, makeItem());
+    initPlanChat(h.deps, provider);
+    await appendPlanChatExchange(plansDir, "github:1", GENERATED_AT, "change X", "ok");
+
+    const res = await applyPlanChatUpdate("github:1");
+    expect(res.ok).toBe(true);
+
+    const chat = await readPlanChat(plansDir, "github:1");
+    const marker = chat?.messages.at(-1);
+    expect(isPlanChatText(marker!)).toBe(false);
+    expect(marker).toMatchObject({ kind: "applied" });
+    expect((marker as { changeCount: number }).changeCount).toBeGreaterThan(0);
+  });
+
+  it("writes no marker when apply refuses for lack of history (#201)", async () => {
+    const h = makeHarness(plansDir, makeItem());
+    initPlanChat(h.deps, fakeProvider());
+    const res = await applyPlanChatUpdate("github:1");
+    expect(res.ok).toBe(false);
+    expect(await readPlanChat(plansDir, "github:1")).toBeNull();
+  });
+
+  it("refuses to apply a transcript that holds only an applied marker (#201)", async () => {
+    const h = makeHarness(plansDir, makeItem());
+    initPlanChat(h.deps, fakeProvider());
+    await appendPlanChatApplied(plansDir, "github:1", GENERATED_AT, 2);
+    const res = await applyPlanChatUpdate("github:1");
+    expect(res).toEqual({ ok: false, error: "no discussion to apply" });
+  });
 });
 
 describe("getPlanChatHistory", () => {
@@ -301,7 +334,7 @@ describe("getPlanChatHistory", () => {
     initPlanChat(h.deps, fakeProvider());
     await appendPlanChatExchange(plansDir, "github:1", GENERATED_AT, "q", "a");
     const history = await getPlanChatHistory("github:1");
-    expect(history.map((m) => m.text)).toEqual(["q", "a"]);
+    expect(history.filter(isPlanChatText).map((m) => m.text)).toEqual(["q", "a"]);
   });
 
   it("drops a transcript from a superseded plan generation", async () => {

@@ -13,7 +13,7 @@ import type {
   StoredPlan,
   TrackedItem,
 } from "@skipper/shared";
-import { DEFAULT_LLM_SETTINGS } from "@skipper/shared";
+import { DEFAULT_LLM_SETTINGS, isPlanChatText } from "@skipper/shared";
 import { AgentAbortError, type LLMProviderInterface, type LLMResponse } from "@skipper/core";
 import {
   initAgentChat,
@@ -182,7 +182,7 @@ describe("sendAgentChatMessage resume vs fallback", () => {
     const opts = provider.agent.mock.calls[0][1] as Record<string, unknown>;
     expect(opts.resumeSessionId).toBe("wt-sess");
     const chat = await readAgentChat(plansDir, "coder", "github:1");
-    expect(chat?.messages.map((m) => m.text)).toEqual(["why?", "an answer"]);
+    expect(chat?.messages.filter(isPlanChatText).map((m) => m.text)).toEqual(["why?", "an answer"]);
   });
 
   it("resumes the reviewer session from review.sessionId on turn 1", async () => {
@@ -335,7 +335,7 @@ describe("getAgentChatHistory", () => {
     initAgentChat(h.deps, fakeProvider());
     await sendAgentChatMessage("coder", "github:1", "q");
     const history = await getAgentChatHistory("coder", "github:1");
-    expect(history.map((m) => m.text)).toEqual(["q", "an answer"]);
+    expect(history.filter(isPlanChatText).map((m) => m.text)).toEqual(["q", "an answer"]);
   });
 
   it("drops a transcript from a superseded binding", async () => {
@@ -415,7 +415,7 @@ describe("prepareCoderChatApply distillation", () => {
     expect(opts.resumeSessionId).toBe("wt-sess");
     // Apply never appends to the transcript, but it persists the session lineage.
     const chat = await readAgentChat(plansDir, "coder", "github:1");
-    expect(chat?.messages.map((m) => m.text)).toEqual(["please fix", "will do"]);
+    expect(chat?.messages.filter(isPlanChatText).map((m) => m.text)).toEqual(["please fix", "will do"]);
     expect(chat?.sessionId).toBe("wt-sess");
   });
 

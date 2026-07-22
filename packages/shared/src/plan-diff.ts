@@ -4,7 +4,7 @@
 // retitled step or a changed acceptance.addressedBy shows as removed + added.
 // Pure module — no React.
 
-import type { IssuePlan, PlanFileRef, PlanStep } from "@skipper/shared";
+import type { IssuePlan, PlanAcceptance, PlanFileRef, PlanStep } from "./plan";
 
 export interface StringListDiff {
   added: string[];
@@ -81,8 +81,13 @@ function diffSteps(before: PlanStep[], after: PlanStep[]): StepsDiff {
   return { added, removed, modified };
 }
 
+/** The matching key for one acceptance row — shared with the views so highlights line up. */
+export function acceptanceString(a: PlanAcceptance): string {
+  return `${a.criterion} — ${a.addressedBy}`;
+}
+
 function acceptanceStrings(plan: IssuePlan): string[] {
-  return plan.acceptance.map((a) => `${a.criterion} — ${a.addressedBy}`);
+  return plan.acceptance.map(acceptanceString);
 }
 
 export function diffPlans(before: IssuePlan, after: IssuePlan): PlanDiff {
@@ -125,4 +130,35 @@ export function diffCount(diff: PlanDiff): number {
     n += diff[key].added.length + diff[key].removed.length;
   }
   return n;
+}
+
+export type DiffSectionKey =
+  | "summary"
+  | "size"
+  | "steps"
+  | "files"
+  | "acceptance"
+  | "risks"
+  | "openQuestions"
+  | "context"
+  | "outOfScope"
+  | "verificationCommands"
+  | "manualChecks";
+
+/** Per-section change counts; values sum to diffCount(diff). Aggregation only. */
+export function sectionDiffCounts(diff: PlanDiff): Record<DiffSectionKey, number> {
+  return {
+    summary: diff.summary ? 1 : 0,
+    size: diff.size ? 1 : 0,
+    steps: diff.steps.added.length + diff.steps.removed.length + diff.steps.modified.length,
+    files: diff.files.added.length + diff.files.removed.length + diff.files.modified.length,
+    acceptance: diff.acceptance.added.length + diff.acceptance.removed.length,
+    risks: diff.risks.added.length + diff.risks.removed.length,
+    openQuestions: diff.openQuestions.added.length + diff.openQuestions.removed.length,
+    context: diff.context.added.length + diff.context.removed.length,
+    outOfScope: diff.outOfScope.added.length + diff.outOfScope.removed.length,
+    verificationCommands:
+      diff.verificationCommands.added.length + diff.verificationCommands.removed.length,
+    manualChecks: diff.manualChecks.added.length + diff.manualChecks.removed.length,
+  };
 }

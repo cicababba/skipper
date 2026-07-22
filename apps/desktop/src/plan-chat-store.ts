@@ -44,26 +44,59 @@ export async function appendPlanChatExchange(
   user: string,
   assistant: string,
 ): Promise<StoredPlanChat> {
-  const existing = await readPlanChat(plansDir, itemId);
-  const base: StoredPlanChat =
-    existing && existing.planGeneratedAt === planGeneratedAt
-      ? existing
-      : { version: 1, itemId, planGeneratedAt, messages: [] };
+  const base = await rebaseTranscript(plansDir, itemId, planGeneratedAt);
   const now = new Date().toISOString();
   const messages: PlanChatMessage[] = [
     ...base.messages,
     { role: "user", text: user, at: now },
     { role: "assistant", text: assistant, at: now },
   ];
-  const updated: StoredPlanChat = { ...base, messages };
+  return writeTranscript(plansDir, itemId, { ...base, messages });
+}
 
+/**
+ * Append an "applied" marker recording that a discussion was applied to the plan
+ * (#201). Reuses the transcript when planGeneratedAt matches, else starts fresh.
+ * Atomic tmp+rename.
+ */
+export async function appendPlanChatApplied(
+  plansDir: string,
+  itemId: string,
+  planGeneratedAt: string,
+  changeCount: number,
+): Promise<StoredPlanChat> {
+  const base = await rebaseTranscript(plansDir, itemId, planGeneratedAt);
+  const messages: PlanChatMessage[] = [
+    ...base.messages,
+    { kind: "applied", at: new Date().toISOString(), changeCount },
+  ];
+  return writeTranscript(plansDir, itemId, { ...base, messages });
+}
+
+/** The transcript to append to: the existing one when the generation still matches, else fresh. */
+async function rebaseTranscript(
+  plansDir: string,
+  itemId: string,
+  planGeneratedAt: string,
+): Promise<StoredPlanChat> {
+  const existing = await readPlanChat(plansDir, itemId);
+  return existing && existing.planGeneratedAt === planGeneratedAt
+    ? existing
+    : { version: 1, itemId, planGeneratedAt, messages: [] };
+}
+
+async function writeTranscript(
+  plansDir: string,
+  itemId: string,
+  transcript: StoredPlanChat,
+): Promise<StoredPlanChat> {
   const dir = join(plansDir, CHAT_DIR);
   await mkdir(dir, { recursive: true });
   const path = chatPath(plansDir, itemId);
   const tmp = `${path}.tmp`;
-  await writeFile(tmp, JSON.stringify(updated, null, 2), "utf-8");
+  await writeFile(tmp, JSON.stringify(transcript, null, 2), "utf-8");
   await rename(tmp, path);
-  return updated;
+  return transcript;
 }
 
 export async function deletePlanChat(plansDir: string, itemId: string): Promise<void> {
