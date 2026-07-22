@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ExternalLink, TriangleAlert } from "lucide-react";
 import { displayKey, type TrackedItem } from "@skipper/shared";
 import { ATTENTION_SECTION_STATES, KANBAN_COLUMNS, repoKey } from "@/lib/inbox/model";
@@ -20,11 +20,16 @@ function openExternal(url: string) {
 function KanbanCard({ item, showState }: { item: TrackedItem; showState: boolean }) {
   const { t } = useT();
   const router = useRouter();
+  const pathname = usePathname();
+  const search = useSearchParams();
+  const from = search.size > 0 ? `${pathname}?${search.toString()}` : pathname;
   const age = formatAge(item.createdAt, new Date());
   return (
     <article className="rounded-lg border border-border bg-background/60 p-2.5 space-y-2">
       <button
-        onClick={() => router.push(`/inbox/${encodeURIComponent(item.id)}`)}
+        onClick={() =>
+          router.push(`/inbox/${encodeURIComponent(item.id)}?from=${encodeURIComponent(from)}`)
+        }
         className="text-left hover:text-accent transition-colors w-full"
         title={item.title}
       >

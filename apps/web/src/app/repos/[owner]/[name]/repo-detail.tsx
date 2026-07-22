@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ExternalLink, FolderGit2, GitBranch, Settings as SettingsIcon } from "lucide-react";
 import { displayKey, type RepoSettingsRow } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
@@ -16,6 +17,7 @@ export function RepoDetailView() {
   const { t } = useT();
   const { state } = useOrchestrator();
   const { owner, name, key } = useRepoParams();
+  const pathname = usePathname();
 
   const [rows, setRows] = useState<RepoSettingsRow[]>([]);
 
@@ -73,7 +75,7 @@ export function RepoDetailView() {
             {worktrees.map((it) => (
               <li key={it.id}>
                 <Link
-                  href={`/inbox/${encodeURIComponent(it.id)}`}
+                  href={`/inbox/${encodeURIComponent(it.id)}?from=${encodeURIComponent(pathname)}`}
                   className="flex items-center gap-3 py-2.5 hover:text-accent transition-colors"
                 >
                   <span className="font-mono text-[12px] text-muted shrink-0">{displayKey(it.key)}</span>

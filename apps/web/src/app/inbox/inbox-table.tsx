@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowDown, ArrowUp, ExternalLink } from "lucide-react";
 import { displayKey, type TrackedItem } from "@skipper/shared";
 import { ATTENTION_SECTION_STATES, repoKey } from "@/lib/inbox/model";
@@ -41,6 +41,9 @@ export function InboxTable({
 }) {
   const { t } = useT();
   const router = useRouter();
+  const pathname = usePathname();
+  const search = useSearchParams();
+  const from = search.size > 0 ? `${pathname}?${search.toString()}` : pathname;
 
   const header = (label: string, key?: SortKey) => (
     <th className="text-left font-medium text-[11px] uppercase tracking-wide text-muted/70 px-3 py-2">
@@ -86,7 +89,11 @@ export function InboxTable({
                 <td className="px-3 py-2 max-w-[360px]">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <button
-                      onClick={() => router.push(`/inbox/${encodeURIComponent(item.id)}`)}
+                      onClick={() =>
+                        router.push(
+                          `/inbox/${encodeURIComponent(item.id)}?from=${encodeURIComponent(from)}`,
+                        )
+                      }
                       className="flex items-baseline gap-2 text-left hover:text-accent transition-colors min-w-0 flex-1"
                       title={item.title}
                     >

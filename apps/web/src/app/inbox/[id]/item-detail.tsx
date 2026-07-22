@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ExternalLink, EyeOff, SquareTerminal } from "lucide-react";
 import {
   displayKey,
@@ -14,6 +14,7 @@ import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useTerminal } from "@/lib/terminal-context";
 import { useT } from "@/lib/app-i18n";
 import { repoKey } from "@/lib/inbox/model";
+import { resolveBackHref } from "@/lib/inbox/nav";
 import { useStoredState } from "@/lib/use-stored-state";
 import { unreadCount } from "@/lib/inbox/plan-chat-unread";
 import { confirmAndUntrack } from "../item-actions";
@@ -92,6 +93,7 @@ function ItemDetailShell() {
   const { openTerminal } = useTerminal();
   const { t } = useT();
   const router = useRouter();
+  const backHref = resolveBackHref(useSearchParams().get("from"));
   const {
     chatBusy,
     setChatBusy,
@@ -172,7 +174,7 @@ function ItemDetailShell() {
     <div className="h-full flex flex-col">
       <div className="px-6 pt-4 space-y-2 shrink-0">
         <Link
-          href="/inbox"
+          href={backHref}
           className="flex items-center gap-1.5 text-[12px] text-muted hover:text-foreground transition-colors w-fit"
         >
           <ArrowLeft size={13} />
@@ -209,7 +211,7 @@ function ItemDetailShell() {
             <button
               onClick={() => {
                 void confirmAndUntrack(item, untrackItem, t).then((done) => {
-                  if (done) router.push("/inbox");
+                  if (done) router.push(backHref);
                 });
               }}
               className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors"
