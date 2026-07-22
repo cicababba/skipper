@@ -7,8 +7,6 @@ import {
   applyTransition,
   loadOrCreateOrchestratorManifest,
   saveOrchestratorManifest,
-  ApiError,
-  AuthError,
   listUserInstallationRepos,
   listMembershipProjects,
   listJiraProjects,
@@ -79,6 +77,10 @@ import {
 import { resolveBaseChangeActions, type WorktreeProbe } from "./base-change";
 import { makeEventStream } from "./event-stream";
 import { discardItemWorktreeUnderLock, archivePlanAndDeleteChats } from "./item-teardown";
+import { makeRepoGitLock } from "./git-lock";
+import { applySettingsPatch, applyRepoSettingsPatch } from "./settings-validators";
+import { shouldSkipPoll, selectPollCursor, pollFailurePatch } from "./poll-policy";
+import { makeManifestWriters } from "./manifest-writers";
 import { registerMemoryHandlers } from "./memory-ipc";
 import { registerWorktreeDiffHandlers } from "./worktree-diff-ipc";
 import { readLlmSettings, readLlmSettingsSync } from "./llm-settings";
@@ -312,57 +314,6 @@ function repoPathFor(repo: RepoRef): string | undefined {
   return repoLinks?.repos[repoKey(repo)]?.localPath;
 }
 
-// Per-key validation for the two settings writers (#62). Each returns the value to
-// store, or undefined to reject the write.
-const asBool = (v: unknown): boolean | undefined => (typeof v === "boolean" ? v : undefined);
-const clampInt =
-  (min: number, max: number) =>
-  (v: unknown): number | undefined =>
-    typeof v === "number" && Number.isFinite(v)
-      ? Math.min(max, Math.max(min, Math.round(v)))
-      : undefined;
-const oneOf =
-  <T extends string>(...allowed: readonly T[]) =>
-  (v: unknown): T | undefined =>
-    (allowed as readonly unknown[]).includes(v) ? (v as T) : undefined;
-const nonEmptyString = (v: unknown): string | undefined =>
-  typeof v === "string" && v.trim() ? v.trim() : undefined;
-
-const SETTINGS_VALIDATORS: {
-  [K in keyof OrchestratorSettings]?: (v: unknown) => OrchestratorSettings[K] | undefined;
-} = {
-  autoPlanPaused: asBool,
-  autoCoding: oneOf("on", "off", "auto"),
-  review: oneOf("on", "off", "auto"),
-  reviewMaxRounds: clampInt(1, 5),
-  ciReentry: oneOf("off", "auto"),
-  codingWipPerRepo: clampInt(1, 10),
-  // #58: model strings stay opaque CLI aliases — no enum, so a manifest
-  // hand-edited to a full model id survives a write from the UI.
-  plannerModel: nonEmptyString,
-  coderModel: nonEmptyString,
-  reviewerModel: nonEmptyString,
-  coderMaxTurns: clampInt(10, 200),
-  plannerMaxTurns: clampInt(10, 200),
-};
-
-const REPO_SETTINGS_VALIDATORS: {
-  [K in keyof RepoIntakeSettings]-?: (v: unknown) => RepoIntakeSettings[K] | undefined;
-} = {
-  followed: asBool,
-  priority: oneOf("high", "normal", "low"),
-  autoPlan: oneOf("on", "off", "label"),
-  autoPlanLabel: nonEmptyString,
-  wipLimit: clampInt(1, 10),
-  autoCoding: oneOf("on", "off", "auto"),
-  review: oneOf("on", "off", "auto"),
-  reviewMaxRounds: clampInt(1, 5),
-  ciReentry: oneOf("off", "auto"),
-  plannerModel: nonEmptyString,
-  coderModel: nonEmptyString,
-  reviewerModel: nonEmptyString,
-};
-
 function repoIntake(repo: RepoRef): ResolvedRepoIntakeSettings {
   return resolveRepoIntakeSettings(manifest?.repoSettings[repoKey(repo)]);
 }
@@ -434,21 +385,9 @@ function accountForRepo(owner: string, name: string, accountKey?: string): Accou
   return issueAccounts()[0];
 }
 
-// Planner concurrency (2) and the coder can hit the same clone at once; git
-// fetch + worktree add on a shared clone are not concurrency-safe, so serialize
-// per repo. The map is bounded by the linked-repo count.
-const repoGitLocks = new Map<string, Promise<unknown>>();
-
-function withRepoGitLock<T>(repo: RepoRef, fn: () => Promise<T>): Promise<T> {
-  const key = repoKey(repo);
-  const prev = repoGitLocks.get(key) ?? Promise.resolve();
-  const next = prev.then(fn, fn);
-  repoGitLocks.set(
-    key,
-    next.catch(() => undefined),
-  );
-  return next;
-}
+// Serialize per-repo git ops on a shared clone (fetch + worktree add are not
+// concurrency-safe). One module instance; the factory keeps tests isolated.
+const withRepoGitLock = makeRepoGitLock();
 
 /**
  * Sets up the worktree that every phase (plan → coding → review) shares (#110):
@@ -549,10 +488,14 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
   // manifest's accountId are all keyed by it (#101).
   const accountId = account.key;
   const existing = accountsState[accountId];
-  if (!ignoreBackoff && existing?.nextPollAt && Date.now() < existing.nextPollAt) return;
+  if (shouldSkipPoll(existing, Date.now(), ignoreBackoff)) return;
 
-  const forceFull = Date.now() - (lastFullWalkAt.get(accountId) ?? 0) > FULL_WALK_EVERY_MS;
-  const cursor = forceFull ? undefined : cursors.platforms[source.id]?.[accountId];
+  const { cursor } = selectPollCursor({
+    now: Date.now(),
+    lastFullWalkAt: lastFullWalkAt.get(accountId) ?? 0,
+    storedCursor: cursors.platforms[source.id]?.[accountId],
+    fullWalkEveryMs: FULL_WALK_EVERY_MS,
+  });
 
   patchAccount(accountId, { status: "polling" });
   try {
@@ -674,19 +617,7 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
       ...deriveArrays(accountId),
     });
   } catch (err) {
-    if (err instanceof AuthError) {
-      patchAccount(accountId, { status: "auth-error", error: err.message });
-      return;
-    }
-    if (err instanceof ApiError && err.retryAfterSeconds) {
-      patchAccount(accountId, {
-        status: "error",
-        error: err.message,
-        nextPollAt: Date.now() + err.retryAfterSeconds * 1000,
-      });
-      return;
-    }
-    patchAccount(accountId, { status: "error", error: String(err) });
+    patchAccount(accountId, pollFailurePatch(err, Date.now()));
   }
 }
 
@@ -768,332 +699,48 @@ async function reconcileFromCache(): Promise<void> {
   pokeShepherd();
 }
 
-/** Sets plan.ref + confidence and the gated transition in a single manifest write (#8). */
-async function completePlan(
-  itemId: string,
-  ref: string,
-  confidence?: ConfidenceReport,
-  expectedPlanningAt?: string,
-): Promise<void> {
-  if (!deps) throw new Error("orchestrator not initialized");
-  const m = await ensureManifest();
-  const item = m.items[itemId];
-  if (!item) throw new Error(`unknown item ${itemId}`);
-  // Refuse a stale run's result (#159): the item left planning, or a newer
-  // planning transition superseded this run's token. Return silently — a throw
-  // would bounce into the planner's catch and park the fresh lifecycle.
-  if (item.state !== "planning" || latestPlanningTransitionAt(item) !== expectedPlanningAt) {
-    console.warn(`stale plan completion refused for ${itemId}`);
-    return;
-  }
-  // No score is a scoring *failure*, not a decision — #8's contract is the
-  // conservative gate, so autoCoding:"on" deliberately does not apply here.
-  const target = confidence
-    ? resolveGate(confidence.composite, m.settings.confidence, repoOrch(item.repo).autoCoding)
-    : "plan-gate";
-  let reason: string;
-  if (confidence) {
-    const divergent = confidence.signals.convergence?.divergent
-      ? " — plans diverge, issue may be ambiguous"
-      : "";
-    reason = `confidence ${confidence.composite.toFixed(2)}${divergent}`;
-  } else {
-    reason = "plan generated (confidence unavailable)";
-  }
-  const { rescoring: _drop, ...planRest } = item.plan ?? {};
-  const withRef = { ...item, plan: { ...planRest, ref, confidence: confidence?.composite } };
-  // Below the low floor the plan itself is broken — resume means replan.
-  m.items[itemId] = applyTransition(withRef, target, "planner", reason, {
-    resumeTo: target === "needs-input" ? "planning" : undefined,
-  });
-  await saveOrchestratorManifest(deps.manifestFilePath, m);
-  broadcast();
-  // High confidence gates straight to queued — wake the coder.
-  pokeCoder();
-}
-
-/**
- * Sets coderReport.ref + the agent-review transition in a single manifest write
- * (#146). A degraded run (no parseable report) passes reportRef undefined —
- * the field is deleted so a stale report never shows against a new diff.
- */
-async function completeCoding(
-  itemId: string,
-  reportRef: string | undefined,
-  reason: string,
-  expectedCodingAt?: string,
-): Promise<void> {
-  if (!deps) throw new Error("orchestrator not initialized");
-  const m = await ensureManifest();
-  const item = m.items[itemId];
-  if (!item) throw new Error(`unknown item ${itemId}`);
-  // Refuse a stale run's result (#159): the item left coding, or an untrack →
-  // re-admit minted a newer coding transition superseding this run's token.
-  // Return silently — a throw would bounce into the coder's catch.
-  if (item.state !== "coding" || latestCodingTransitionAt(item) !== expectedCodingAt) {
-    console.warn(`stale coding completion refused for ${itemId}`);
-    return;
-  }
-  const { coderReport: _drop, ...rest } = item;
-  const withReport = reportRef ? { ...rest, coderReport: { ref: reportRef } } : rest;
-  m.items[itemId] = applyTransition(withReport, "agent-review", "coder", reason);
-  await saveOrchestratorManifest(deps.manifestFilePath, m);
-  broadcast();
-  pokeReviewer();
-}
-
-/**
- * Sets item.review + the transition in a single manifest write (#10) — atomic
- * rounds+transition so a crash can never burn a review round.
- */
-async function completeReview(
-  itemId: string,
-  review: AgentReview,
-  to: LifecycleState,
-  reason: string,
-  resumeTo?: LifecycleState,
-): Promise<void> {
-  if (!deps) throw new Error("orchestrator not initialized");
-  const m = await ensureManifest();
-  const item = m.items[itemId];
-  if (!item) throw new Error(`unknown item ${itemId}`);
-  m.items[itemId] = applyTransition({ ...item, review }, to, "reviewer", reason, { resumeTo });
-  await saveOrchestratorManifest(deps.manifestFilePath, m);
-  broadcast();
-  // Fix round lands the item back in queued-for-coding territory — wake the coder.
-  pokeCoder();
-  // A fix round converging to human-review is the auto-repush trigger (#11).
-  pokeShepherd();
-}
-
-/**
- * Sets the authoritative PR link + lastPushedSha, clears pending review
- * comments, and transitions to pr-open in a single manifest write (#11).
- */
-async function completePrOpen(
-  itemId: string,
-  pr: { id: string; number: number; url: string },
-  pushedSha: string,
-  actor: "user" | "shepherd",
-  reason: string,
-): Promise<void> {
-  if (!deps) throw new Error("orchestrator not initialized");
-  const m = await ensureManifest();
-  const item = m.items[itemId];
-  if (!item) throw new Error(`unknown item ${itemId}`);
-  const withPr: TrackedItem = {
-    ...item,
-    pr,
-    shepherd: { ...item.shepherd, pendingReviewComments: undefined, lastPushedSha: pushedSha },
-  };
-  m.items[itemId] = applyTransition(withPr, "pr-open", actor, reason);
-  await saveOrchestratorManifest(deps.manifestFilePath, m);
-  broadcast();
-}
-
-/**
- * Sets shepherd.pendingReviewComments + the changes-requested → coding
- * transition in a single manifest write (#11). The item lands directly in
- * "coding": the coder's scan picks it up (counts toward the WIP limit) without
- * passing through the queue — finishing in-flight work beats starting new.
- */
-async function completeReentry(
-  itemId: string,
-  comments: PrReviewComment[],
-  reason: string,
-): Promise<void> {
-  if (!deps) throw new Error("orchestrator not initialized");
-  const m = await ensureManifest();
-  const item = m.items[itemId];
-  if (!item) throw new Error(`unknown item ${itemId}`);
-  const withComments: TrackedItem = {
-    ...item,
-    shepherd: { ...item.shepherd, pendingReviewComments: comments },
-  };
-  m.items[itemId] = applyTransition(withComments, "coding", "shepherd", reason);
-  await saveOrchestratorManifest(deps.manifestFilePath, m);
-  broadcast();
-  pokeCoder();
-}
-
-/** Stamps the memory ref and drops the worktree record — no transition, merged is terminal (#11). */
-async function completeMergedCleanup(itemId: string, memoryRef: string): Promise<void> {
-  if (!deps) throw new Error("orchestrator not initialized");
-  const m = await ensureManifest();
-  const item = m.items[itemId];
-  if (!item) throw new Error(`unknown item ${itemId}`);
-  const plan = await archivePlanAndDeleteChats(deps.plansDir, itemId, item.plan);
-  m.items[itemId] = {
-    ...item,
-    worktree: undefined,
-    plan,
-    shepherd: { ...item.shepherd, memoryRef },
-    updatedAt: new Date().toISOString(),
-  };
-  await saveOrchestratorManifest(deps.manifestFilePath, m);
-  broadcast();
-}
-
-/** Persists the coding worktree record (path/branch/sessionId) without a transition (#9). */
-async function setWorktree(
-  itemId: string,
-  worktree: { path: string; branch: string; sessionId?: string },
-): Promise<void> {
-  if (!deps) throw new Error("orchestrator not initialized");
-  const m = await ensureManifest();
-  const item = m.items[itemId];
-  if (!item) throw new Error(`unknown item ${itemId}`);
-  m.items[itemId] = { ...item, worktree, updatedAt: new Date().toISOString() };
-  await saveOrchestratorManifest(deps.manifestFilePath, m);
-  broadcast();
-}
-
-/** Records the plan run's Claude session id without a transition (#111). Overwritten
- *  each plan run; cwd-scoped to worktree.path. completePlan preserves it via spread. */
-async function setPlanSessionId(itemId: string, sessionId: string): Promise<void> {
-  if (!deps) throw new Error("orchestrator not initialized");
-  const m = await ensureManifest();
-  const item = m.items[itemId];
-  if (!item) throw new Error(`unknown item ${itemId}`);
-  m.items[itemId] = {
-    ...item,
-    plan: { ...item.plan, sessionId },
-    updatedAt: new Date().toISOString(),
-  };
-  await saveOrchestratorManifest(deps.manifestFilePath, m);
-  broadcast();
-}
-
-/** Marks an item as rescoring confidence (#164) without a transition — drives the
- *  badge spinner while the detached rescore runs. */
-async function setPlanRescoring(itemId: string): Promise<void> {
-  if (!deps) throw new Error("orchestrator not initialized");
-  const m = await ensureManifest();
-  const item = m.items[itemId];
-  if (!item) return;
-  m.items[itemId] = {
-    ...item,
-    plan: { ...item.plan, rescoring: true },
-    updatedAt: new Date().toISOString(),
-  };
-  await saveOrchestratorManifest(deps.manifestFilePath, m);
-  broadcast();
-}
-
-/** Clears the rescoring flag (#164). When a fresh composite is provided AND the item
- *  is still at the gate, it also updates plan.confidence — never a transition, so a
- *  score jump can't auto-queue coding while a human reviews. */
-async function completeRescore(itemId: string, composite?: number): Promise<void> {
-  if (!deps) throw new Error("orchestrator not initialized");
-  const m = await ensureManifest();
-  const item = m.items[itemId];
-  if (!item) return;
-  const { rescoring: _drop, ...plan } = item.plan ?? {};
-  const setComposite = composite !== undefined && item.state === "plan-gate";
-  m.items[itemId] = {
-    ...item,
-    plan: setComposite ? { ...plan, confidence: composite } : plan,
-    updatedAt: new Date().toISOString(),
-  };
-  await saveOrchestratorManifest(deps.manifestFilePath, m);
-  broadcast();
-}
-
-/** Records the critic round's Claude session id without a transition (#111). On
- *  round 1 (no review yet) it seeds a stub review the reviewer/UI already handle;
- *  completeReview replaces it wholesale. The chained-round check reads only
- *  pendingObjections (absent here, preserved by spread) — unaffected. */
-async function setReviewSessionId(itemId: string, sessionId: string): Promise<void> {
-  if (!deps) throw new Error("orchestrator not initialized");
-  const m = await ensureManifest();
-  const item = m.items[itemId];
-  if (!item) throw new Error(`unknown item ${itemId}`);
-  const review: AgentReview = item.review
-    ? { ...item.review, sessionId }
-    : {
-        rounds: 0,
-        outcome: "unavailable",
-        reason: "review in progress",
-        sessionId,
-        at: new Date().toISOString(),
-      };
-  m.items[itemId] = { ...item, review, updatedAt: new Date().toISOString() };
-  await saveOrchestratorManifest(deps.manifestFilePath, m);
-  broadcast();
-}
-
-/**
- * Drives one lifecycle transition and persists it. In-process API for the
- * planner/coder/reviewer/shepherd (#7-#11); throws IllegalTransitionError on
- * a bad edge — the IPC handler wraps it for the renderer.
- */
-export async function requestTransition(
-  itemId: string,
-  to: LifecycleState,
-  actor: TransitionActor,
-  reason?: string,
-  resumeTo?: LifecycleState,
-): Promise<TrackedItem> {
-  if (!deps) throw new Error("orchestrator not initialized");
-  const m = await ensureManifest();
-  const item = m.items[itemId];
-  if (!item) throw new Error(`unknown item ${itemId}`);
-  const prevState = item.state;
-  // A user moving a held item out of triage overrides the resume-rite hold (#15).
-  const source =
-    actor === "user" && item.state === "triage" && item.holdAutoPlan
-      ? { ...item, holdAutoPlan: undefined }
-      : item;
-  const next = applyTransition(source, to, actor, reason, { resumeTo });
-  // #110: an explicit user park from plan-gate discards the planning worktree.
-  // needs-input is ALSO the coder/planner failure state — never fire on those.
-  const parkedWorktree =
-    actor === "user" && prevState === "plan-gate" && to === "needs-input"
-      ? item.worktree
-      : undefined;
-  m.items[itemId] = parkedWorktree ? { ...next, worktree: undefined } : next;
-  await saveOrchestratorManifest(deps.manifestFilePath, m);
-  broadcast();
-  if (parkedWorktree?.path) {
+const writers = makeManifestWriters({
+  ensureManifest,
+  saveManifest: (m) => saveOrchestratorManifest(deps!.manifestFilePath, m),
+  broadcast,
+  pokePlanner,
+  pokeCoder,
+  pokeReviewer,
+  pokeShepherd,
+  getRepoAutoCoding: (repo) => repoOrch(repo).autoCoding,
+  archivePlan: (itemId, plan) => archivePlanAndDeleteChats(deps!.plansDir, itemId, plan),
+  cancelPlanningRun,
+  cancelCodingRun,
+  cancelPlanChat,
+  cancelRescore,
+  cancelAgentChat,
+  discardParkedWorktree: (item, worktree) => {
     const link = repoLinks?.repos[repoKey(item.repo)];
-    if (link) {
-      const worktreePath = parkedWorktree.path;
-      const branch = parkedWorktree.branch;
-      // Serialize with prepareWorktreeFor: a park's prune/branch-delete must not
-      // race a concurrent fetch/worktree-add for another item on the same clone.
-      void withRepoGitLock(item.repo, async () => {
-        const baseRef = await resolveBaseRef(link.localPath, link.baseBranch).catch(() => undefined);
-        await discardWorktree({ repoPath: link.localPath, worktreePath, branch, baseRef });
-      }).catch((err) => console.warn(`park cleanup failed for ${worktreePath}: ${err}`));
-    }
-  }
-  if (actor !== "planner") {
-    // Someone else moved a live planning item — abort its run (#159). Guarding on
-    // actor !== "planner" keeps the planner's own needs-input failure transition
-    // from self-aborting.
-    if (prevState === "planning") cancelPlanningRun(itemId);
-    pokePlanner();
-  }
-  // Leaving plan-gate (approve/replan/park) aborts any live plan-review chat (#145)
-  // and any in-flight confidence rescore (#164).
-  if (prevState === "plan-gate") {
-    cancelPlanChat(itemId);
-    cancelRescore(itemId);
-  }
-  // Entering a blocking state aborts the matching live agent chat (#170): the
-  // coder/reviewer is about to run and the chat's read-only view no longer holds.
-  if (to === "coding") cancelAgentChat("coder", itemId);
-  if (to === "agent-review") cancelAgentChat("reviewer", itemId);
-  if (actor !== "coder") {
-    // Someone else moved a live coding item — abort its run.
-    if (prevState === "coding") cancelCodingRun(itemId);
-    pokeCoder();
-  }
-  // The coder landing on agent-review arrives here — wake the reviewer.
-  if (actor !== "reviewer") pokeReviewer();
-  if (actor !== "shepherd") pokeShepherd();
-  return next;
-}
+    if (!link) return;
+    const worktreePath = worktree.path;
+    const branch = worktree.branch;
+    // Serialize with prepareWorktreeFor: a park's prune/branch-delete must not
+    // race a concurrent fetch/worktree-add for another item on the same clone.
+    void withRepoGitLock(item.repo, async () => {
+      const baseRef = await resolveBaseRef(link.localPath, link.baseBranch).catch(() => undefined);
+      await discardWorktree({ repoPath: link.localPath, worktreePath, branch, baseRef });
+    }).catch((err) => console.warn(`park cleanup failed for ${worktreePath}: ${err}`));
+  },
+});
+const {
+  completePlan,
+  completeCoding,
+  completeReview,
+  completePrOpen,
+  completeReentry,
+  completeMergedCleanup,
+  setWorktree,
+  setPlanSessionId,
+  setPlanRescoring,
+  completeRescore,
+  setReviewSessionId,
+} = writers;
+export const requestTransition = writers.requestTransition;
 
 export async function setIntakePaused(paused: boolean): Promise<void> {
   if (!deps) throw new Error("orchestrator not initialized");
@@ -1206,18 +853,7 @@ export function initOrchestrator(
     "skipper:orchestrator:updateSettings",
     async (_e, patch: Partial<OrchestratorSettings>) => {
       const m = await ensureManifest();
-      for (const key of Object.keys(SETTINGS_VALIDATORS) as (keyof OrchestratorSettings)[]) {
-        // `key in patch`, not a truthiness check: an absent key is not a clear.
-        if (!patch || !(key in patch)) continue;
-        // #125: explicit undefined clears a per-role model back to inherit llm.claudeModel.
-        if ((patch as Record<string, unknown>)[key] === undefined) {
-          if (key === "plannerModel" || key === "coderModel" || key === "reviewerModel")
-            delete (m.settings as unknown as Record<string, unknown>)[key];
-          continue;
-        }
-        const next = SETTINGS_VALIDATORS[key]!((patch as Record<string, unknown>)[key]);
-        if (next !== undefined) (m.settings as unknown as Record<string, unknown>)[key] = next;
-      }
+      applySettingsPatch(m.settings, patch);
       await saveOrchestratorManifest(deps!.manifestFilePath, m);
       broadcast();
       pokePlanner(); // autoPlanPaused — without this the topbar toggle reads as dead
@@ -1233,19 +869,7 @@ export function initOrchestrator(
       const m = await ensureManifest();
       const key = repoKey({ owner, name });
       const followedBefore = resolveRepoIntakeSettings(m.repoSettings[key]).followed;
-      const merged: RepoIntakeSettings = { ...m.repoSettings[key] };
-      for (const k of Object.keys(REPO_SETTINGS_VALIDATORS) as (keyof RepoIntakeSettings)[]) {
-        if (!patch || !(k in patch)) continue;
-        // undefined is meaningful here — it clears the override back to the global.
-        if (patch[k] === undefined) {
-          delete merged[k];
-          continue;
-        }
-        const next = REPO_SETTINGS_VALIDATORS[k]!(patch[k]);
-        // Invalid values are dropped, never coerced to undefined: coercing would
-        // silently clear a working override instead of rejecting the write.
-        if (next !== undefined) (merged as Record<string, unknown>)[k] = next;
-      }
+      const merged = applyRepoSettingsPatch(m.repoSettings[key], patch);
       if (Object.keys(merged).length === 0) delete m.repoSettings[key];
       else m.repoSettings[key] = merged;
       await saveOrchestratorManifest(deps!.manifestFilePath, m);
