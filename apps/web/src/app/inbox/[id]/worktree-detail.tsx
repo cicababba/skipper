@@ -2,30 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import {
-  AlertTriangle,
-  FolderX,
-  GitBranch,
-  Inbox,
-  Loader2,
-  SquareTerminal,
-  Sparkles,
-} from "lucide-react";
-import {
-  displayKey,
-  slugKey,
-  type WorktreeFileChange,
-  type WorktreeStatusResult,
-} from "@skipper/shared";
+import { AlertTriangle, FolderX, GitBranch, Inbox, Loader2 } from "lucide-react";
+import { slugKey, type WorktreeFileChange, type WorktreeStatusResult } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
-import { useTerminal } from "@/lib/terminal-context";
 import { useT } from "@/lib/app-i18n";
-import {
-  buildClaudePrompt,
-  changeForRelPath,
-  shellQuote,
-  worktreeRelPath,
-} from "@/lib/inbox/worktree";
+import { changeForRelPath, worktreeRelPath } from "@/lib/inbox/worktree";
 import { FileTree } from "@/components/file-tree";
 import { useItemChat } from "./item-chat";
 import { MemoriesCard } from "./memories-card";
@@ -48,12 +29,12 @@ type Selection =
   | { kind: "changed"; change: WorktreeFileChange };
 
 // Worktree control center (#40/#114): file tree + per-line diff rooted at the
-// item's worktree, a changed-only toggle, plus terminal / claude entry points.
+// item's worktree, with a changed-only toggle. Terminal access lives in the
+// shell header; agent access in the coder chat drawer (#187).
 export function WorktreeDetailView() {
   const params = useParams();
   const id = decodeURIComponent(String(params.id));
   const { state } = useOrchestrator();
-  const { openTerminal } = useTerminal();
   const { t } = useT();
   const w = t.inbox.worktree;
   const r = t.inbox.review;
@@ -173,22 +154,6 @@ export function WorktreeDetailView() {
 
   const terminalLabel = `issue-${slugKey(item.key)}`;
 
-  const openWorktreeTerminal = () => {
-    if (!ready) return;
-    void openTerminal(ready.path, terminalLabel);
-  };
-
-  const openClaudeWithContext = () => {
-    if (!ready) return;
-    const prompt = buildClaudePrompt({
-      keyLabel: displayKey(item.key),
-      title: item.title,
-      branch: worktree.branch,
-      changedFiles: changes.kind === "ready" ? changes.files.map((c) => c.path) : [],
-    });
-    void openTerminal(ready.path, `claude · ${terminalLabel}`, `claude ${shellQuote(prompt)}`);
-  };
-
   return (
     <div className="h-full flex flex-col p-6 gap-4">
       <div className="flex items-center gap-2 flex-wrap shrink-0 text-[12px] text-muted">
@@ -218,23 +183,6 @@ export function WorktreeDetailView() {
 
       {usable && (
         <>
-          <div className="flex items-center gap-2 flex-wrap shrink-0">
-            <button
-              onClick={openWorktreeTerminal}
-              className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors"
-            >
-              <SquareTerminal size={13} />
-              {w.openTerminal}
-            </button>
-            <button
-              onClick={openClaudeWithContext}
-              className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
-            >
-              <Sparkles size={13} />
-              {w.openClaudeContext}
-            </button>
-          </div>
-
           <div className="shrink-0">
             <MemoriesCard
               itemId={id}

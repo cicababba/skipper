@@ -359,7 +359,6 @@ const en = {
   },
   worktree: {
     openTerminal: "Open terminal",
-    openClaudeContext: "Open Claude with context",
     resumeClaude: "Resume Claude session",
     allFiles: "All files",
     changedOnly: "Changed only",
@@ -774,7 +773,6 @@ const it: typeof en = {
   },
   worktree: {
     openTerminal: "Apri terminale",
-    openClaudeContext: "Apri Claude con contesto",
     resumeClaude: "Riprendi la sessione Claude",
     allFiles: "Tutti i file",
     changedOnly: "Solo modificati",
@@ -1191,7 +1189,6 @@ const fr: typeof en = {
   },
   worktree: {
     openTerminal: "Ouvrir un terminal",
-    openClaudeContext: "Ouvrir Claude avec le contexte",
     resumeClaude: "Reprendre la session Claude",
     allFiles: "Tous les fichiers",
     changedOnly: "Modifiés seulement",
@@ -1607,7 +1604,6 @@ const es: typeof en = {
   },
   worktree: {
     openTerminal: "Abrir terminal",
-    openClaudeContext: "Abrir Claude con contexto",
     resumeClaude: "Reanudar la sesión de Claude",
     allFiles: "Todos los archivos",
     changedOnly: "Solo cambiados",
