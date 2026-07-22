@@ -1,4 +1,4 @@
-import { displayKey } from "@skipper/shared";
+import { displayKey, isPlanChatText } from "@skipper/shared";
 import type {
   AgentReviewOutcome,
   CodingEvent,
@@ -69,6 +69,7 @@ function issueHeader(issue: PlanIssueInput): string {
 
 function renderHistory(history: PlanChatMessage[]): string {
   return history
+    .filter(isPlanChatText)
     .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
     .join("\n\n");
 }

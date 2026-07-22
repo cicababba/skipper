@@ -1,9 +1,11 @@
 "use client";
 
 import { Check, Edit2, Loader2, Plus, Trash2, X } from "lucide-react";
-import type { PlanAcceptance, PlanFileRef, PlanStep } from "@skipper/shared";
+import { acceptanceString, type PlanAcceptance, type PlanFileRef, type PlanStep } from "@skipper/shared";
 import type { StepDraft } from "@/lib/inbox/plan-edit";
 import { useT } from "@/lib/app-i18n";
+
+const HIGHLIGHT_CLASS = "border-l-2 border-accent/40 pl-2 -ml-2";
 
 const inputClasses =
   "w-full bg-card-hover/40 border border-card-hover focus:border-accent outline-none rounded-md px-2 py-1.5 text-sm";
@@ -120,13 +122,16 @@ function statusPill(status: PlanFileRef["status"], labels: { existing: string; n
   );
 }
 
-export function FilesView({ files }: { files: PlanFileRef[] }) {
+export function FilesView({ files, highlight }: { files: PlanFileRef[]; highlight?: Set<string> }) {
   const { t } = useT();
   if (files.length === 0) return <EmptyHint />;
   return (
     <ul className="space-y-2">
       {files.map((file, i) => (
-        <li key={i} className="flex items-baseline gap-2">
+        <li
+          key={i}
+          className={`flex items-baseline gap-2${highlight?.has(file.path) ? ` ${HIGHLIGHT_CLASS}` : ""}`}
+        >
           <code className="font-mono text-[13px] text-foreground break-all">{file.path}</code>
           {statusPill(file.status, t.inbox.plan.fileStatus)}
           <span className="text-sm text-muted">{file.reason}</span>
@@ -184,12 +189,12 @@ export function FilesEditor({
   );
 }
 
-export function StepsView({ steps }: { steps: PlanStep[] }) {
+export function StepsView({ steps, highlight }: { steps: PlanStep[]; highlight?: Set<string> }) {
   if (steps.length === 0) return <EmptyHint />;
   return (
     <ol className="space-y-3">
       {steps.map((step, i) => (
-        <li key={i} className="flex gap-3">
+        <li key={i} className={`flex gap-3${highlight?.has(step.title) ? ` ${HIGHLIGHT_CLASS}` : ""}`}>
           <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded border border-card-hover font-mono text-[11px] text-muted/70">
             {i + 1}
           </span>
@@ -296,12 +301,21 @@ export function StepsEditor({
   );
 }
 
-export function AcceptanceView({ rows }: { rows: PlanAcceptance[] }) {
+export function AcceptanceView({
+  rows,
+  highlight,
+}: {
+  rows: PlanAcceptance[];
+  highlight?: Set<string>;
+}) {
   if (rows.length === 0) return <EmptyHint />;
   return (
     <ul className="space-y-2">
       {rows.map((row, i) => (
-        <li key={i} className="text-sm">
+        <li
+          key={i}
+          className={`text-sm${highlight?.has(acceptanceString(row)) ? ` ${HIGHLIGHT_CLASS}` : ""}`}
+        >
           <p className="text-foreground">{row.criterion}</p>
           <p className="text-muted">{row.addressedBy}</p>
         </li>
@@ -347,12 +361,15 @@ export function AcceptanceEditor({
   );
 }
 
-export function LinesView({ lines }: { lines: string[] }) {
+export function LinesView({ lines, highlight }: { lines: string[]; highlight?: Set<string> }) {
   if (lines.length === 0) return <EmptyHint />;
   return (
     <ul className="list-disc pl-4 space-y-1">
       {lines.map((line, i) => (
-        <li key={i} className="text-sm text-foreground/90">
+        <li
+          key={i}
+          className={`text-sm text-foreground/90${highlight?.has(line) ? ` ${HIGHLIGHT_CLASS}` : ""}`}
+        >
           {line}
         </li>
       ))}

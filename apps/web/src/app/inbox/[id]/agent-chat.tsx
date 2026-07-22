@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, Send, X } from "lucide-react";
 import {
   canCoderChatApply,
+  isPlanChatText,
   type AgentChatKind,
   type LifecycleState,
   type PlanChatMessage,
@@ -167,7 +168,7 @@ export function AgentChatPanel({
           <p className="text-[12px] text-muted/70">{strings.empty}</p>
         ) : (
           messages.map((m, i) =>
-            m.role === "user" ? (
+            !isPlanChatText(m) ? null : m.role === "user" ? (
               <div key={i} className="flex justify-end">
                 <div className="max-w-[85%] rounded-lg bg-card-hover/40 px-3 py-2 whitespace-pre-wrap break-words">
                   {m.text}

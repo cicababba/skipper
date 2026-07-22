@@ -7,6 +7,7 @@ export * from "./inbox";
 export * from "./naming";
 export * from "./orchestrator";
 export * from "./plan";
+export * from "./plan-diff";
 export * from "./coder-report";
 export * from "./confidence";
 export * from "./coding";

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { isPlanChatText } from "@skipper/shared";
 import {
   appendAgentChatExchange,
   deleteAgentChat,
@@ -27,7 +28,7 @@ describe("agent-chat-store (#170)", () => {
     expect(chat?.version).toBe(1);
     expect(chat?.kind).toBe("coder");
     expect(chat?.binding).toBe("/wt/1");
-    expect(chat?.messages.map((m) => [m.role, m.text])).toEqual([
+    expect(chat?.messages.filter(isPlanChatText).map((m) => [m.role, m.text])).toEqual([
       ["user", "hi"],
       ["assistant", "hello"],
     ]);
@@ -48,7 +49,7 @@ describe("agent-chat-store (#170)", () => {
     await appendAgentChatExchange(dir, "coder", "github:1", "/wt/2", "q2", "a2");
     const chat = await readAgentChat(dir, "coder", "github:1");
     expect(chat?.binding).toBe("/wt/2");
-    expect(chat?.messages.map((m) => m.text)).toEqual(["q2", "a2"]);
+    expect(chat?.messages.filter(isPlanChatText).map((m) => m.text)).toEqual(["q2", "a2"]);
     expect(chat?.sessionId).toBeUndefined();
   });
 
@@ -57,8 +58,8 @@ describe("agent-chat-store (#170)", () => {
     await appendAgentChatExchange(dir, "reviewer", "github:1", "2026-01-01T00:00:00.000Z", "rq", "ra");
     const coder = await readAgentChat(dir, "coder", "github:1");
     const reviewer = await readAgentChat(dir, "reviewer", "github:1");
-    expect(coder?.messages.map((m) => m.text)).toEqual(["cq", "ca"]);
-    expect(reviewer?.messages.map((m) => m.text)).toEqual(["rq", "ra"]);
+    expect(coder?.messages.filter(isPlanChatText).map((m) => m.text)).toEqual(["cq", "ca"]);
+    expect(reviewer?.messages.filter(isPlanChatText).map((m) => m.text)).toEqual(["rq", "ra"]);
   });
 
   it("setAgentChatSessionId creates the file when absent", async () => {

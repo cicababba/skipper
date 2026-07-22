@@ -50,11 +50,25 @@ export interface IssuePlan {
   estimatedSize: "xs" | "s" | "m" | "l" | "xl";
 }
 
-/** One turn of the plan-review chat (#145). */
-export interface PlanChatMessage {
+/** One text turn of the plan-review chat (#145). */
+export interface PlanChatTextMessage {
   role: "user" | "assistant";
   text: string;
   at: string; // ISO 8601
+}
+
+/** A persisted marker recording that a discussion was applied to the plan (#201). */
+export interface PlanChatAppliedMarker {
+  kind: "applied";
+  at: string; // ISO 8601
+  changeCount: number;
+}
+
+/** A plan-chat transcript entry: a text turn or an applied marker (#201). */
+export type PlanChatMessage = PlanChatTextMessage | PlanChatAppliedMarker;
+
+export function isPlanChatText(m: PlanChatMessage): m is PlanChatTextMessage {
+  return "role" in m;
 }
 
 /** On-disk transcript of the plan-review chat, one file per tracked item (#145). */

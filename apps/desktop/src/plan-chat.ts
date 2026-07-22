@@ -11,6 +11,7 @@ import {
   type RunConfinement,
 } from "@skipper/core";
 import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
+import { diffCount, diffPlans, isPlanChatText } from "@skipper/shared";
 import type {
   CodingEvent,
   Issue,
@@ -23,7 +24,12 @@ import type {
   TrackedItem,
 } from "@skipper/shared";
 import { modelForRole, providerCacheKey } from "./llm-settings";
-import { appendPlanChatExchange, deletePlanChat, readPlanChat } from "./plan-chat-store";
+import {
+  appendPlanChatApplied,
+  appendPlanChatExchange,
+  deletePlanChat,
+  readPlanChat,
+} from "./plan-chat-store";
 
 // Conversational plan review (#145): lets the user chat with the planning
 // session while an item sits at plan-gate. Two explicit modes — Discuss (pure
@@ -271,7 +277,9 @@ export async function applyPlanChatUpdate(itemId: string): Promise<ApplyPlanChat
     const stored = await deps.getStoredPlan(item);
     if (!stored) return { ok: false, error: "item has no stored plan" };
     const history = await historyFor(itemId, stored.generatedAt);
-    if (history.length === 0) return { ok: false, error: "no discussion to apply" };
+    if (history.filter(isPlanChatText).length === 0) {
+      return { ok: false, error: "no discussion to apply" };
+    }
 
     const cwd = item.worktree?.path ?? deps.getRepoPath(item.repo);
     if (!cwd) return { ok: false, error: "repo not linked" };
@@ -367,6 +375,12 @@ export async function applyPlanChatUpdate(itemId: string): Promise<ApplyPlanChat
 
     const updated = await deps.updatePlan(after, result.plan);
     if (!updated) return { ok: false, error: "stored plan not found" };
+    const changeCount = diffCount(diffPlans(current.plan, result.plan));
+    try {
+      await appendPlanChatApplied(deps.plansDir, itemId, stored.generatedAt, changeCount);
+    } catch {
+      // marker is cosmetic — the apply already succeeded
+    }
     return { ok: true, stored: updated };
   } catch (err) {
     if (err instanceof AgentAbortError) return { ok: false, cancelled: true };

@@ -2,9 +2,16 @@
 
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { PlanFileRef, PlanRevisionSource, PlanStep } from "@skipper/shared";
+import type {
+  FilesDiff,
+  PlanDiff,
+  PlanFileRef,
+  PlanRevisionSource,
+  PlanStep,
+  StepsDiff,
+  StringListDiff,
+} from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
-import type { FilesDiff, PlanDiff, StepsDiff, StringListDiff } from "@/lib/inbox/plan-diff";
 
 function countsText(
   parts: { added: number; removed: number; modified?: number },

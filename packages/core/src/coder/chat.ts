@@ -1,4 +1,4 @@
-import { displayKey } from "@skipper/shared";
+import { displayKey, isPlanChatText } from "@skipper/shared";
 import type { CoderReport, CodingEvent, IssuePlan, PlanChatMessage } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
@@ -63,6 +63,7 @@ function issueHeader(issue: PlanIssueInput): string {
 
 function renderHistory(history: PlanChatMessage[]): string {
   return history
+    .filter(isPlanChatText)
     .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
     .join("\n\n");
 }

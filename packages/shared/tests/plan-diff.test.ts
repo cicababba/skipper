@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { IssuePlan } from "@skipper/shared";
-import { diffCount, diffPlans } from "./plan-diff";
+import type { IssuePlan } from "../src/plan";
+import { acceptanceString, diffCount, diffPlans, sectionDiffCounts } from "../src/plan-diff";
 
 const base: IssuePlan = {
   summary: "do the thing",
@@ -116,5 +116,59 @@ describe("diffPlans", () => {
     after.steps[0].detail = "x"; // +1 modified
     const diff = diffPlans(base, after);
     expect(diffCount(diff)).toBe(5);
+  });
+});
+
+describe("sectionDiffCounts", () => {
+  it("reports zero for every section on an identical plan", () => {
+    const counts = sectionDiffCounts(diffPlans(base, clone(base)));
+    for (const key of Object.keys(counts) as (keyof typeof counts)[]) {
+      expect(counts[key]).toBe(0);
+    }
+  });
+
+  it("scores summary and size as 0 or 1", () => {
+    const after = clone(base);
+    after.summary = "do a different thing";
+    after.estimatedSize = "l";
+    const counts = sectionDiffCounts(diffPlans(base, after));
+    expect(counts.summary).toBe(1);
+    expect(counts.size).toBe(1);
+  });
+
+  it("counts steps and files added + removed + modified", () => {
+    const after = clone(base);
+    after.steps[0].detail = "reworked"; // modified
+    after.steps.push({ title: "step three", detail: "", files: [], symbols: [] }); // added
+    after.files = [
+      { path: "src/a.ts", reason: "entry", status: "existing" }, // unchanged
+      { path: "src/c.ts", reason: "brand new", status: "new" }, // added (src/b.ts removed)
+    ];
+    const counts = sectionDiffCounts(diffPlans(base, after));
+    expect(counts.steps).toBe(2); // 1 added + 1 modified
+    expect(counts.files).toBe(2); // 1 added + 1 removed
+  });
+
+  it("sums to diffCount on a multi-section diff", () => {
+    const after = clone(base);
+    after.summary = "do a different thing"; // summary 1
+    after.estimatedSize = "l"; // size 1
+    after.steps[0].detail = "reworked"; // steps 1 (modified)
+    after.steps.push({ title: "step three", detail: "", files: [], symbols: [] }); // steps 1 (added)
+    after.files = [{ path: "src/c.ts", reason: "brand new", status: "new" }]; // files 2 (a+b removed, c added → 2 removed + 1 added = 3)
+    after.acceptance[0].addressedBy = "step two"; // acceptance 2 (removed + added)
+    after.risks = ["might break", "also this"]; // risks 1 (added)
+    const diff = diffPlans(base, after);
+    const counts = sectionDiffCounts(diff);
+    const summed = Object.values(counts).reduce((a, b) => a + b, 0);
+    expect(summed).toBe(diffCount(diff));
+  });
+});
+
+describe("acceptanceString", () => {
+  it("formats a criterion and its addressedBy as the matching key", () => {
+    expect(acceptanceString({ criterion: "it works", addressedBy: "step one" })).toBe(
+      "it works — step one",
+    );
   });
 });

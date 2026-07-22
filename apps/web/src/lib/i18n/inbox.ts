@@ -237,6 +237,7 @@ const en = {
       open: "Discuss the plan",
       close: "Close",
       unread: (n: number) => `${n} unread message${n === 1 ? "" : "s"}`,
+      applied: (n: number) => `Changes applied — ${n} change${n === 1 ? "" : "s"}`,
     },
     memories: {
       consulted: "Memories consulted",
@@ -253,6 +254,11 @@ const en = {
       changed: "changed",
       before: "Before",
       after: "After",
+      bannerUpdated: (n: number) => `Plan updated from discussion — ${n} change${n === 1 ? "" : "s"}`,
+      bannerView: "View changes",
+      showDiff: "Show changes",
+      hideDiff: "Hide changes",
+      updatedBadge: (n: number) => `updated · ${n}`,
     },
   },
   console: {
@@ -659,6 +665,7 @@ const it: typeof en = {
       open: "Discuti il piano",
       close: "Chiudi",
       unread: (n: number) => `${n} messaggi${n === 1 ? "o" : ""} non lett${n === 1 ? "o" : "i"}`,
+      applied: (n) => `Modifiche applicate — ${n} cambiament${n === 1 ? "o" : "i"}`,
     },
     memories: {
       consulted: "Memorie consultate",
@@ -675,6 +682,11 @@ const it: typeof en = {
       changed: "modificato",
       before: "Prima",
       after: "Dopo",
+      bannerUpdated: (n) => `Piano aggiornato dalla discussione — ${n} modific${n === 1 ? "a" : "he"}`,
+      bannerView: "Vedi modifiche",
+      showDiff: "mostra modifiche",
+      hideDiff: "nascondi modifiche",
+      updatedBadge: (n) => `aggiornato · ${n}`,
     },
   },
   console: {
@@ -1080,6 +1092,7 @@ const fr: typeof en = {
       open: "Discuter du plan",
       close: "Fermer",
       unread: (n: number) => `${n} message${n === 1 ? "" : "s"} non lu${n === 1 ? "" : "s"}`,
+      applied: (n) => `Modifications appliquées — ${n} changement${n === 1 ? "" : "s"}`,
     },
     memories: {
       consulted: "Mémoires consultées",
@@ -1096,6 +1109,11 @@ const fr: typeof en = {
       changed: "modifié",
       before: "Avant",
       after: "Après",
+      bannerUpdated: (n) => `Plan mis à jour depuis la discussion — ${n} changement${n === 1 ? "" : "s"}`,
+      bannerView: "Voir les modifications",
+      showDiff: "Afficher les modifications",
+      hideDiff: "Masquer les modifications",
+      updatedBadge: (n) => `mis à jour · ${n}`,
     },
   },
   console: {
@@ -1502,6 +1520,7 @@ const es: typeof en = {
       open: "Discutir el plan",
       close: "Cerrar",
       unread: (n: number) => `${n} mensaje${n === 1 ? "" : "s"} sin leer`,
+      applied: (n) => `Cambios aplicados — ${n} cambio${n === 1 ? "" : "s"}`,
     },
     memories: {
       consulted: "Memorias consultadas",
@@ -1518,6 +1537,11 @@ const es: typeof en = {
       changed: "cambiado",
       before: "Antes",
       after: "Después",
+      bannerUpdated: (n) => `Plan actualizado desde la discusión — ${n} cambio${n === 1 ? "" : "s"}`,
+      bannerView: "Ver cambios",
+      showDiff: "Mostrar cambios",
+      hideDiff: "Ocultar cambios",
+      updatedBadge: (n) => `actualizado · ${n}`,
     },
   },
   console: {

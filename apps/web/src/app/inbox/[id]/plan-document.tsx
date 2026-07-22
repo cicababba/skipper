@@ -1,8 +1,15 @@
 "use client";
 
-import { useMemo } from "react";
-import { Check, ChevronDown, ChevronRight, Edit2, Loader2, X } from "lucide-react";
-import type { IssuePlan, PlanRevision, UsedMemoryRef } from "@skipper/shared";
+import { useMemo, useState } from "react";
+import { Check, ChevronDown, ChevronRight, Edit2, Loader2, SplitSquareHorizontal, X } from "lucide-react";
+import {
+  diffCount,
+  diffPlans,
+  sectionDiffCounts,
+  type IssuePlan,
+  type PlanRevision,
+  type UsedMemoryRef,
+} from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { useStoredState } from "@/lib/use-stored-state";
@@ -11,7 +18,6 @@ import {
   type SectionDraft,
   type SectionId,
 } from "@/lib/inbox/plan-edit";
-import { diffCount, diffPlans } from "@/lib/inbox/plan-diff";
 import { MemoriesList } from "./memories-card";
 import { PlanChangesBody } from "./plan-changes";
 import {
@@ -24,9 +30,20 @@ import {
   StepsEditor,
   StepsView,
 } from "./plan-sections";
+import {
+  AcceptanceDiffView,
+  FilesDiffView,
+  LinesDiffView,
+  StepsDiffView,
+  SummaryDiffView,
+} from "./plan-diff-sections";
 
 export function docSectionDomId(sid: string): string {
   return `plan-doc-${sid}`;
+}
+
+function hhmm(at: string): string {
+  return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 type DocSid = Exclude<SectionId, "size">;
@@ -51,6 +68,7 @@ function DocSection({
   sid,
   title,
   count,
+  updatedCount,
   tone,
   collapsible,
   expanded,
@@ -67,6 +85,7 @@ function DocSection({
   sid: string;
   title: string;
   count?: number;
+  updatedCount?: number;
   tone?: "warning";
   collapsible?: boolean;
   expanded: boolean;
@@ -103,6 +122,11 @@ function DocSection({
         </h3>
         {count !== undefined && (
           <span className="font-mono text-[11px] text-muted/50 tabular-nums">{count}</span>
+        )}
+        {updatedCount !== undefined && updatedCount > 0 && (
+          <span className="rounded-full border border-accent/30 bg-accent/10 px-1.5 text-[10px] font-medium text-accent tabular-nums">
+            {p.changes.updatedBadge(updatedCount)}
+          </span>
         )}
         <div className="flex-1" />
         {editing ? (
@@ -166,6 +190,35 @@ export function PlanDocument({
 
   const latest = revisions?.at(-1);
   const changesDiff = useMemo(() => (latest ? diffPlans(latest.plan, plan) : null), [latest, plan]);
+  const hasChanges = !!latest && !!changesDiff && diffCount(changesDiff) > 0;
+  const counts = useMemo(() => (changesDiff ? sectionDiffCounts(changesDiff) : null), [changesDiff]);
+  const highlights = useMemo(() => {
+    if (!changesDiff) return null;
+    return {
+      steps: new Set([
+        ...changesDiff.steps.added.map((s) => s.title),
+        ...changesDiff.steps.modified.map((m) => m.after.title),
+      ]),
+      files: new Set([
+        ...changesDiff.files.added.map((f) => f.path),
+        ...changesDiff.files.modified.map((m) => m.after.path),
+      ]),
+      acceptance: new Set(changesDiff.acceptance.added),
+      risks: new Set(changesDiff.risks.added),
+      openQuestions: new Set(changesDiff.openQuestions.added),
+      context: new Set(changesDiff.context.added),
+      outOfScope: new Set(changesDiff.outOfScope.added),
+      verificationCommands: new Set(changesDiff.verificationCommands.added),
+      manualChecks: new Set(changesDiff.manualChecks.added),
+    };
+  }, [changesDiff]);
+
+  const [dismissedAt, setDismissedAt] = useStoredState(
+    `skipper-plan-banner-dismissed:${itemId}`,
+    "",
+  );
+  const [showDiff, setShowDiff] = useState(false);
+  const diffMode = showDiff && hasChanges && !!changesDiff;
 
   const [openCsv, setOpenCsv] = useStoredState(`skipper-plan-doc-open:${itemId}`, "");
   const openSet = new Set(openCsv.split(",").filter(Boolean));
@@ -176,6 +229,19 @@ export function PlanDocument({
       else set.add(sid);
       return [...set].join(",");
     });
+
+  const viewChanges = () => {
+    setOpenCsv((cur) => {
+      const set = new Set(cur.split(",").filter(Boolean));
+      set.add("changes");
+      return [...set].join(",");
+    });
+    requestAnimationFrame(() => {
+      document
+        .getElementById(docSectionDomId("changes"))
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
 
   const renderDoc = (
     sid: DocSid,
@@ -194,11 +260,12 @@ export function PlanDocument({
         sid={sid}
         title={title}
         count={count}
+        updatedCount={counts?.[sid]}
         tone={opts?.tone}
         collapsible={opts?.collapsible}
         expanded={expanded}
         onToggle={() => toggle(sid)}
-        editable={gate && editingSection === null}
+        editable={gate && editingSection === null && !showDiff}
         editing={editing}
         valid={draft ? sectionIsValid(draft) : false}
         saving={saving}
@@ -215,12 +282,30 @@ export function PlanDocument({
 
   return (
     <div className="max-w-[720px] min-w-0 wide:col-start-1 wide:row-start-1">
+      {hasChanges && (
+        <div className="flex justify-end pb-1">
+          <button
+            onClick={() => setShowDiff((v) => !v)}
+            disabled={editingSection !== null}
+            className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 ${
+              showDiff
+                ? "border-accent/30 bg-accent/10 text-accent"
+                : "border-border text-muted hover:text-foreground hover:bg-card-hover"
+            }`}
+          >
+            <SplitSquareHorizontal size={12} />
+            {showDiff ? p.changes.hideDiff : p.changes.showDiff}
+          </button>
+        </div>
+      )}
+
       {/* Summary is required — always rendered, never collapsible. */}
       <DocSection
         sid="summary"
         title={p.sections.summary}
+        updatedCount={counts?.summary}
         expanded
-        editable={gate && editingSection === null}
+        editable={gate && editingSection === null && !showDiff}
         editing={editingSection === "summary"}
         valid={draft ? sectionIsValid(draft) : false}
         saving={saving}
@@ -235,12 +320,35 @@ export function PlanDocument({
             rows={6}
             className="w-full bg-card-hover/40 border border-card-hover focus:border-accent outline-none rounded-md p-3 text-sm resize-y"
           />
+        ) : diffMode ? (
+          <SummaryDiffView summary={plan.summary} before={changesDiff.summary?.before ?? null} />
         ) : (
           <MarkdownRenderer content={plan.summary} />
         )}
       </DocSection>
 
-      {latest && changesDiff && diffCount(changesDiff) > 0 && (
+      {hasChanges && latest.source === "chat-apply" && latest.at !== dismissedAt && (
+        <div className="my-3 flex items-center gap-3 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-[12px]">
+          <span className="flex-1 text-accent">
+            {p.changes.bannerUpdated(diffCount(changesDiff))} · {hhmm(latest.at)}
+          </span>
+          <button
+            onClick={viewChanges}
+            className="shrink-0 rounded-md border border-accent/30 px-2 py-1 font-medium text-accent hover:bg-accent/20 transition-colors"
+          >
+            {p.changes.bannerView}
+          </button>
+          <button
+            onClick={() => setDismissedAt(latest.at)}
+            className="shrink-0 text-accent/70 hover:text-accent transition-colors"
+            title={p.cancel}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {hasChanges && (
         <DocSection
           sid="changes"
           title={p.changes.title}
@@ -259,7 +367,11 @@ export function PlanDocument({
         "steps",
         p.sections.steps,
         plan.steps.length,
-        <StepsView steps={plan.steps} />,
+        diffMode ? (
+          <StepsDiffView steps={plan.steps} diff={changesDiff.steps} />
+        ) : (
+          <StepsView steps={plan.steps} highlight={highlights?.steps} />
+        ),
         draft?.section === "steps" ? (
           <StepsEditor
             steps={draft.steps}
@@ -272,7 +384,11 @@ export function PlanDocument({
         "files",
         p.sections.files,
         plan.files.length,
-        <FilesView files={plan.files} />,
+        diffMode ? (
+          <FilesDiffView files={plan.files} diff={changesDiff.files} />
+        ) : (
+          <FilesView files={plan.files} highlight={highlights?.files} />
+        ),
         draft?.section === "files" ? (
           <FilesEditor
             files={draft.files}
@@ -285,7 +401,11 @@ export function PlanDocument({
         "acceptance",
         p.sections.acceptance,
         plan.acceptance.length,
-        <AcceptanceView rows={plan.acceptance} />,
+        diffMode ? (
+          <AcceptanceDiffView rows={plan.acceptance} diff={changesDiff.acceptance} />
+        ) : (
+          <AcceptanceView rows={plan.acceptance} highlight={highlights?.acceptance} />
+        ),
         draft?.section === "acceptance" ? (
           <AcceptanceEditor
             rows={draft.acceptance}
@@ -298,7 +418,11 @@ export function PlanDocument({
         "risks",
         p.sections.risks,
         plan.risks.length,
-        <LinesView lines={plan.risks} />,
+        diffMode ? (
+          <LinesDiffView lines={plan.risks} diff={changesDiff.risks} />
+        ) : (
+          <LinesView lines={plan.risks} highlight={highlights?.risks} />
+        ),
         draft?.section === "risks" ? (
           <LinesEditor
             lines={draft.lines}
@@ -311,7 +435,11 @@ export function PlanDocument({
         "openQuestions",
         p.sections.openQuestions,
         plan.openQuestions.length,
-        <LinesView lines={plan.openQuestions} />,
+        diffMode ? (
+          <LinesDiffView lines={plan.openQuestions} diff={changesDiff.openQuestions} />
+        ) : (
+          <LinesView lines={plan.openQuestions} highlight={highlights?.openQuestions} />
+        ),
         draft?.section === "openQuestions" ? (
           <LinesEditor
             lines={draft.lines}
@@ -325,7 +453,11 @@ export function PlanDocument({
         "context",
         p.sections.context,
         plan.context?.length,
-        <LinesView lines={plan.context ?? []} />,
+        diffMode ? (
+          <LinesDiffView lines={plan.context ?? []} diff={changesDiff.context} />
+        ) : (
+          <LinesView lines={plan.context ?? []} highlight={highlights?.context} />
+        ),
         draft?.section === "context" ? (
           <LinesEditor
             lines={draft.lines}
@@ -338,7 +470,11 @@ export function PlanDocument({
         "outOfScope",
         p.sections.outOfScope,
         plan.outOfScope?.length,
-        <LinesView lines={plan.outOfScope ?? []} />,
+        diffMode ? (
+          <LinesDiffView lines={plan.outOfScope ?? []} diff={changesDiff.outOfScope} />
+        ) : (
+          <LinesView lines={plan.outOfScope ?? []} highlight={highlights?.outOfScope} />
+        ),
         draft?.section === "outOfScope" ? (
           <LinesEditor
             lines={draft.lines}
@@ -351,7 +487,17 @@ export function PlanDocument({
         "verificationCommands",
         p.sections.verificationCommands,
         plan.verificationCommands?.length,
-        <LinesView lines={plan.verificationCommands ?? []} />,
+        diffMode ? (
+          <LinesDiffView
+            lines={plan.verificationCommands ?? []}
+            diff={changesDiff.verificationCommands}
+          />
+        ) : (
+          <LinesView
+            lines={plan.verificationCommands ?? []}
+            highlight={highlights?.verificationCommands}
+          />
+        ),
         draft?.section === "verificationCommands" ? (
           <LinesEditor
             lines={draft.lines}
@@ -364,7 +510,11 @@ export function PlanDocument({
         "manualChecks",
         p.sections.manualChecks,
         plan.manualChecks?.length,
-        <LinesView lines={plan.manualChecks ?? []} />,
+        diffMode ? (
+          <LinesDiffView lines={plan.manualChecks ?? []} diff={changesDiff.manualChecks} />
+        ) : (
+          <LinesView lines={plan.manualChecks ?? []} highlight={highlights?.manualChecks} />
+        ),
         draft?.section === "manualChecks" ? (
           <LinesEditor
             lines={draft.lines}
