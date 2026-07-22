@@ -6,6 +6,7 @@ import type { TrackedItem, UntrackItemResult } from "@skipper/shared";
 import { actionsFor, splitActions, type ItemAction } from "@/lib/inbox/actions";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT, type AppDict } from "@/lib/app-i18n";
+import { CloseItemDialog } from "@/components/close-item-dialog";
 import { ActionMenu } from "./action-menu";
 
 // Renderer-side untrack confirm (#120): always prompt, then force-untrack (the
@@ -21,9 +22,11 @@ export async function confirmAndUntrack(
 }
 
 export function ItemActions({ item }: { item: TrackedItem }) {
-  const { requestTransition, openPr, archiveItem, untrackItem, setPinned } = useOrchestrator();
+  const { requestTransition, openPr, archiveItem, untrackItem, closeItemOnTracker, setPinned, state } =
+    useOrchestrator();
   const { t } = useT();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [closeOpen, setCloseOpen] = useState(false);
 
   const actions = actionsFor(item);
   if (actions.length === 0) return null;
@@ -31,8 +34,13 @@ export function ItemActions({ item }: { item: TrackedItem }) {
   // Exactly one spinner at a time: on the inline button when the primary runs, on the
   // kebab trigger otherwise (the menu is unmounted while an action is in flight).
   const busyInMenu = busyId !== null && busyId !== primary?.id;
+  const canCloseOnTracker = state?.sourceCapabilities[item.source]?.closeIssue ?? false;
 
   const run = async (action: ItemAction) => {
+    if (action.kind === "closeDialog") {
+      setCloseOpen(true);
+      return;
+    }
     setBusyId(action.id);
     try {
       if (action.kind === "openPr") await openPr(item.id);
@@ -50,27 +58,47 @@ export function ItemActions({ item }: { item: TrackedItem }) {
   };
 
   return (
-    <div className="flex items-center gap-1.5">
-      {primary && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            void run(primary);
+    <>
+      <div className="flex items-center gap-1.5">
+        {primary && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              void run(primary);
+            }}
+            disabled={busyId !== null}
+            className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md border transition-colors disabled:opacity-50 whitespace-nowrap border-accent/30 bg-accent/10 text-accent hover:bg-accent/20"
+          >
+            {busyId === primary.id && <Loader2 size={11} className="animate-spin" />}
+            {t.inbox.actions[primary.id]}
+          </button>
+        )}
+        <ActionMenu
+          actions={menu}
+          destructive={destructive}
+          busyId={busyId}
+          busyInMenu={busyInMenu}
+          onSelect={(action) => void run(action)}
+        />
+      </div>
+      {closeOpen && (
+        <CloseItemDialog
+          item={item}
+          canCloseOnTracker={canCloseOnTracker}
+          onCloseOnTracker={async () => {
+            const res = await closeItemOnTracker(item.id);
+            if (res.ok) setCloseOpen(false);
+            return res;
           }}
-          disabled={busyId !== null}
-          className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md border transition-colors disabled:opacity-50 whitespace-nowrap border-accent/30 bg-accent/10 text-accent hover:bg-accent/20"
-        >
-          {busyId === primary.id && <Loader2 size={11} className="animate-spin" />}
-          {t.inbox.actions[primary.id]}
-        </button>
+          onUntrack={async () => {
+            const res = await untrackItem(item.id, true);
+            if (res.ok) setCloseOpen(false);
+            return res.ok;
+          }}
+          onOpenInTracker={() => void window.skipper?.openExternal(item.url)}
+          onDismiss={() => setCloseOpen(false)}
+        />
       )}
-      <ActionMenu
-        actions={menu}
-        destructive={destructive}
-        busyId={busyId}
-        busyInMenu={busyInMenu}
-        onSelect={(action) => void run(action)}
-      />
-    </div>
+    </>
   );
 }

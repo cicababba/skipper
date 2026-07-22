@@ -20,7 +20,7 @@ export function gitlabApiBase(baseUrl?: string): string {
 }
 
 async function gitlabRequest<T>(
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "PUT",
   url: string,
   getToken: GitLabTokenProvider,
   body?: unknown,
@@ -42,4 +42,12 @@ export async function gitlabPost<T>(
   body: unknown,
 ): Promise<GitLabResponse<T>> {
   return gitlabRequest<T>("POST", url, getToken, body);
+}
+
+export async function gitlabPut<T>(
+  url: string,
+  getToken: GitLabTokenProvider,
+  body: unknown,
+): Promise<GitLabResponse<T>> {
+  return gitlabRequest<T>("PUT", url, getToken, body);
 }

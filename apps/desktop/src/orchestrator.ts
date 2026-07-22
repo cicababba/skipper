@@ -1,6 +1,8 @@
 import { ipcMain, type BrowserWindow } from "electron";
 import {
   issueSourceForAuthProvider,
+  issueSourceFor,
+  issueSources,
   reconcile,
   remapProjectItems,
   resolveProjectRepos,
@@ -62,6 +64,9 @@ import type {
   UnmappedProject,
   ArchiveItemResult,
   UntrackItemResult,
+  CloseItemOnTrackerResult,
+  IssueSourceCapabilities,
+  IssueSourceId,
 } from "@skipper/shared";
 import { loadCursors, saveCursors, type InboxCursorFile } from "./inbox-cursor-store";
 import { runGit } from "./git";
@@ -171,6 +176,15 @@ const lastFullWalkAt = new Map<string, number>();
 // only (stale across restarts otherwise); recomputed from the full derived cache.
 const unmappedProjects = new Map<string, UnmappedProject[]>();
 
+// Per-source capability flags (#132), derived once from the adapter registry —
+// truthful because it reads the actual method presence on each source.
+const SOURCE_CAPABILITIES = Object.fromEntries(
+  (Object.keys(issueSources) as IssueSourceId[]).map((id) => [
+    id,
+    { closeIssue: typeof issueSourceFor(id).closeIssue === "function" },
+  ]),
+) as Record<IssueSourceId, IssueSourceCapabilities>;
+
 function snapshot(): OrchestratorState {
   const tracked = Object.values(manifest?.items ?? {});
   return {
@@ -191,6 +205,7 @@ function snapshot(): OrchestratorState {
       .sort((a, b) => `${a.host}:${a.projectKey}`.localeCompare(`${b.host}:${b.projectKey}`)),
     resumeRite: manifest?.resumeRite ? { itemIds: [...manifest.resumeRite.itemIds] } : null,
     settings: manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
+    sourceCapabilities: SOURCE_CAPABILITIES,
   };
 }
 
@@ -367,6 +382,31 @@ function fetchIssueCommentsFor(item: TrackedItem): Promise<IssueComment[]> {
     account.baseUrl,
     account.cloudId,
   );
+}
+
+/** Minimal Issue rebuilt from a TrackedItem for a close call when the raw poll
+ *  cache lacks it (#132) — carries every field closeGitHubIssue/closeGitLabIssue
+ *  read; required-unused fields get inert defaults. */
+function synthesizeIssue(item: TrackedItem): Issue {
+  return {
+    kind: "issue",
+    id: item.id,
+    source: item.source,
+    sourceRef: item.sourceRef,
+    codeHost: item.codeHost,
+    accountId: item.accountId,
+    repo: item.repo,
+    key: item.key,
+    number: item.number,
+    title: item.title,
+    body: item.body,
+    labels: [],
+    assignees: [],
+    url: item.url,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    state: "open",
+  };
 }
 
 /** Account for cloning: explicit account key, else the code-host account behind the
@@ -1553,6 +1593,44 @@ export function initOrchestrator(
 
       await saveOrchestratorManifest(deps!.manifestFilePath, m);
       broadcast();
+      return { ok: true };
+    },
+  );
+  // Close-on-tracker (#132): close the issue on its tracker via the source's
+  // closeIssue capability, then settle the item locally through reconcile's
+  // existing "closed on GitHub" path (zero extra network). Adapter errors (e.g. a
+  // 403 when the GitHub App lacks Issues: write) surface via the {ok:false} path.
+  ipcMain.handle(
+    "skipper:orchestrator:closeItemOnTracker",
+    async (_e, itemId: string): Promise<CloseItemOnTrackerResult> => {
+      const m = await ensureManifest();
+      const item = m.items[itemId];
+      if (!item) return { ok: false, error: `unknown item ${itemId}` };
+
+      const account = deps?.getAccounts().find((a) => a.key === item.accountId);
+      const source = account ? issueSourceForAuthProvider(account.provider) : undefined;
+      if (!account || !source?.closeIssue) {
+        return { ok: false, error: `closing on the tracker is not supported for ${item.source}` };
+      }
+
+      const cached = items.get(item.accountId)?.get(item.id);
+      const issue = cached?.kind === "issue" ? cached : synthesizeIssue(item);
+      try {
+        await source.closeIssue(
+          issue,
+          (force) => deps!.getToken(account.key, force),
+          account.baseUrl,
+        );
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+
+      if (cached?.kind === "issue") {
+        cached.state = "closed";
+        cached.updatedAt = new Date().toISOString();
+        patchAccount(item.accountId, deriveArrays(item.accountId));
+      }
+      await reconcileFromCache();
       return { ok: true };
     },
   );

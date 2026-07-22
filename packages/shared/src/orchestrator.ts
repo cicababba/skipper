@@ -437,6 +437,12 @@ export type TrackerProjectsResult =
   | { ok: true; source: string; host: string; projects: TrackerProject[] }
   | { ok: false; error: string };
 
+/** Renderer-visible capability flags per issue source (#132), derived from the
+ *  adapter registry. closeIssue = the source can close the issue on its tracker. */
+export interface IssueSourceCapabilities {
+  closeIssue: boolean;
+}
+
 export interface OrchestratorState {
   status: "idle" | "polling";
   /** @deprecated (#62) mirrors settings.intakePaused — read that instead. */
@@ -456,6 +462,8 @@ export interface OrchestratorState {
   resumeRite: { itemIds: string[] } | null;
   /** The global settings bag (#62), so the UI can read and write it. */
   settings: OrchestratorSettings;
+  /** Per-source capability flags (#132), derived from the adapter registry. */
+  sourceCapabilities: Record<IssueSourceId, IssueSourceCapabilities>;
 }
 
 // IPC result shapes shared by the preload bridge and the renderer types.
@@ -524,6 +532,11 @@ export type UntrackItemResult =
   | { ok: true }
   | { ok: false; needsConfirm: true; hasWorktree: boolean; dirtyFiles: number; hasPr: boolean }
   | { ok: false; needsConfirm?: undefined; error: string };
+
+// Close-on-tracker (#132): close the issue on its tracker via the adapter's
+// closeIssue capability. reconcile then settles the item through its existing
+// "closed on GitHub" path.
+export type CloseItemOnTrackerResult = { ok: true } | { ok: false; error: string };
 
 export type RepoLinkResult = { ok: true; localPath: string } | { ok: false; error: string };
 

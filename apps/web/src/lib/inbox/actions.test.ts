@@ -53,6 +53,30 @@ describe("actionsFor", () => {
     }
   });
 
+  it("offers close as the capability-aware closeDialog action, gated on → closed (#132)", () => {
+    // baseActionsFor surfaces close only in these states; elsewhere it is absent
+    // (merged/closed have no legal → closed, plan-gate/PR states never offer it).
+    const closeStates: LifecycleState[] = [
+      "triage",
+      "human-review",
+      "needs-input",
+      "blocked",
+      "failed",
+      "queued",
+      "planning",
+      "coding",
+      "agent-review",
+    ];
+    for (const state of ALL_STATES) {
+      const close = actionsFor(item({ state })).find((a) => a.id === "close");
+      if (closeStates.includes(state)) {
+        expect(close, state).toEqual({ id: "close", kind: "closeDialog" });
+      } else {
+        expect(close, state).toBeUndefined();
+      }
+    }
+  });
+
   it("plan-gate offers approve, replan, and park", () => {
     const actions = actionsFor(item({ state: "plan-gate" }));
     expect(actions.map((a) => a.id)).toEqual(["approve", "replan", "park", "untrack"]);

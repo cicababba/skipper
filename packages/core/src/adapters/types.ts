@@ -77,6 +77,10 @@ export interface IssueSource<C = unknown> {
     baseUrl?: string,
     cloudId?: string,
   ): Promise<IssueComment[]>;
+  /** Optional capability (#132): close the issue on its tracker. Adapters without
+   *  it omit the method — the source is then not close-capable and the UI offers
+   *  only untrack + link-out. */
+  closeIssue?(issue: Issue, getToken: TokenProvider, baseUrl?: string): Promise<void>;
 }
 
 export interface CreatePrParams {

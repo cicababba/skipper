@@ -46,6 +46,12 @@ describe("issue-source registry", () => {
     expect(gitlabIssueSource.fetchDependencies).toBeUndefined();
     expect(jiraIssueSource.fetchDependencies).toBeUndefined();
   });
+
+  it("exposes closeIssue on GitHub and GitLab but not Jira (#132)", () => {
+    expect(typeof githubIssueSource.closeIssue).toBe("function");
+    expect(typeof gitlabIssueSource.closeIssue).toBe("function");
+    expect(jiraIssueSource.closeIssue).toBeUndefined();
+  });
 });
 
 describe("code-host registry", () => {
