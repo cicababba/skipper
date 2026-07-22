@@ -47,9 +47,6 @@ importers:
       '@skipper/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@skipper/sync':
-        specifier: workspace:*
-        version: link:../../packages/sync
       node-pty:
         specifier: ^1.0.0
         version: 1.1.0
