@@ -446,6 +446,88 @@ describe("planner worktree at planning (#110)", () => {
     expect(h.planSessionIds).toEqual([]);
     expect(h.agentSessionIds[0]).toBeUndefined();
   });
+
+  // #202: the worktree's pre-existing uncommitted changes (leftover from a failed
+  // coding attempt) are surfaced in the plan prompt. Capture the prompt the fake
+  // agent receives as its first argument.
+  function capturePrompts(provider: unknown): string[] {
+    const prompts: string[] = [];
+    const p = provider as {
+      agent: (prompt: string, o: Record<string, unknown>) => Promise<{ text: string }>;
+    };
+    const inner = p.agent.bind(p);
+    p.agent = async (prompt, o) => {
+      prompts.push(prompt);
+      return inner(prompt, o);
+    };
+    return prompts;
+  }
+
+  it("feeds the worktree's pre-existing uncommitted changes into the plan prompt (#202)", async () => {
+    const h = makeRunHarness({
+      item: makeItem("planning"),
+      prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+    });
+    // Dirty in the worktree, clean in the shared clone — so the tripwire (which
+    // diffs /repo) never fires and only the pre-existing block reaches the prompt.
+    (h.deps as { checkoutDirtyPaths: PlannerDeps["checkoutDirtyPaths"] }).checkoutDirtyPaths =
+      async (path: string) =>
+        path === "/wt/issue-1" ? [" M github/close.ts", "?? github/new.ts"] : [];
+    const prompts = capturePrompts(h.provider);
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await h.done;
+    expect(prompts[0]).toContain("--- Pre-existing uncommitted changes ---");
+    expect(prompts[0]).toContain(" M github/close.ts");
+    expect(prompts[0]).toContain("?? github/new.ts");
+    expect(h.transitions).toEqual([]); // dirty worktree is grounding, not an escape
+  });
+
+  it("omits the block when the worktree is clean (#202)", async () => {
+    const h = makeRunHarness({
+      item: makeItem("planning"),
+      prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+    });
+    (h.deps as { checkoutDirtyPaths: PlannerDeps["checkoutDirtyPaths"] }).checkoutDirtyPaths =
+      async () => [];
+    const prompts = capturePrompts(h.provider);
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await h.done;
+    expect(prompts[0]).not.toContain("Pre-existing uncommitted changes");
+  });
+
+  it("omits the block when git status fails in the worktree (#202)", async () => {
+    const h = makeRunHarness({
+      item: makeItem("planning"),
+      prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+    });
+    (h.deps as { checkoutDirtyPaths: PlannerDeps["checkoutDirtyPaths"] }).checkoutDirtyPaths =
+      async () => null;
+    const prompts = capturePrompts(h.provider);
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await h.done;
+    expect(prompts[0]).not.toContain("Pre-existing uncommitted changes");
+  });
+
+  it("omits the block when planning degrades to the shared clone even if it is dirty (#202)", async () => {
+    const h = makeRunHarness({
+      item: makeItem("planning"),
+      prepareWorktree: async () => {
+        throw new Error("offline");
+      },
+    });
+    // The shared clone's dirt is the user's own in-flight work — never reported.
+    (h.deps as { checkoutDirtyPaths: PlannerDeps["checkoutDirtyPaths"] }).checkoutDirtyPaths =
+      async () => [" M user-file.ts"];
+    const prompts = capturePrompts(h.provider);
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await h.done;
+    expect(h.cwds.every((c) => c === "/repo")).toBe(true);
+    expect(prompts[0]).not.toContain("Pre-existing uncommitted changes");
+  });
 });
 
 // #159: an in-flight planning run must die on cancel/untrack, and a zombie that

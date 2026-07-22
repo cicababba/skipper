@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { IssueComment } from "../src/adapters/types";
 import type { PlanIssueInput } from "../src/planner/generate";
-import { buildPlannerPrompt, renderCommentsBlock } from "../src/planner/prompt";
+import { buildPlannerPrompt, renderCommentsBlock, renderDirtyFilesBlock } from "../src/planner/prompt";
 
 const SCHEMA = { type: "object" };
 
@@ -37,6 +37,46 @@ describe("buildPlannerPrompt — comments", () => {
   it("omits the block when there are no comments", () => {
     const prompt = buildPlannerPrompt(baseIssue(), SCHEMA);
     expect(prompt).not.toContain("Issue comments");
+  });
+});
+
+describe("buildPlannerPrompt — pre-existing changes", () => {
+  it("renders the dirty-files block after the comments and before the schema", () => {
+    const prompt = buildPlannerPrompt(
+      baseIssue({ comments: [comment("alice", "please handle 503 too", "2026-07-01T01:00:00Z")] }),
+      SCHEMA,
+      [" M github/close.ts", "?? github/new-helper.ts"],
+    );
+    const bodyEnd = prompt.indexOf("--- End issue body ---");
+    const comments = prompt.indexOf("--- Issue comments (newest last) ---");
+    const block = prompt.indexOf("--- Pre-existing uncommitted changes ---");
+    const schema = prompt.indexOf("Schema:");
+    expect(block).toBeGreaterThan(bodyEnd);
+    expect(block).toBeGreaterThan(comments);
+    expect(schema).toBeGreaterThan(block);
+    expect(prompt).toContain(" M github/close.ts");
+    expect(prompt).toContain("?? github/new-helper.ts");
+  });
+
+  it("omits the block when no pre-existing changes are passed", () => {
+    const prompt = buildPlannerPrompt(baseIssue(), SCHEMA);
+    expect(prompt).not.toContain("Pre-existing uncommitted changes");
+  });
+});
+
+describe("renderDirtyFilesBlock", () => {
+  it("returns undefined for empty or undefined input", () => {
+    expect(renderDirtyFilesBlock(undefined)).toBeUndefined();
+    expect(renderDirtyFilesBlock([])).toBeUndefined();
+  });
+
+  it("renders the porcelain lines inside a fenced block", () => {
+    const block = renderDirtyFilesBlock([" M src/a.ts", "?? src/b.ts"])!;
+    expect(block).toContain("--- Pre-existing uncommitted changes ---");
+    expect(block).toContain(" M src/a.ts");
+    expect(block).toContain("?? src/b.ts");
+    expect(block).toContain('never mark a file that exists on disk as "new"');
+    expect(block).toContain("--- End pre-existing uncommitted changes ---");
   });
 });
 
