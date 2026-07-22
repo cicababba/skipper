@@ -5,9 +5,11 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Inbox, Loader2, Pause, RefreshCw, X } from "lucide-react";
 import { useOrchestrator } from "@/lib/orchestrator-context";
+import { useAuth } from "@/lib/auth-context";
 import { RepoManagerModal } from "@/components/repo-manager-modal";
 import { useT } from "@/lib/app-i18n";
 import { useStoredState } from "@/lib/use-stored-state";
+import { inboxGate } from "@/lib/inbox/gate";
 import { KANBAN_COLUMNS, columnCounts, type ColumnId } from "@/lib/inbox/model";
 import { filterItems, sortItems, type SortDir, type SortKey } from "@/lib/inbox/table";
 import { InboxTable } from "./inbox-table";
@@ -22,6 +24,7 @@ const CONFIDENCE_THRESHOLDS = [0.5, 0.75] as const;
 
 export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
   const { state, error, refreshing, refresh, clearError } = useOrchestrator();
+  const { authState, providers, loaded: authLoaded } = useAuth();
   const { t } = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -79,6 +82,20 @@ export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
   };
 
   const isElectron = typeof window !== "undefined" && !!window.skipper;
+
+  const issueAccounts = useMemo(() => {
+    const issueProviders = new Set(providers.filter((p) => p.isIssueSource).map((p) => p.id));
+    return authState.accounts.filter((a) => issueProviders.has(a.provider)).length;
+  }, [authState, providers]);
+
+  const gate = inboxGate({
+    isElectron,
+    authLoaded,
+    issueAccounts,
+    orchestrator: state
+      ? { accounts: Object.keys(state.accounts).length, items: state.items.length }
+      : null,
+  });
 
   return (
     <div className="min-h-full p-6 space-y-4">
@@ -245,14 +262,14 @@ export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
       )}
 
       {/* Body */}
-      {!isElectron ? (
+      {gate === "desktop-only" ? (
         <EmptyState message={t.inbox.empty.desktopOnly} />
-      ) : !state ? (
+      ) : gate === "loading" ? (
         <div className="flex items-center justify-center gap-2 py-24 text-muted">
           <Loader2 size={16} className="animate-spin" />
           {t.inbox.empty.loading}
         </div>
-      ) : Object.keys(state.accounts).length === 0 ? (
+      ) : gate === "connect" ? (
         <EmptyState message={t.inbox.empty.noAccounts}>
           <Link
             href="/settings"
@@ -261,7 +278,7 @@ export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
             {t.inbox.empty.goToSettings}
           </Link>
         </EmptyState>
-      ) : state.items.length === 0 ? (
+      ) : gate === "no-items" ? (
         <EmptyState message={t.inbox.empty.noItems}>
           <button
             onClick={() => setReposOpen(true)}
