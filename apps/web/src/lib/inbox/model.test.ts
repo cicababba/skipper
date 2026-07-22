@@ -16,7 +16,10 @@ const ALL_STATES = Object.keys(TRANSITIONS) as LifecycleState[];
 function item(overrides: Partial<TrackedItem>): TrackedItem {
   return {
     id: "github:1",
-    platform: "github",
+    source: "github",
+    sourceRef: { project: "octo/repo", key: "1" },
+    codeHost: "github",
+    key: "1",
     accountId: "acc",
     repo: { owner: "octo", name: "repo" },
     number: 1,

@@ -144,13 +144,13 @@ describe("sectionIsValid", () => {
     expect(
       sectionIsValid({
         section: "steps",
-        steps: [{ title: "", detail: "", filesText: "", symbolsText: "" }],
+        steps: [{ title: "", detail: "", filesText: "", symbolsText: "", createdSymbolsText: "" }],
       }),
     ).toBe(false);
     expect(
       sectionIsValid({
         section: "steps",
-        steps: [{ title: "t", detail: "", filesText: "", symbolsText: "" }],
+        steps: [{ title: "t", detail: "", filesText: "", symbolsText: "", createdSymbolsText: "" }],
       }),
     ).toBe(true);
     expect(sectionIsValid({ section: "risks", lines: [] })).toBe(true);
