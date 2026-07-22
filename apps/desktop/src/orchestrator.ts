@@ -18,13 +18,6 @@ import {
   resolveGate,
   DEFAULT_ORCHESTRATOR_SETTINGS,
   IssuePlanSchema,
-  readSolutionRecord,
-  writeSolutionRecord,
-  listSolutionRecords,
-  deleteSolutionRecord,
-  reconcileMemoryIndex,
-  memoryFileName,
-  applyFeedbackVote,
   type IssueComment,
   type OrchestratorManifest,
   type OrchestratorSettings,
@@ -86,6 +79,8 @@ import {
 import { resolveBaseChangeActions, type WorktreeProbe } from "./base-change";
 import { makeEventStream } from "./event-stream";
 import { discardItemWorktreeUnderLock, archivePlanAndDeleteChats } from "./item-teardown";
+import { registerMemoryHandlers } from "./memory-ipc";
+import { registerWorktreeDiffHandlers } from "./worktree-diff-ipc";
 import { readLlmSettings, readLlmSettingsSync } from "./llm-settings";
 import { readStoredPlan, updateStoredPlan } from "./plan-store";
 import { readStoredCoderReport } from "./report-store";
@@ -117,16 +112,11 @@ import {
   discardWorktree,
   ensureWorktree,
   fetchOrigin,
-  listWorktreeChanges,
   parseRemoteBranches,
-  readWorktreeFileVersions,
   refreshWorktreeBase,
   resolveBaseRef,
-  worktreeDiffTotals,
   worktreeDirFor,
   worktreeDirtyFiles,
-  worktreeStatus,
-  writeWorktreeFile,
 } from "./worktrees";
 
 export { killAllCodingRuns, killAllPlanningRuns, killAllRescores };
@@ -1855,115 +1845,14 @@ export function initOrchestrator(
   ipcMain.handle("skipper:review:getEvents", (_e, itemId: string) => {
     return reviewStream.getEvents(itemId);
   });
-  // Solutions memory surface (#46). get/feedback drive the "memories used" card;
-  // list is the read side #47's browser will consume.
-  ipcMain.handle("skipper:memory:get", async (_e, id: string) => {
-    return readSolutionRecord(deps!.memoryDir, memoryFileName(id));
+  registerMemoryHandlers({
+    ipcMain,
+    memoryDir: orchestratorDeps.memoryDir,
+    manifestFilePath: orchestratorDeps.manifestFilePath,
+    ensureManifest,
+    broadcast,
   });
-  ipcMain.handle("skipper:memory:list", async (_e, repo: RepoRef) => {
-    const key = repoKey(repo);
-    const entries = await listSolutionRecords(deps!.memoryDir);
-    return entries
-      .map((e) => e.record)
-      .filter((r) => repoKey(r.repo) === key);
-  });
-  // 👍/👎 (#46): move the record's aggregate counters by the delta between the
-  // item entry's old vote and the new one, and store the new vote as the local
-  // idempotency anchor. Feedback is query-time only — no reindex.
-  ipcMain.handle(
-    "skipper:memory:feedback",
-    async (_e, itemId: string, phase: MemoryPhase, id: string, vote: "up" | "down" | null) => {
-      const m = await ensureManifest();
-      const entry = m.items[itemId]?.usedMemory?.[phase]?.find((ref) => ref.id === id);
-      if (!entry) return { ok: false as const, error: "used-memory entry not found" };
-      const record = await readSolutionRecord(deps!.memoryDir, memoryFileName(id));
-      if (!record) return { ok: false as const, error: `no memory record for id "${id}"` };
-      const oldVote = entry.vote;
-      if (oldVote === (vote ?? undefined)) return { ok: true as const };
-      record.feedback = applyFeedbackVote(record.feedback, oldVote, vote);
-      try {
-        await writeSolutionRecord(deps!.memoryDir, record);
-      } catch (err) {
-        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-      }
-      if (vote) entry.vote = vote;
-      else delete entry.vote;
-      await saveOrchestratorManifest(deps!.manifestFilePath, m);
-      broadcast();
-      return { ok: true as const };
-    },
-  );
-  // Delete a record from the browser (#47): drop the file, then reconcile the
-  // vector index so the removed record stops surfacing in retrieval.
-  ipcMain.handle("skipper:memory:delete", async (_e, id: string) => {
-    const removed = await deleteSolutionRecord(deps!.memoryDir, memoryFileName(id));
-    if (!removed) return { ok: false as const, error: `no memory record for id "${id}"` };
-    try {
-      await reconcileMemoryIndex(deps!.memoryDir);
-    } catch (err) {
-      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-    }
-    broadcast();
-    return { ok: true as const };
-  });
-  // Worktree diff viewer (#114). The renderer may read and save any worktree
-  // that exists on disk, in any lifecycle state — the user owns the worktree.
-  async function usableWorktree(
-    itemId: string,
-  ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
-    const m = await ensureManifest();
-    const item = m.items[itemId];
-    if (!item) return { ok: false, error: `unknown item ${itemId}` };
-    const st = await worktreeStatus(item.worktree);
-    if (!st.ok) return st;
-    if (!st.present) return { ok: false, error: "worktree folder is missing on disk" };
-    return { ok: true, path: st.path };
-  }
-
-  ipcMain.handle("skipper:orchestrator:getWorktreeChanges", async (_e, itemId: string) => {
-    const wt = await usableWorktree(itemId);
-    if (!wt.ok) return wt;
-    try {
-      const files = await listWorktreeChanges(wt.path);
-      const totals = await worktreeDiffTotals(wt.path);
-      return { ok: true as const, files, totals };
-    } catch (err) {
-      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  ipcMain.handle(
-    "skipper:orchestrator:readWorktreeFile",
-    async (_e, itemId: string, path: string, oldPath?: string) => {
-      const wt = await usableWorktree(itemId);
-      if (!wt.ok) return wt;
-      try {
-        return { ok: true as const, file: await readWorktreeFileVersions(wt.path, path, oldPath) };
-      } catch (err) {
-        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
-  ipcMain.handle(
-    "skipper:orchestrator:saveWorktreeFile",
-    async (_e, itemId: string, path: string, content: string) => {
-      const wt = await usableWorktree(itemId);
-      if (!wt.ok) return wt;
-      try {
-        await writeWorktreeFile(wt.path, path, content);
-        return { ok: true as const };
-      } catch (err) {
-        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
-  // Worktree control center (#40): location + liveness for any item with a
-  // worktree, in any lifecycle state — unlike the review-gated diff handlers.
-  ipcMain.handle("skipper:orchestrator:getWorktreeStatus", async (_e, itemId: string) => {
-    const m = await ensureManifest();
-    const item = m.items[itemId];
-    if (!item) return { ok: false as const, error: `unknown item ${itemId}` };
-    return worktreeStatus(item.worktree);
-  });
+  registerWorktreeDiffHandlers({ ipcMain, ensureManifest });
   // Open the draft PR from human-review, or push a fix round's updates (#11).
   ipcMain.handle("skipper:orchestrator:openPr", async (_e, itemId: string) => {
     await ensureManifest();
