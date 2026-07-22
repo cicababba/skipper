@@ -85,11 +85,10 @@ import {
 } from "./repo-links";
 import { resolveBaseChangeActions, type WorktreeProbe } from "./base-change";
 import { makeEventStream } from "./event-stream";
+import { discardItemWorktreeUnderLock, archivePlanAndDeleteChats } from "./item-teardown";
 import { readLlmSettings, readLlmSettingsSync } from "./llm-settings";
-import { archiveStoredPlan, readStoredPlan, updateStoredPlan } from "./plan-store";
+import { readStoredPlan, updateStoredPlan } from "./plan-store";
 import { readStoredCoderReport } from "./report-store";
-import { deletePlanChat } from "./plan-chat-store";
-import { deleteAgentChats } from "./agent-chat-store";
 import {
   initPlanChat,
   sendPlanChatMessage,
@@ -981,13 +980,7 @@ async function completeMergedCleanup(itemId: string, memoryRef: string): Promise
   const m = await ensureManifest();
   const item = m.items[itemId];
   if (!item) throw new Error(`unknown item ${itemId}`);
-  let plan = item.plan;
-  if (plan?.ref) {
-    const archivedRef = await archiveStoredPlan(deps.plansDir, plan.ref).catch(() => null);
-    if (archivedRef) plan = { ...plan, ref: archivedRef };
-  }
-  void deletePlanChat(deps.plansDir, itemId).catch(() => {});
-  void deleteAgentChats(deps.plansDir, itemId).catch(() => {});
+  const plan = await archivePlanAndDeleteChats(deps.plansDir, itemId, item.plan);
   m.items[itemId] = {
     ...item,
     worktree: undefined,
@@ -1998,28 +1991,19 @@ export function initOrchestrator(
         }
         const link = repoLinks?.repos[repoKey(item.repo)];
         if (link) {
-          const worktreePath = item.worktree.path;
-          const branch = item.worktree.branch;
-          try {
-            await withRepoGitLock(item.repo, async () => {
-              const baseRef = await resolveBaseRef(link.localPath, link.baseBranch).catch(
-                () => undefined,
-              );
-              await discardWorktree({ repoPath: link.localPath, worktreePath, branch, baseRef });
-            });
-          } catch (err) {
-            return { ok: false, error: err instanceof Error ? err.message : String(err) };
-          }
+          const res = await discardItemWorktreeUnderLock({
+            repo: item.repo,
+            localPath: link.localPath,
+            baseBranch: link.baseBranch,
+            worktreePath: item.worktree.path,
+            branch: item.worktree.branch,
+            withRepoGitLock,
+          });
+          if (!res.ok) return res;
         }
       }
 
-      let plan = item.plan;
-      if (plan?.ref) {
-        const archivedRef = await archiveStoredPlan(deps!.plansDir, plan.ref).catch(() => null);
-        if (archivedRef) plan = { ...plan, ref: archivedRef };
-      }
-      void deletePlanChat(deps!.plansDir, itemId).catch(() => {});
-      void deleteAgentChats(deps!.plansDir, itemId).catch(() => {});
+      const plan = await archivePlanAndDeleteChats(deps!.plansDir, itemId, item.plan);
 
       // Re-read after the slow git ops so a concurrent update is not clobbered.
       const current = m.items[itemId] ?? item;
@@ -2065,26 +2049,19 @@ export function initOrchestrator(
       if (item.worktree) {
         const link = repoLinks?.repos[repoKey(item.repo)];
         if (link) {
-          const worktreePath = item.worktree.path;
-          const branch = item.worktree.branch;
-          try {
-            await withRepoGitLock(item.repo, async () => {
-              const baseRef = await resolveBaseRef(link.localPath, link.baseBranch).catch(
-                () => undefined,
-              );
-              await discardWorktree({ repoPath: link.localPath, worktreePath, branch, baseRef });
-            });
-          } catch (err) {
-            return { ok: false, error: err instanceof Error ? err.message : String(err) };
-          }
+          const res = await discardItemWorktreeUnderLock({
+            repo: item.repo,
+            localPath: link.localPath,
+            baseBranch: link.baseBranch,
+            worktreePath: item.worktree.path,
+            branch: item.worktree.branch,
+            withRepoGitLock,
+          });
+          if (!res.ok) return res;
         }
       }
 
-      if (item.plan?.ref) {
-        await archiveStoredPlan(deps!.plansDir, item.plan.ref).catch(() => null);
-      }
-      void deletePlanChat(deps!.plansDir, itemId).catch(() => {});
-      void deleteAgentChats(deps!.plansDir, itemId).catch(() => {});
+      await archivePlanAndDeleteChats(deps!.plansDir, itemId, item.plan);
 
       delete m.items[itemId];
       delete m.parked[itemId];
