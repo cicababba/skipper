@@ -160,6 +160,7 @@ export function makeManifestWriters(d: ManifestWriterDeps) {
     itemId: string,
     comments: PrReviewComment[],
     reason: string,
+    actor: TransitionActor = "shepherd",
   ): Promise<void> {
     const m = await d.ensureManifest();
     const item = m.items[itemId];
@@ -168,7 +169,7 @@ export function makeManifestWriters(d: ManifestWriterDeps) {
       ...item,
       shepherd: { ...item.shepherd, pendingReviewComments: comments },
     };
-    m.items[itemId] = applyTransition(withComments, "coding", "shepherd", reason);
+    m.items[itemId] = applyTransition(withComments, "coding", actor, reason);
     await d.saveManifest(m);
     d.broadcast();
     d.pokeCoder();

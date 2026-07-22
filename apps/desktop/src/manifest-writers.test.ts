@@ -371,6 +371,21 @@ describe("completeReview / completePrOpen / completeReentry / completeMergedClea
     expect(next.shepherd?.pendingReviewComments).toEqual(comments);
     expect(h.saves).toBe(1);
     expect(h.pokes.coder).toBe(1);
+    // The actor defaults to shepherd (the changes-requested re-entry).
+    expect(next.transitions.at(-1)?.actor).toBe("shepherd");
+  });
+
+  it("completeReentry records an explicit actor on the transition (coder chat apply)", async () => {
+    const item = mkItem("1", "human-review", [
+      txn(null, "triage", "2026-07-13T00:00:00.000Z"),
+      txn("triage", "human-review", "2026-07-13T04:00:00.000Z"),
+    ]);
+    const h = makeHarness({ items: [item] });
+    const comments = [{ path: "a", body: "fix" } as never];
+    await h.writers.completeReentry("1", comments, "coder chat apply", "user");
+    const next = h.manifest.items["1"];
+    expect(next.state).toBe("coding");
+    expect(next.transitions.at(-1)?.actor).toBe("user");
   });
 
   it("completeMergedCleanup archives the plan, drops the worktree, no transition", async () => {

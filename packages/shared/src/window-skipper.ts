@@ -8,6 +8,7 @@ import type {
   OrchestratorSettings,
   OrchestratorState,
   OrchestratorTransitionResult,
+  PrReviewComment,
   RepoIntakeSettings,
   RepoLinkResult,
   RepoSettingsRow,
@@ -308,6 +309,18 @@ export interface WindowSkipper {
       | { ok: false; error?: string; cancelled?: boolean }
     >;
     getHistory: (kind: AgentChatKind, itemId: string) => Promise<PlanChatMessage[]>;
+    /** Coder-only (#188): distill the discussion into re-entry instructions for a preview. */
+    prepareApply: (
+      itemId: string,
+    ) => Promise<
+      | { ok: true; instructions: PrReviewComment[] }
+      | { ok: false; error?: string; cancelled?: boolean }
+    >;
+    /** Coder-only (#188): commit the previewed instructions — transitions the item to coding. */
+    confirmApply: (
+      itemId: string,
+      instructions: PrReviewComment[],
+    ) => Promise<{ ok: true } | { ok: false; error?: string }>;
   };
   /** Reviewer progress stream (#113). */
   review: {

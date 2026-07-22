@@ -4,6 +4,7 @@ import type { LLMProviderInterface } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import type { PlanIssueInput } from "../planner/generate";
 import { runAgentDiscussion } from "../agent-chat/discuss";
+import { parseJsonReply } from "../llm/json";
 
 // Coder chat (#170): interrogate the software engineer who implemented the diff
 // in this worktree. Discuss-only — the chat never modifies any file. Resumes the
@@ -11,6 +12,7 @@ import { runAgentDiscussion } from "../agent-chat/discuss";
 // fully-seeded turn from the issue + plan + coder report + transcript.
 
 const MAX_BODY_CHARS = 20_000;
+const DEFAULT_DISTILL_MAX_TURNS = 12;
 
 export const CODER_CHAT_SYSTEM_PROMPT = `You are the software engineer who implemented the changes in this worktree. The reviewer is asking you about your implementation before deciding what to do with it.
 
@@ -151,4 +153,218 @@ export async function discussCoder(
     ...(opts.memory ? { memory: opts.memory } : {}),
     ...(opts.signal ? { signal: opts.signal } : {}),
   });
+}
+
+// Coder-chat Apply (#188): distill the discussion into concrete change
+// instructions for a new coding pass. Mirrors applyPlanFromDiscussion — resume
+// the coding session when it survives, else run a fresh, fully-seeded turn,
+// demanding a JSON-only final message validated with one repair round. The
+// distillation never modifies any file; the real coder applies the changes.
+
+/** One distilled change instruction; path scopes it to a file when known. */
+export interface CoderChatInstruction {
+  path?: string;
+  body: string;
+}
+
+export interface DistillCoderChatOptions {
+  llm: LLMProviderInterface;
+  cwd: string;
+  /** Resume the coding/chat session (claude-cli); the model already holds the discussion. */
+  resumeSessionId?: string;
+  /** Issue + plan + report + transcript — required when there is no session to resume. */
+  context?: CoderChatContext;
+  /** Persist the fallback run under this session id (claude-cli only). */
+  sessionId?: string;
+  maxTurns?: number;
+  onEvent?: (event: CodingEvent) => void;
+  memory?: MemoryMcp;
+  signal?: AbortSignal;
+}
+
+const CODER_INSTRUCTIONS_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    instructions: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          path: { type: "string" },
+          body: { type: "string", minLength: 1 },
+        },
+        required: ["body"],
+      },
+    },
+  },
+  required: ["instructions"],
+};
+
+const INSTRUCTIONS_JSON_DEMAND =
+  "Your FINAL message must be ONLY a single JSON object matching this JSON Schema. No prose, no code fences, no preamble.";
+
+function buildDistillResumePrompt(): string {
+  return [
+    `Distill the conclusions of this discussion into concrete change instructions for a new coding pass. Each instruction is one change to make to the worktree; attach a file path when the change is scoped to a single file, otherwise omit it. Do NOT modify any files.`,
+    ``,
+    INSTRUCTIONS_JSON_DEMAND,
+    ``,
+    `Schema:`,
+    JSON.stringify(CODER_INSTRUCTIONS_SCHEMA),
+  ].join("\n");
+}
+
+function buildDistillFallbackPrompt(ctx: CoderChatContext): string {
+  const history = renderHistory(ctx.history);
+  return [
+    `You implemented the changes for the issue below in the git worktree at your current working directory, following the approved plan. Distill the conclusions reached in the discussion into concrete change instructions for a new coding pass. Each instruction is one change to make to the worktree; attach a file path when the change is scoped to a single file, otherwise omit it. Do NOT modify any files.`,
+    ``,
+    issueHeader(ctx.issue),
+    ...(ctx.plan
+      ? [``, `--- Approved plan (JSON) ---`, JSON.stringify(ctx.plan, null, 2), `--- End approved plan ---`]
+      : []),
+    ...(ctx.report ? [``, renderCoderReportBlock(ctx.report)] : []),
+    ...(history ? [``, `--- Conversation so far ---`, history, `--- End conversation ---`] : []),
+    ``,
+    INSTRUCTIONS_JSON_DEMAND,
+    ``,
+    `Schema:`,
+    JSON.stringify(CODER_INSTRUCTIONS_SCHEMA),
+  ].join("\n");
+}
+
+function validateInstructionsShape(
+  candidate: unknown,
+): { ok: true; instructions: CoderChatInstruction[] } | { ok: false; error: string } {
+  if (typeof candidate !== "object" || candidate === null || !("instructions" in candidate)) {
+    return { ok: false, error: `expected an object with an "instructions" array` };
+  }
+  const raw = (candidate as { instructions: unknown }).instructions;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { ok: false, error: `"instructions" must be a non-empty array` };
+  }
+  const instructions: CoderChatInstruction[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "object" || entry === null) {
+      return { ok: false, error: "each instruction must be an object" };
+    }
+    const body = (entry as { body?: unknown }).body;
+    if (typeof body !== "string" || body.trim() === "") {
+      return { ok: false, error: `each instruction needs a non-empty "body" string` };
+    }
+    const path = (entry as { path?: unknown }).path;
+    if (path !== undefined && typeof path !== "string") {
+      return { ok: false, error: `"path" must be a string when present` };
+    }
+    instructions.push({
+      body,
+      ...(typeof path === "string" && path.trim() !== "" ? { path } : {}),
+    });
+  }
+  return { ok: true, instructions };
+}
+
+function tryParseInstructions(
+  text: string,
+): { ok: true; instructions: CoderChatInstruction[] } | { ok: false; error: string } {
+  let candidate: unknown;
+  try {
+    candidate = parseJsonReply<unknown>(text);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  return validateInstructionsShape(candidate);
+}
+
+function buildInstructionsRepairPrompt(raw: string, error: string): string {
+  return [
+    `The text below was supposed to be a single JSON object matching the coder-instructions schema, but it failed validation: ${error}.`,
+    ``,
+    `--- Raw output ---`,
+    raw,
+    `--- End raw output ---`,
+    ``,
+    `Return ONLY the corrected JSON object. No prose, no code fences.`,
+  ].join("\n");
+}
+
+/**
+ * Validate an agent's final JSON reply against the instructions shape, with one
+ * cheap askStructured repair round for format slips (mirrors validatePlanReply).
+ */
+async function validateInstructionsReply(
+  llm: LLMProviderInterface,
+  raw: string,
+  signal?: AbortSignal,
+): Promise<CoderChatInstruction[]> {
+  const first = tryParseInstructions(raw);
+  if (first.ok) return first.instructions;
+
+  const repaired = await llm.askStructured<unknown>(
+    buildInstructionsRepairPrompt(raw, first.error),
+    CODER_INSTRUCTIONS_SCHEMA,
+    signal ? { signal } : undefined,
+  );
+  const second = validateInstructionsShape(repaired);
+  if (second.ok) return second.instructions;
+
+  throw new Error(`coder chat instructions failed validation: ${second.error}`);
+}
+
+/**
+ * Re-emit the discussion's conclusions as validated change instructions for a
+ * new coding pass. Resumes the coding session when one is available; otherwise
+ * runs a fresh, fully-seeded turn. Never modifies any file.
+ */
+export async function distillCoderChatInstructions(
+  opts: DistillCoderChatOptions,
+): Promise<{ instructions: CoderChatInstruction[]; sessionId?: string }> {
+  const { llm, cwd } = opts;
+  const maxTurns = opts.maxTurns ?? DEFAULT_DISTILL_MAX_TURNS;
+  const prompt = opts.resumeSessionId
+    ? buildDistillResumePrompt()
+    : opts.context
+      ? buildDistillFallbackPrompt(opts.context)
+      : undefined;
+  if (prompt === undefined) throw new Error("distillCoderChatInstructions without a session needs context");
+
+  if (opts.resumeSessionId) {
+    if (!llm.agent) throw new Error("resuming a coder session needs an agent-capable provider");
+    const reply = await llm.agent(prompt, {
+      systemPrompt: CODER_CHAT_SYSTEM_PROMPT,
+      cwd,
+      maxTurns,
+      resumeSessionId: opts.resumeSessionId,
+      ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+      ...(opts.memory ? { memory: opts.memory } : {}),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    });
+    const instructions = await validateInstructionsReply(llm, reply.text, opts.signal);
+    return { instructions, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
+  }
+
+  if (llm.agent) {
+    const reply = await llm.agent(prompt, {
+      systemPrompt: CODER_CHAT_SYSTEM_PROMPT,
+      cwd,
+      maxTurns,
+      ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
+      ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+      ...(opts.memory ? { memory: opts.memory } : {}),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    });
+    const instructions = await validateInstructionsReply(llm, reply.text, opts.signal);
+    return { instructions, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
+  }
+
+  const raw = await llm.askStructured<unknown>(
+    prompt,
+    CODER_INSTRUCTIONS_SCHEMA,
+    opts.signal ? { signal: opts.signal } : undefined,
+  );
+  const instructions = await validateInstructionsReply(llm, JSON.stringify(raw), opts.signal);
+  return { instructions };
 }

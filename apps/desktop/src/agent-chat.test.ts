@@ -19,10 +19,12 @@ import {
   initAgentChat,
   sendAgentChatMessage,
   getAgentChatHistory,
+  prepareCoderChatApply,
+  confirmCoderChatApply,
   cancelAgentChat,
   type AgentChatDeps,
 } from "./agent-chat";
-import { readAgentChat, setAgentChatSessionId } from "./agent-chat-store";
+import { appendAgentChatExchange, readAgentChat, setAgentChatSessionId } from "./agent-chat-store";
 
 const AT = "2026-07-21T00:00:00.000Z";
 
@@ -93,6 +95,7 @@ function makeHarness(plansDir: string, item: TrackedItem, report?: StoredCoderRe
     getLlmSettings: async (): Promise<LlmSettings> => ({ ...DEFAULT_LLM_SETTINGS }),
     emitEvent: (kind, _id, event) => events.push({ kind, event }),
     plansDir,
+    completeReentry: async () => {},
   };
   return { deps, items, events };
 }
@@ -331,5 +334,146 @@ describe("getAgentChatHistory", () => {
     h.items.set("github:1", makeItem({ worktree: { path: "/wt/new", branch: "b", sessionId: "s" } }));
     const history = await getAgentChatHistory("coder", "github:1");
     expect(history).toEqual([]);
+  });
+});
+
+const INSTR_JSON = JSON.stringify({
+  instructions: [{ path: "src/a.ts", body: "add a null check" }, { body: "update the test" }],
+});
+
+function instructionsProvider() {
+  return fakeProvider(async () => ({ text: INSTR_JSON, sessionId: "wt-sess" }));
+}
+
+async function seedCoderHistory(): Promise<void> {
+  await appendAgentChatExchange(plansDir, "coder", "github:1", "/wt/issue-1", "please fix", "will do");
+}
+
+describe("prepareCoderChatApply guards", () => {
+  it("blocks when the item is not in an apply state", async () => {
+    const h = makeHarness(plansDir, makeItem({ state: "pr-open" }));
+    initAgentChat(h.deps, instructionsProvider());
+    const res = await prepareCoderChatApply("github:1");
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.error).toContain("not available");
+  });
+
+  it("blocks when the coder chat itself is unavailable (coding)", async () => {
+    const h = makeHarness(plansDir, makeItem({ state: "coding" }));
+    initAgentChat(h.deps, instructionsProvider());
+    const res = await prepareCoderChatApply("github:1");
+    expect(res.ok).toBe(false);
+  });
+
+  it("blocks with no discussion to apply", async () => {
+    const h = makeHarness(plansDir, makeItem());
+    initAgentChat(h.deps, instructionsProvider());
+    const res = await prepareCoderChatApply("github:1");
+    expect(res).toEqual({ ok: false, error: "no discussion to apply" });
+  });
+
+  it("busy-guards against a concurrent send", async () => {
+    const gate = deferred<LLMResponse>();
+    const h = makeHarness(plansDir, makeItem());
+    initAgentChat(h.deps, fakeProvider(() => gate.promise));
+    await seedCoderHistory();
+    const send = sendAgentChatMessage("coder", "github:1", "q");
+    const res = await prepareCoderChatApply("github:1");
+    expect(res).toEqual({ ok: false, error: "chat turn already running" });
+    gate.resolve({ text: "answer", sessionId: "wt-sess" });
+    await send;
+  });
+});
+
+describe("prepareCoderChatApply distillation", () => {
+  it("resumes the session, maps instructions with the coder-chat author, persists the session", async () => {
+    const provider = instructionsProvider();
+    const h = makeHarness(plansDir, makeItem());
+    initAgentChat(h.deps, provider);
+    await seedCoderHistory();
+    const res = await prepareCoderChatApply("github:1");
+    expect(res).toEqual({
+      ok: true,
+      instructions: [
+        { author: "coder-chat", path: "src/a.ts", body: "add a null check" },
+        { author: "coder-chat", body: "update the test" },
+      ],
+    });
+    const opts = provider.agent.mock.calls[0][1] as Record<string, unknown>;
+    expect(opts.resumeSessionId).toBe("wt-sess");
+    // Apply never appends to the transcript, but it persists the session lineage.
+    const chat = await readAgentChat(plansDir, "coder", "github:1");
+    expect(chat?.messages.map((m) => m.text)).toEqual(["please fix", "will do"]);
+    expect(chat?.sessionId).toBe("wt-sess");
+  });
+
+  it("spends the repair round when the agent reply is not valid instructions JSON", async () => {
+    const askStructured = vi.fn(async () => ({ instructions: [{ body: "repaired" }] }));
+    const provider = {
+      name: "claude-cli",
+      ask: async () => ({ text: "" }),
+      askStructured,
+      agent: vi.fn(async () => ({ text: "not json", sessionId: "wt-sess" })),
+    } as unknown as LLMProviderInterface & { agent: ReturnType<typeof vi.fn> };
+    const h = makeHarness(plansDir, makeItem());
+    initAgentChat(h.deps, provider);
+    await seedCoderHistory();
+    const res = await prepareCoderChatApply("github:1");
+    expect(res).toEqual({ ok: true, instructions: [{ author: "coder-chat", body: "repaired" }] });
+    expect(askStructured).toHaveBeenCalledOnce();
+  });
+
+  it("captures a drifted session id into the chat store", async () => {
+    const provider = fakeProvider(async (_p, opts) => {
+      (opts!.onEvent as (e: CodingEvent) => void)({ kind: "agent-init", sessionId: "drifted" } as CodingEvent);
+      return { text: INSTR_JSON, sessionId: "drifted" };
+    });
+    const h = makeHarness(plansDir, makeItem());
+    initAgentChat(h.deps, provider);
+    await seedCoderHistory();
+    await prepareCoderChatApply("github:1");
+    const chat = await readAgentChat(plansDir, "coder", "github:1");
+    expect(chat?.sessionId).toBe("drifted");
+  });
+
+  it("returns cancelled when the item leaves the apply set mid-distillation", async () => {
+    const gate = deferred<LLMResponse>();
+    const provider = fakeProvider(() => gate.promise);
+    const h = makeHarness(plansDir, makeItem());
+    initAgentChat(h.deps, provider);
+    await seedCoderHistory();
+    const pending = prepareCoderChatApply("github:1");
+    // A human opens the PR under us — pr-open is out of the apply set.
+    h.items.set("github:1", makeItem({ state: "pr-open" }));
+    gate.resolve({ text: INSTR_JSON, sessionId: "wt-sess" });
+    const res = await pending;
+    expect(res).toEqual({ ok: false, cancelled: true });
+  });
+});
+
+describe("confirmCoderChatApply", () => {
+  it("blocks when the item is not in an apply state", async () => {
+    const h = makeHarness(plansDir, makeItem({ state: "pr-open" }));
+    initAgentChat(h.deps, instructionsProvider());
+    const res = await confirmCoderChatApply("github:1", [{ author: "coder-chat", body: "x" }]);
+    expect(res.ok).toBe(false);
+  });
+
+  it("blocks empty instructions", async () => {
+    const h = makeHarness(plansDir, makeItem());
+    initAgentChat(h.deps, instructionsProvider());
+    const res = await confirmCoderChatApply("github:1", []);
+    expect(res).toEqual({ ok: false, error: "no instructions to apply" });
+  });
+
+  it("fires completeReentry with the mapped comments and the user actor", async () => {
+    const reentry = vi.fn(async () => {});
+    const h = makeHarness(plansDir, makeItem());
+    h.deps.completeReentry = reentry;
+    initAgentChat(h.deps, instructionsProvider());
+    const instructions = [{ author: "coder-chat", path: "src/a.ts", body: "add a null check" }];
+    const res = await confirmCoderChatApply("github:1", instructions);
+    expect(res).toEqual({ ok: true });
+    expect(reentry).toHaveBeenCalledWith("github:1", instructions, "coder chat apply", "user");
   });
 });

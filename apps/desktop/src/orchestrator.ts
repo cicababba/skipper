@@ -97,6 +97,8 @@ import {
   initAgentChat,
   sendAgentChatMessage,
   getAgentChatHistory,
+  prepareCoderChatApply,
+  confirmCoderChatApply,
   cancelAgentChat,
 } from "./agent-chat";
 import {
@@ -1411,6 +1413,15 @@ export function initOrchestrator(
     if (kind !== "coder" && kind !== "reviewer") return [];
     return getAgentChatHistory(kind, itemId);
   });
+  // Coder-chat Apply (#188): distill → preview, then confirm → coding re-entry.
+  ipcMain.handle("skipper:agentChat:prepareApply", (_e, itemId: string) =>
+    prepareCoderChatApply(itemId),
+  );
+  ipcMain.handle(
+    "skipper:agentChat:confirmApply",
+    (_e, itemId: string, instructions: PrReviewComment[]) =>
+      confirmCoderChatApply(itemId, instructions),
+  );
   // Replay for renderers that mount mid-run; live events ride the per-item channel.
   ipcMain.handle("skipper:coding:getEvents", (_e, itemId: string) => {
     return codingStream.getEvents(itemId);
@@ -1619,6 +1630,7 @@ export function initOrchestrator(
       orchestratorDeps.cliBundlePath
         ? { cliBundlePath: orchestratorDeps.cliBundlePath, repo: item.repo }
         : undefined,
+    completeReentry,
   });
 
   initRescore({

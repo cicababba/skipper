@@ -144,8 +144,18 @@ export {
   createStreamJsonParser,
 } from "./coder";
 export type { RunCodingAgentOptions, CodingRunResult, StreamJsonParser } from "./coder";
-export { CODER_CHAT_SYSTEM_PROMPT, discussCoder, renderCoderReportBlock } from "./coder";
-export type { CoderChatContext, DiscussCoderOptions } from "./coder";
+export {
+  CODER_CHAT_SYSTEM_PROMPT,
+  discussCoder,
+  distillCoderChatInstructions,
+  renderCoderReportBlock,
+} from "./coder";
+export type {
+  CoderChatContext,
+  CoderChatInstruction,
+  DiscussCoderOptions,
+  DistillCoderChatOptions,
+} from "./coder";
 
 // Agent chat — generic discussion dispatch shared by coder/reviewer chats (#170)
 export { runAgentDiscussion, DEFAULT_AGENT_CHAT_MAX_TURNS } from "./agent-chat";

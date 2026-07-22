@@ -342,6 +342,22 @@ export function canTransition(from: LifecycleState, to: LifecycleState): boolean
 }
 
 /**
+ * States from which the coder chat's Apply distills the discussion into a coding
+ * re-entry (#188). Limited to the review-gate states that already allow → coding
+ * in TRANSITIONS; pr-open/in-review re-entry is a deferred follow-up. Single
+ * source for the desktop guard and the renderer predicate.
+ */
+export const CODER_CHAT_APPLY_STATES: readonly LifecycleState[] = [
+  "agent-review",
+  "human-review",
+  "changes-requested",
+];
+
+export function canCoderChatApply(state: LifecycleState): boolean {
+  return CODER_CHAT_APPLY_STATES.includes(state);
+}
+
+/**
  * Timestamp of the item's most recent entry into planning — the planner's run
  * token (#159). Any fresh re-entry (re-admit, replan, base-change, needs-input
  * resume) mints a new transition event, so a zombie run captured against an

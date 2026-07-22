@@ -4,23 +4,27 @@ import {
   createProvider,
   discussCoder,
   discussReviewer,
+  distillCoderChatInstructions,
   type CoderChatContext,
   type LLMProviderInterface,
   type MemoryMcp,
   type PlanIssueInput,
   type ReviewerChatContext,
 } from "@skipper/core";
-import type {
-  AgentChatKind,
-  CodingEvent,
-  Issue,
-  LlmSettings,
-  RepoRef,
-  ResolvedRepoOrchestratorSettings,
-  PlanChatMessage,
-  StoredCoderReport,
-  StoredPlan,
-  TrackedItem,
+import {
+  CODER_CHAT_APPLY_STATES,
+  type AgentChatKind,
+  type CodingEvent,
+  type Issue,
+  type LlmSettings,
+  type PrReviewComment,
+  type RepoRef,
+  type ResolvedRepoOrchestratorSettings,
+  type PlanChatMessage,
+  type StoredCoderReport,
+  type StoredPlan,
+  type TrackedItem,
+  type TransitionActor,
 } from "@skipper/shared";
 import { modelForRole, providerCacheKey } from "./llm-settings";
 import {
@@ -48,11 +52,24 @@ export interface AgentChatDeps {
   emitEvent: (kind: AgentChatKind, itemId: string, event: CodingEvent) => void;
   plansDir: string;
   getMemoryMcp?: (item: TrackedItem) => MemoryMcp | undefined;
+  /** Coder-chat Apply re-entry (#188): comments → coding, in one manifest write. */
+  completeReentry: (
+    itemId: string,
+    comments: PrReviewComment[],
+    reason: string,
+    actor?: TransitionActor,
+  ) => Promise<void>;
 }
 
 export type SendAgentChatResult =
   | { ok: true; reply: string; mode: "resumed" | "fresh" }
   | { ok: false; error?: string; cancelled?: boolean };
+
+export type PrepareCoderChatApplyResult =
+  | { ok: true; instructions: PrReviewComment[] }
+  | { ok: false; error?: string; cancelled?: boolean };
+
+export type ConfirmCoderChatApplyResult = { ok: true } | { ok: false; error?: string };
 
 interface KindConfig {
   available: (item: TrackedItem) => boolean;
@@ -322,5 +339,155 @@ export async function sendAgentChatMessage(
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   } finally {
     inFlight.delete(key);
+  }
+}
+
+/**
+ * Coder-chat Apply (#188), step 1: distill the discussion into re-entry
+ * instructions for a preview. Coder-only, no state mutation, no transcript
+ * append (like plan apply). Shares the send path's session lineage and busy
+ * guard (the same inFlight slot), so a distillation and a send can't overlap.
+ */
+export async function prepareCoderChatApply(itemId: string): Promise<PrepareCoderChatApplyResult> {
+  if (!deps) return { ok: false, error: "agent chat not initialized" };
+  const key = flightKey("coder", itemId);
+  if (inFlight.has(key)) return { ok: false, error: "chat turn already running" };
+
+  const cfg = CONFIGS.coder;
+  const item = deps.getItem(itemId);
+  if (!item) return { ok: false, error: `unknown item ${itemId}` };
+  if (!cfg.available(item)) {
+    return { ok: false, error: `coder chat is not available (item is ${item.state})` };
+  }
+  if (!CODER_CHAT_APPLY_STATES.includes(item.state)) {
+    return { ok: false, error: `coder chat apply is not available (item is ${item.state})` };
+  }
+  const binding = cfg.binding(item);
+  if (!binding) return { ok: false, error: "coder chat has no binding" };
+
+  // Claim the slot synchronously (before any await) so a concurrent send/apply busy-guards.
+  const controller = new AbortController();
+  inFlight.set(key, controller);
+  try {
+    const history = await historyFor("coder", itemId, binding);
+    if (history.length === 0) return { ok: false, error: "no discussion to apply" };
+
+    const cwd = item.worktree?.path;
+    if (!cwd) return { ok: false, error: "repo not linked" };
+
+    const provider = await resolveProvider(cfg.roleModel(deps.getRepoSettings(item.repo)));
+    const memory = deps.getMemoryMcp?.(item);
+
+    // Session lineage mirrors the send path (D1): the chat store's own id when it
+    // exists, else the coder's worktree session for turn 1.
+    const chat = await readAgentChat(deps.plansDir, "coder", itemId);
+    const storeSessionId = chat && chat.binding === binding ? chat.sessionId : undefined;
+    const resumeSessionId = storeSessionId ?? cfg.turn1Source(item);
+    const resumable =
+      provider.name === "claude-cli" && !!resumeSessionId && !!item.worktree?.path;
+    const fallbackSessionId =
+      provider.name === "claude-cli" && item.worktree?.path ? randomUUID() : undefined;
+
+    deps.emitEvent("coder", itemId, { kind: "status", phase: "resuming", detail: "apply coder chat" });
+
+    let sessionToPersist: string | undefined = resumable ? resumeSessionId : fallbackSessionId;
+    let sawEvent = false;
+    const onEvent = (event: CodingEvent) => {
+      sawEvent = true;
+      if (event.kind === "agent-init" && event.sessionId) sessionToPersist = event.sessionId;
+      deps?.emitEvent("coder", itemId, event);
+    };
+
+    const runFallback = async () => {
+      if (fallbackSessionId) {
+        await setAgentChatSessionId(deps!.plansDir, "coder", itemId, binding, fallbackSessionId);
+        sessionToPersist = fallbackSessionId;
+      }
+      const context = (await buildContext("coder", item, history)) as CoderChatContext;
+      return distillCoderChatInstructions({
+        llm: provider,
+        cwd,
+        context,
+        onEvent,
+        ...(fallbackSessionId ? { sessionId: fallbackSessionId } : {}),
+        ...(memory ? { memory } : {}),
+        signal: controller.signal,
+      });
+    };
+
+    const runResume = async () =>
+      distillCoderChatInstructions({
+        llm: provider,
+        cwd,
+        resumeSessionId: resumeSessionId!,
+        onEvent,
+        ...(memory ? { memory } : {}),
+        signal: controller.signal,
+      });
+
+    let result: { instructions: { path?: string; body: string }[]; sessionId?: string };
+    try {
+      result = resumable ? await runResume() : await runFallback();
+    } catch (err) {
+      // A dead --resume fails fast without events: retry once as a fresh, seeded run.
+      if (!resumable || sawEvent || err instanceof AgentAbortError) throw err;
+      result = await runFallback();
+    }
+
+    // Cooperative cancel: discard a distillation that raced a transition out of
+    // the apply set, an untrack, or a binding drift.
+    const after = deps.getItem(itemId);
+    if (
+      controller.signal.aborted ||
+      !after ||
+      !cfg.available(after) ||
+      !CODER_CHAT_APPLY_STATES.includes(after.state) ||
+      cfg.binding(after) !== binding
+    ) {
+      return { ok: false, cancelled: true };
+    }
+
+    // Persist the chat's own session lineage (never a transcript append — apply doesn't).
+    if (sessionToPersist) {
+      await setAgentChatSessionId(deps.plansDir, "coder", itemId, binding, sessionToPersist);
+    }
+    const instructions: PrReviewComment[] = result.instructions.map((i) => ({
+      author: "coder-chat",
+      body: i.body,
+      ...(i.path ? { path: i.path } : {}),
+    }));
+    return { ok: true, instructions };
+  } catch (err) {
+    if (err instanceof AgentAbortError) return { ok: false, cancelled: true };
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    inFlight.delete(key);
+  }
+}
+
+/**
+ * Coder-chat Apply (#188), step 2: commit the previewed instructions. Fires the
+ * re-entry (comments → coding) via completeReentry — the same contract as the
+ * changes-requested re-entry; the coder's prFixMode applies the changes.
+ */
+export async function confirmCoderChatApply(
+  itemId: string,
+  instructions: PrReviewComment[],
+): Promise<ConfirmCoderChatApplyResult> {
+  if (!deps) return { ok: false, error: "agent chat not initialized" };
+  if (inFlight.has(flightKey("coder", itemId))) {
+    return { ok: false, error: "chat turn already running" };
+  }
+  const item = deps.getItem(itemId);
+  if (!item) return { ok: false, error: `unknown item ${itemId}` };
+  if (!CODER_CHAT_APPLY_STATES.includes(item.state)) {
+    return { ok: false, error: `coder chat apply is not available (item is ${item.state})` };
+  }
+  if (instructions.length === 0) return { ok: false, error: "no instructions to apply" };
+  try {
+    await deps.completeReentry(itemId, instructions, "coder chat apply", "user");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

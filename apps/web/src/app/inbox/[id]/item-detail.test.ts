@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { LifecycleState, TrackedItem } from "@skipper/shared";
+import { canCoderChatApply, type LifecycleState, type TrackedItem } from "@skipper/shared";
 import { interlocutorFor } from "./item-detail";
 
 function makeItem(state: LifecycleState, extra: Partial<TrackedItem> = {}): TrackedItem {
@@ -60,5 +60,29 @@ describe("interlocutorFor", () => {
   it("keeps the coder chat off while the coder is running", () => {
     const coding = makeItem("coding", { worktree: { ...worktree, sessionId: "s1" } });
     expect(interlocutorFor("worktree", coding, false)).toBeNull();
+  });
+});
+
+describe("canCoderChatApply", () => {
+  it("allows the review-gate states that already permit → coding", () => {
+    for (const state of ["agent-review", "human-review", "changes-requested"] as LifecycleState[]) {
+      expect(canCoderChatApply(state)).toBe(true);
+    }
+  });
+
+  it("rejects states without a legal → coding re-entry (#188 deferred / illegal)", () => {
+    for (const state of [
+      "pr-open",
+      "in-review",
+      "coding",
+      "planning",
+      "plan-gate",
+      "queued",
+      "failed",
+      "merged",
+      "closed",
+    ] as LifecycleState[]) {
+      expect(canCoderChatApply(state)).toBe(false);
+    }
   });
 });
