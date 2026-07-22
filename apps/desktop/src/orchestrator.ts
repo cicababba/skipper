@@ -48,7 +48,6 @@ import type {
   AuthProviderId,
   CodeHostId,
   CodingEvent,
-  CodingEventEnvelope,
   ConfidenceReport,
   FollowCandidate,
   FollowCandidatesResult,
@@ -85,6 +84,7 @@ import {
   type RepoLinksFile,
 } from "./repo-links";
 import { resolveBaseChangeActions, type WorktreeProbe } from "./base-change";
+import { makeEventStream } from "./event-stream";
 import { readLlmSettings, readLlmSettingsSync } from "./llm-settings";
 import { archiveStoredPlan, readStoredPlan, updateStoredPlan } from "./plan-store";
 import { readStoredCoderReport } from "./report-store";
@@ -209,83 +209,40 @@ function broadcast(): void {
   }
 }
 
-// Fine-grained coding progress (#9): replay buffer + per-item channel, the
-// terminal.ts per-id pattern. Coarse state changes ride the broadcast above.
-const CODING_EVENT_BUFFER_MAX = 500;
-const codingEvents = new Map<string, CodingEventEnvelope[]>();
-const codingEventSeq = new Map<string, number>();
-
-function emitCodingEvent(itemId: string, event: CodingEvent): void {
+// Fine-grained agent progress (#9): replay buffer + per-item channel. Coarse
+// state changes ride the broadcast above. getWindow is a module let reassigned
+// in initOrchestrator, so the streams take the thunk (a bare reference would
+// capture the pre-init value and silently kill every live send).
+const codingStream = makeEventStream({
+  channel: "coding",
+  resetPhase: "fetching",
+  getWindow: () => getWindow(),
   // A new run restarts the stream: reset the buffer so replay never mixes runs.
-  if (event.kind === "status" && event.phase === "fetching") {
-    codingEvents.set(itemId, []);
-    codingEventSeq.set(itemId, 0);
-    void resetMemoryUse(itemId, "coding");
-  }
-  const seq = codingEventSeq.get(itemId) ?? 0;
-  codingEventSeq.set(itemId, seq + 1);
-  const envelope: CodingEventEnvelope = { itemId, seq, at: new Date().toISOString(), event };
-  const buffer = codingEvents.get(itemId) ?? [];
-  buffer.push(envelope);
-  if (buffer.length > CODING_EVENT_BUFFER_MAX) buffer.shift();
-  codingEvents.set(itemId, buffer);
-  if (isMemoryGet(event)) void recordMemoryUse(itemId, "coding", event.detail);
-  const win = getWindow();
-  if (win && !win.isDestroyed()) {
-    win.webContents.send(`skipper:coding:event:${itemId}`, envelope);
-  }
-}
+  onReset: (itemId) => void resetMemoryUse(itemId, "coding"),
+  onEvent: (itemId, event) => {
+    if (isMemoryGet(event)) void recordMemoryUse(itemId, "coding", event.detail);
+  },
+});
 
-// Planner console stream (#32): same machinery as coding events, own channel
-// pair so a coding run's buffer reset never wipes planner history.
-const planningEvents = new Map<string, CodingEventEnvelope[]>();
-const planningEventSeq = new Map<string, number>();
+// Planner console stream (#32): own channel pair so a coding run's buffer reset
+// never wipes planner history. Every planner run opens with agent-start.
+const planningStream = makeEventStream({
+  channel: "planning",
+  resetPhase: "agent-start",
+  getWindow: () => getWindow(),
+  onReset: (itemId) => void resetMemoryUse(itemId, "planning"),
+  onEvent: (itemId, event) => {
+    if (isMemoryGet(event)) void recordMemoryUse(itemId, "planning", event.detail);
+  },
+});
 
-function emitPlanningEvent(itemId: string, event: CodingEvent): void {
-  // Every planner run opens with agent-start: reset so replay never mixes runs.
-  if (event.kind === "status" && event.phase === "agent-start") {
-    planningEvents.set(itemId, []);
-    planningEventSeq.set(itemId, 0);
-    void resetMemoryUse(itemId, "planning");
-  }
-  const seq = planningEventSeq.get(itemId) ?? 0;
-  planningEventSeq.set(itemId, seq + 1);
-  const envelope: CodingEventEnvelope = { itemId, seq, at: new Date().toISOString(), event };
-  const buffer = planningEvents.get(itemId) ?? [];
-  buffer.push(envelope);
-  if (buffer.length > CODING_EVENT_BUFFER_MAX) buffer.shift();
-  planningEvents.set(itemId, buffer);
-  if (isMemoryGet(event)) void recordMemoryUse(itemId, "planning", event.detail);
-  const win = getWindow();
-  if (win && !win.isDestroyed()) {
-    win.webContents.send(`skipper:planning:event:${itemId}`, envelope);
-  }
-}
-
-// Reviewer console stream (#113): same machinery, own channel pair. The
-// reviewer runs no tools, so there is no memory-use bookkeeping here.
-const reviewEvents = new Map<string, CodingEventEnvelope[]>();
-const reviewEventSeq = new Map<string, number>();
-
-function emitReviewEvent(itemId: string, event: CodingEvent): void {
-  // Every review round opens with a fetching status: reset so replay never
-  // mixes rounds (mirrors the coding buffer-reset heuristic).
-  if (event.kind === "status" && event.phase === "fetching") {
-    reviewEvents.set(itemId, []);
-    reviewEventSeq.set(itemId, 0);
-  }
-  const seq = reviewEventSeq.get(itemId) ?? 0;
-  reviewEventSeq.set(itemId, seq + 1);
-  const envelope: CodingEventEnvelope = { itemId, seq, at: new Date().toISOString(), event };
-  const buffer = reviewEvents.get(itemId) ?? [];
-  buffer.push(envelope);
-  if (buffer.length > CODING_EVENT_BUFFER_MAX) buffer.shift();
-  reviewEvents.set(itemId, buffer);
-  const win = getWindow();
-  if (win && !win.isDestroyed()) {
-    win.webContents.send(`skipper:review:event:${itemId}`, envelope);
-  }
-}
+// Reviewer console stream (#113): own channel pair, reset on the fetching status
+// that opens every round. The reviewer runs no tools, so no memory bookkeeping.
+const reviewStream = makeEventStream({
+  channel: "review",
+  resetPhase: "fetching",
+  getWindow: () => getWindow(),
+});
 
 // "Memories used" (#46): record which solutions a run fetched in full via
 // get_memory — the ground truth for the card, persisted on the tracked item so
@@ -1897,13 +1854,13 @@ export function initOrchestrator(
   });
   // Replay for renderers that mount mid-run; live events ride the per-item channel.
   ipcMain.handle("skipper:coding:getEvents", (_e, itemId: string) => {
-    return codingEvents.get(itemId) ?? [];
+    return codingStream.getEvents(itemId);
   });
   ipcMain.handle("skipper:planning:getEvents", (_e, itemId: string) => {
-    return planningEvents.get(itemId) ?? [];
+    return planningStream.getEvents(itemId);
   });
   ipcMain.handle("skipper:review:getEvents", (_e, itemId: string) => {
-    return reviewEvents.get(itemId) ?? [];
+    return reviewStream.getEvents(itemId);
   });
   // Solutions memory surface (#46). get/feedback drive the "memories used" card;
   // list is the read side #47's browser will consume.
@@ -2164,7 +2121,7 @@ export function initOrchestrator(
     setPlanSessionId,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
-    emitEvent: emitPlanningEvent,
+    emitEvent: planningStream.emit,
     plansDir: orchestratorDeps.plansDir,
     getMemoryMcp: (item) =>
       orchestratorDeps.cliBundlePath
@@ -2188,7 +2145,7 @@ export function initOrchestrator(
       updateStoredPlan(orchestratorDeps.plansDir, item.plan!.ref!, plan, "chat-apply"),
     setPlanSessionId,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
-    emitEvent: emitPlanningEvent,
+    emitEvent: planningStream.emit,
     plansDir: orchestratorDeps.plansDir,
     getMemoryMcp: (item) =>
       orchestratorDeps.cliBundlePath
@@ -2214,7 +2171,7 @@ export function initOrchestrator(
         : Promise.resolve(null),
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
     emitEvent: (kind, itemId, e) =>
-      (kind === "coder" ? emitCodingEvent : emitReviewEvent)(itemId, e),
+      (kind === "coder" ? codingStream.emit : reviewStream.emit)(itemId, e),
     plansDir: orchestratorDeps.plansDir,
     getMemoryMcp: (item) =>
       orchestratorDeps.cliBundlePath
@@ -2233,7 +2190,7 @@ export function initOrchestrator(
     getRepoSettings: repoOrch,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
-    emitEvent: emitPlanningEvent,
+    emitEvent: planningStream.emit,
     plansDir: orchestratorDeps.plansDir,
     setPlanRescoring,
     completeRescore,
@@ -2259,7 +2216,7 @@ export function initOrchestrator(
     getRepoPriority: (repo) => repoOrch(repo).priority,
     getRepoWipLimit: (repo) => repoOrch(repo).wipLimit,
     getRepoSettings: repoOrch,
-    emitEvent: emitCodingEvent,
+    emitEvent: codingStream.emit,
     getMemoryMcp: (item) =>
       orchestratorDeps.cliBundlePath
         ? { cliBundlePath: orchestratorDeps.cliBundlePath, repo: item.repo }
@@ -2289,7 +2246,7 @@ export function initOrchestrator(
       item.coderReport?.ref
         ? readStoredCoderReport(orchestratorDeps.plansDir, item.coderReport.ref)
         : Promise.resolve(null),
-    emitEvent: emitReviewEvent,
+    emitEvent: reviewStream.emit,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getRepoSettings: repoOrch,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
