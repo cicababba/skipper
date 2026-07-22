@@ -95,6 +95,7 @@ function makeHarness(plansDir: string, item: TrackedItem, compute: Compute): Har
     getItem: (id) => items.get(id),
     getIssue: () => ({ labels: [], body: "the body" }) as unknown as Issue,
     getRepoPath: (_repo: RepoRef) => "/repo",
+    checkoutDirtyPaths: async () => null,
     getRepoSettings: () =>
       ({ plannerModel: "opus", autoCoding: "auto" }) as unknown as ResolvedRepoOrchestratorSettings,
     getSettings: (): OrchestratorSettings => DEFAULT_ORCHESTRATOR_SETTINGS,
@@ -273,6 +274,27 @@ describe("startRescore liveness", () => {
     expect(done.composite).toBeUndefined();
     expect((await readStoredPlan(plansDir, REF))?.confidence).toBeUndefined();
     expect(h.items.get("github:1")?.plan?.rescoring).toBeUndefined();
+  });
+});
+
+describe("startRescore confinement tripwire (#196)", () => {
+  it("abandons the rescore and surfaces an escape error when it dirtied the checkout", async () => {
+    const applied = await seedPlan(plansDir);
+    const h = makeHarness(plansDir, makeItem(), async () => makeReport(0.9));
+    let calls = 0;
+    h.deps.checkoutDirtyPaths = async () => (calls++ === 0 ? [] : ["?? stray.ts"]);
+    initRescore(h.deps);
+
+    startRescore("github:1", applied);
+    const done = await h.waitComplete();
+
+    // No composite applied and no confidence persisted — the report is discarded.
+    expect(done.composite).toBeUndefined();
+    expect((await readStoredPlan(plansDir, REF))?.confidence).toBeUndefined();
+    // The escape is surfaced through the driver's error path.
+    expect(
+      h.events.some((e) => e.kind === "error" && /escaped the worktree/.test(e.message)),
+    ).toBe(true);
   });
 });
 

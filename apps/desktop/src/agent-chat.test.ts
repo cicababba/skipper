@@ -88,6 +88,7 @@ function makeHarness(plansDir: string, item: TrackedItem, report?: StoredCoderRe
     getItem: (id) => items.get(id),
     getIssue: () => ({ labels: [], body: "the body" }) as unknown as Issue,
     getRepoPath: (_repo: RepoRef) => "/repo",
+    checkoutDirtyPaths: async () => null,
     getRepoSettings: () =>
       ({ coderModel: "opus", reviewerModel: "opus" }) as unknown as ResolvedRepoOrchestratorSettings,
     getStoredPlan: async () => stored,
@@ -157,6 +158,17 @@ describe("sendAgentChatMessage availability", () => {
     initAgentChat(h.deps, fakeProvider());
     const res = await sendAgentChatMessage("reviewer", "github:1", "hi");
     expect(res.ok).toBe(false);
+  });
+
+  // #196: a discuss turn must never touch the linked checkout.
+  it("fails a discuss turn with an escape error when it dirtied the checkout", async () => {
+    const h = makeHarness(plansDir, makeItem());
+    let calls = 0;
+    h.deps.checkoutDirtyPaths = async () => (calls++ === 0 ? [] : ["?? stray.ts"]);
+    initAgentChat(h.deps, fakeProvider());
+    const res = await sendAgentChatMessage("coder", "github:1", "how did you do it?");
+    expect(res.ok).toBe(false);
+    expect((res as { error?: string }).error).toMatch(/escaped the worktree/);
   });
 });
 

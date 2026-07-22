@@ -119,6 +119,30 @@ describe("ClaudeCLIProvider.agent", () => {
     expect(res.sessionId).toBe("11111111-1111-4111-8111-111111111111");
   });
 
+  it("appends the guard hook + confined env when confinement carries a CLI bundle (#196)", async () => {
+    const { child } = arm();
+    const spawnOpts = () => vi.mocked(spawn).mock.calls[0][2] as { env?: NodeJS.ProcessEnv };
+    const argv = () => vi.mocked(spawn).mock.calls[0][1] as string[];
+    const promise = new ClaudeCLIProvider("sonnet").agent("plan it", {
+      confinement: {
+        runRoot: "/wt/issue-1",
+        denyRoots: ["/home/me/repo"],
+        cliBundlePath: "/app/skipper.bundle.cjs",
+      },
+    });
+    child.stdout.emit("data", Buffer.from(JSON.stringify({ is_error: false, result: "done" })));
+    child.emit("close", 0);
+    await promise;
+
+    const args = argv();
+    const settings = JSON.parse(args[args.indexOf("--settings") + 1]);
+    expect(settings.hooks.PreToolUse.map((h: { matcher: string }) => h.matcher)).toEqual([
+      "Edit|Write",
+      "Bash",
+    ]);
+    expect(spawnOpts().env?.ELECTRON_RUN_AS_NODE).toBe("1");
+  });
+
   it("streaming rejects on an error result", async () => {
     const { child } = arm();
     const promise = new ClaudeCLIProvider("sonnet").agent("plan it", { onEvent: () => {} });

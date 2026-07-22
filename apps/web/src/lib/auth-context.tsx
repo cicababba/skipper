@@ -22,6 +22,10 @@ interface AuthContextValue {
   authState: AuthState;
   /** Registry-derived provider rows from the desktop; [] until the IPC answers. */
   providers: AuthProviderMeta[];
+  /** True once the initial state + providers IPC round-trips settled — before
+   *  this, an empty accounts list means "unknown", not "signed out". Stays
+   *  false outside Electron, where there is no IPC to settle. */
+  loaded: boolean;
   viewFor: (provider: AuthProviderId) => ProviderAuthView;
   accountsFor: (provider: AuthProviderId) => ProviderAccountsView;
   signIn: (provider: AuthProviderId, options?: { baseUrl?: string }) => Promise<void>;
@@ -42,19 +46,24 @@ const DEFAULT_STATE: AuthState = { accounts: [], flows: {} };
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authState, setAuthState] = useState<AuthState>(DEFAULT_STATE);
   const [providers, setProviders] = useState<AuthProviderMeta[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.skipper) return;
     const auth = window.skipper.auth;
     let cancelled = false;
 
-    auth.getState()
+    const stateReady = auth.getState()
       .then((s) => { if (!cancelled) setAuthState(s); })
       .catch(() => { /* keep default */ });
 
-    auth.getProviders()
+    const providersReady = auth.getProviders()
       .then((p) => { if (!cancelled) setProviders(p); })
       .catch(() => { /* keep default */ });
+
+    void Promise.all([stateReady, providersReady]).then(() => {
+      if (!cancelled) setLoaded(true);
+    });
 
     const off = auth.onStateChanged((s) => setAuthState(s));
 
@@ -103,6 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       authState,
       providers,
+      loaded,
       viewFor,
       accountsFor,
       signIn,
@@ -111,7 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       cancelSignIn,
       chooseResource,
     }),
-    [authState, providers, viewFor, accountsFor, signIn, signInWithPat, signOut, cancelSignIn, chooseResource],
+    [authState, providers, loaded, viewFor, accountsFor, signIn, signInWithPat, signOut, cancelSignIn, chooseResource],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

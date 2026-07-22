@@ -1566,6 +1566,7 @@ export function initOrchestrator(
     },
     fetchIssueComments: fetchIssueCommentsFor,
     getRepoPath: repoPathFor,
+    checkoutDirtyPaths: worktreeDirtyFiles,
     getRepoSettings: repoOrch,
     requestTransition,
     completePlan,
@@ -1589,6 +1590,7 @@ export function initOrchestrator(
       return cached?.kind === "issue" ? cached : undefined;
     },
     getRepoPath: repoPathFor,
+    checkoutDirtyPaths: worktreeDirtyFiles,
     getRepoSettings: repoOrch,
     getStoredPlan: async (item) => {
       const ref = item.plan?.ref;
@@ -1613,6 +1615,7 @@ export function initOrchestrator(
       return cached?.kind === "issue" ? cached : undefined;
     },
     getRepoPath: repoPathFor,
+    checkoutDirtyPaths: worktreeDirtyFiles,
     getRepoSettings: repoOrch,
     getStoredPlan: async (item) => {
       const ref = item.plan?.ref;
@@ -1641,6 +1644,7 @@ export function initOrchestrator(
     },
     fetchIssueComments: fetchIssueCommentsFor,
     getRepoPath: repoPathFor,
+    checkoutDirtyPaths: worktreeDirtyFiles,
     getRepoSettings: repoOrch,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
@@ -1658,6 +1662,8 @@ export function initOrchestrator(
       return cached?.kind === "issue" ? cached : undefined;
     },
     fetchIssueComments: fetchIssueCommentsFor,
+    getRepoPath: repoPathFor,
+    checkoutDirtyPaths: worktreeDirtyFiles,
     getPlan: async (item) => {
       const ref = item.plan?.ref;
       return ref ? readStoredPlan(orchestratorDeps.plansDir, ref) : null;

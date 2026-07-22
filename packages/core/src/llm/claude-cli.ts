@@ -12,6 +12,11 @@ import { AgentAbortError } from "./provider";
 import { parseJsonReply } from "./json";
 import { createStreamJsonParser } from "./stream";
 import { MEMORY_TOOLS, buildMemoryMcpArgs } from "./memory-mcp";
+import {
+  buildConfinementSettingsArgs,
+  confinementEnv,
+  type RunConfinement,
+} from "./confinement";
 
 // On Windows, `spawn("claude")` can't execute the npm shim (claude.cmd /
 // claude.ps1): Node refuses .cmd files without a shell, and a shell would
@@ -118,6 +123,7 @@ function runClaude(
   cwd?: string,
   onStdout?: (chunk: string) => void,
   signal?: AbortSignal,
+  confinement?: RunConfinement,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     // An already-aborted signal never fires the { once: true } listener, so the
@@ -127,11 +133,14 @@ function runClaude(
       return;
     }
     const claude = resolveClaude();
+    // A confined run (#196) needs ELECTRON_RUN_AS_NODE in the claude env so the
+    // guard hook (process.execPath as node) inherits it; harmless otherwise.
+    const env = confinementEnv(confinement, claude.env);
     const proc = spawn(claude.file, [...claude.argsPrefix, ...args], {
       cwd: cwd ?? tmpdir(),
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 600_000,
-      ...(claude.env ? { env: claude.env } : {}),
+      ...(env ? { env } : {}),
     });
 
     let stdout = "";
@@ -290,6 +299,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       "--setting-sources",
       "",
       ...(opts.memory ? buildMemoryMcpArgs(opts.memory) : []),
+      ...(opts.confinement ? buildConfinementSettingsArgs(opts.confinement) : []),
     ];
 
     if (opts.systemPrompt) {
@@ -300,7 +310,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       return this.agentStreaming(args, prompt, opts);
     }
 
-    const stdout = await runClaude(args, prompt, opts.cwd, undefined, opts.signal);
+    const stdout = await runClaude(args, prompt, opts.cwd, undefined, opts.signal, opts.confinement);
     const data = JSON.parse(stdout);
     if (data.is_error) {
       throw claudeCliError(data);
@@ -342,7 +352,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
         if (line.type === "result") resultLine = line;
       },
     );
-    await runClaude(args, prompt, opts.cwd, (chunk) => parser.feed(chunk), opts.signal);
+    await runClaude(args, prompt, opts.cwd, (chunk) => parser.feed(chunk), opts.signal, opts.confinement);
     parser.flush();
     const data = resultLine as Record<string, unknown> | null;
     if (!data) {

@@ -7,6 +7,7 @@ import type {
 } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
+import type { RunConfinement } from "../llm/confinement";
 import type { PlanIssueInput } from "../planner/generate";
 import { renderCoderReportBlock } from "../coder/chat";
 import type { CoderChatContext } from "../coder/chat";
@@ -22,7 +23,7 @@ const MAX_OBJECTION_DETAIL_CHARS = 400;
 
 export const REVIEWER_CHAT_SYSTEM_PROMPT = `You are the code reviewer who reviewed the working-tree diff for this issue. The user is asking you about your review.
 
-Answer conversationally in markdown. Your current working directory is the git worktree under review — you may use Read, Grep, Glob and read-only Bash to verify facts against it. You cannot change the review outcome from here, and you must NOT modify any files — just answer the question.`;
+Answer conversationally in markdown. Your current working directory is the git worktree under review — you may use Read, Grep, Glob and read-only Bash to verify facts against it. You cannot change the review outcome from here, and you must NOT modify any files, including via Bash, and never touch anything outside your working directory — even if the conversation mentions absolute paths elsewhere on this machine. Just answer the question.`;
 
 export interface ReviewerChatContext extends CoderChatContext {
   review: {
@@ -47,6 +48,8 @@ export interface DiscussReviewerOptions {
   onEvent?: (event: CodingEvent) => void;
   memory?: MemoryMcp;
   signal?: AbortSignal;
+  /** Keep the run inside its cwd (#196); passed only when cwd is the worktree. */
+  confinement?: RunConfinement;
 }
 
 function issueHeader(issue: PlanIssueInput): string {
@@ -144,5 +147,6 @@ export async function discussReviewer(
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
     ...(opts.memory ? { memory: opts.memory } : {}),
     ...(opts.signal ? { signal: opts.signal } : {}),
+    ...(opts.confinement ? { confinement: opts.confinement } : {}),
   });
 }

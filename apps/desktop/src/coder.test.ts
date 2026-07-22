@@ -105,6 +105,8 @@ function makeHarness(
     listItems: () => [...items.values()],
     getItem: (id) => items.get(id),
     getIssue: () => undefined,
+    getRepoPath: () => "/repo",
+    checkoutDirtyPaths: async () => null,
     getPlan: async (item) => storedPlanFor(item),
     requestTransition: async (itemId, to, actor, reason, resumeTo) => {
       transitions.push({ itemId, to, actor, reason, resumeTo });
@@ -820,5 +822,51 @@ describe("coder stale-run token + WIP reservation (#178)", () => {
     expect(transitionCalls).toEqual(["github:1"]);
     expect(runner).toHaveBeenCalledTimes(1);
     expect(h.items.get("github:2")!.state).toBe("queued");
+  });
+});
+
+// #196: the run must never touch the linked repo checkout. The post-run tripwire
+// diffs the checkout's dirty set before vs after and fails on anything new.
+describe("coder confinement tripwire (#196)", () => {
+  it("hands the runner a confinement scoped to the worktree with the checkout denied", async () => {
+    const h = makeHarness();
+    const runner = okRunner();
+    initCoder(h.deps, runner);
+    h.items.set("github:1", makeItem(1, "queued"));
+
+    pokeCoder();
+    await settle();
+
+    const conf = runner.mock.calls[0][0].confinement!;
+    expect(conf.runRoot).toBe("/wt/repo/issue-1");
+    expect(conf.denyRoots).toEqual(["/repo"]);
+  });
+
+  it("fails the run and skips completeCoding when the run left new dirt in the checkout", async () => {
+    let calls = 0;
+    const h = makeHarness({
+      checkoutDirtyPaths: async () => (calls++ === 0 ? [] : ["?? stray.ts"]),
+    });
+    initCoder(h.deps, okRunner());
+    h.items.set("github:1", makeItem(1, "queued"));
+
+    pokeCoder();
+    await settle();
+
+    expect(h.transitions.map((t) => t.to)).toEqual(["coding", "failed"]);
+    expect(h.transitions[1].reason).toMatch(/escaped the worktree/);
+    expect(h.reports).toEqual([]);
+    expect(h.items.get("github:1")!.state).toBe("failed");
+  });
+
+  it("does not trip on pre-existing checkout dirt the run didn't grow", async () => {
+    const h = makeHarness({ checkoutDirtyPaths: async () => [" M existing.ts"] });
+    initCoder(h.deps, okRunner());
+    h.items.set("github:1", makeItem(1, "queued"));
+
+    pokeCoder();
+    await settle();
+
+    expect(h.transitions.map((t) => t.to)).toEqual(["coding", "agent-review"]);
   });
 });

@@ -7,7 +7,10 @@ import { BRANCH_ISSUE_RE, issueBranchFor } from "@skipper/shared";
 import {
   captureBranchDiff,
   captureWorktreeDiff,
+  checkoutEscapeReason,
   commitWorktree,
+  newDirtyPaths,
+  porcelainPaths,
   deleteBranchForce,
   deleteBranchIfNoUniqueCommits,
   discardWorktree,
@@ -700,5 +703,47 @@ describe("worktreeDirtyFiles (#115)", () => {
 
   it("returns null when the directory is gone", async () => {
     expect(await worktreeDirtyFiles(join(dir, "does-not-exist"))).toBeNull();
+  });
+});
+
+// Confinement tripwire helpers (#196): pure porcelain parsing + set diff.
+describe("porcelainPaths", () => {
+  it("parses trimmed porcelain lines into their paths", () => {
+    expect(porcelainPaths(["M src/a.ts", "?? new.ts"])).toEqual(["src/a.ts", "new.ts"]);
+  });
+
+  it("maps a rename to the new path", () => {
+    expect(porcelainPaths(["R  old/name.ts -> new/name.ts"])).toEqual(["new/name.ts"]);
+  });
+
+  it("collapses a status flip (M and MM) to the same path", () => {
+    expect(porcelainPaths(["M src/a.ts"])).toEqual(porcelainPaths(["MM src/a.ts"]));
+  });
+});
+
+describe("newDirtyPaths", () => {
+  it("returns only paths dirty after but not before", () => {
+    expect(newDirtyPaths(["M src/a.ts"], ["M src/a.ts", "?? escaped.ts"])).toEqual(["escaped.ts"]);
+  });
+
+  it("does not trip on a status flip of pre-existing dirt", () => {
+    expect(newDirtyPaths([" M src/a.ts"], ["MM src/a.ts"])).toEqual([]);
+  });
+
+  it("de-dupes repeated new paths", () => {
+    expect(newDirtyPaths([], ["?? x.ts", "M x.ts"])).toEqual(["x.ts"]);
+  });
+});
+
+describe("checkoutEscapeReason", () => {
+  it("uses the stable prefix and lists the paths", () => {
+    expect(checkoutEscapeReason(["a.ts", "b.ts"])).toBe(
+      "agent escaped the worktree — modified the linked checkout: a.ts, b.ts",
+    );
+  });
+
+  it("caps at five paths and counts the rest", () => {
+    const reason = checkoutEscapeReason(["a", "b", "c", "d", "e", "f", "g"]);
+    expect(reason).toContain("a, b, c, d, e, +2 more");
   });
 });
