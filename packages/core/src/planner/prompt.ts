@@ -47,6 +47,23 @@ export function renderCommentsBlock(comments: IssueComment[] | undefined): strin
   return lines.join("\n");
 }
 
+/** Render the worktree's pre-existing uncommitted changes (git status --porcelain
+ *  lines) as one prompt block, or undefined when there are none. Surfaces leftover
+ *  work from a failed coding attempt so the plan accounts for it (#202). */
+export function renderDirtyFilesBlock(files: string[] | undefined): string | undefined {
+  if (!files || files.length === 0) return undefined;
+  return [
+    "--- Pre-existing uncommitted changes ---",
+    "The working tree already contains uncommitted changes left by a previous",
+    "coding attempt (git status --porcelain):",
+    ...files,
+    'Take them into account: never mark a file that exists on disk as "new",',
+    "and mention this pre-existing work in the plan's context so the human",
+    "reviewing the plan sees it. Do not revert or clean anything.",
+    "--- End pre-existing uncommitted changes ---",
+  ].join("\n");
+}
+
 export const PLANNER_SYSTEM_PROMPT = `You are a senior software engineer preparing an implementation plan for a GitHub issue in the repository at your current working directory.
 
 Operate ONLY inside your current working directory and never modify any files anywhere, including via Bash — even if the issue mentions absolute paths elsewhere on this machine. You are only writing a plan, not code.
@@ -76,6 +93,7 @@ export function buildSalvagePrompt(schema: Record<string, unknown>): string {
 export function buildPlannerPrompt(
   issue: PlanIssueInput,
   schema: Record<string, unknown>,
+  preexistingChanges?: string[],
 ): string {
   const body =
     issue.body && issue.body.length > MAX_BODY_CHARS
@@ -91,6 +109,7 @@ export function buildPlannerPrompt(
     body ? `--- Issue body ---\n${body}\n--- End issue body ---` : `(The issue has no body.)`,
     ``,
     renderCommentsBlock(issue.comments) ?? "",
+    renderDirtyFilesBlock(preexistingChanges) ?? "",
     `--`,
     `Your FINAL message must be ONLY a single JSON object matching this JSON Schema. No prose, no code fences, no preamble.`,
     ``,

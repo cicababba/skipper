@@ -294,6 +294,11 @@ async function run(itemId: string): Promise<void> {
     // agent-start marks a fresh run — it also resets the replay buffer upstream.
     deps.emitEvent(itemId, { kind: "status", phase: "agent-start" });
     const memory = deps.getMemoryMcp?.(item);
+    // #202: surface the worktree's pre-existing uncommitted changes (leftover work
+    // from a failed coding attempt) so the plan accounts for them. Only from the
+    // worktree cwd — the shared clone's dirt is the user's own in-flight work.
+    // null (git failure) is treated as absent, never blocks planning.
+    const preexisting = inWorktree ? await deps.checkoutDirtyPaths(cwd) : null;
     // Confinement (#196): only when planning runs IN the worktree — when it
     // degraded to the checkout, the checkout is the legit cwd and no Bash
     // confinement is possible (prompts + tripwire guard it there).
@@ -319,6 +324,7 @@ async function run(itemId: string): Promise<void> {
       },
       ...(memory ? { memory } : {}),
       ...(confinement ? { confinement } : {}),
+      ...(preexisting?.length ? { preexistingChanges: preexisting } : {}),
       ...(planSessionId ? { sessionId: planSessionId } : {}),
       signal: controller.signal,
     });

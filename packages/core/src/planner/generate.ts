@@ -48,6 +48,10 @@ export interface GeneratePlanOptions {
   signal?: AbortSignal;
   /** Keep the run inside its cwd (#196); passed only when cwd is the worktree. */
   confinement?: RunConfinement;
+  /** Raw `git status --porcelain` lines for pre-existing uncommitted changes in the
+   *  worktree, left by a prior coding attempt — surfaced in the prompt so the plan
+   *  accounts for them (#202). */
+  preexistingChanges?: string[];
 }
 
 export class PlanGenerationError extends Error {
@@ -122,7 +126,7 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
   const schema = planJsonSchema();
   let reply: LLMResponse;
   try {
-    reply = await opts.llm.agent(buildPlannerPrompt(opts.issue, schema), {
+    reply = await opts.llm.agent(buildPlannerPrompt(opts.issue, schema, opts.preexistingChanges), {
       systemPrompt: PLANNER_SYSTEM_PROMPT,
       cwd: opts.repoPath,
       maxTurns: opts.maxTurns ?? AGENT_MAX_TURNS_BACKSTOP,
