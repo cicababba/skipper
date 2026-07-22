@@ -67,7 +67,7 @@ You have a limited budget of agent turns for this task. Batch independent tool c
 
 export function buildSalvagePrompt(schema: Record<string, unknown>): string {
   return [
-    `You ran out of your tool-call budget while exploring. Do NOT call any more tools. Using only what you have already learned in this session, reply NOW with the implementation-plan JSON. Reply with ONLY the JSON, no prose. Schema: ${JSON.stringify(schema)}`,
+    `You ran out of your exploration budget (time or tool calls) while exploring. Do NOT call any more tools. Using only what you have already learned in this session, reply NOW with the implementation-plan JSON. Reply with ONLY the JSON, no prose. Schema: ${JSON.stringify(schema)}`,
     ``,
     `For any file you did not verify, either omit it or surface the uncertainty in openQuestions/risks — never invent paths or symbols.`,
   ].join("\n");

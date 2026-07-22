@@ -89,6 +89,37 @@ describe("applySettingsPatch", () => {
     applySettingsPatch(s, { codingWipPerRepo: "bad" as unknown as number });
     expect(s.codingWipPerRepo).toBe(4);
   });
+
+  it("clamps the coder time budget to 10–240 (#194)", () => {
+    const lo = baseSettings();
+    applySettingsPatch(lo, { coderTimeBudgetMin: 1 });
+    expect(lo.coderTimeBudgetMin).toBe(10);
+    const hi = baseSettings();
+    applySettingsPatch(hi, { coderTimeBudgetMin: 999 });
+    expect(hi.coderTimeBudgetMin).toBe(240);
+    const ok = baseSettings();
+    applySettingsPatch(ok, { coderTimeBudgetMin: 90 });
+    expect(ok.coderTimeBudgetMin).toBe(90);
+  });
+
+  it("clamps the planner time budget to 5–60 (#194)", () => {
+    const lo = baseSettings();
+    applySettingsPatch(lo, { plannerTimeBudgetMin: 1 });
+    expect(lo.plannerTimeBudgetMin).toBe(5);
+    const hi = baseSettings();
+    applySettingsPatch(hi, { plannerTimeBudgetMin: 999 });
+    expect(hi.plannerTimeBudgetMin).toBe(60);
+  });
+
+  it("no longer writes the retired turn knobs (#194)", () => {
+    const s = baseSettings();
+    applySettingsPatch(s, {
+      coderMaxTurns: 120,
+      plannerMaxTurns: 80,
+    } as unknown as Partial<OrchestratorSettings>);
+    expect((s as unknown as Record<string, unknown>).coderMaxTurns).toBeUndefined();
+    expect((s as unknown as Record<string, unknown>).plannerMaxTurns).toBeUndefined();
+  });
 });
 
 describe("applyRepoSettingsPatch", () => {

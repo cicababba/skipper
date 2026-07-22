@@ -31,8 +31,8 @@ export const SETTINGS_VALIDATORS: {
   plannerModel: nonEmptyString,
   coderModel: nonEmptyString,
   reviewerModel: nonEmptyString,
-  coderMaxTurns: clampInt(10, 200),
-  plannerMaxTurns: clampInt(10, 200),
+  coderTimeBudgetMin: clampInt(10, 240),
+  plannerTimeBudgetMin: clampInt(5, 60),
 };
 
 export const REPO_SETTINGS_VALIDATORS: {

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type { CodingEvent } from "@skipper/shared";
+import { AGENT_MAX_TURNS_BACKSTOP, type CodingEvent } from "@skipper/shared";
 import { invalidateResolvedClaude, resolveClaude } from "../llm/claude-cli";
 import { createStreamJsonParser } from "../llm/stream";
 import { MEMORY_TOOLS, buildMemoryMcpArgs, type MemoryMcp } from "../llm/memory-mcp";
@@ -14,7 +14,6 @@ const CODER_TOOLS = "Read,Grep,Glob,Edit,Write,Bash,WebFetch,WebSearch";
 // Same set minus the write tools — the write tools are pre-approved path-scoped
 // to the run root instead (L1 confinement, #196), never as bare names.
 const CODER_NONWRITE_TOOLS = "Read,Grep,Glob,Bash,WebFetch,WebSearch";
-const DEFAULT_MAX_TURNS = 60;
 const DEFAULT_INACTIVITY_TIMEOUT_MS = 10 * 60_000;
 const DEFAULT_HARD_TIMEOUT_MS = 60 * 60_000;
 const SIGKILL_ESCALATION_MS = 3_000;
@@ -23,6 +22,23 @@ export class CodingAbortError extends Error {
   constructor() {
     super("coding run aborted");
     this.name = "CodingAbortError";
+  }
+}
+
+/**
+ * A guard timer killed the run (#194): the wall-clock budget (hard_timeout) or the
+ * no-output inactivity ceiling. Distinct from CodingAbortError (a user cancel) so
+ * the coder driver can salvage a final report from the dead session instead of
+ * parking the item as "no result".
+ */
+export class CodingTimeoutError extends Error {
+  constructor(
+    message: string,
+    readonly kind: "hard_timeout" | "inactivity",
+    readonly limitMs: number,
+  ) {
+    super(message);
+    this.name = "CodingTimeoutError";
   }
 }
 
@@ -58,6 +74,8 @@ export interface CodingRunResult {
   /** From the init event (authoritative). */
   sessionId: string;
   turns?: number;
+  /** Raw CLI result subtype (e.g. "error_max_turns") — the driver salvages on it (#194). */
+  subtype?: string;
 }
 
 export function runCodingAgent(
@@ -86,7 +104,7 @@ export function runCodingAgent(
       "--model",
       opts.model,
       "--max-turns",
-      String(opts.maxTurns ?? DEFAULT_MAX_TURNS),
+      String(opts.maxTurns ?? AGENT_MAX_TURNS_BACKSTOP),
       "--disable-slash-commands",
       "--setting-sources",
       "",
@@ -132,18 +150,29 @@ export function runCodingAgent(
       reject(err);
     };
 
+    const inactivityMs = opts.inactivityTimeoutMs ?? DEFAULT_INACTIVITY_TIMEOUT_MS;
+    const hardMs = opts.hardTimeoutMs ?? DEFAULT_HARD_TIMEOUT_MS;
+
     const resetInactivity = () => {
       if (inactivityTimer) clearTimeout(inactivityTimer);
       inactivityTimer = setTimeout(() => {
-        fail(new Error("coding agent produced no output for too long — killed as hung"));
+        fail(
+          new CodingTimeoutError(
+            "coding agent produced no output for too long — killed as hung",
+            "inactivity",
+            inactivityMs,
+          ),
+        );
         killTree();
-      }, opts.inactivityTimeoutMs ?? DEFAULT_INACTIVITY_TIMEOUT_MS);
+      }, inactivityMs);
     };
 
     const hardTimer = setTimeout(() => {
-      fail(new Error("coding run exceeded the hard time limit — killed"));
+      fail(
+        new CodingTimeoutError("coding run exceeded the hard time limit — killed", "hard_timeout", hardMs),
+      );
       killTree();
-    }, opts.hardTimeoutMs ?? DEFAULT_HARD_TIMEOUT_MS);
+    }, hardMs);
 
     const onAbort = () => {
       aborted = true;
@@ -161,6 +190,7 @@ export function runCodingAgent(
     // onLine fires before the mapped result event for the same line, so the
     // full untruncated result text is already captured when we build result.
     let resultText: string | undefined;
+    let resultSubtype: string | undefined;
     const parser = createStreamJsonParser(
       (event) => {
         if (event.kind === "agent-init") sessionId = event.sessionId;
@@ -171,12 +201,15 @@ export function runCodingAgent(
             sessionId,
             ...(resultText !== undefined ? { resultText } : {}),
             ...(event.turns !== undefined ? { turns: event.turns } : {}),
+            ...(resultSubtype !== undefined ? { subtype: resultSubtype } : {}),
           };
         }
         opts.onEvent(event);
       },
       (line) => {
-        if (line.type === "result" && typeof line.result === "string") resultText = line.result;
+        if (line.type !== "result") return;
+        if (typeof line.result === "string") resultText = line.result;
+        if (typeof line.subtype === "string") resultSubtype = line.subtype;
       },
     );
 

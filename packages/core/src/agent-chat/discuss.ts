@@ -10,6 +10,9 @@ import type { RunConfinement } from "../llm/confinement";
 // when available, else falls back to a single-turn ask().
 
 export const DEFAULT_AGENT_CHAT_MAX_TURNS = 12;
+/** Wall-clock cap for a chat turn (#194): a dead chat surfaces as a panel error the
+ *  user retries — no salvage — so the budget is short. */
+export const AGENT_CHAT_HARD_TIMEOUT_MS = 3 * 60_000;
 
 export interface RunAgentDiscussionOptions {
   llm: LLMProviderInterface;
@@ -40,6 +43,7 @@ export async function runAgentDiscussion(
       systemPrompt,
       cwd,
       maxTurns,
+      hardTimeoutMs: AGENT_CHAT_HARD_TIMEOUT_MS,
       resumeSessionId: opts.resumeSessionId,
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
@@ -54,6 +58,7 @@ export async function runAgentDiscussion(
       systemPrompt,
       cwd,
       maxTurns,
+      hardTimeoutMs: AGENT_CHAT_HARD_TIMEOUT_MS,
       ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),

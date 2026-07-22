@@ -53,8 +53,8 @@ describe("orchestrator manifest", () => {
         intakePaused: false,
         autoPlanPaused: false,
         confidence: { high: 0.85, low: 0.4, extraPlanRuns: 2 },
-        coderMaxTurns: 60,
-        plannerMaxTurns: 40,
+        coderTimeBudgetMin: 60,
+        plannerTimeBudgetMin: 15,
         autoCoding: "auto",
         review: "auto",
         reviewMaxRounds: 2,
@@ -82,7 +82,12 @@ describe("orchestrator manifest", () => {
     expect(manifest.settings.plannerModel).toBeUndefined();
     expect(manifest.settings.confidence).toEqual(DEFAULT_ORCHESTRATOR_SETTINGS.confidence);
     expect(manifest.settings.coderModel).toBeUndefined();
-    expect(manifest.settings.coderMaxTurns).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.coderMaxTurns);
+    expect(manifest.settings.coderTimeBudgetMin).toBe(
+      DEFAULT_ORCHESTRATOR_SETTINGS.coderTimeBudgetMin,
+    );
+    expect(manifest.settings.plannerTimeBudgetMin).toBe(
+      DEFAULT_ORCHESTRATOR_SETTINGS.plannerTimeBudgetMin,
+    );
     expect(manifest.settings.autoCoding).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.autoCoding);
     expect(manifest.settings.review).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.review);
     expect(manifest.settings.reviewMaxRounds).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.reviewMaxRounds);
@@ -153,6 +158,40 @@ describe("orchestrator manifest", () => {
       const manifest = await loadOrCreateOrchestratorManifest(filePath);
       expect(manifest.settings.review).toBe("off");
       expect("reviewMode" in manifest.settings).toBe(false);
+    });
+  });
+
+  // #194. The agent-turn knobs became wall-clock budgets; the old values do not
+  // convert (pre-beta) — they are consumed and dropped, and the new keys default in.
+  describe("turn knobs → time budgets migration (#194)", () => {
+    const write = (settings: Record<string, unknown>) =>
+      writeFile(filePath, JSON.stringify({ version: 1, settings, items: {}, parked: {} }), "utf-8");
+
+    it("drops legacy coderMaxTurns/plannerMaxTurns and backfills the time budgets", async () => {
+      await write({ intakePaused: false, coderMaxTurns: 80, plannerMaxTurns: 30 });
+      const manifest = await loadOrCreateOrchestratorManifest(filePath);
+      expect("coderMaxTurns" in manifest.settings).toBe(false);
+      expect("plannerMaxTurns" in manifest.settings).toBe(false);
+      expect(manifest.settings.coderTimeBudgetMin).toBe(
+        DEFAULT_ORCHESTRATOR_SETTINGS.coderTimeBudgetMin,
+      );
+      expect(manifest.settings.plannerTimeBudgetMin).toBe(
+        DEFAULT_ORCHESTRATOR_SETTINGS.plannerTimeBudgetMin,
+      );
+
+      await saveOrchestratorManifest(filePath, manifest);
+      const raw = JSON.parse(await readFile(filePath, "utf-8")) as {
+        settings: Record<string, unknown>;
+      };
+      expect("coderMaxTurns" in raw.settings).toBe(false);
+      expect("plannerMaxTurns" in raw.settings).toBe(false);
+    });
+
+    it("preserves an explicit time budget already on the manifest", async () => {
+      await write({ intakePaused: false, coderTimeBudgetMin: 120, plannerTimeBudgetMin: 45 });
+      const manifest = await loadOrCreateOrchestratorManifest(filePath);
+      expect(manifest.settings.coderTimeBudgetMin).toBe(120);
+      expect(manifest.settings.plannerTimeBudgetMin).toBe(45);
     });
   });
 

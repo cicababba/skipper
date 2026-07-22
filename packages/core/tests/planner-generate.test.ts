@@ -137,10 +137,22 @@ describe("generatePlan", () => {
     await generatePlan({ issue: ISSUE, repoPath: "/my/repo", llm });
     const [prompt, agentOpts] = agent.mock.calls[0] as [string, AgentOptions];
     expect(agentOpts.cwd).toBe("/my/repo");
-    expect(agentOpts.maxTurns).toBe(24);
+    expect(agentOpts.maxTurns).toBe(300);
     expect(prompt).toContain("Add retry to the poller");
     expect(prompt).toContain("The poller should retry on 429");
     expect(prompt).toContain("estimatedSize");
+  });
+
+  it("forwards hardTimeoutMs to the primary agent call and omits it otherwise (#194)", async () => {
+    const withBudget = fakeLLM({ agentReply: JSON.stringify(VALID_PLAN) });
+    await generatePlan({ issue: ISSUE, repoPath: "/repo", llm: withBudget.llm, hardTimeoutMs: 900_000 });
+    const [, budgetOpts] = withBudget.agent.mock.calls[0] as [string, AgentOptions];
+    expect(budgetOpts.hardTimeoutMs).toBe(900_000);
+
+    const without = fakeLLM({ agentReply: JSON.stringify(VALID_PLAN) });
+    await generatePlan({ issue: ISSUE, repoPath: "/repo", llm: without.llm });
+    const [, plainOpts] = without.agent.mock.calls[0] as [string, AgentOptions];
+    expect(plainOpts.hardTimeoutMs).toBeUndefined();
   });
 
   it("passes onEvent through to the agent call and omits it otherwise", async () => {
@@ -237,6 +249,23 @@ describe("generatePlan — max-turns salvage round", () => {
     ).rejects.toThrow(/failed/);
     expect(agent).toHaveBeenCalledOnce();
   });
+
+  it.each(["error_hard_timeout", "error_inactivity"] as const)(
+    "salvages a %s death, resuming with the salvage budget (#194)",
+    async (subtype) => {
+      const { llm, agent } = salvageLLM(async (opts) => {
+        if (opts.resumeSessionId) return { text: JSON.stringify(VALID_PLAN) };
+        throw new ClaudeCliError("agent run hit the time budget", subtype);
+      });
+      const plan = await generatePlan({ issue: ISSUE, repoPath: "/repo", llm, sessionId: SESSION });
+      expect(plan).toEqual(VALID_PLAN);
+      expect(agent).toHaveBeenCalledTimes(2);
+      const [, salvageOpts] = agent.mock.calls[1] as [string, AgentOptions];
+      expect(salvageOpts.resumeSessionId).toBe(SESSION);
+      expect(salvageOpts.maxTurns).toBe(4);
+      expect(salvageOpts.hardTimeoutMs).toBe(300_000);
+    },
+  );
 
   it("rejects with the original max-turns error when salvage also throws", async () => {
     const { llm, agent } = salvageLLM(async (opts) => {

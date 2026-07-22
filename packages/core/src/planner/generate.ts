@@ -1,10 +1,10 @@
-import type { CodingEvent, IssuePlan } from "@skipper/shared";
+import { AGENT_MAX_TURNS_BACKSTOP, type CodingEvent, type IssuePlan } from "@skipper/shared";
 import type { IssueComment } from "../adapters/types";
 import type { LLMProviderInterface, LLMResponse } from "../llm/provider";
 import { AgentAbortError } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import type { RunConfinement } from "../llm/confinement";
-import { ClaudeCliError } from "../llm/claude-cli";
+import { isSalvageableDeath } from "../llm/claude-cli";
 import { parseJsonReply } from "../llm/json";
 import { IssuePlanSchema, planJsonSchema } from "./schema";
 import {
@@ -15,6 +15,8 @@ import {
 } from "./prompt";
 
 const SALVAGE_MAX_TURNS = 4;
+/** Wall-clock cap for the salvage wrap-up run — it must not explore, only emit (#194). */
+const SALVAGE_HARD_TIMEOUT_MS = 5 * 60_000;
 
 export interface PlanIssueInput {
   /** Work-item display key: "42" (GitHub) or "PROJ-123" (Jira). */
@@ -33,6 +35,9 @@ export interface GeneratePlanOptions {
   repoPath: string;
   llm: LLMProviderInterface;
   maxTurns?: number;
+  /** Wall-clock budget for the primary run (#194); on expiry the salvage path
+   *  resumes the on-disk session for a short plan-emitting wrap-up. */
+  hardTimeoutMs?: number;
   /** Streams progress from the primary agent run only (repair round stays silent). */
   onEvent?: (event: CodingEvent) => void;
   /** Inject the skipper-memory MCP server, scoped to the item's repo (#45). */
@@ -120,7 +125,8 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
     reply = await opts.llm.agent(buildPlannerPrompt(opts.issue, schema), {
       systemPrompt: PLANNER_SYSTEM_PROMPT,
       cwd: opts.repoPath,
-      maxTurns: opts.maxTurns ?? 24,
+      maxTurns: opts.maxTurns ?? AGENT_MAX_TURNS_BACKSTOP,
+      ...(opts.hardTimeoutMs !== undefined ? { hardTimeoutMs: opts.hardTimeoutMs } : {}),
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
@@ -129,12 +135,9 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
     });
   } catch (err) {
     // AgentAbortError is not a ClaudeCliError, so an aborted primary run rethrows
-    // here without touching the salvage path (#159).
-    if (
-      !(err instanceof ClaudeCliError) ||
-      err.subtype !== "error_max_turns" ||
-      !opts.sessionId
-    ) {
+    // here without touching the salvage path (#159). A budget/turns death with an
+    // on-disk session resumes for a short wrap-up that emits the plan (#194).
+    if (!isSalvageableDeath(err) || !opts.sessionId) {
       throw err;
     }
     try {
@@ -142,12 +145,14 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
         systemPrompt: PLANNER_SYSTEM_PROMPT,
         cwd: opts.repoPath,
         maxTurns: SALVAGE_MAX_TURNS,
+        hardTimeoutMs: SALVAGE_HARD_TIMEOUT_MS,
         resumeSessionId: opts.sessionId,
         ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
         ...(opts.signal ? { signal: opts.signal } : {}),
         ...(opts.confinement ? { confinement: opts.confinement } : {}),
       });
     } catch {
+      // Salvage also died — surface the ORIGINAL death (its honest budget message).
       throw err;
     }
   }

@@ -34,6 +34,13 @@ export interface AgentOptions {
   /** Keep the run inside its cwd (#196): adds the Bash guard hook + confined env.
    *  claude-cli only; the read-leaning agent toolset has no Edit/Write to scope. */
   confinement?: RunConfinement;
+  /** Wall-clock cap for the run; on expiry the process is killed and a typed
+   *  ClaudeCliError (subtype "error_hard_timeout") rejects. claude-cli only (#194). */
+  hardTimeoutMs?: number;
+  /** Kill the run when it produces no stdout for this long; rejects with a typed
+   *  ClaudeCliError (subtype "error_inactivity"). Streaming agent path only, since
+   *  non-streaming json buffers until the end. claude-cli only (#194). */
+  inactivityTimeoutMs?: number;
 }
 
 /** Thrown by agent() when its AbortSignal fires (#145). */

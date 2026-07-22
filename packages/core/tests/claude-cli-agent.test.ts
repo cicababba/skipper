@@ -3,7 +3,8 @@ import { EventEmitter } from "node:events";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import type { CodingEvent } from "@skipper/shared";
-import { ClaudeCLIProvider, invalidateResolvedClaude } from "../src/llm/claude-cli";
+import { ClaudeCLIProvider, ClaudeCliError, invalidateResolvedClaude } from "../src/llm/claude-cli";
+import { AgentAbortError } from "../src/llm/provider";
 
 vi.mock("node:child_process", () => ({
   spawn: vi.fn(),
@@ -20,6 +21,11 @@ class FakeChild extends EventEmitter {
     },
     end: vi.fn(),
   };
+  killed: string[] = [];
+  kill(signal?: string) {
+    this.killed.push(signal ?? "SIGTERM");
+    return true;
+  }
 }
 
 function arm(): { child: FakeChild; argv: () => string[] } {
@@ -160,6 +166,78 @@ describe("ClaudeCLIProvider.agent", () => {
     child.stdout.emit("data", Buffer.from(`${initLine}\n`));
     child.emit("close", 0);
     await expect(promise).rejects.toThrow(/stream ended without a result/);
+  });
+});
+
+describe("ClaudeCLIProvider.agent time guards (#194)", () => {
+  const spawnOpts = () => vi.mocked(spawn).mock.calls[0][2] as { timeout?: number };
+
+  it("spawn options no longer carry the node timeout", async () => {
+    const { child } = arm();
+    const promise = new ClaudeCLIProvider("sonnet").agent("plan it", { onEvent: () => {} });
+    child.stdout.emit("data", Buffer.from(`${initLine}\n${resultLine}\n`));
+    child.emit("close", 0);
+    await promise;
+    expect(spawnOpts().timeout).toBeUndefined();
+  });
+
+  it("kills a silent streaming run past inactivityTimeoutMs with subtype error_inactivity", async () => {
+    vi.useFakeTimers();
+    try {
+      const { child } = arm();
+      const promise = new ClaudeCLIProvider("sonnet").agent("plan it", {
+        onEvent: () => {},
+        inactivityTimeoutMs: 1000,
+        hardTimeoutMs: 60_000,
+      });
+      const settled = promise.catch((e) => e);
+      child.stdout.emit("data", Buffer.from(`${initLine}\n`)); // arms, then goes silent
+      vi.advanceTimersByTime(1001);
+      const err = await settled;
+      expect(err).toBeInstanceOf(ClaudeCliError);
+      expect((err as ClaudeCliError).subtype).toBe("error_inactivity");
+      expect(child.killed).toContain("SIGTERM");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("kills a run past hardTimeoutMs even while it keeps emitting, subtype error_hard_timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const { child } = arm();
+      const promise = new ClaudeCLIProvider("sonnet").agent("plan it", {
+        onEvent: () => {},
+        inactivityTimeoutMs: 60_000,
+        hardTimeoutMs: 2000,
+      });
+      const settled = promise.catch((e) => e);
+      vi.advanceTimersByTime(1500);
+      child.stdout.emit("data", Buffer.from(`${initLine}\n`)); // keeps inactivity fresh
+      vi.advanceTimersByTime(600);
+      const err = await settled;
+      expect(err).toBeInstanceOf(ClaudeCliError);
+      expect((err as ClaudeCliError).subtype).toBe("error_hard_timeout");
+      expect(child.killed).toContain("SIGTERM");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("abort wins over the guards, rejecting with AgentAbortError", async () => {
+    const controller = new AbortController();
+    const { child } = arm();
+    const promise = new ClaudeCLIProvider("sonnet").agent("plan it", {
+      onEvent: () => {},
+      signal: controller.signal,
+      hardTimeoutMs: 60_000,
+    });
+    const settled = promise.catch((e) => e);
+    child.stdout.emit("data", Buffer.from(`${initLine}\n`));
+    controller.abort();
+    const err = await settled;
+    expect(err).toBeInstanceOf(AgentAbortError);
+    expect(child.killed).toContain("SIGTERM");
   });
 });
 

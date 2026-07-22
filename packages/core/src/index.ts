@@ -1,5 +1,5 @@
 export type { LLMProviderInterface, LLMResponse, AgentOptions } from "./llm";
-export { createProvider, ClaudeCLIProvider, AgentAbortError } from "./llm";
+export { createProvider, ClaudeCLIProvider, ClaudeCliError, AgentAbortError, isSalvageableDeath } from "./llm";
 export { PROMPTS } from "./llm";
 export { MEMORY_TOOLS, buildMemoryMcpArgs } from "./llm";
 export type { MemoryMcp } from "./llm";
@@ -136,9 +136,11 @@ export type { CriticInput, ComputeConfidenceOptions, GateTarget } from "./confid
 export {
   runCodingAgent,
   CodingAbortError,
+  CodingTimeoutError,
   CODER_SYSTEM_PROMPT,
   buildCoderPrompt,
   buildResumePrompt,
+  buildCoderSalvagePrompt,
   buildFixPrompt,
   buildPrFixPrompt,
   CoderReportSchema,
@@ -165,7 +167,7 @@ export type {
 } from "./coder";
 
 // Agent chat — generic discussion dispatch shared by coder/reviewer chats (#170)
-export { runAgentDiscussion, DEFAULT_AGENT_CHAT_MAX_TURNS } from "./agent-chat";
+export { runAgentDiscussion, DEFAULT_AGENT_CHAT_MAX_TURNS, AGENT_CHAT_HARD_TIMEOUT_MS } from "./agent-chat";
 export type { RunAgentDiscussionOptions } from "./agent-chat";
 
 // Shepherd (issue #11)

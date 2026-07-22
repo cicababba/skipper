@@ -132,6 +132,24 @@ export function buildPrFixPrompt(issue: PlanIssueInput, comments: PrReviewCommen
     .join("\n");
 }
 
+/**
+ * Budget-death salvage (#194): the run hit its time budget, turn backstop, or the
+ * inactivity ceiling. Resumed against the dead session — which already holds the
+ * issue + plan context (planner salvage precedent), so no issue header. Extracts an
+ * honest final report from work-so-far rather than losing the paid session.
+ */
+export function buildCoderSalvagePrompt(): string {
+  return [
+    `You ran out of your budget for this coding run. Do NOT make any further code changes and do NOT edit or write any files.`,
+    ``,
+    `You may run a quick read-only \`git status\` and \`git diff --stat\` to see what you have already changed, then reply NOW with the final report JSON.`,
+    ``,
+    `Report honestly: list every file you actually changed under "done"; record any work you left incomplete or could not verify under "deviations" and "open" — do not claim work you did not finish.`,
+    ``,
+    reportContractBlock(),
+  ].join("\n");
+}
+
 /** Re-entry after an interrupted run: the session already carries the plan context. */
 export function buildResumePrompt(issue: PlanIssueInput): string {
   return [

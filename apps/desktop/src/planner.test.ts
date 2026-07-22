@@ -11,7 +11,7 @@ import type {
   TrackedItem,
   TransitionActor,
 } from "@skipper/shared";
-import { DEFAULT_LLM_SETTINGS, resolveRepoOrchestratorSettings } from "@skipper/shared";
+import { AGENT_MAX_TURNS_BACKSTOP, DEFAULT_LLM_SETTINGS, resolveRepoOrchestratorSettings } from "@skipper/shared";
 import type { OrchestratorSettings } from "@skipper/core";
 import { AgentAbortError, DEFAULT_ORCHESTRATOR_SETTINGS } from "@skipper/core";
 import {
@@ -336,6 +336,29 @@ describe("planner worktree at planning (#110)", () => {
     expect(h.setWorktreeCalls).toEqual([{ path: "/wt/issue-1", branch: "feature/issue-1" }]);
     expect(h.setWorktreeCalls[0]).not.toHaveProperty("sessionId");
     expect(h.transitions).toEqual([]); // no needs-input
+  });
+
+  it("hands generatePlan the planner time budget, so the agent runs on time not turns (#194)", async () => {
+    const h = makeRunHarness({
+      item: makeItem("planning"),
+      prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+    });
+    const captured: { maxTurns?: number; hardTimeoutMs?: number }[] = [];
+    const provider = h.provider as {
+      agent: (p: string, o: Record<string, unknown>) => Promise<{ text: string }>;
+    };
+    const inner = provider.agent.bind(provider);
+    provider.agent = async (p, o) => {
+      captured.push({ maxTurns: o.maxTurns as number | undefined, hardTimeoutMs: o.hardTimeoutMs as number | undefined });
+      return inner(p, o);
+    };
+    initPlanner(h.deps, provider as never);
+    pokePlanner();
+    await h.done;
+    // The driver forwards the time budget and passes no turn knob, so generatePlan
+    // falls back to the turn backstop (300) rather than the old plannerMaxTurns.
+    expect(captured[0].hardTimeoutMs).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.plannerTimeBudgetMin * 60_000);
+    expect(captured[0].maxTurns).toBe(AGENT_MAX_TURNS_BACKSTOP);
   });
 
   it("degrades to the shared clone when worktree setup fails", async () => {

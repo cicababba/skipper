@@ -2,15 +2,18 @@ import { randomUUID } from "node:crypto";
 import {
   runCodingAgent,
   buildCoderPrompt,
+  buildCoderSalvagePrompt,
   buildFixPrompt,
   buildPrFixPrompt,
   buildResumePrompt,
   CODER_SYSTEM_PROMPT,
   CodingAbortError,
+  CodingTimeoutError,
   compareQueueCandidates,
   createProvider,
   tryParseCoderReport,
   repairCoderReport,
+  type CodingRunResult,
   type IssueComment,
   type LLMProviderInterface,
   type MemoryMcp,
@@ -19,7 +22,7 @@ import {
   type RunConfinement,
 } from "@skipper/core";
 import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
-import { latestCodingTransitionAt } from "@skipper/shared";
+import { AGENT_MAX_TURNS_BACKSTOP, latestCodingTransitionAt } from "@skipper/shared";
 import type {
   CoderReport,
   CodingEvent,
@@ -43,6 +46,12 @@ import { reportFileName, writeStoredCoderReport } from "./report-store";
 // error) or needs-input (environment problem). The uncommitted worktree diff
 // is the deliverable for #10/#13/#14. Mirrors planner.ts: coalesced poke,
 // cooperative cancellation, crash recovery for items stuck in "coding".
+
+// Budget-death salvage (#194): a short resumed wrap-up run that extracts an honest
+// report from the dead session. Bounded tighter than a real coding run — it must
+// only emit the report, not keep working.
+const CODER_SALVAGE_MAX_TURNS = 4;
+const CODER_SALVAGE_HARD_TIMEOUT_MS = 5 * 60_000;
 
 export interface CoderDeps {
   listItems: () => TrackedItem[];
@@ -338,19 +347,25 @@ async function run(itemId: string, repoKey: string): Promise<void> {
       systemPrompt: CODER_SYSTEM_PROMPT,
       cwd: worktree.path,
       model: deps.getRepoSettings(item.repo).coderModel,
-      maxTurns: settings.coderMaxTurns,
+      hardTimeoutMs: settings.coderTimeBudgetMin * 60_000,
       onEvent: (event: CodingEvent) => deps?.emitEvent(itemId, event),
       signal: controller.signal,
       confinement,
       ...(memory ? { memory } : {}),
     };
 
-    let result;
+    let result: CodingRunResult | undefined;
     let sawEvent = false;
     const trackFirstEvent = (event: CodingEvent) => {
       sawEvent = true;
       baseOptions.onEvent(event);
     };
+    // The session id the run actually used — salvage must resume THIS one, not the
+    // minted id (a dead --resume retry mints a fresh session below).
+    let runSessionId = resume ?? sessionId;
+    // A budget/turns death (#194): salvaged for an honest final report, never
+    // parked as "no result". null = the run finished (ok or a normal failure).
+    let death: { kind: "hard_timeout" | "inactivity" | "max_turns" } | null = null;
     try {
       result = await runner({
         ...baseOptions,
@@ -360,17 +375,68 @@ async function run(itemId: string, repoKey: string): Promise<void> {
           : { sessionId, prompt: freshPrompt }),
       });
     } catch (err) {
-      // A dead --resume (session gone from disk) fails fast without events:
-      // retry once as a fresh session.
-      if (!resume || sawEvent || err instanceof CodingAbortError) throw err;
-      const freshId = randomUUID();
-      await deps.setWorktree(itemId, { ...worktree, sessionId: freshId });
-      result = await runner({
-        ...baseOptions,
-        sessionId: freshId,
-        prompt: freshPrompt,
-      });
+      // A guard kill is checked BEFORE the dead-resume retry: it is not a dead
+      // --resume, and its session on disk is what salvage must resume.
+      if (err instanceof CodingTimeoutError) {
+        death = { kind: err.kind };
+      } else if (!resume || sawEvent || err instanceof CodingAbortError) {
+        // A dead --resume (session gone from disk) fails fast without events:
+        // retry once as a fresh session; other errors propagate.
+        throw err;
+      } else {
+        const freshId = randomUUID();
+        runSessionId = freshId;
+        await deps.setWorktree(itemId, { ...worktree, sessionId: freshId });
+        try {
+          result = await runner({
+            ...baseOptions,
+            sessionId: freshId,
+            prompt: freshPrompt,
+          });
+        } catch (retryErr) {
+          if (retryErr instanceof CodingTimeoutError) death = { kind: retryErr.kind };
+          else throw retryErr;
+        }
+      }
     }
+
+    // A max-turns backstop death lands as a non-ok result (not a throw) — salvage
+    // it on the same path as a guard kill.
+    if (!death && result && !result.ok && result.subtype === "error_max_turns") {
+      death = { kind: "max_turns" };
+    }
+
+    // Salvage runs BEFORE the live()/tripwire checks below, so the one escape check
+    // covers both the primary run's and the salvage run's dirt (#196).
+    if (death) {
+      if (!live()) return;
+      deps.emitEvent(itemId, {
+        kind: "status",
+        phase: "resuming",
+        detail: "budget hit — salvaging final report",
+      });
+      try {
+        result = await runner({
+          ...baseOptions,
+          resumeSessionId: runSessionId,
+          prompt: buildCoderSalvagePrompt(),
+          maxTurns: CODER_SALVAGE_MAX_TURNS,
+          hardTimeoutMs: CODER_SALVAGE_HARD_TIMEOUT_MS,
+        });
+        // Salvage ran but the wrap-up itself failed — surface the honest reason.
+        if (!result.ok) result = { ...result, summary: deathReason(death, settings) };
+      } catch (err) {
+        // Zombie rule (#159): a cancel during salvage dies silently.
+        if (err instanceof CodingAbortError) throw err;
+        // Salvage --resume fell over (e.g. no session on disk from a fresh run
+        // killed before its init event) — fail honestly, never "no result".
+        result = { ok: false, summary: deathReason(death, settings), sessionId: runSessionId };
+      }
+    }
+
+    // Unreachable: the primary run resolves, rethrows, or sets a death that the
+    // salvage block always turns into a result. The guard only narrows the type.
+    if (!result) throw new Error("coding run produced no result");
 
     // Cooperative cancel: the item may have been closed/moved mid-run, or an
     // untrack → re-admit may have superseded this run's token (#159).
@@ -431,7 +497,11 @@ async function run(itemId: string, repoKey: string): Promise<void> {
         : result.summary.slice(0, 200) || "coding run completed";
       await deps.completeCoding(itemId, ref, reason, codingAt);
     } else {
-      await fail(itemId, "failed", `coding run failed: ${(result.summary || "no result").slice(0, 500)}`);
+      // After salvage the summary is already the honest death reason; "no result"
+      // is only reachable for a non-budget failure with no summary or subtype.
+      const detail =
+        result.summary || (result.subtype ? `agent failed: ${result.subtype}` : "no result");
+      await fail(itemId, "failed", `coding run failed: ${detail.slice(0, 500)}`);
     }
   } catch (err) {
     // A cancelled/superseded run dies silently — never park the (possibly fresh)
@@ -460,6 +530,22 @@ function release(repoKey: string): void {
   const count = activeRepos.get(repoKey) ?? 0;
   if (count <= 1) activeRepos.delete(repoKey);
   else activeRepos.set(repoKey, count - 1);
+}
+
+/** Honest failure reason for a budget death (#194) — the item's summary when even
+ *  salvage couldn't produce a report, so the UI never shows "no result". */
+function deathReason(
+  death: { kind: "hard_timeout" | "inactivity" | "max_turns" },
+  settings: OrchestratorSettings,
+): string {
+  switch (death.kind) {
+    case "hard_timeout":
+      return `hit the time budget (${settings.coderTimeBudgetMin} min)`;
+    case "inactivity":
+      return "produced no output for 10 minutes — killed as hung";
+    case "max_turns":
+      return `hit the max-turns backstop (${AGENT_MAX_TURNS_BACKSTOP})`;
+  }
 }
 
 async function fail(

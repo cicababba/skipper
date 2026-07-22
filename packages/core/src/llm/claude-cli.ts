@@ -117,49 +117,134 @@ function claudeCliError(data: Record<string, unknown>): ClaudeCliError {
 
 const SIGKILL_ESCALATION_MS = 3_000;
 
-function runClaude(
-  args: string[],
-  stdin?: string,
-  cwd?: string,
-  onStdout?: (chunk: string) => void,
-  signal?: AbortSignal,
-  confinement?: RunConfinement,
-): Promise<string> {
+/** Wall-clock cap when a caller passes no budget — preserves the old 10-min ceiling. */
+const DEFAULT_AGENT_HARD_TIMEOUT_MS = 600_000;
+/** Inactivity cap for the streaming agent path (json output buffers to the end,
+ *  so the non-streaming branch never arms this). */
+const DEFAULT_AGENT_INACTIVITY_MS = 10 * 60_000;
+
+/**
+ * True for the deaths whose on-disk session can be resumed for a wrap-up salvage
+ * run (#194): a max-turns death (CLI-native) and our two synthetic guard kills.
+ * An AgentAbortError is never a ClaudeCliError, so a cancelled run is never salvaged.
+ */
+export function isSalvageableDeath(err: unknown): boolean {
+  return (
+    err instanceof ClaudeCliError &&
+    (err.subtype === "error_max_turns" ||
+      err.subtype === "error_hard_timeout" ||
+      err.subtype === "error_inactivity")
+  );
+}
+
+// The two synthetic subtypes below are minted only by our own guard timers; the
+// CLI never emits them. They join error_max_turns as salvageable deaths (#194).
+function timeoutError(
+  subtype: "error_hard_timeout" | "error_inactivity",
+  ms: number,
+): ClaudeCliError {
+  const min = Math.max(1, Math.round(ms / 60_000));
+  return new ClaudeCliError(
+    subtype === "error_hard_timeout"
+      ? `agent run hit the time budget (${min} min) — killed`
+      : `agent produced no output for ${min} min — killed as hung`,
+    subtype,
+  );
+}
+
+interface RunClaudeOptions {
+  cwd?: string;
+  onStdout?: (chunk: string) => void;
+  signal?: AbortSignal;
+  confinement?: RunConfinement;
+  /** Wall-clock cap; on expiry kills the tree and rejects error_hard_timeout. */
+  hardTimeoutMs?: number;
+  /** No-stdout cap, re-armed per chunk; rejects error_inactivity. Armed only when set. */
+  inactivityTimeoutMs?: number;
+}
+
+function runClaude(args: string[], stdin?: string, opts: RunClaudeOptions = {}): Promise<string> {
   return new Promise((resolve, reject) => {
     // An already-aborted signal never fires the { once: true } listener, so the
     // process would run to completion — bail before spawning (#159).
-    if (signal?.aborted) {
+    if (opts.signal?.aborted) {
       reject(new AgentAbortError());
       return;
     }
     const claude = resolveClaude();
     // A confined run (#196) needs ELECTRON_RUN_AS_NODE in the claude env so the
     // guard hook (process.execPath as node) inherits it; harmless otherwise.
-    const env = confinementEnv(confinement, claude.env);
+    const env = confinementEnv(opts.confinement, claude.env);
     const proc = spawn(claude.file, [...claude.argsPrefix, ...args], {
-      cwd: cwd ?? tmpdir(),
+      cwd: opts.cwd ?? tmpdir(),
       stdio: ["pipe", "pipe", "pipe"],
-      timeout: 600_000,
       ...(env ? { env } : {}),
     });
 
     let stdout = "";
     let stderr = "";
+    let settled = false;
     let aborted = false;
+    let inactivityTimer: NodeJS.Timeout | null = null;
 
-    const onAbort = () => {
-      aborted = true;
+    const killTree = () => {
       proc.kill("SIGTERM");
       // Bash-tool grandchildren linger past SIGTERM — escalate (idiom from coder/run.ts).
       const escalate = setTimeout(() => proc.kill("SIGKILL"), SIGKILL_ESCALATION_MS);
       escalate.unref?.();
     };
-    signal?.addEventListener("abort", onAbort, { once: true });
+
+    const cleanup = () => {
+      clearTimeout(hardTimer);
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      opts.signal?.removeEventListener("abort", onAbort);
+    };
+
+    // settled guards against a guard kill and the later `close` double-settling;
+    // whichever fires first wins, and abort always clears the timers so a timer
+    // can never settle after an abort.
+    const fail = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    };
+    const succeed = (value: string) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+
+    const onAbort = () => {
+      aborted = true;
+      fail(new AgentAbortError());
+      killTree();
+    };
+    opts.signal?.addEventListener("abort", onAbort, { once: true });
+
+    const resetInactivity = () => {
+      if (opts.inactivityTimeoutMs === undefined) return;
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      inactivityTimer = setTimeout(() => {
+        fail(timeoutError("error_inactivity", opts.inactivityTimeoutMs!));
+        killTree();
+      }, opts.inactivityTimeoutMs);
+    };
+
+    const hardTimer = setTimeout(
+      () => {
+        fail(timeoutError("error_hard_timeout", opts.hardTimeoutMs ?? DEFAULT_AGENT_HARD_TIMEOUT_MS));
+        killTree();
+      },
+      opts.hardTimeoutMs ?? DEFAULT_AGENT_HARD_TIMEOUT_MS,
+    );
 
     proc.stdout.on("data", (data) => {
       const text = data.toString();
       stdout += text;
-      onStdout?.(text);
+      resetInactivity();
+      opts.onStdout?.(text);
     });
 
     proc.stderr.on("data", (data) => {
@@ -167,21 +252,19 @@ function runClaude(
     });
 
     proc.on("close", (code) => {
-      signal?.removeEventListener("abort", onAbort);
       if (aborted) {
-        reject(new AgentAbortError());
+        fail(new AgentAbortError());
       } else if (code !== 0 && !stdout) {
-        reject(new Error(`claude exited with code ${code}: ${stderr}`));
+        fail(new Error(`claude exited with code ${code}: ${stderr}`));
       } else {
-        resolve(stdout);
+        succeed(stdout);
       }
     });
 
     proc.on("error", (err: NodeJS.ErrnoException) => {
-      signal?.removeEventListener("abort", onAbort);
       if (err.code === "ENOENT") {
         resolvedClaude = null; // re-resolve next time — claude may get installed mid-session
-        reject(
+        fail(
           new Error(
             'Claude CLI is not installed or not in your PATH.\n\n' +
             'To fix this:\n' +
@@ -192,10 +275,11 @@ function runClaude(
           ),
         );
       } else {
-        reject(err);
+        fail(err);
       }
     });
 
+    resetInactivity();
     if (stdin) {
       proc.stdin.write(stdin);
     }
@@ -310,7 +394,14 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       return this.agentStreaming(args, prompt, opts);
     }
 
-    const stdout = await runClaude(args, prompt, opts.cwd, undefined, opts.signal, opts.confinement);
+    const stdout = await runClaude(args, prompt, {
+      cwd: opts.cwd,
+      signal: opts.signal,
+      confinement: opts.confinement,
+      // No inactivity guard: --output-format json buffers the whole reply until
+      // the end, so a healthy run is silent for its entire duration (#194).
+      hardTimeoutMs: opts.hardTimeoutMs ?? DEFAULT_AGENT_HARD_TIMEOUT_MS,
+    });
     const data = JSON.parse(stdout);
     if (data.is_error) {
       throw claudeCliError(data);
@@ -352,7 +443,14 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
         if (line.type === "result") resultLine = line;
       },
     );
-    await runClaude(args, prompt, opts.cwd, (chunk) => parser.feed(chunk), opts.signal, opts.confinement);
+    await runClaude(args, prompt, {
+      cwd: opts.cwd,
+      onStdout: (chunk) => parser.feed(chunk),
+      signal: opts.signal,
+      confinement: opts.confinement,
+      hardTimeoutMs: opts.hardTimeoutMs ?? DEFAULT_AGENT_HARD_TIMEOUT_MS,
+      inactivityTimeoutMs: opts.inactivityTimeoutMs ?? DEFAULT_AGENT_INACTIVITY_MS,
+    });
     parser.flush();
     const data = resultLine as Record<string, unknown> | null;
     if (!data) {
@@ -404,7 +502,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
     // model to reply with JSON-only — then extract.
     const inlined =
       `${prompt}\n\n--\nReply with ONLY a single JSON value matching this JSON Schema. No prose, no code fences, no preamble.\n\nSchema:\n${JSON.stringify(schema)}`;
-    const stdout = await runClaude(args, inlined, opts?.cwd, undefined, opts?.signal);
+    const stdout = await runClaude(args, inlined, { cwd: opts?.cwd, signal: opts?.signal });
 
     const data = JSON.parse(stdout);
     if (data.is_error) {

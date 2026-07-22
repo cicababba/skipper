@@ -4,7 +4,7 @@ import type { LLMProviderInterface } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import type { RunConfinement } from "../llm/confinement";
 import type { PlanIssueInput } from "../planner/generate";
-import { runAgentDiscussion } from "../agent-chat/discuss";
+import { runAgentDiscussion, AGENT_CHAT_HARD_TIMEOUT_MS } from "../agent-chat/discuss";
 import { parseJsonReply } from "../llm/json";
 
 // Coder chat (#170): interrogate the software engineer who implemented the diff
@@ -343,6 +343,7 @@ export async function distillCoderChatInstructions(
       systemPrompt: CODER_CHAT_SYSTEM_PROMPT,
       cwd,
       maxTurns,
+      hardTimeoutMs: AGENT_CHAT_HARD_TIMEOUT_MS,
       resumeSessionId: opts.resumeSessionId,
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
@@ -358,6 +359,7 @@ export async function distillCoderChatInstructions(
       systemPrompt: CODER_CHAT_SYSTEM_PROMPT,
       cwd,
       maxTurns,
+      hardTimeoutMs: AGENT_CHAT_HARD_TIMEOUT_MS,
       ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
