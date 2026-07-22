@@ -79,6 +79,7 @@ import {
 import { resolveBaseChangeActions, type WorktreeProbe } from "./base-change";
 import { makeEventStream } from "./event-stream";
 import { discardItemWorktreeUnderLock, archivePlanAndDeleteChats } from "./item-teardown";
+import { makeRepoGitLock } from "./git-lock";
 import { registerMemoryHandlers } from "./memory-ipc";
 import { registerWorktreeDiffHandlers } from "./worktree-diff-ipc";
 import { readLlmSettings, readLlmSettingsSync } from "./llm-settings";
@@ -434,21 +435,9 @@ function accountForRepo(owner: string, name: string, accountKey?: string): Accou
   return issueAccounts()[0];
 }
 
-// Planner concurrency (2) and the coder can hit the same clone at once; git
-// fetch + worktree add on a shared clone are not concurrency-safe, so serialize
-// per repo. The map is bounded by the linked-repo count.
-const repoGitLocks = new Map<string, Promise<unknown>>();
-
-function withRepoGitLock<T>(repo: RepoRef, fn: () => Promise<T>): Promise<T> {
-  const key = repoKey(repo);
-  const prev = repoGitLocks.get(key) ?? Promise.resolve();
-  const next = prev.then(fn, fn);
-  repoGitLocks.set(
-    key,
-    next.catch(() => undefined),
-  );
-  return next;
-}
+// Serialize per-repo git ops on a shared clone (fetch + worktree add are not
+// concurrency-safe). One module instance; the factory keeps tests isolated.
+const withRepoGitLock = makeRepoGitLock();
 
 /**
  * Sets up the worktree that every phase (plan → coding → review) shares (#110):
