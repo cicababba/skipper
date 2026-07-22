@@ -10,7 +10,9 @@ import {
   type MemoryMcp,
   type PlanIssueInput,
   type ReviewerChatContext,
+  type RunConfinement,
 } from "@skipper/core";
+import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
 import {
   CODER_CHAT_APPLY_STATES,
   type AgentChatKind,
@@ -44,6 +46,8 @@ export interface AgentChatDeps {
   getItem: (itemId: string) => TrackedItem | undefined;
   getIssue: (item: TrackedItem) => Issue | undefined;
   getRepoPath: (repo: RepoRef) => string | undefined;
+  /** Uncommitted paths in the checkout (git status --porcelain); null if git fails (#196). */
+  checkoutDirtyPaths: (repoPath: string) => Promise<string[] | null>;
   getRepoSettings: (repo: RepoRef) => ResolvedRepoOrchestratorSettings;
   getStoredPlan: (item: TrackedItem) => Promise<StoredPlan | null>;
   getCoderReport: (item: TrackedItem) => Promise<StoredCoderReport | null>;
@@ -231,9 +235,21 @@ export async function sendAgentChatMessage(
     const cwd =
       item.worktree?.path ?? (cfg.repoCwdFallback ? deps.getRepoPath(item.repo) : undefined);
     if (!cwd) return { ok: false, error: "repo not linked" };
+    const repoPath = deps.getRepoPath(item.repo);
+    const checkoutBefore = repoPath ? await deps.checkoutDirtyPaths(repoPath) : null;
 
     const provider = await resolveProvider(cfg.roleModel(deps.getRepoSettings(item.repo)));
     const memory = deps.getMemoryMcp?.(item);
+    // Confinement (#196): only when the chat runs IN the worktree; the tripwire
+    // below guards the checkout in every case (including the reviewer's fallback).
+    const confinement: RunConfinement | undefined =
+      item.worktree?.path && repoPath
+        ? {
+            runRoot: cwd,
+            denyRoots: [repoPath],
+            ...(memory?.cliBundlePath ? { cliBundlePath: memory.cliBundlePath } : {}),
+          }
+        : undefined;
     const history = await historyFor(kind, itemId, binding);
 
     // The chat owns its session lineage (D1): turn 1 resumes the agent's session
@@ -278,6 +294,7 @@ export async function sendAgentChatMessage(
         onEvent,
         ...(fallbackSessionId ? { sessionId: fallbackSessionId } : {}),
         ...(memory ? { memory } : {}),
+        ...(confinement ? { confinement } : {}),
         signal: controller.signal,
       };
       return kind === "coder"
@@ -297,6 +314,7 @@ export async function sendAgentChatMessage(
         resumeSessionId: resumeSessionId!,
         onEvent,
         ...(memory ? { memory } : {}),
+        ...(confinement ? { confinement } : {}),
         signal: controller.signal,
       };
       return kind === "coder"
@@ -314,6 +332,15 @@ export async function sendAgentChatMessage(
       if (!resumable || sawEvent || err instanceof AgentAbortError) throw err;
       mode = "fresh";
       reply = await runFallback();
+    }
+
+    // Confinement tripwire (#196): a discuss turn must never touch the checkout.
+    if (checkoutBefore !== null && repoPath) {
+      const afterDirty = await deps.checkoutDirtyPaths(repoPath);
+      if (afterDirty !== null) {
+        const escaped = newDirtyPaths(checkoutBefore, afterDirty);
+        if (escaped.length > 0) return { ok: false, error: checkoutEscapeReason(escaped) };
+      }
     }
 
     // Cooperative cancel: persist nothing if the turn was aborted, the chat is no
@@ -374,9 +401,19 @@ export async function prepareCoderChatApply(itemId: string): Promise<PrepareCode
 
     const cwd = item.worktree?.path;
     if (!cwd) return { ok: false, error: "repo not linked" };
+    const repoPath = deps.getRepoPath(item.repo);
+    const checkoutBefore = repoPath ? await deps.checkoutDirtyPaths(repoPath) : null;
 
     const provider = await resolveProvider(cfg.roleModel(deps.getRepoSettings(item.repo)));
     const memory = deps.getMemoryMcp?.(item);
+    // Confinement (#196): the distillation runs in the worktree (cwd = worktree).
+    const confinement: RunConfinement | undefined = repoPath
+      ? {
+          runRoot: cwd,
+          denyRoots: [repoPath],
+          ...(memory?.cliBundlePath ? { cliBundlePath: memory.cliBundlePath } : {}),
+        }
+      : undefined;
 
     // Session lineage mirrors the send path (D1): the chat store's own id when it
     // exists, else the coder's worktree session for turn 1.
@@ -411,6 +448,7 @@ export async function prepareCoderChatApply(itemId: string): Promise<PrepareCode
         onEvent,
         ...(fallbackSessionId ? { sessionId: fallbackSessionId } : {}),
         ...(memory ? { memory } : {}),
+        ...(confinement ? { confinement } : {}),
         signal: controller.signal,
       });
     };
@@ -422,6 +460,7 @@ export async function prepareCoderChatApply(itemId: string): Promise<PrepareCode
         resumeSessionId: resumeSessionId!,
         onEvent,
         ...(memory ? { memory } : {}),
+        ...(confinement ? { confinement } : {}),
         signal: controller.signal,
       });
 
@@ -432,6 +471,15 @@ export async function prepareCoderChatApply(itemId: string): Promise<PrepareCode
       // A dead --resume fails fast without events: retry once as a fresh, seeded run.
       if (!resumable || sawEvent || err instanceof AgentAbortError) throw err;
       result = await runFallback();
+    }
+
+    // Confinement tripwire (#196): the distillation must never touch the checkout.
+    if (checkoutBefore !== null && repoPath) {
+      const afterDirty = await deps.checkoutDirtyPaths(repoPath);
+      if (afterDirty !== null) {
+        const escaped = newDirtyPaths(checkoutBefore, afterDirty);
+        if (escaped.length > 0) return { ok: false, error: checkoutEscapeReason(escaped) };
+      }
     }
 
     // Cooperative cancel: discard a distillation that raced a transition out of

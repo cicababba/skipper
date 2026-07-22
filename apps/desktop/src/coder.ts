@@ -16,7 +16,9 @@ import {
   type MemoryMcp,
   type OrchestratorSettings,
   type QueueCandidate,
+  type RunConfinement,
 } from "@skipper/core";
+import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
 import { latestCodingTransitionAt } from "@skipper/shared";
 import type {
   CoderReport,
@@ -49,6 +51,10 @@ export interface CoderDeps {
   getIssue: (item: TrackedItem) => Issue | undefined;
   /** Fresh issue comments fetched at code time (#144); may reject — the loop degrades. */
   fetchIssueComments?: (item: TrackedItem) => Promise<IssueComment[]>;
+  /** The linked repo checkout — the deny root for confinement + the tripwire (#196). */
+  getRepoPath: (repo: RepoRef) => string | undefined;
+  /** Uncommitted paths in the checkout (git status --porcelain); null if git fails (#196). */
+  checkoutDirtyPaths: (repoPath: string) => Promise<string[] | null>;
   getPlan: (item: TrackedItem) => Promise<StoredPlan | null>;
   requestTransition: (
     itemId: string,
@@ -227,6 +233,10 @@ async function run(itemId: string, repoKey: string): Promise<void> {
   // makes the completion below detectably stale so a zombie can't land its
   // report on the fresh lifecycle.
   let codingAt: string | undefined;
+  // Confinement tripwire baseline (#196): the checkout and its dirty set before
+  // the run, so the catch can compare too (it can't see try-scoped locals).
+  let repoPath: string | undefined;
+  let checkoutBefore: string[] | null = null;
   const live = (): boolean => {
     const cur = deps?.getItem(itemId);
     return (
@@ -256,6 +266,11 @@ async function run(itemId: string, repoKey: string): Promise<void> {
       return;
     }
     deps.emitEvent(itemId, { kind: "status", phase: "worktree", detail: worktree.path });
+
+    // Confinement baseline (#196): snapshot the checkout's dirty set now, so the
+    // post-run tripwire can attribute only NEW dirt to this run.
+    repoPath = deps.getRepoPath(item.repo);
+    checkoutBefore = repoPath ? await deps.checkoutDirtyPaths(repoPath) : null;
 
     const resume =
       item.worktree?.sessionId !== undefined && item.worktree.path === worktree.path
@@ -311,6 +326,14 @@ async function run(itemId: string, repoKey: string): Promise<void> {
         : buildResumePrompt(issue);
 
     const memory = deps.getMemoryMcp?.(item);
+    // Confinement (#196): scope writes to the worktree, deny the checkout, and
+    // launch the guard hook from the CLI bundle (reusing the memory wiring's path
+    // — present exactly when a bundle exists). No bundle → L1 scoping + tripwire.
+    const confinement: RunConfinement = {
+      runRoot: worktree.path,
+      denyRoots: repoPath ? [repoPath] : [],
+      ...(memory?.cliBundlePath ? { cliBundlePath: memory.cliBundlePath } : {}),
+    };
     const baseOptions = {
       systemPrompt: CODER_SYSTEM_PROMPT,
       cwd: worktree.path,
@@ -318,6 +341,7 @@ async function run(itemId: string, repoKey: string): Promise<void> {
       maxTurns: settings.coderMaxTurns,
       onEvent: (event: CodingEvent) => deps?.emitEvent(itemId, event),
       signal: controller.signal,
+      confinement,
       ...(memory ? { memory } : {}),
     };
 
@@ -351,6 +375,16 @@ async function run(itemId: string, repoKey: string): Promise<void> {
     // Cooperative cancel: the item may have been closed/moved mid-run, or an
     // untrack → re-admit may have superseded this run's token (#159).
     if (!live()) return;
+    // Confinement tripwire (#196): if the run left new dirt in the linked
+    // checkout, fail it — never land its diff as a normal review.
+    const escaped = await checkoutEscaped(repoPath, checkoutBefore);
+    if (escaped) {
+      if (!live()) return;
+      const reason = checkoutEscapeReason(escaped);
+      deps.emitEvent(itemId, { kind: "error", message: reason });
+      await fail(itemId, "failed", reason);
+      return;
+    }
     if (result.sessionId && result.sessionId !== sessionId) {
       await deps.setWorktree(itemId, { ...worktree, sessionId: result.sessionId });
     }
@@ -403,8 +437,17 @@ async function run(itemId: string, repoKey: string): Promise<void> {
     // A cancelled/superseded run dies silently — never park the (possibly fresh)
     // lifecycle on a zombie's failure (#159).
     if (!(err instanceof CodingAbortError) && live()) {
-      const message = err instanceof Error ? err.message : String(err);
-      await fail(itemId, "failed", `coding run failed: ${message.slice(0, 500)}`);
+      // A run that both threw AND escaped its worktree is reported as the escape
+      // (the more serious, actionable failure) (#196).
+      const escaped = await checkoutEscaped(repoPath, checkoutBefore);
+      if (escaped && live()) {
+        const reason = checkoutEscapeReason(escaped);
+        deps.emitEvent(itemId, { kind: "error", message: reason });
+        await fail(itemId, "failed", reason);
+      } else {
+        const message = err instanceof Error ? err.message : String(err);
+        await fail(itemId, "failed", `coding run failed: ${message.slice(0, 500)}`);
+      }
     }
   } finally {
     inFlight.delete(itemId);
@@ -430,4 +473,19 @@ async function fail(
     .catch(() => {
       /* item moved concurrently — nothing to do */
     });
+}
+
+/**
+ * Post-run tripwire (#196): the paths the run left newly dirty in the linked
+ * checkout, or null when nothing new / the baseline or after-scan is unknown.
+ */
+async function checkoutEscaped(
+  repoPath: string | undefined,
+  before: string[] | null,
+): Promise<string[] | null> {
+  if (!deps || !repoPath || before === null) return null;
+  const after = await deps.checkoutDirtyPaths(repoPath);
+  if (after === null) return null;
+  const escaped = newDirtyPaths(before, after);
+  return escaped.length > 0 ? escaped : null;
 }

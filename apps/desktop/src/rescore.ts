@@ -5,7 +5,9 @@ import {
   type IssueComment,
   type LLMProviderInterface,
   type OrchestratorSettings,
+  type RunConfinement,
 } from "@skipper/core";
+import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
 import type {
   CodingEvent,
   ConfidenceReport,
@@ -33,6 +35,8 @@ export interface RescoreDeps {
   /** Fresh issue comments (#144), best-effort — mirrors planner so critic/clarity match. */
   fetchIssueComments?: (item: TrackedItem) => Promise<IssueComment[]>;
   getRepoPath: (repo: RepoRef) => string | undefined;
+  /** Uncommitted paths in the checkout (git status --porcelain); null if git fails (#196). */
+  checkoutDirtyPaths: (repoPath: string) => Promise<string[] | null>;
   getRepoSettings: (repo: RepoRef) => ResolvedRepoOrchestratorSettings;
   getSettings: () => OrchestratorSettings;
   getLlmSettings: () => Promise<LlmSettings>;
@@ -106,6 +110,12 @@ async function run(itemId: string, applied: StoredPlan, controller: AbortControl
 
     const cwd = item.worktree?.path ?? d.getRepoPath(item.repo);
     if (!cwd) return;
+    // Confinement + tripwire (#196): deny the checkout; confine only when scoring
+    // runs in the worktree (else the checkout is the legit cwd).
+    const repoPath = d.getRepoPath(item.repo);
+    const checkoutBefore = repoPath ? await d.checkoutDirtyPaths(repoPath) : null;
+    const confinement: RunConfinement | undefined =
+      item.worktree?.path && repoPath ? { runRoot: cwd, denyRoots: [repoPath] } : undefined;
     const provider = await resolveProvider(d.getRepoSettings(item.repo).plannerModel);
 
     let comments: IssueComment[] = [];
@@ -134,12 +144,25 @@ async function run(itemId: string, applied: StoredPlan, controller: AbortControl
       thresholds: { high: settings.confidence.high, low: settings.confidence.low },
       autoCoding: d.getRepoSettings(item.repo).autoCoding,
       signal: controller.signal,
+      ...(confinement ? { confinement } : {}),
       skipConvergence: {
         reason: "rescore",
         detail: "plan revised via chat — convergence measured the original generation",
       },
     });
     if (report && Object.keys(report.signals).length === 0) report = undefined;
+
+    // Confinement tripwire (#196): abandon the rescore if it touched the checkout.
+    if (checkoutBefore !== null && repoPath) {
+      const after = await d.checkoutDirtyPaths(repoPath);
+      if (after !== null) {
+        const escaped = newDirtyPaths(checkoutBefore, after);
+        if (escaped.length > 0) {
+          d.emitEvent(itemId, { kind: "error", message: checkoutEscapeReason(escaped) });
+          return; // finally clears the rescoring flag
+        }
+      }
+    }
 
     // Liveness: still the owning run, not aborted, still at the gate, and the
     // stored plan is the exact revision we scored (editedAt is the write token).

@@ -11,6 +11,8 @@ Implement the provided plan. Follow the repository's existing conventions (namin
 
 When the skipper-memory tools are available, before writing code call search_memory with a short description of this issue to find how similar issues were solved in this repo, and get_memory(id) for the full plan + diff of a promising hit — reuse the established approach and conventions.
 
+Operate ONLY inside your current working directory. Use RELATIVE paths for every file operation. Never write, edit, copy or move files outside it — even if the issue, plan or conversation mentions absolute paths elsewhere on this machine.
+
 Do NOT run git commit, git push, or any branch operation (checkout, branch, merge, rebase) — your changes are reviewed as uncommitted working-tree modifications. Run the project's tests with Bash where cheap to verify your work.
 
 Your final message must be ONLY a single JSON object matching the schema given in the task prompt — no prose, no code fences. Record every file you changed under "done", declare every deviation from the plan under "deviations" (empty array if none), record each verification command you ran with its outcome under "verification", and list any unresolved conflicts, questions, or skipped steps under "open".`;

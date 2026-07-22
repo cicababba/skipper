@@ -29,6 +29,7 @@ import { displayKey } from "@skipper/shared";
 import { readFile } from "node:fs/promises";
 import { saveSession, resumeSession } from "./session.js";
 import { serveMemory } from "./memory-serve.js";
+import { runGuardCommand } from "./guard.js";
 
 const program = new Command();
 
@@ -502,6 +503,24 @@ memory
       console.error(`✗ ${error instanceof Error ? error.message : error}`);
       process.exit(1);
     }
+  });
+
+// ---------- run confinement guard (#196): PreToolUse hook for confined agent runs ----------
+
+function collectDeny(value: string, previous: string[]): string[] {
+  previous.push(value);
+  return previous;
+}
+
+program
+  .command("guard")
+  .description(
+    "PreToolUse guard hook (#196): block an Edit/Write/Bash tool call that would escape the run's worktree",
+  )
+  .requiredOption("--root <path>", "Absolute run root — Edit/Write must resolve inside it")
+  .option("--deny <path>", "Absolute deny root a Bash command must not reference (repeatable)", collectDeny, [])
+  .action(async (options) => {
+    await runGuardCommand({ root: options.root, deny: options.deny });
   });
 
 // ===== Session handoff (cross-machine) =====

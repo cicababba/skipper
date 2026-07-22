@@ -1,6 +1,7 @@
 import type { CodingEvent } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
+import type { RunConfinement } from "../llm/confinement";
 
 // Generic agent-discussion dispatch (#170): the shared llm.agent(...) call that
 // the coder and reviewer chats build their prompts for. Mirrors the dispatch in
@@ -23,6 +24,8 @@ export interface RunAgentDiscussionOptions {
   onEvent?: (event: CodingEvent) => void;
   memory?: MemoryMcp;
   signal?: AbortSignal;
+  /** Keep the run inside its cwd (#196); passed only when cwd is the worktree. */
+  confinement?: RunConfinement;
 }
 
 export async function runAgentDiscussion(
@@ -41,6 +44,7 @@ export async function runAgentDiscussion(
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
+      ...(opts.confinement ? { confinement: opts.confinement } : {}),
     });
     return { reply: reply.text, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
   }
@@ -54,6 +58,7 @@ export async function runAgentDiscussion(
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
+      ...(opts.confinement ? { confinement: opts.confinement } : {}),
     });
     return { reply: reply.text, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
   }

@@ -8,7 +8,9 @@ import {
   type LLMProviderInterface,
   type MemoryMcp,
   type PlanIssueInput,
+  type RunConfinement,
 } from "@skipper/core";
+import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
 import type {
   CodingEvent,
   Issue,
@@ -34,6 +36,8 @@ export interface PlanChatDeps {
   getItem: (itemId: string) => TrackedItem | undefined;
   getIssue: (item: TrackedItem) => Issue | undefined;
   getRepoPath: (repo: RepoRef) => string | undefined;
+  /** Uncommitted paths in the checkout (git status --porcelain); null if git fails (#196). */
+  checkoutDirtyPaths: (repoPath: string) => Promise<string[] | null>;
   getRepoSettings: (repo: RepoRef) => ResolvedRepoOrchestratorSettings;
   getStoredPlan: (item: TrackedItem) => Promise<StoredPlan | null>;
   /** Overwrite the stored plan, stamping editedAt (updateStoredPlan wrapper). */
@@ -141,6 +145,8 @@ export async function sendPlanChatMessage(itemId: string, text: string): Promise
 
     const cwd = item.worktree?.path ?? deps.getRepoPath(item.repo);
     if (!cwd) return { ok: false, error: "repo not linked" };
+    const repoPath = deps.getRepoPath(item.repo);
+    const checkoutBefore = repoPath ? await deps.checkoutDirtyPaths(repoPath) : null;
 
     const provider = await resolveProvider(deps.getRepoSettings(item.repo).plannerModel);
     const resumable =
@@ -149,6 +155,16 @@ export async function sendPlanChatMessage(itemId: string, text: string): Promise
     const issue = toPlanIssue(item, deps.getIssue(item));
     const history = await historyFor(itemId, stored.generatedAt);
     const memory = deps.getMemoryMcp?.(item);
+    // Confinement (#196): only when the chat runs IN the worktree; the checkout
+    // is the deny root either way and the tripwire below guards both.
+    const confinement: RunConfinement | undefined =
+      item.worktree?.path && repoPath
+        ? {
+            runRoot: cwd,
+            denyRoots: [repoPath],
+            ...(memory?.cliBundlePath ? { cliBundlePath: memory.cliBundlePath } : {}),
+          }
+        : undefined;
     // Mint a persist-before-run session for any fresh (fallback / dead-resume)
     // run so a crash still leaves a resumable pointer (planner.ts rationale).
     const fallbackSessionId =
@@ -185,6 +201,7 @@ export async function sendPlanChatMessage(itemId: string, text: string): Promise
         onEvent,
         ...(fallbackSessionId ? { sessionId: fallbackSessionId } : {}),
         ...(memory ? { memory } : {}),
+        ...(confinement ? { confinement } : {}),
         signal: controller.signal,
       });
     };
@@ -202,6 +219,7 @@ export async function sendPlanChatMessage(itemId: string, text: string): Promise
             ...(history.length === 0 && stored.confidence ? { confidence: stored.confidence } : {}),
             onEvent,
             ...(memory ? { memory } : {}),
+            ...(confinement ? { confinement } : {}),
             signal: controller.signal,
           })
         : await runFallback();
@@ -210,6 +228,15 @@ export async function sendPlanChatMessage(itemId: string, text: string): Promise
       // retry once as a fresh, fully-seeded run (coder.ts dead-resume idiom).
       if (!resumable || sawEvent || err instanceof AgentAbortError) throw err;
       reply = await runFallback();
+    }
+
+    // Confinement tripwire (#196): a discuss turn must never touch the checkout.
+    if (checkoutBefore !== null && repoPath) {
+      const after = await deps.checkoutDirtyPaths(repoPath);
+      if (after !== null) {
+        const escaped = newDirtyPaths(checkoutBefore, after);
+        if (escaped.length > 0) return { ok: false, error: checkoutEscapeReason(escaped) };
+      }
     }
 
     // Cooperative cancel: persist nothing if the turn was aborted or the item
@@ -248,6 +275,8 @@ export async function applyPlanChatUpdate(itemId: string): Promise<ApplyPlanChat
 
     const cwd = item.worktree?.path ?? deps.getRepoPath(item.repo);
     if (!cwd) return { ok: false, error: "repo not linked" };
+    const repoPath = deps.getRepoPath(item.repo);
+    const checkoutBefore = repoPath ? await deps.checkoutDirtyPaths(repoPath) : null;
 
     const provider = await resolveProvider(deps.getRepoSettings(item.repo).plannerModel);
     const resumable =
@@ -255,6 +284,14 @@ export async function applyPlanChatUpdate(itemId: string): Promise<ApplyPlanChat
 
     const issue = toPlanIssue(item, deps.getIssue(item));
     const memory = deps.getMemoryMcp?.(item);
+    const confinement: RunConfinement | undefined =
+      item.worktree?.path && repoPath
+        ? {
+            runRoot: cwd,
+            denyRoots: [repoPath],
+            ...(memory?.cliBundlePath ? { cliBundlePath: memory.cliBundlePath } : {}),
+          }
+        : undefined;
     const fallbackSessionId =
       provider.name === "claude-cli" && item.worktree?.path ? randomUUID() : undefined;
 
@@ -286,6 +323,7 @@ export async function applyPlanChatUpdate(itemId: string): Promise<ApplyPlanChat
         onEvent,
         ...(fallbackSessionId ? { sessionId: fallbackSessionId } : {}),
         ...(memory ? { memory } : {}),
+        ...(confinement ? { confinement } : {}),
         signal: controller.signal,
       });
     };
@@ -301,6 +339,7 @@ export async function applyPlanChatUpdate(itemId: string): Promise<ApplyPlanChat
             ...(stored.confidence ? { confidence: stored.confidence } : {}),
             onEvent,
             ...(memory ? { memory } : {}),
+            ...(confinement ? { confinement } : {}),
             signal: controller.signal,
           })
         : await runFallback();
@@ -310,6 +349,14 @@ export async function applyPlanChatUpdate(itemId: string): Promise<ApplyPlanChat
     }
 
     if (controller.signal.aborted) return { ok: false, cancelled: true };
+    // Confinement tripwire (#196): the distillation must never touch the checkout.
+    if (checkoutBefore !== null && repoPath) {
+      const afterDirty = await deps.checkoutDirtyPaths(repoPath);
+      if (afterDirty !== null) {
+        const escaped = newDirtyPaths(checkoutBefore, afterDirty);
+        if (escaped.length > 0) return { ok: false, error: checkoutEscapeReason(escaped) };
+      }
+    }
     // Re-check the gate AND that the plan wasn't replanned/inline-edited under us.
     const after = deps.getItem(itemId);
     if (after?.state !== "plan-gate") return { ok: false, cancelled: true };

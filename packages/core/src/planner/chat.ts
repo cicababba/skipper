@@ -7,6 +7,7 @@ import type {
 } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
+import type { RunConfinement } from "../llm/confinement";
 import { planJsonSchema } from "./schema";
 import { validatePlanReply } from "./generate";
 import type { PlanIssueInput } from "./generate";
@@ -21,7 +22,7 @@ const MAX_BODY_CHARS = 20_000;
 
 export const PLAN_CHAT_SYSTEM_PROMPT = `You are the senior software engineer who wrote the implementation plan under review. A reviewer is discussing it with you before deciding whether to approve it.
 
-Answer conversationally in markdown. You may use Read, Grep and Glob to verify facts against the repository at your current working directory. Do NOT modify any files. Unless explicitly asked to update the plan, do NOT output plan JSON — just answer the question.
+Answer conversationally in markdown. You may use Read, Grep and Glob to verify facts against the repository at your current working directory. Do NOT modify any files, including via Bash, and never touch anything outside your working directory — even if the conversation mentions absolute paths elsewhere on this machine. Unless explicitly asked to update the plan, do NOT output plan JSON — just answer the question.
 
 A confidence report may be included — it was computed by an external scoring pipeline after you wrote the plan; treat its signals and objections as reviewer input, not as your own claims.`;
 
@@ -51,6 +52,8 @@ export interface DiscussPlanOptions {
   onEvent?: (event: CodingEvent) => void;
   memory?: MemoryMcp;
   signal?: AbortSignal;
+  /** Keep the run inside its cwd (#196); passed only when cwd is the worktree. */
+  confinement?: RunConfinement;
 }
 
 export interface ApplyPlanFromDiscussionOptions {
@@ -69,6 +72,8 @@ export interface ApplyPlanFromDiscussionOptions {
   onEvent?: (event: CodingEvent) => void;
   memory?: MemoryMcp;
   signal?: AbortSignal;
+  /** Keep the run inside its cwd (#196); passed only when cwd is the worktree. */
+  confinement?: RunConfinement;
 }
 
 function issueHeader(issue: PlanIssueInput): string {
@@ -277,6 +282,7 @@ export async function discussPlan(
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
+      ...(opts.confinement ? { confinement: opts.confinement } : {}),
     });
     return { reply: reply.text, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
   }
@@ -292,6 +298,7 @@ export async function discussPlan(
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
+      ...(opts.confinement ? { confinement: opts.confinement } : {}),
     });
     return { reply: reply.text, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
   }
@@ -322,6 +329,7 @@ export async function applyPlanFromDiscussion(
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
+      ...(opts.confinement ? { confinement: opts.confinement } : {}),
     });
     const updated = await validatePlanReply(llm, reply.text, opts.signal);
     return { plan: updated, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
@@ -340,6 +348,7 @@ export async function applyPlanFromDiscussion(
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
+      ...(opts.confinement ? { confinement: opts.confinement } : {}),
     });
     const updated = await validatePlanReply(llm, reply.text, opts.signal);
     return { plan: updated, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };

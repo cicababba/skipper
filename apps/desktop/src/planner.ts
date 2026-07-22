@@ -7,7 +7,9 @@ import {
   type LLMProviderInterface,
   type MemoryMcp,
   type OrchestratorSettings,
+  type RunConfinement,
 } from "@skipper/core";
+import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
 import {
   latestPlanningTransitionAt,
   type CodingEvent,
@@ -40,6 +42,8 @@ export interface PlannerDeps {
   /** Fresh issue comments fetched at plan time (#144); may reject — the loop degrades. */
   fetchIssueComments?: (item: TrackedItem) => Promise<IssueComment[]>;
   getRepoPath: (repo: RepoRef) => string | undefined;
+  /** Uncommitted paths in the checkout (git status --porcelain); null if git fails (#196). */
+  checkoutDirtyPaths: (repoPath: string) => Promise<string[] | null>;
   /** Per-repo settings (#15, #62) — gates auto-plan on admission; carries autoCoding. */
   getRepoSettings: (repo: RepoRef) => ResolvedRepoOrchestratorSettings;
   requestTransition: (
@@ -215,6 +219,23 @@ async function run(itemId: string): Promise<void> {
       await deps.requestTransition(itemId, "needs-input", "planner", "repo not linked", "planning");
       return;
     }
+    // Confinement tripwire baseline (#196): the checkout's dirty set before the
+    // run, so a post-run diff attributes only NEW dirt to this run.
+    const checkoutBefore = await deps.checkoutDirtyPaths(repoPath);
+    const tripwire = async (): Promise<string[] | null> => {
+      if (!deps || checkoutBefore === null) return null;
+      const after = await deps.checkoutDirtyPaths(repoPath);
+      if (after === null) return null;
+      const escaped = newDirtyPaths(checkoutBefore, after);
+      return escaped.length > 0 ? escaped : null;
+    };
+    const failEscape = async (escaped: string[]): Promise<void> => {
+      const reason = checkoutEscapeReason(escaped);
+      deps!.emitEvent(itemId, { kind: "error", message: reason });
+      await deps!
+        .requestTransition(itemId, "needs-input", "planner", reason, "planning")
+        .catch(() => {});
+    };
     // #110: plan in the shared worktree so every phase has one cwd. Setup failure
     // degrades to the shared clone — never blocks planning with needs-input.
     let cwd = repoPath;
@@ -273,6 +294,16 @@ async function run(itemId: string): Promise<void> {
     // agent-start marks a fresh run — it also resets the replay buffer upstream.
     deps.emitEvent(itemId, { kind: "status", phase: "agent-start" });
     const memory = deps.getMemoryMcp?.(item);
+    // Confinement (#196): only when planning runs IN the worktree — when it
+    // degraded to the checkout, the checkout is the legit cwd and no Bash
+    // confinement is possible (prompts + tripwire guard it there).
+    const confinement: RunConfinement | undefined = inWorktree
+      ? {
+          runRoot: cwd,
+          denyRoots: [repoPath],
+          ...(memory?.cliBundlePath ? { cliBundlePath: memory.cliBundlePath } : {}),
+        }
+      : undefined;
     const plan = await generatePlan({
       issue,
       repoPath: cwd,
@@ -287,9 +318,16 @@ async function run(itemId: string): Promise<void> {
         deps?.emitEvent(itemId, event);
       },
       ...(memory ? { memory } : {}),
+      ...(confinement ? { confinement } : {}),
       ...(planSessionId ? { sessionId: planSessionId } : {}),
       signal: controller.signal,
     });
+    // Tripwire after generation — bail to needs-input if the run touched the checkout.
+    const escapedAfterGen = await tripwire();
+    if (escapedAfterGen) {
+      if (live()) await failEscape(escapedAfterGen);
+      return;
+    }
     const ref = planFileName(itemId);
     const stored: StoredPlan = {
       version: 2,
@@ -323,10 +361,17 @@ async function run(itemId: string): Promise<void> {
         // queued/plan-gate choice is pinned, so the extra runs often can't move it.
         autoCoding: deps.getRepoSettings(item.repo).autoCoding,
         signal: controller.signal,
+        ...(confinement ? { confinement } : {}),
       });
       if (Object.keys(report.signals).length === 0) report = undefined;
     } catch {
       report = undefined;
+    }
+    // Tripwire after scoring (its extra plan runs also explore the repo).
+    const escapedAfterScore = await tripwire();
+    if (escapedAfterScore) {
+      if (live()) await failEscape(escapedAfterScore);
+      return;
     }
     if (report && live()) {
       await writeStoredPlan(deps.plansDir, ref, { ...stored, confidence: report });

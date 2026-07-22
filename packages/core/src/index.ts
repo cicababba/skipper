@@ -3,6 +3,13 @@ export { createProvider, ClaudeCLIProvider, AgentAbortError } from "./llm";
 export { PROMPTS } from "./llm";
 export { MEMORY_TOOLS, buildMemoryMcpArgs } from "./llm";
 export type { MemoryMcp } from "./llm";
+export {
+  toClaudePathRoot,
+  scopedWriteRules,
+  buildConfinementSettingsArgs,
+  confinementEnv,
+} from "./llm";
+export type { RunConfinement } from "./llm";
 export { OLLAMA_DEFAULT_HOST, ollamaHost } from "./llm";
 
 export { VectorStore } from "./vectorstore";
