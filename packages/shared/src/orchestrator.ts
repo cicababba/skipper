@@ -123,11 +123,13 @@ export interface OrchestratorSettings {
   confidence: ConfidenceThresholds & { extraPlanRuns: number };
   /** Model handed to the coding agent (#9). #125: absent = inherit llm.claudeModel. */
   coderModel?: string;
-  /** Max agent turns per coding run (#9). Not reviewMaxRounds. */
-  coderMaxTurns: number;
-  /** Max agent turns per plan run (#151). Guards against the planner burning its
-   *  whole budget exploring the repo and never emitting the plan JSON. */
-  plannerMaxTurns: number;
+  /** Wall-clock budget per coding run, in minutes (#194). When it fires, the coder
+   *  is asked for a final honest report and review continues from there. Turns are a
+   *  high anti-runaway backstop (AGENT_MAX_TURNS_BACKSTOP), not the work budget. */
+  coderTimeBudgetMin: number;
+  /** Wall-clock budget per plan run, in minutes (#194). When it fires, the planner
+   *  is asked to emit the plan from what it has already learned. */
+  plannerTimeBudgetMin: number;
   /** #62: on = always queue, off = always plan-gate, auto = composite >= confidence.high. */
   autoCoding: GateMode;
   /** #62 (was reviewMode): auto = the mechanical skip heuristic in core/reviewer/auto.ts. */
@@ -148,8 +150,8 @@ export const DEFAULT_ORCHESTRATOR_SETTINGS: OrchestratorSettings = {
   intakePaused: false,
   autoPlanPaused: false,
   confidence: { ...DEFAULT_CONFIDENCE_THRESHOLDS, extraPlanRuns: DEFAULT_EXTRA_PLAN_RUNS },
-  coderMaxTurns: 60,
-  plannerMaxTurns: 40,
+  coderTimeBudgetMin: 60,
+  plannerTimeBudgetMin: 15,
   autoCoding: "auto",
   review: "auto",
   reviewMaxRounds: 2,
@@ -157,6 +159,13 @@ export const DEFAULT_ORCHESTRATOR_SETTINGS: OrchestratorSettings = {
   ciReentry: "off",
   codingWipPerRepo: 1,
 };
+
+/**
+ * Turns are no longer the work budget (#194) — wall-clock time is. This is a high
+ * anti-runaway backstop: a run that somehow burns this many turns is stuck, and the
+ * salvage path still extracts an honest report from the dead session.
+ */
+export const AGENT_MAX_TURNS_BACKSTOP = 300;
 
 export interface RepoIntakeSettings {
   /** false = ignored at admission. Absent/true = followed (default-all). */

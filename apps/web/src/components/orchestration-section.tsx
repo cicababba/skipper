@@ -116,6 +116,50 @@ export function OrchestrationSection({ defaultModel }: { defaultModel: string })
           </div>
         </Row>
 
+        <Row label={r.coderTimeBudget} hint={r.coderTimeBudgetDesc}>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => void updateSettings({ coderTimeBudgetMin: s.coderTimeBudgetMin - 5 })}
+              disabled={s.coderTimeBudgetMin <= 10}
+              className="h-7 w-7 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-40 flex items-center justify-center"
+            >
+              <Minus size={12} />
+            </button>
+            <span className="w-14 text-center text-sm font-medium tabular-nums">
+              {r.minutes(s.coderTimeBudgetMin)}
+            </span>
+            <button
+              onClick={() => void updateSettings({ coderTimeBudgetMin: s.coderTimeBudgetMin + 5 })}
+              disabled={s.coderTimeBudgetMin >= 240}
+              className="h-7 w-7 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-40 flex items-center justify-center"
+            >
+              <Plus size={12} />
+            </button>
+          </div>
+        </Row>
+
+        <Row label={r.plannerTimeBudget} hint={r.plannerTimeBudgetDesc}>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => void updateSettings({ plannerTimeBudgetMin: s.plannerTimeBudgetMin - 5 })}
+              disabled={s.plannerTimeBudgetMin <= 5}
+              className="h-7 w-7 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-40 flex items-center justify-center"
+            >
+              <Minus size={12} />
+            </button>
+            <span className="w-14 text-center text-sm font-medium tabular-nums">
+              {r.minutes(s.plannerTimeBudgetMin)}
+            </span>
+            <button
+              onClick={() => void updateSettings({ plannerTimeBudgetMin: s.plannerTimeBudgetMin + 5 })}
+              disabled={s.plannerTimeBudgetMin >= 60}
+              className="h-7 w-7 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-40 flex items-center justify-center"
+            >
+              <Plus size={12} />
+            </button>
+          </div>
+        </Row>
+
         <div className="border-t border-border pt-5 space-y-5">
           <div>
             <p className="text-sm font-medium mb-1">{r.models}</p>

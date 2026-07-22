@@ -11,6 +11,7 @@ import type { RunConfinement } from "../llm/confinement";
 import { planJsonSchema } from "./schema";
 import { validatePlanReply } from "./generate";
 import type { PlanIssueInput } from "./generate";
+import { AGENT_CHAT_HARD_TIMEOUT_MS } from "../agent-chat/discuss";
 
 // Conversational plan review (#145): the reviewer chats with the same session
 // that wrote the plan (resume path, cwd-scoped) or, when that session is gone,
@@ -278,6 +279,7 @@ export async function discussPlan(
       systemPrompt: PLAN_CHAT_SYSTEM_PROMPT,
       cwd,
       maxTurns,
+      hardTimeoutMs: AGENT_CHAT_HARD_TIMEOUT_MS,
       resumeSessionId: opts.resumeSessionId,
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
@@ -294,6 +296,7 @@ export async function discussPlan(
       systemPrompt: PLAN_CHAT_SYSTEM_PROMPT,
       cwd,
       maxTurns,
+      hardTimeoutMs: AGENT_CHAT_HARD_TIMEOUT_MS,
       ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
@@ -325,6 +328,7 @@ export async function applyPlanFromDiscussion(
       systemPrompt: PLAN_CHAT_SYSTEM_PROMPT,
       cwd,
       maxTurns,
+      hardTimeoutMs: AGENT_CHAT_HARD_TIMEOUT_MS,
       resumeSessionId: opts.resumeSessionId,
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
@@ -344,6 +348,7 @@ export async function applyPlanFromDiscussion(
       systemPrompt: PLAN_CHAT_SYSTEM_PROMPT,
       cwd,
       maxTurns,
+      hardTimeoutMs: AGENT_CHAT_HARD_TIMEOUT_MS,
       ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),

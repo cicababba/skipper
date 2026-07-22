@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  AGENT_MAX_TURNS_BACKSTOP,
   DEFAULT_LLM_SETTINGS,
   resolveRepoOrchestratorSettings,
   type CoderReport,
@@ -20,7 +21,7 @@ import type {
   LLMProviderInterface,
   OrchestratorSettings,
 } from "@skipper/core";
-import { DEFAULT_ORCHESTRATOR_SETTINGS, CodingAbortError } from "@skipper/core";
+import { DEFAULT_ORCHESTRATOR_SETTINGS, CodingAbortError, CodingTimeoutError } from "@skipper/core";
 import { initCoder, pokeCoder, cancelCodingRun, type CoderDeps } from "./coder";
 import { reportFileName } from "./report-store";
 
@@ -430,21 +431,141 @@ describe("coder driver", () => {
     expect(h.transitions[1].reason).toMatch(/agent exploded/);
   });
 
-  it("non-ok result lands on failed", async () => {
+  it("non-ok result without a salvageable subtype lands on failed in one run", async () => {
+    const h = makeHarness();
+    const runner = vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => ({
+      ok: false,
+      summary: "hit max turns",
+      sessionId: opts.sessionId ?? "",
+    }));
+    initCoder(h.deps, runner);
+    h.items.set("github:1", makeItem(1, "queued"));
+    pokeCoder();
+    await settle();
+    // No subtype → not a budget death → no salvage, a single runner call.
+    expect(runner).toHaveBeenCalledOnce();
+    expect(h.transitions.map((t) => t.to)).toEqual(["coding", "failed"]);
+    expect(h.transitions[1].reason).toMatch(/hit max turns/);
+  });
+
+  it("passes the coder time budget as hardTimeoutMs and no maxTurns (#194)", async () => {
+    const h = makeHarness();
+    const runner = okRunner();
+    initCoder(h.deps, runner);
+    h.items.set("github:1", makeItem(1, "queued"));
+    pokeCoder();
+    await settle();
+    const opts = runner.mock.calls[0][0];
+    expect(opts.hardTimeoutMs).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.coderTimeBudgetMin * 60_000);
+    expect(opts.maxTurns).toBeUndefined();
+  });
+
+  it("salvages a hard-timeout death, resuming the run's session for a final report (#194)", async () => {
+    const h = makeHarness();
+    const runner = vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      if (opts.resumeSessionId) {
+        opts.onEvent({ kind: "result", ok: true, summary: REPORT_JSON });
+        return okReport(opts);
+      }
+      throw new CodingTimeoutError("hard time limit — killed", "hard_timeout", 3_600_000);
+    });
+    initCoder(h.deps, runner);
+    h.items.set("github:1", makeItem(1, "queued"));
+    pokeCoder();
+    await settle();
+
+    expect(runner).toHaveBeenCalledTimes(2);
+    const salvage = runner.mock.calls[1][0];
+    expect(salvage.resumeSessionId).toBe(runner.mock.calls[0][0].sessionId);
+    expect(salvage.maxTurns).toBe(4);
+    expect(salvage.hardTimeoutMs).toBe(300_000);
+    expect(salvage.prompt).toContain("Your FINAL message must be ONLY a single JSON object");
+    expect(h.transitions.map((t) => t.to)).toEqual(["coding", "agent-review"]);
+  });
+
+  it("salvages a max-turns non-ok result on the same path (#194)", async () => {
+    const h = makeHarness();
+    const runner = vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      if (opts.resumeSessionId) {
+        opts.onEvent({ kind: "result", ok: true, summary: REPORT_JSON });
+        return okReport(opts);
+      }
+      return { ok: false, summary: "", subtype: "error_max_turns", sessionId: opts.sessionId ?? "" };
+    });
+    initCoder(h.deps, runner);
+    h.items.set("github:1", makeItem(1, "queued"));
+    pokeCoder();
+    await settle();
+
+    expect(runner).toHaveBeenCalledTimes(2);
+    expect(runner.mock.calls[1][0].maxTurns).toBe(4);
+    expect(runner.mock.calls[1][0].hardTimeoutMs).toBe(300_000);
+    expect(h.transitions.map((t) => t.to)).toEqual(["coding", "agent-review"]);
+  });
+
+  it("fails with the honest time-budget reason when salvage also dies (#194)", async () => {
     const h = makeHarness();
     initCoder(
       h.deps,
-      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => ({
-        ok: false,
-        summary: "hit max turns",
-        sessionId: opts.sessionId ?? "",
-      })),
+      vi.fn(async (): Promise<CodingRunResult> => {
+        throw new CodingTimeoutError("hard time limit — killed", "hard_timeout", 3_600_000);
+      }),
     );
     h.items.set("github:1", makeItem(1, "queued"));
     pokeCoder();
     await settle();
     expect(h.transitions.map((t) => t.to)).toEqual(["coding", "failed"]);
-    expect(h.transitions[1].reason).toMatch(/hit max turns/);
+    expect(h.transitions[1].reason).toContain(
+      `hit the time budget (${DEFAULT_ORCHESTRATOR_SETTINGS.coderTimeBudgetMin} min)`,
+    );
+  });
+
+  it("fails with the max-turns backstop reason when a max-turns salvage dies (#194)", async () => {
+    const h = makeHarness();
+    initCoder(
+      h.deps,
+      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+        if (opts.resumeSessionId) throw new Error("no session on disk");
+        return { ok: false, summary: "", subtype: "error_max_turns", sessionId: opts.sessionId ?? "" };
+      }),
+    );
+    h.items.set("github:1", makeItem(1, "queued"));
+    pokeCoder();
+    await settle();
+    expect(h.transitions.map((t) => t.to)).toEqual(["coding", "failed"]);
+    expect(h.transitions[1].reason).toContain(`max-turns backstop (${AGENT_MAX_TURNS_BACKSTOP})`);
+  });
+
+  it("fails with the no-output reason when an inactivity salvage dies (#194)", async () => {
+    const h = makeHarness();
+    initCoder(
+      h.deps,
+      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+        if (opts.resumeSessionId) throw new Error("no session on disk");
+        throw new CodingTimeoutError("no output — killed as hung", "inactivity", 600_000);
+      }),
+    );
+    h.items.set("github:1", makeItem(1, "queued"));
+    pokeCoder();
+    await settle();
+    expect(h.transitions.map((t) => t.to)).toEqual(["coding", "failed"]);
+    expect(h.transitions[1].reason).toMatch(/produced no output for 10 minutes/);
+  });
+
+  it("stays silent when the run is cancelled during salvage (#194)", async () => {
+    const h = makeHarness();
+    initCoder(
+      h.deps,
+      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+        if (opts.resumeSessionId) throw new CodingAbortError();
+        throw new CodingTimeoutError("hard time limit — killed", "hard_timeout", 3_600_000);
+      }),
+    );
+    h.items.set("github:1", makeItem(1, "queued"));
+    pokeCoder();
+    await settle();
+    // The salvage abort rethrows past the honest-fail branch — no failed transition.
+    expect(h.transitions.map((t) => t.to)).toEqual(["coding"]);
   });
 
   it("makes no transition when the item is moved mid-run", async () => {

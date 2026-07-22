@@ -186,6 +186,13 @@ const en = {
     reviewMaxRoundsDesc:
       "Fix rounds before the item stops at needs-input. Not the coding agent's turn limit.",
     reviewOffNote: "Review is off, so rounds do not apply.",
+    coderTimeBudget: "Coder time budget",
+    coderTimeBudgetDesc:
+      "Wall-clock cap per coding run. When it fires, the agent is asked for a final honest report and review continues from there.",
+    plannerTimeBudget: "Planner time budget",
+    plannerTimeBudgetDesc:
+      "Wall-clock cap per plan run. When it fires, the planner is asked to emit the plan from what it has already learned.",
+    minutes: (n: number) => `${n} min`,
     ciReentry: "CI re-entry",
     ciReentryDesc:
       "Whether a red CI on the agent's own push sends the item back to coding with the failing checks as feedback. Capped at 2 rounds per push, then it stops at needs-input.",
@@ -430,6 +437,13 @@ const it: typeof en = {
     reviewMaxRoundsDesc:
       "Round di fix prima che l'item si fermi a needs-input. Non è il limite di turni dell'agente.",
     reviewOffNote: "La review è disattivata, quindi i round non si applicano.",
+    coderTimeBudget: "Budget di tempo del coder",
+    coderTimeBudgetDesc:
+      "Limite di tempo reale per run di sviluppo. Quando scatta, all'agente viene chiesto un report finale onesto e la review riprende da lì.",
+    plannerTimeBudget: "Budget di tempo del planner",
+    plannerTimeBudgetDesc:
+      "Limite di tempo reale per run di pianificazione. Quando scatta, al planner viene chiesto di emettere il piano da ciò che ha già imparato.",
+    minutes: (n: number) => `${n} min`,
     ciReentry: "Rientro da CI",
     ciReentryDesc:
       "Se una CI rossa sul push dell'agente rimanda l'item in sviluppo con i check falliti come feedback. Massimo 2 round per push, poi si ferma a needs-input.",
@@ -674,6 +688,13 @@ const fr: typeof en = {
     reviewMaxRoundsDesc:
       "Tours de correction avant que l'item s'arrête à needs-input. Pas la limite de tours de l'agent.",
     reviewOffNote: "La revue est désactivée, les tours ne s'appliquent pas.",
+    coderTimeBudget: "Budget de temps du coder",
+    coderTimeBudgetDesc:
+      "Plafond de temps réel par run de codage. Quand il se déclenche, on demande à l'agent un rapport final honnête et la revue reprend de là.",
+    plannerTimeBudget: "Budget de temps du planner",
+    plannerTimeBudgetDesc:
+      "Plafond de temps réel par run de planification. Quand il se déclenche, on demande au planner d'émettre le plan à partir de ce qu'il a déjà appris.",
+    minutes: (n: number) => `${n} min`,
     ciReentry: "Reprise sur CI",
     ciReentryDesc:
       "Si une CI rouge sur le push de l'agent renvoie l'item en codage avec les checks échoués comme feedback. Maximum 2 tours par push, puis arrêt à needs-input.",
@@ -918,6 +939,13 @@ const es: typeof en = {
     reviewMaxRoundsDesc:
       "Rondas de corrección antes de que el item pare en needs-input. No es el límite de turnos del agente.",
     reviewOffNote: "La revisión está desactivada, así que las rondas no aplican.",
+    coderTimeBudget: "Presupuesto de tiempo del coder",
+    coderTimeBudgetDesc:
+      "Límite de tiempo real por run de codificación. Cuando salta, se le pide al agente un informe final honesto y la revisión continúa desde ahí.",
+    plannerTimeBudget: "Presupuesto de tiempo del planner",
+    plannerTimeBudgetDesc:
+      "Límite de tiempo real por run de planificación. Cuando salta, se le pide al planner que emita el plan con lo que ya ha aprendido.",
+    minutes: (n: number) => `${n} min`,
     ciReentry: "Reingreso por CI",
     ciReentryDesc:
       "Si una CI en rojo sobre el push del agente devuelve el ítem a codificación con los checks fallidos como feedback. Máximo 2 rondas por push, luego se detiene en needs-input.",

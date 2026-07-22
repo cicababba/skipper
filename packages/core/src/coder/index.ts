@@ -1,6 +1,13 @@
-export { runCodingAgent, CodingAbortError } from "./run";
+export { runCodingAgent, CodingAbortError, CodingTimeoutError } from "./run";
 export type { RunCodingAgentOptions, CodingRunResult } from "./run";
-export { CODER_SYSTEM_PROMPT, buildCoderPrompt, buildResumePrompt, buildFixPrompt, buildPrFixPrompt } from "./prompt";
+export {
+  CODER_SYSTEM_PROMPT,
+  buildCoderPrompt,
+  buildResumePrompt,
+  buildCoderSalvagePrompt,
+  buildFixPrompt,
+  buildPrFixPrompt,
+} from "./prompt";
 export {
   CoderReportSchema,
   coderReportJsonSchema,

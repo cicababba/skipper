@@ -3,6 +3,7 @@ import type { IssuePlan } from "@skipper/shared";
 import {
   CODER_SYSTEM_PROMPT,
   buildCoderPrompt,
+  buildCoderSalvagePrompt,
   buildFixPrompt,
   buildPrFixPrompt,
   buildResumePrompt,
@@ -164,6 +165,23 @@ describe("buildResumePrompt", () => {
     expect(prompt).toContain("interrupted");
     expect(prompt).toContain("Issue #42: Add dark mode");
     expect(prompt).toMatch(/git status/);
+  });
+});
+
+describe("buildCoderSalvagePrompt (#194)", () => {
+  it("carries the report contract and forbids further changes", () => {
+    const prompt = buildCoderSalvagePrompt();
+    expect(prompt).toContain("Your FINAL message must be ONLY a single JSON object");
+    expect(prompt).toContain('"deviations"');
+    expect(prompt).toContain("Schema:");
+    expect(prompt).toContain("Do NOT");
+    expect(prompt).toMatch(/git status/);
+  });
+
+  it("has no issue header — the resumed session already holds the context", () => {
+    const prompt = buildCoderSalvagePrompt();
+    expect(prompt).not.toContain("Issue #42");
+    expect(prompt).not.toContain("Issue comments");
   });
 });
 

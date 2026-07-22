@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import type { spawn } from "node:child_process";
 import type { CodingEvent } from "@skipper/shared";
-import { runCodingAgent, CodingAbortError } from "../src/coder";
+import { runCodingAgent, CodingAbortError, CodingTimeoutError } from "../src/coder";
 
 class FakeChild extends EventEmitter {
   stdout = new EventEmitter();
@@ -147,6 +147,7 @@ describe("runCodingAgent", () => {
       resultText: "done",
       sessionId: "11111111-1111-4111-8111-111111111111",
       turns: 3,
+      subtype: "success",
     });
   });
 
@@ -200,6 +201,23 @@ describe("runCodingAgent", () => {
     }
   });
 
+  it("rejects a silent agent with CodingTimeoutError kind inactivity (#194)", async () => {
+    vi.useFakeTimers();
+    try {
+      const { child, spawnImpl } = fakeSpawn();
+      const promise = runCodingAgent({ ...baseOpts(), inactivityTimeoutMs: 1000 }, spawnImpl);
+      const assertion = promise.catch((e) => e);
+      vi.advanceTimersByTime(1001);
+      const err = await assertion;
+      expect(err).toBeInstanceOf(CodingTimeoutError);
+      expect((err as CodingTimeoutError).kind).toBe("inactivity");
+      expect((err as CodingTimeoutError).limitMs).toBe(1000);
+      expect(child.killed).toContain("SIGTERM");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("kills a run past the hard timeout even when streaming", async () => {
     vi.useFakeTimers();
     try {
@@ -217,5 +235,44 @@ describe("runCodingAgent", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("rejects a hard-timeout kill with CodingTimeoutError kind hard_timeout (#194)", async () => {
+    vi.useFakeTimers();
+    try {
+      const { child, spawnImpl } = fakeSpawn();
+      const promise = runCodingAgent(
+        { ...baseOpts(), inactivityTimeoutMs: 60_000, hardTimeoutMs: 2000 },
+        spawnImpl,
+      );
+      const assertion = promise.catch((e) => e);
+      vi.advanceTimersByTime(1500);
+      child.stdout.emit("data", Buffer.from(`${initLine}\n`)); // keeps inactivity fresh
+      vi.advanceTimersByTime(600);
+      const err = await assertion;
+      expect(err).toBeInstanceOf(CodingTimeoutError);
+      expect((err as CodingTimeoutError).kind).toBe("hard_timeout");
+      expect((err as CodingTimeoutError).limitMs).toBe(2000);
+      expect(child.killed).toContain("SIGTERM");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("resolves a max-turns death as a non-ok result carrying the subtype (#194)", async () => {
+    const errorResultLine = JSON.stringify({
+      type: "result",
+      subtype: "error_max_turns",
+      is_error: true,
+      num_turns: 300,
+    });
+    const { child, spawnImpl } = fakeSpawn();
+    const promise = runCodingAgent(baseOpts(), spawnImpl);
+    child.stdout.emit("data", Buffer.from(`${initLine}\n${errorResultLine}\n`));
+    child.emit("close", 0);
+    const result = await promise;
+    expect(result.ok).toBe(false);
+    expect(result.subtype).toBe("error_max_turns");
+    expect(result.sessionId).toBe("11111111-1111-4111-8111-111111111111");
   });
 });

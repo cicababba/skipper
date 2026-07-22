@@ -50,6 +50,21 @@ function migrateReviewMode(settings: OrchestratorSettings): void {
 }
 
 /**
+ * #194: the agent-turn knobs coderMaxTurns / plannerMaxTurns became wall-clock
+ * budgets coderTimeBudgetMin / plannerTimeBudgetMin. Turns no longer bound the work,
+ * so the old values do NOT convert (pre-beta) — they are consumed and deleted, since a
+ * surviving key would lie to the next person who opens the file (reviewMode precedent).
+ * Then backfill the new keys with defaults. Idempotent, no version gate.
+ */
+function migrateTurnBudgets(settings: OrchestratorSettings): void {
+  const legacy = settings as unknown as { coderMaxTurns?: number; plannerMaxTurns?: number };
+  delete legacy.coderMaxTurns;
+  delete legacy.plannerMaxTurns;
+  settings.coderTimeBudgetMin ??= DEFAULT_ORCHESTRATOR_SETTINGS.coderTimeBudgetMin;
+  settings.plannerTimeBudgetMin ??= DEFAULT_ORCHESTRATOR_SETTINGS.plannerTimeBudgetMin;
+}
+
+/**
  * #125: the per-role model globals became optional overrides of llm.claudeModel.
  * Old builds materialized the "opus" default onto disk, so a v1 manifest can't tell a
  * deliberate opus from the old default — both strip to "inherit". Anything else was
@@ -146,8 +161,7 @@ export async function loadOrCreateOrchestratorManifest(
       // Additive settings (#8, #9, #10, #62): fill defaults into older manifests.
       parsed.settings.autoPlanPaused ??= DEFAULT_ORCHESTRATOR_SETTINGS.autoPlanPaused;
       parsed.settings.confidence ??= structuredClone(DEFAULT_ORCHESTRATOR_SETTINGS.confidence);
-      parsed.settings.coderMaxTurns ??= DEFAULT_ORCHESTRATOR_SETTINGS.coderMaxTurns;
-      parsed.settings.plannerMaxTurns ??= DEFAULT_ORCHESTRATOR_SETTINGS.plannerMaxTurns;
+      migrateTurnBudgets(parsed.settings);
       parsed.settings.autoCoding ??= DEFAULT_ORCHESTRATOR_SETTINGS.autoCoding;
       migrateReviewMode(parsed.settings);
       parsed.settings.reviewMaxRounds ??= DEFAULT_ORCHESTRATOR_SETTINGS.reviewMaxRounds;
