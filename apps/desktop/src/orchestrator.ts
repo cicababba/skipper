@@ -703,11 +703,29 @@ const writers = makeManifestWriters({
   ensureManifest,
   saveManifest: (m) => saveOrchestratorManifest(deps!.manifestFilePath, m),
   broadcast,
+  pokePlanner,
   pokeCoder,
   pokeReviewer,
   pokeShepherd,
   getRepoAutoCoding: (repo) => repoOrch(repo).autoCoding,
   archivePlan: (itemId, plan) => archivePlanAndDeleteChats(deps!.plansDir, itemId, plan),
+  cancelPlanningRun,
+  cancelCodingRun,
+  cancelPlanChat,
+  cancelRescore,
+  cancelAgentChat,
+  discardParkedWorktree: (item, worktree) => {
+    const link = repoLinks?.repos[repoKey(item.repo)];
+    if (!link) return;
+    const worktreePath = worktree.path;
+    const branch = worktree.branch;
+    // Serialize with prepareWorktreeFor: a park's prune/branch-delete must not
+    // race a concurrent fetch/worktree-add for another item on the same clone.
+    void withRepoGitLock(item.repo, async () => {
+      const baseRef = await resolveBaseRef(link.localPath, link.baseBranch).catch(() => undefined);
+      await discardWorktree({ repoPath: link.localPath, worktreePath, branch, baseRef });
+    }).catch((err) => console.warn(`park cleanup failed for ${worktreePath}: ${err}`));
+  },
 });
 const {
   completePlan,
@@ -722,79 +740,7 @@ const {
   completeRescore,
   setReviewSessionId,
 } = writers;
-
-/**
- * Drives one lifecycle transition and persists it. In-process API for the
- * planner/coder/reviewer/shepherd (#7-#11); throws IllegalTransitionError on
- * a bad edge — the IPC handler wraps it for the renderer.
- */
-export async function requestTransition(
-  itemId: string,
-  to: LifecycleState,
-  actor: TransitionActor,
-  reason?: string,
-  resumeTo?: LifecycleState,
-): Promise<TrackedItem> {
-  if (!deps) throw new Error("orchestrator not initialized");
-  const m = await ensureManifest();
-  const item = m.items[itemId];
-  if (!item) throw new Error(`unknown item ${itemId}`);
-  const prevState = item.state;
-  // A user moving a held item out of triage overrides the resume-rite hold (#15).
-  const source =
-    actor === "user" && item.state === "triage" && item.holdAutoPlan
-      ? { ...item, holdAutoPlan: undefined }
-      : item;
-  const next = applyTransition(source, to, actor, reason, { resumeTo });
-  // #110: an explicit user park from plan-gate discards the planning worktree.
-  // needs-input is ALSO the coder/planner failure state — never fire on those.
-  const parkedWorktree =
-    actor === "user" && prevState === "plan-gate" && to === "needs-input"
-      ? item.worktree
-      : undefined;
-  m.items[itemId] = parkedWorktree ? { ...next, worktree: undefined } : next;
-  await saveOrchestratorManifest(deps.manifestFilePath, m);
-  broadcast();
-  if (parkedWorktree?.path) {
-    const link = repoLinks?.repos[repoKey(item.repo)];
-    if (link) {
-      const worktreePath = parkedWorktree.path;
-      const branch = parkedWorktree.branch;
-      // Serialize with prepareWorktreeFor: a park's prune/branch-delete must not
-      // race a concurrent fetch/worktree-add for another item on the same clone.
-      void withRepoGitLock(item.repo, async () => {
-        const baseRef = await resolveBaseRef(link.localPath, link.baseBranch).catch(() => undefined);
-        await discardWorktree({ repoPath: link.localPath, worktreePath, branch, baseRef });
-      }).catch((err) => console.warn(`park cleanup failed for ${worktreePath}: ${err}`));
-    }
-  }
-  if (actor !== "planner") {
-    // Someone else moved a live planning item — abort its run (#159). Guarding on
-    // actor !== "planner" keeps the planner's own needs-input failure transition
-    // from self-aborting.
-    if (prevState === "planning") cancelPlanningRun(itemId);
-    pokePlanner();
-  }
-  // Leaving plan-gate (approve/replan/park) aborts any live plan-review chat (#145)
-  // and any in-flight confidence rescore (#164).
-  if (prevState === "plan-gate") {
-    cancelPlanChat(itemId);
-    cancelRescore(itemId);
-  }
-  // Entering a blocking state aborts the matching live agent chat (#170): the
-  // coder/reviewer is about to run and the chat's read-only view no longer holds.
-  if (to === "coding") cancelAgentChat("coder", itemId);
-  if (to === "agent-review") cancelAgentChat("reviewer", itemId);
-  if (actor !== "coder") {
-    // Someone else moved a live coding item — abort its run.
-    if (prevState === "coding") cancelCodingRun(itemId);
-    pokeCoder();
-  }
-  // The coder landing on agent-review arrives here — wake the reviewer.
-  if (actor !== "reviewer") pokeReviewer();
-  if (actor !== "shepherd") pokeShepherd();
-  return next;
-}
+export const requestTransition = writers.requestTransition;
 
 export async function setIntakePaused(paused: boolean): Promise<void> {
   if (!deps) throw new Error("orchestrator not initialized");

@@ -98,8 +98,16 @@ interface Harness {
   writers: ReturnType<typeof makeManifestWriters>;
   saves: number;
   broadcasts: number;
-  pokes: { coder: number; reviewer: number; shepherd: number };
+  pokes: { planner: number; coder: number; reviewer: number; shepherd: number };
   archived: Array<{ itemId: string; plan: TrackedItem["plan"] }>;
+  cancels: {
+    planning: string[];
+    coding: string[];
+    planChat: string[];
+    rescore: string[];
+    agentChat: Array<{ kind: "coder" | "reviewer"; id: string }>;
+  };
+  parks: Array<{ itemId: string; worktree: { path: string; branch: string } }>;
 }
 
 function makeHarness(opts: { autoCoding?: GateMode; items?: TrackedItem[] } = {}): Harness {
@@ -117,8 +125,10 @@ function makeHarness(opts: { autoCoding?: GateMode; items?: TrackedItem[] } = {}
     manifest,
     saves: 0,
     broadcasts: 0,
-    pokes: { coder: 0, reviewer: 0, shepherd: 0 },
+    pokes: { planner: 0, coder: 0, reviewer: 0, shepherd: 0 },
     archived: [],
+    cancels: { planning: [], coding: [], planChat: [], rescore: [], agentChat: [] },
+    parks: [],
     deps: undefined as unknown as ManifestWriterDeps,
     writers: undefined as unknown as ReturnType<typeof makeManifestWriters>,
   };
@@ -129,6 +139,9 @@ function makeHarness(opts: { autoCoding?: GateMode; items?: TrackedItem[] } = {}
     },
     broadcast: () => {
       h.broadcasts++;
+    },
+    pokePlanner: () => {
+      h.pokes.planner++;
     },
     pokeCoder: () => {
       h.pokes.coder++;
@@ -143,6 +156,24 @@ function makeHarness(opts: { autoCoding?: GateMode; items?: TrackedItem[] } = {}
     archivePlan: async (itemId, plan) => {
       h.archived.push({ itemId, plan });
       return plan?.ref ? { ...plan, ref: `${plan.ref}.archived` } : plan;
+    },
+    cancelPlanningRun: (id) => {
+      h.cancels.planning.push(id);
+    },
+    cancelCodingRun: (id) => {
+      h.cancels.coding.push(id);
+    },
+    cancelPlanChat: (id) => {
+      h.cancels.planChat.push(id);
+    },
+    cancelRescore: (id) => {
+      h.cancels.rescore.push(id);
+    },
+    cancelAgentChat: (kind, id) => {
+      h.cancels.agentChat.push({ kind, id });
+    },
+    discardParkedWorktree: (item, worktree) => {
+      h.parks.push({ itemId: item.id, worktree });
     },
   };
   h.writers = makeManifestWriters(h.deps);
@@ -455,5 +486,139 @@ describe("completeRescore", () => {
     await h.writers.completeRescore("1");
     expect(h.manifest.items["1"].plan?.confidence).toBe(0.5);
     expect(h.manifest.items["1"].plan?.rescoring).toBeUndefined();
+  });
+});
+
+function triageItem(id: string, extra: Partial<TrackedItem> = {}): TrackedItem {
+  return mkItem(id, "triage", [txn(null, "triage", "2026-07-13T00:00:00.000Z")], extra);
+}
+
+describe("requestTransition", () => {
+  it("persists the transition and returns the next item", async () => {
+    const item = triageItem("1");
+    const h = makeHarness({ items: [item] });
+    const next = await h.writers.requestTransition("1", "planning", "user");
+    expect(next.state).toBe("planning");
+    expect(h.manifest.items["1"].state).toBe("planning");
+    expect(h.saves).toBe(1);
+    expect(h.broadcasts).toBe(1);
+  });
+
+  it("propagates IllegalTransitionError without a save", async () => {
+    const item = triageItem("1");
+    const h = makeHarness({ items: [item] });
+    await expect(h.writers.requestTransition("1", "pr-open", "user")).rejects.toThrow(
+      /illegal transition/,
+    );
+    expect(h.manifest.items["1"].state).toBe("triage");
+    expect(h.saves).toBe(0);
+    expect(h.broadcasts).toBe(0);
+  });
+
+  it("throws on an unknown item", async () => {
+    const h = makeHarness();
+    await expect(h.writers.requestTransition("x", "planning", "user")).rejects.toThrow(
+      "unknown item x",
+    );
+  });
+
+  it("a user leaving triage clears the holdAutoPlan hold", async () => {
+    const item = triageItem("1", { holdAutoPlan: true });
+    const h = makeHarness({ items: [item] });
+    await h.writers.requestTransition("1", "planning", "user");
+    expect(h.manifest.items["1"].holdAutoPlan).toBeUndefined();
+  });
+
+  describe("park matrix", () => {
+    it("a user park from plan-gate clears the worktree and discards it", async () => {
+      const item = mkItem("1", "plan-gate", [
+        txn(null, "triage", "2026-07-13T00:00:00.000Z"),
+        txn("triage", "plan-gate", "2026-07-13T02:00:00.000Z"),
+      ], { worktree: { path: "/wt", branch: "b" } });
+      const h = makeHarness({ items: [item] });
+      await h.writers.requestTransition("1", "needs-input", "user");
+      expect(h.manifest.items["1"].worktree).toBeUndefined();
+      expect(h.parks).toEqual([{ itemId: "1", worktree: { path: "/wt", branch: "b" } }]);
+    });
+
+    it("a planner failure into needs-input does NOT park", async () => {
+      const item = planningItem("1", { worktree: { path: "/wt", branch: "b" } });
+      const h = makeHarness({ items: [item] });
+      await h.writers.requestTransition("1", "needs-input", "planner");
+      expect(h.manifest.items["1"].worktree).toEqual({ path: "/wt", branch: "b" });
+      expect(h.parks).toEqual([]);
+    });
+  });
+
+  describe("cancellation matrix", () => {
+    it("a planner self-transition cancels nothing and does not poke the planner", async () => {
+      const item = planningItem("1");
+      const h = makeHarness({ items: [item] });
+      await h.writers.requestTransition("1", "needs-input", "planner");
+      expect(h.cancels.planning).toEqual([]);
+      expect(h.pokes.planner).toBe(0);
+    });
+
+    it("a non-planner moving a live planning item cancels the run and pokes the planner", async () => {
+      const item = planningItem("1");
+      const h = makeHarness({ items: [item] });
+      await h.writers.requestTransition("1", "plan-gate", "user");
+      expect(h.cancels.planning).toEqual(["1"]);
+      expect(h.pokes.planner).toBe(1);
+    });
+
+    it("leaving plan-gate cancels the plan chat and rescore", async () => {
+      const item = mkItem("1", "plan-gate", [
+        txn(null, "triage", "2026-07-13T00:00:00.000Z"),
+        txn("triage", "plan-gate", "2026-07-13T02:00:00.000Z"),
+      ]);
+      const h = makeHarness({ items: [item] });
+      await h.writers.requestTransition("1", "queued", "user");
+      expect(h.cancels.planChat).toEqual(["1"]);
+      expect(h.cancels.rescore).toEqual(["1"]);
+    });
+
+    it("entering coding cancels the coder agent chat", async () => {
+      const item = mkItem("1", "queued", [
+        txn(null, "triage", "2026-07-13T00:00:00.000Z"),
+        txn("triage", "queued", "2026-07-13T01:00:00.000Z"),
+      ]);
+      const h = makeHarness({ items: [item] });
+      await h.writers.requestTransition("1", "coding", "user");
+      expect(h.cancels.agentChat).toEqual([{ kind: "coder", id: "1" }]);
+    });
+
+    it("entering agent-review cancels the reviewer agent chat", async () => {
+      const item = codingItem("1");
+      const h = makeHarness({ items: [item] });
+      await h.writers.requestTransition("1", "agent-review", "user");
+      expect(h.cancels.agentChat).toEqual([{ kind: "reviewer", id: "1" }]);
+      // a user forcing a live coding item out cancels the coding run
+      expect(h.cancels.coding).toEqual(["1"]);
+    });
+
+    it("a coder self-exit does not cancel the coding run or poke the coder", async () => {
+      const item = codingItem("1");
+      const h = makeHarness({ items: [item] });
+      await h.writers.requestTransition("1", "agent-review", "coder");
+      expect(h.cancels.coding).toEqual([]);
+      expect(h.pokes.coder).toBe(0);
+      // the reviewer is still poked and the reviewer agent chat cancelled
+      expect(h.pokes.reviewer).toBe(1);
+      expect(h.cancels.agentChat).toEqual([{ kind: "reviewer", id: "1" }]);
+    });
+
+    it("suppresses the own-actor poke (shepherd)", async () => {
+      const item = mkItem("1", "human-review", [
+        txn(null, "triage", "2026-07-13T00:00:00.000Z"),
+        txn("triage", "human-review", "2026-07-13T04:00:00.000Z"),
+      ]);
+      const h = makeHarness({ items: [item] });
+      await h.writers.requestTransition("1", "pr-open", "shepherd");
+      expect(h.pokes.shepherd).toBe(0);
+      expect(h.pokes.planner).toBe(1);
+      expect(h.pokes.coder).toBe(1);
+      expect(h.pokes.reviewer).toBe(1);
+    });
   });
 });

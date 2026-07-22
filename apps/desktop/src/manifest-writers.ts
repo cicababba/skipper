@@ -8,17 +8,26 @@ import {
   type PrReviewComment,
   type RepoRef,
   type TrackedItem,
+  type TransitionActor,
 } from "@skipper/shared";
 
 export interface ManifestWriterDeps {
   ensureManifest(): Promise<OrchestratorManifest>;
   saveManifest(m: OrchestratorManifest): Promise<void>;
   broadcast(): void;
+  pokePlanner(): void;
   pokeCoder(): void;
   pokeReviewer(): void;
   pokeShepherd(): void;
   getRepoAutoCoding(repo: RepoRef): "on" | "off" | "auto";
   archivePlan(itemId: string, plan: TrackedItem["plan"]): Promise<TrackedItem["plan"]>;
+  cancelPlanningRun(id: string): void;
+  cancelCodingRun(id: string): void;
+  cancelPlanChat(id: string): void;
+  cancelRescore(id: string): void;
+  cancelAgentChat(kind: "coder" | "reviewer", id: string): void;
+  /** Fire-and-forget discard of a parked worktree; git plumbing lives in the caller. */
+  discardParkedWorktree(item: TrackedItem, worktree: { path: string; branch: string }): void;
 }
 
 export function makeManifestWriters(d: ManifestWriterDeps) {
@@ -265,6 +274,68 @@ export function makeManifestWriters(d: ManifestWriterDeps) {
     d.broadcast();
   }
 
+  /**
+   * Drives one lifecycle transition and persists it. In-process API for the
+   * planner/coder/reviewer/shepherd (#7-#11); throws IllegalTransitionError on
+   * a bad edge — the IPC handler wraps it for the renderer.
+   */
+  async function requestTransition(
+    itemId: string,
+    to: LifecycleState,
+    actor: TransitionActor,
+    reason?: string,
+    resumeTo?: LifecycleState,
+  ): Promise<TrackedItem> {
+    const m = await d.ensureManifest();
+    const item = m.items[itemId];
+    if (!item) throw new Error(`unknown item ${itemId}`);
+    const prevState = item.state;
+    // A user moving a held item out of triage overrides the resume-rite hold (#15).
+    const source =
+      actor === "user" && item.state === "triage" && item.holdAutoPlan
+        ? { ...item, holdAutoPlan: undefined }
+        : item;
+    const next = applyTransition(source, to, actor, reason, { resumeTo });
+    // #110: an explicit user park from plan-gate discards the planning worktree.
+    // needs-input is ALSO the coder/planner failure state — never fire on those.
+    const parkedWorktree =
+      actor === "user" && prevState === "plan-gate" && to === "needs-input"
+        ? item.worktree
+        : undefined;
+    m.items[itemId] = parkedWorktree ? { ...next, worktree: undefined } : next;
+    await d.saveManifest(m);
+    d.broadcast();
+    if (parkedWorktree?.path) {
+      d.discardParkedWorktree(item, { path: parkedWorktree.path, branch: parkedWorktree.branch });
+    }
+    if (actor !== "planner") {
+      // Someone else moved a live planning item — abort its run (#159). Guarding on
+      // actor !== "planner" keeps the planner's own needs-input failure transition
+      // from self-aborting.
+      if (prevState === "planning") d.cancelPlanningRun(itemId);
+      d.pokePlanner();
+    }
+    // Leaving plan-gate (approve/replan/park) aborts any live plan-review chat (#145)
+    // and any in-flight confidence rescore (#164).
+    if (prevState === "plan-gate") {
+      d.cancelPlanChat(itemId);
+      d.cancelRescore(itemId);
+    }
+    // Entering a blocking state aborts the matching live agent chat (#170): the
+    // coder/reviewer is about to run and the chat's read-only view no longer holds.
+    if (to === "coding") d.cancelAgentChat("coder", itemId);
+    if (to === "agent-review") d.cancelAgentChat("reviewer", itemId);
+    if (actor !== "coder") {
+      // Someone else moved a live coding item — abort its run.
+      if (prevState === "coding") d.cancelCodingRun(itemId);
+      d.pokeCoder();
+    }
+    // The coder landing on agent-review arrives here — wake the reviewer.
+    if (actor !== "reviewer") d.pokeReviewer();
+    if (actor !== "shepherd") d.pokeShepherd();
+    return next;
+  }
+
   return {
     completePlan,
     completeCoding,
@@ -277,5 +348,6 @@ export function makeManifestWriters(d: ManifestWriterDeps) {
     setPlanRescoring,
     completeRescore,
     setReviewSessionId,
+    requestTransition,
   };
 }
