@@ -7,8 +7,6 @@ import {
   applyTransition,
   loadOrCreateOrchestratorManifest,
   saveOrchestratorManifest,
-  ApiError,
-  AuthError,
   listUserInstallationRepos,
   listMembershipProjects,
   listJiraProjects,
@@ -81,6 +79,7 @@ import { makeEventStream } from "./event-stream";
 import { discardItemWorktreeUnderLock, archivePlanAndDeleteChats } from "./item-teardown";
 import { makeRepoGitLock } from "./git-lock";
 import { applySettingsPatch, applyRepoSettingsPatch } from "./settings-validators";
+import { shouldSkipPoll, selectPollCursor, pollFailurePatch } from "./poll-policy";
 import { registerMemoryHandlers } from "./memory-ipc";
 import { registerWorktreeDiffHandlers } from "./worktree-diff-ipc";
 import { readLlmSettings, readLlmSettingsSync } from "./llm-settings";
@@ -488,10 +487,14 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
   // manifest's accountId are all keyed by it (#101).
   const accountId = account.key;
   const existing = accountsState[accountId];
-  if (!ignoreBackoff && existing?.nextPollAt && Date.now() < existing.nextPollAt) return;
+  if (shouldSkipPoll(existing, Date.now(), ignoreBackoff)) return;
 
-  const forceFull = Date.now() - (lastFullWalkAt.get(accountId) ?? 0) > FULL_WALK_EVERY_MS;
-  const cursor = forceFull ? undefined : cursors.platforms[source.id]?.[accountId];
+  const { cursor } = selectPollCursor({
+    now: Date.now(),
+    lastFullWalkAt: lastFullWalkAt.get(accountId) ?? 0,
+    storedCursor: cursors.platforms[source.id]?.[accountId],
+    fullWalkEveryMs: FULL_WALK_EVERY_MS,
+  });
 
   patchAccount(accountId, { status: "polling" });
   try {
@@ -613,19 +616,7 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
       ...deriveArrays(accountId),
     });
   } catch (err) {
-    if (err instanceof AuthError) {
-      patchAccount(accountId, { status: "auth-error", error: err.message });
-      return;
-    }
-    if (err instanceof ApiError && err.retryAfterSeconds) {
-      patchAccount(accountId, {
-        status: "error",
-        error: err.message,
-        nextPollAt: Date.now() + err.retryAfterSeconds * 1000,
-      });
-      return;
-    }
-    patchAccount(accountId, { status: "error", error: String(err) });
+    patchAccount(accountId, pollFailurePatch(err, Date.now()));
   }
 }
 
