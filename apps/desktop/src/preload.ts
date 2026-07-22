@@ -21,6 +21,7 @@ import type {
   OrchestratorState,
   OrchestratorTransitionResult,
   PlanChatMessage,
+  PrReviewComment,
   RepoIntakeSettings,
   RepoLinkResult,
   RepoRef,
@@ -279,6 +280,17 @@ const api = {
     > => ipcRenderer.invoke("skipper:agentChat:send", kind, itemId, text, ctx),
     getHistory: (kind: AgentChatKind, itemId: string): Promise<PlanChatMessage[]> =>
       ipcRenderer.invoke("skipper:agentChat:getHistory", kind, itemId),
+    prepareApply: (
+      itemId: string,
+    ): Promise<
+      | { ok: true; instructions: PrReviewComment[] }
+      | { ok: false; error?: string; cancelled?: boolean }
+    > => ipcRenderer.invoke("skipper:agentChat:prepareApply", itemId),
+    confirmApply: (
+      itemId: string,
+      instructions: PrReviewComment[],
+    ): Promise<{ ok: true } | { ok: false; error?: string }> =>
+      ipcRenderer.invoke("skipper:agentChat:confirmApply", itemId, instructions),
   },
 
   // Reviewer console (issue #113): same shape as coding/planning, own channel pair.

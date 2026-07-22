@@ -291,6 +291,7 @@ function ItemDetailShell() {
             <AgentChatPanel
               kind={interlocutor}
               itemId={id}
+              itemState={item.state}
               selectedFile={interlocutor === "coder" ? worktreeSelection : null}
               onBusyChange={(b) => setChatBusy(interlocutor, b)}
               onCountChange={interlocutor === "coder" ? setCoderCount : setReviewerCount}

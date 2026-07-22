@@ -324,6 +324,12 @@ const en = {
       "The coding session is gone — answering from the plan, the coder report and the worktree.",
     freshReviewer:
       "The review session is gone — answering from the plan, the report and the review outcome.",
+    apply: "Apply changes",
+    applying: "Distilling…",
+    applyPreviewTitle: "Changes to apply on the next coding pass",
+    applyConfirm: "Send back to coding",
+    applyCancel: "Cancel",
+    applyFailed: "Could not apply the changes",
   },
   overview: {
     issueBody: "Issue",
@@ -738,6 +744,12 @@ const it: typeof en = {
       "La sessione di coding non c'è più — rispondo dal piano, dal report del coder e dal worktree.",
     freshReviewer:
       "La sessione di review non c'è più — rispondo dal piano, dal report e dall'esito della review.",
+    apply: "Applica le modifiche",
+    applying: "Sto distillando…",
+    applyPreviewTitle: "Modifiche da applicare nella prossima passata di coding",
+    applyConfirm: "Rimanda al coding",
+    applyCancel: "Annulla",
+    applyFailed: "Impossibile applicare le modifiche",
   },
   overview: {
     issueBody: "Issue",
@@ -1154,6 +1166,12 @@ const fr: typeof en = {
       "La session de codage a disparu — réponse basée sur le plan, le rapport du codeur et le worktree.",
     freshReviewer:
       "La session de review a disparu — réponse basée sur le plan, le rapport et le résultat de la review.",
+    apply: "Appliquer les changements",
+    applying: "Distillation…",
+    applyPreviewTitle: "Changements à appliquer lors de la prochaine passe de codage",
+    applyConfirm: "Renvoyer au codage",
+    applyCancel: "Annuler",
+    applyFailed: "Impossible d'appliquer les changements",
   },
   overview: {
     issueBody: "Issue",
@@ -1569,6 +1587,12 @@ const es: typeof en = {
       "La sesión de codificación ya no existe — respondo desde el plan, el informe del coder y el worktree.",
     freshReviewer:
       "La sesión de review ya no existe — respondo desde el plan, el informe y el resultado de la review.",
+    apply: "Aplicar cambios",
+    applying: "Destilando…",
+    applyPreviewTitle: "Cambios a aplicar en la próxima pasada de codificación",
+    applyConfirm: "Devolver a codificación",
+    applyCancel: "Cancelar",
+    applyFailed: "No se pudieron aplicar los cambios",
   },
   overview: {
     issueBody: "Issue",
