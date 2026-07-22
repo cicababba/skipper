@@ -1,5 +1,6 @@
 import type { CodingEvent, LLMProvider } from "@skipper/shared";
 import type { MemoryMcp } from "./memory-mcp";
+import type { RunConfinement } from "./confinement";
 import { ClaudeCLIProvider } from "./claude-cli";
 import { OpenAIProvider } from "./openai";
 import { OllamaProvider } from "./ollama";
@@ -30,6 +31,9 @@ export interface AgentOptions {
   resumeSessionId?: string;
   /** Abort the run; rejects with AgentAbortError. claude-cli only (#145). */
   signal?: AbortSignal;
+  /** Keep the run inside its cwd (#196): adds the Bash guard hook + confined env.
+   *  claude-cli only; the read-leaning agent toolset has no Edit/Write to scope. */
+  confinement?: RunConfinement;
 }
 
 /** Thrown by agent() when its AbortSignal fires (#145). */

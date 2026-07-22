@@ -3,8 +3,17 @@ import type { CodingEvent } from "@skipper/shared";
 import { invalidateResolvedClaude, resolveClaude } from "../llm/claude-cli";
 import { createStreamJsonParser } from "../llm/stream";
 import { MEMORY_TOOLS, buildMemoryMcpArgs, type MemoryMcp } from "../llm/memory-mcp";
+import {
+  buildConfinementSettingsArgs,
+  confinementEnv,
+  scopedWriteRules,
+  type RunConfinement,
+} from "../llm/confinement";
 
 const CODER_TOOLS = "Read,Grep,Glob,Edit,Write,Bash,WebFetch,WebSearch";
+// Same set minus the write tools — the write tools are pre-approved path-scoped
+// to the run root instead (L1 confinement, #196), never as bare names.
+const CODER_NONWRITE_TOOLS = "Read,Grep,Glob,Bash,WebFetch,WebSearch";
 const DEFAULT_MAX_TURNS = 60;
 const DEFAULT_INACTIVITY_TIMEOUT_MS = 10 * 60_000;
 const DEFAULT_HARD_TIMEOUT_MS = 60 * 60_000;
@@ -35,6 +44,9 @@ export interface RunCodingAgentOptions {
   hardTimeoutMs?: number;
   /** Inject the skipper-memory MCP server, scoped to the item's repo (#45). */
   memory?: MemoryMcp;
+  /** Keep the run inside its worktree (#196): adds the Bash/Edit/Write guard hook
+   *  and the confined spawn env. L1 write-scoping to opts.cwd is unconditional. */
+  confinement?: RunConfinement;
 }
 
 export interface CodingRunResult {
@@ -58,6 +70,12 @@ export function runCodingAgent(
     // opts.memory. Tool names must join both --tools and --allowedTools —
     // headless -p auto-denies an un-pre-approved tool.
     const tools = opts.memory ? `${CODER_TOOLS},${MEMORY_TOOLS}` : CODER_TOOLS;
+    // L1 confinement (#196): --tools keeps the bare names, but --allowedTools
+    // pre-approves the write tools only path-scoped to the run root, so an
+    // absolute-path Edit/Write anywhere else on disk is auto-denied. Scoping is
+    // unconditional — a coder write outside its worktree is a bug by contract.
+    const nonWrite = opts.memory ? `${CODER_NONWRITE_TOOLS},${MEMORY_TOOLS}` : CODER_NONWRITE_TOOLS;
+    const allowedTools = [nonWrite, ...scopedWriteRules(opts.cwd)].join(",");
     const args = [
       ...claude.argsPrefix,
       "-p",
@@ -75,8 +93,9 @@ export function runCodingAgent(
       "--tools",
       tools,
       "--allowedTools",
-      tools,
+      allowedTools,
       ...(opts.memory ? buildMemoryMcpArgs(opts.memory) : []),
+      ...(opts.confinement ? buildConfinementSettingsArgs(opts.confinement) : []),
     ];
     if (opts.systemPrompt) args.push("--system-prompt", opts.systemPrompt);
     // No --no-session-persistence (unlike ask/agent): the on-disk session is
@@ -84,10 +103,11 @@ export function runCodingAgent(
     if (opts.resumeSessionId) args.push("--resume", opts.resumeSessionId);
     else if (opts.sessionId) args.push("--session-id", opts.sessionId);
 
+    const env = confinementEnv(opts.confinement, claude.env);
     const proc = spawnImpl(claude.file, args, {
       cwd: opts.cwd,
       stdio: ["pipe", "pipe", "pipe"],
-      ...(claude.env ? { env: claude.env } : {}),
+      ...(env ? { env } : {}),
     });
 
     let stderr = "";

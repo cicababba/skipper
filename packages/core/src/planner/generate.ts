@@ -3,6 +3,7 @@ import type { IssueComment } from "../adapters/types";
 import type { LLMProviderInterface, LLMResponse } from "../llm/provider";
 import { AgentAbortError } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
+import type { RunConfinement } from "../llm/confinement";
 import { ClaudeCliError } from "../llm/claude-cli";
 import { parseJsonReply } from "../llm/json";
 import { IssuePlanSchema, planJsonSchema } from "./schema";
@@ -40,6 +41,8 @@ export interface GeneratePlanOptions {
   sessionId?: string;
   /** Abort the run; rejects with AgentAbortError. claude-cli only (#159). */
   signal?: AbortSignal;
+  /** Keep the run inside its cwd (#196); passed only when cwd is the worktree. */
+  confinement?: RunConfinement;
 }
 
 export class PlanGenerationError extends Error {
@@ -122,6 +125,7 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
+      ...(opts.confinement ? { confinement: opts.confinement } : {}),
     });
   } catch (err) {
     // AgentAbortError is not a ClaudeCliError, so an aborted primary run rethrows
@@ -141,6 +145,7 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
         resumeSessionId: opts.sessionId,
         ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
         ...(opts.signal ? { signal: opts.signal } : {}),
+        ...(opts.confinement ? { confinement: opts.confinement } : {}),
       });
     } catch {
       throw err;

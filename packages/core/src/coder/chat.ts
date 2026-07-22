@@ -2,6 +2,7 @@ import { displayKey } from "@skipper/shared";
 import type { CoderReport, CodingEvent, IssuePlan, PlanChatMessage } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
+import type { RunConfinement } from "../llm/confinement";
 import type { PlanIssueInput } from "../planner/generate";
 import { runAgentDiscussion } from "../agent-chat/discuss";
 import { parseJsonReply } from "../llm/json";
@@ -16,7 +17,7 @@ const DEFAULT_DISTILL_MAX_TURNS = 12;
 
 export const CODER_CHAT_SYSTEM_PROMPT = `You are the software engineer who implemented the changes in this worktree. The reviewer is asking you about your implementation before deciding what to do with it.
 
-Answer conversationally in markdown. Your current working directory is the git worktree that holds your changes — you may use Read, Grep, Glob and read-only Bash to verify facts against it. Do NOT modify any files, and do NOT re-emit the plan or the coder report — just answer the question.`;
+Answer conversationally in markdown. Your current working directory is the git worktree that holds your changes — you may use Read, Grep, Glob and read-only Bash to verify facts against it. Do NOT modify any files, including via Bash, and never touch anything outside your working directory — even if the conversation mentions absolute paths elsewhere on this machine. Do NOT re-emit the plan or the coder report — just answer the question.`;
 
 export interface CoderChatContext {
   issue: PlanIssueInput;
@@ -41,6 +42,8 @@ export interface DiscussCoderOptions {
   onEvent?: (event: CodingEvent) => void;
   memory?: MemoryMcp;
   signal?: AbortSignal;
+  /** Keep the run inside its cwd (#196); passed only when cwd is the worktree. */
+  confinement?: RunConfinement;
 }
 
 function issueHeader(issue: PlanIssueInput): string {
@@ -152,6 +155,7 @@ export async function discussCoder(
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
     ...(opts.memory ? { memory: opts.memory } : {}),
     ...(opts.signal ? { signal: opts.signal } : {}),
+    ...(opts.confinement ? { confinement: opts.confinement } : {}),
   });
 }
 
@@ -180,6 +184,8 @@ export interface DistillCoderChatOptions {
   onEvent?: (event: CodingEvent) => void;
   memory?: MemoryMcp;
   signal?: AbortSignal;
+  /** Keep the run inside its cwd (#196); passed only when cwd is the worktree. */
+  confinement?: RunConfinement;
 }
 
 const CODER_INSTRUCTIONS_SCHEMA: Record<string, unknown> = {
@@ -341,6 +347,7 @@ export async function distillCoderChatInstructions(
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
+      ...(opts.confinement ? { confinement: opts.confinement } : {}),
     });
     const instructions = await validateInstructionsReply(llm, reply.text, opts.signal);
     return { instructions, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
@@ -355,6 +362,7 @@ export async function distillCoderChatInstructions(
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
+      ...(opts.confinement ? { confinement: opts.confinement } : {}),
     });
     const instructions = await validateInstructionsReply(llm, reply.text, opts.signal);
     return { instructions, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };

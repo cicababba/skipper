@@ -57,8 +57,14 @@ describe("runCodingAgent", () => {
     const joined = args.join(" ");
     expect(joined).toContain("--output-format stream-json");
     expect(args).toContain("--verbose");
+    // --tools keeps the bare names; --allowedTools scopes the write tools to the
+    // run root and drops the bare Edit/Write (#196, L1 confinement).
     expect(joined).toContain("--tools Read,Grep,Glob,Edit,Write,Bash,WebFetch,WebSearch");
-    expect(joined).toContain("--allowedTools Read,Grep,Glob,Edit,Write,Bash,WebFetch,WebSearch");
+    const allowed = args[args.indexOf("--allowedTools") + 1].split(",");
+    expect(allowed).toContain("Edit(//tmp/wt/**)");
+    expect(allowed).toContain("Write(//tmp/wt/**)");
+    expect(allowed).not.toContain("Edit");
+    expect(allowed).not.toContain("Write");
     expect(joined).toContain("--session-id 22222222-2222-4222-8222-222222222222");
     expect(joined).toContain("--system-prompt sys");
     expect(args).not.toContain("--no-session-persistence");
@@ -66,6 +72,50 @@ describe("runCodingAgent", () => {
     expect(opts.cwd).toBe("/tmp/wt");
     expect(child.stdin.written).toBe("implement it");
     expect(child.stdin.end).toHaveBeenCalled();
+  });
+
+  it("adds the guard hook + confined env when confinement carries a CLI bundle (#196)", async () => {
+    const { child, spawnImpl, calls } = fakeSpawn();
+    const promise = runCodingAgent(
+      {
+        ...baseOpts(),
+        sessionId: "22222222-2222-4222-8222-222222222222",
+        confinement: {
+          runRoot: "/tmp/wt",
+          denyRoots: ["/home/me/repo"],
+          cliBundlePath: "/app/skipper.bundle.cjs",
+        },
+      },
+      spawnImpl,
+    );
+    child.stdout.emit("data", Buffer.from(`${initLine}\n${okResultLine}\n`));
+    child.emit("close", 0);
+    await promise;
+
+    const { args, opts } = calls[0];
+    const settings = JSON.parse(args[args.indexOf("--settings") + 1]);
+    expect(settings.hooks.PreToolUse.map((h: { matcher: string }) => h.matcher)).toEqual([
+      "Edit|Write",
+      "Bash",
+    ]);
+    expect(settings.hooks.PreToolUse[0].hooks[0].command).toContain("guard");
+    expect((opts.env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE).toBe("1");
+  });
+
+  it("scopes writes but adds no guard hook when confinement has no CLI bundle (#196)", async () => {
+    const { child, spawnImpl, calls } = fakeSpawn();
+    const promise = runCodingAgent(
+      { ...baseOpts(), confinement: { runRoot: "/tmp/wt", denyRoots: ["/home/me/repo"] } },
+      spawnImpl,
+    );
+    child.stdout.emit("data", Buffer.from(`${okResultLine}\n`));
+    child.emit("close", 0);
+    await promise;
+
+    const { args } = calls[0];
+    expect(args).not.toContain("--settings");
+    const allowed = args[args.indexOf("--allowedTools") + 1].split(",");
+    expect(allowed).toContain("Write(//tmp/wt/**)");
   });
 
   it("uses --resume for re-entry", async () => {

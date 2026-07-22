@@ -6,7 +6,7 @@ import {
   type GateMode,
   type IssuePlan,
 } from "@skipper/shared";
-import { AgentAbortError, type LLMProviderInterface } from "../llm";
+import { AgentAbortError, type LLMProviderInterface, type RunConfinement } from "../llm";
 import { generatePlan as realGeneratePlan, type PlanIssueInput } from "../planner";
 import { scoreClarity } from "./clarity";
 import { scoreConvergence } from "./convergence";
@@ -39,6 +39,9 @@ export interface ComputeConfidenceOptions {
   autoCoding?: GateMode;
   /** Abort scoring (critic + extra plan runs); claude-cli only (#159). */
   signal?: AbortSignal;
+  /** Keep the extra convergence plan runs inside cwd (#196); passed only when
+   *  cwd is the worktree. */
+  confinement?: RunConfinement;
   /**
    * Skip the convergence extra runs outright, recording this reason (#164). Used
    * when re-scoring a chat-revised plan: the convergence signal measured the
@@ -135,6 +138,7 @@ export async function computeConfidence(
           repoPath: opts.repoPath,
           llm: opts.llm,
           ...(opts.signal ? { signal: opts.signal } : {}),
+          ...(opts.confinement ? { confinement: opts.confinement } : {}),
         }),
       ),
     );

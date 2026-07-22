@@ -547,6 +547,54 @@ export async function worktreeDirtyFiles(worktreePath: string): Promise<string[]
     .filter((line) => line.length > 0);
 }
 
+// Run-confinement tripwire (#196): the last line of defence. An agent run must
+// never touch the linked repo checkout; if the pre-approval scoping and the
+// guard hook both miss, the driver diffs the checkout's dirty set before vs
+// after the run and fails on anything new. The comparison is path-set based, not
+// "is dirty": the checkout may already hold the user's in-flight work.
+
+const ESCAPE_REASON_PREFIX = "agent escaped the worktree — modified the linked checkout: ";
+
+/**
+ * Parse `git status --porcelain` lines (as worktreeDirtyFiles returns them,
+ * already trimmed) into the set of paths they touch. A status flip (` M` → `MM`)
+ * maps to the same path so it never registers as a new change; a rename
+ * (`R  old -> new`) maps to the new path, which is what exists after the run.
+ */
+export function porcelainPaths(lines: string[]): string[] {
+  const paths: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const space = trimmed.indexOf(" ");
+    if (space === -1) continue;
+    let rest = trimmed.slice(space + 1).trim();
+    const arrow = rest.indexOf(" -> ");
+    if (arrow !== -1) rest = rest.slice(arrow + 4).trim();
+    if (rest) paths.push(rest);
+  }
+  return paths;
+}
+
+/** Paths dirty in `after` but not in `before` — the run's escapees, de-duped. */
+export function newDirtyPaths(before: string[], after: string[]): string[] {
+  const seen = new Set(porcelainPaths(before));
+  const out: string[] = [];
+  for (const path of porcelainPaths(after)) {
+    if (seen.has(path)) continue;
+    seen.add(path);
+    out.push(path);
+  }
+  return out;
+}
+
+/** Stable failure reason for a tripped run: prefix + up to 5 paths + "+N more". */
+export function checkoutEscapeReason(paths: string[]): string {
+  const shown = paths.slice(0, 5);
+  const extra = paths.length - shown.length;
+  return `${ESCAPE_REASON_PREFIX}${shown.join(", ")}${extra > 0 ? `, +${extra} more` : ""}`;
+}
+
 /**
  * Tear down a parked planning worktree (#110): remove it (tolerating an
  * already-deleted dir), prune, then drop the branch only when baseRef is known

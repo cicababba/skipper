@@ -104,6 +104,7 @@ function makeHarness(plansDir: string, item: TrackedItem): Harness {
     getItem: (id) => items.get(id),
     getIssue: () => ({ labels: [], body: "the body" }) as unknown as Issue,
     getRepoPath: (_repo: RepoRef) => "/repo",
+    checkoutDirtyPaths: async () => null,
     getRepoSettings: () => ({ plannerModel: "opus" }) as unknown as ResolvedRepoOrchestratorSettings,
     getStoredPlan: async () => stored,
     updatePlan: async (_item, plan) => {
@@ -165,6 +166,16 @@ describe("sendPlanChatMessage guards", () => {
     initPlanChat(h.deps, fakeProvider());
     const res = await sendPlanChatMessage("github:1", "   ");
     expect(res.ok).toBe(false);
+  });
+
+  it("fails the turn with an escape error when it dirtied the checkout (#196)", async () => {
+    const h = makeHarness(plansDir, makeItem());
+    let calls = 0;
+    h.deps.checkoutDirtyPaths = async () => (calls++ === 0 ? [] : ["?? stray.ts"]);
+    initPlanChat(h.deps, fakeProvider());
+    const res = await sendPlanChatMessage("github:1", "hello");
+    expect(res.ok).toBe(false);
+    expect((res as { error?: string }).error).toMatch(/escaped the worktree/);
   });
 
   it("busy-guards a second turn while one is running", async () => {

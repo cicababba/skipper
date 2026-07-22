@@ -64,6 +64,7 @@ function makeHarness(
     getItem: (id: string) => items.find((i) => i.id === id),
     getIssue: () => ({ labels: [] }) as unknown as Issue,
     getRepoPath: () => "/repo",
+    checkoutDirtyPaths: async () => null,
     getRepoSettings: () => resolveRepoOrchestratorSettings(repoSettings, getSettings()),
     requestTransition: async (itemId: string, to: LifecycleState, actor: TransitionActor) => {
       transitions.push({ itemId, to, actor });
@@ -156,6 +157,7 @@ describe("planner provider selection (#59)", () => {
       getItem: (id: string) => items.find((i) => i.id === id),
       getIssue: () => ({ labels: [] }) as unknown as Issue,
       getRepoPath: () => "/repo",
+      checkoutDirtyPaths: async () => null,
       getRepoSettings: () =>
         resolveRepoOrchestratorSettings({}, { ...DEFAULT_ORCHESTRATOR_SETTINGS } as OrchestratorSettings),
       requestTransition: async (
@@ -284,6 +286,7 @@ describe("planner worktree at planning (#110)", () => {
       getItem: (id: string) => items.find((i) => i.id === id),
       getIssue: () => ({ labels: [] }) as unknown as Issue,
       getRepoPath: () => "/repo",
+      checkoutDirtyPaths: async () => null,
       getRepoSettings: () =>
         resolveRepoOrchestratorSettings({}, { ...DEFAULT_ORCHESTRATOR_SETTINGS } as OrchestratorSettings),
       requestTransition: async (itemId: string, to: LifecycleState) => {
@@ -464,6 +467,7 @@ describe("planner cancellation & zombie protection (#159)", () => {
     release: (plan?: string) => void;
     completePlanCalls: { itemId: string; ref: string; expectedPlanningAt?: string }[];
     transitions: { to: LifecycleState }[];
+    events: CodingEvent[];
   }
 
   function makeCancelHarness(items: TrackedItem[]): CancelHarness {
@@ -471,6 +475,7 @@ describe("planner cancellation & zombie protection (#159)", () => {
     const signals: (AbortSignal | undefined)[] = [];
     const completePlanCalls: CancelHarness["completePlanCalls"] = [];
     const transitions: CancelHarness["transitions"] = [];
+    const events: CodingEvent[] = [];
     let releaseFn: (plan: string) => void = () => {};
     const provider = {
       name: "fake",
@@ -490,6 +495,7 @@ describe("planner cancellation & zombie protection (#159)", () => {
       getItem: (id: string) => items.find((i) => i.id === id),
       getIssue: () => ({ labels: [] }) as unknown as Issue,
       getRepoPath: () => "/repo",
+      checkoutDirtyPaths: async () => null,
       getRepoSettings: () =>
         resolveRepoOrchestratorSettings({}, { ...DEFAULT_ORCHESTRATOR_SETTINGS } as OrchestratorSettings),
       requestTransition: async (_itemId: string, to: LifecycleState) => {
@@ -510,7 +516,7 @@ describe("planner cancellation & zombie protection (#159)", () => {
       setWorktree: async () => {},
       getSettings: () => ({ ...DEFAULT_ORCHESTRATOR_SETTINGS }) as OrchestratorSettings,
       getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS }),
-      emitEvent: () => {},
+      emitEvent: (_id: string, e: CodingEvent) => void events.push(e),
       plansDir,
     } as unknown as PlannerDeps;
     return {
@@ -521,6 +527,7 @@ describe("planner cancellation & zombie protection (#159)", () => {
       release: (plan = VALID_PLAN) => releaseFn(plan),
       completePlanCalls,
       transitions,
+      events,
     };
   }
 
@@ -588,5 +595,29 @@ describe("planner cancellation & zombie protection (#159)", () => {
       itemId: "github:1",
       expectedPlanningAt: "2026-07-21T00:05:00.000Z",
     });
+  });
+
+  // #196: a plan run that leaves new dirt in the linked checkout is failed to
+  // needs-input; the plan is neither completed nor written to disk.
+  it("fails to needs-input with an escape reason when the run dirtied the checkout", async () => {
+    const item = makeItem("planning", "2026-07-21T00:00:00.000Z");
+    const h = makeCancelHarness([item]);
+    let calls = 0;
+    h.deps.checkoutDirtyPaths = async () => (calls++ === 0 ? [] : ["?? stray.ts"]);
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await settle();
+    expect(h.signals).toHaveLength(1);
+
+    // The plan run finishes successfully, but it dirtied the linked checkout.
+    h.release();
+    await waitFor(() => h.transitions.some((t) => t.to === "needs-input"));
+
+    expect(h.transitions.map((t) => t.to)).toContain("needs-input");
+    expect(
+      h.events.some((e) => e.kind === "error" && /escaped the worktree/.test(e.message)),
+    ).toBe(true);
+    expect(h.completePlanCalls).toEqual([]);
+    expect(await readdir(plansDir)).toEqual([]);
   });
 });
