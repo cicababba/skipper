@@ -80,6 +80,7 @@ import { resolveBaseChangeActions, type WorktreeProbe } from "./base-change";
 import { makeEventStream } from "./event-stream";
 import { discardItemWorktreeUnderLock, archivePlanAndDeleteChats } from "./item-teardown";
 import { makeRepoGitLock } from "./git-lock";
+import { applySettingsPatch, applyRepoSettingsPatch } from "./settings-validators";
 import { registerMemoryHandlers } from "./memory-ipc";
 import { registerWorktreeDiffHandlers } from "./worktree-diff-ipc";
 import { readLlmSettings, readLlmSettingsSync } from "./llm-settings";
@@ -312,57 +313,6 @@ async function ensureRepoLinks(): Promise<RepoLinksFile> {
 function repoPathFor(repo: RepoRef): string | undefined {
   return repoLinks?.repos[repoKey(repo)]?.localPath;
 }
-
-// Per-key validation for the two settings writers (#62). Each returns the value to
-// store, or undefined to reject the write.
-const asBool = (v: unknown): boolean | undefined => (typeof v === "boolean" ? v : undefined);
-const clampInt =
-  (min: number, max: number) =>
-  (v: unknown): number | undefined =>
-    typeof v === "number" && Number.isFinite(v)
-      ? Math.min(max, Math.max(min, Math.round(v)))
-      : undefined;
-const oneOf =
-  <T extends string>(...allowed: readonly T[]) =>
-  (v: unknown): T | undefined =>
-    (allowed as readonly unknown[]).includes(v) ? (v as T) : undefined;
-const nonEmptyString = (v: unknown): string | undefined =>
-  typeof v === "string" && v.trim() ? v.trim() : undefined;
-
-const SETTINGS_VALIDATORS: {
-  [K in keyof OrchestratorSettings]?: (v: unknown) => OrchestratorSettings[K] | undefined;
-} = {
-  autoPlanPaused: asBool,
-  autoCoding: oneOf("on", "off", "auto"),
-  review: oneOf("on", "off", "auto"),
-  reviewMaxRounds: clampInt(1, 5),
-  ciReentry: oneOf("off", "auto"),
-  codingWipPerRepo: clampInt(1, 10),
-  // #58: model strings stay opaque CLI aliases — no enum, so a manifest
-  // hand-edited to a full model id survives a write from the UI.
-  plannerModel: nonEmptyString,
-  coderModel: nonEmptyString,
-  reviewerModel: nonEmptyString,
-  coderMaxTurns: clampInt(10, 200),
-  plannerMaxTurns: clampInt(10, 200),
-};
-
-const REPO_SETTINGS_VALIDATORS: {
-  [K in keyof RepoIntakeSettings]-?: (v: unknown) => RepoIntakeSettings[K] | undefined;
-} = {
-  followed: asBool,
-  priority: oneOf("high", "normal", "low"),
-  autoPlan: oneOf("on", "off", "label"),
-  autoPlanLabel: nonEmptyString,
-  wipLimit: clampInt(1, 10),
-  autoCoding: oneOf("on", "off", "auto"),
-  review: oneOf("on", "off", "auto"),
-  reviewMaxRounds: clampInt(1, 5),
-  ciReentry: oneOf("off", "auto"),
-  plannerModel: nonEmptyString,
-  coderModel: nonEmptyString,
-  reviewerModel: nonEmptyString,
-};
 
 function repoIntake(repo: RepoRef): ResolvedRepoIntakeSettings {
   return resolveRepoIntakeSettings(manifest?.repoSettings[repoKey(repo)]);
@@ -1195,18 +1145,7 @@ export function initOrchestrator(
     "skipper:orchestrator:updateSettings",
     async (_e, patch: Partial<OrchestratorSettings>) => {
       const m = await ensureManifest();
-      for (const key of Object.keys(SETTINGS_VALIDATORS) as (keyof OrchestratorSettings)[]) {
-        // `key in patch`, not a truthiness check: an absent key is not a clear.
-        if (!patch || !(key in patch)) continue;
-        // #125: explicit undefined clears a per-role model back to inherit llm.claudeModel.
-        if ((patch as Record<string, unknown>)[key] === undefined) {
-          if (key === "plannerModel" || key === "coderModel" || key === "reviewerModel")
-            delete (m.settings as unknown as Record<string, unknown>)[key];
-          continue;
-        }
-        const next = SETTINGS_VALIDATORS[key]!((patch as Record<string, unknown>)[key]);
-        if (next !== undefined) (m.settings as unknown as Record<string, unknown>)[key] = next;
-      }
+      applySettingsPatch(m.settings, patch);
       await saveOrchestratorManifest(deps!.manifestFilePath, m);
       broadcast();
       pokePlanner(); // autoPlanPaused — without this the topbar toggle reads as dead
@@ -1222,19 +1161,7 @@ export function initOrchestrator(
       const m = await ensureManifest();
       const key = repoKey({ owner, name });
       const followedBefore = resolveRepoIntakeSettings(m.repoSettings[key]).followed;
-      const merged: RepoIntakeSettings = { ...m.repoSettings[key] };
-      for (const k of Object.keys(REPO_SETTINGS_VALIDATORS) as (keyof RepoIntakeSettings)[]) {
-        if (!patch || !(k in patch)) continue;
-        // undefined is meaningful here — it clears the override back to the global.
-        if (patch[k] === undefined) {
-          delete merged[k];
-          continue;
-        }
-        const next = REPO_SETTINGS_VALIDATORS[k]!(patch[k]);
-        // Invalid values are dropped, never coerced to undefined: coercing would
-        // silently clear a working override instead of rejecting the write.
-        if (next !== undefined) (merged as Record<string, unknown>)[k] = next;
-      }
+      const merged = applyRepoSettingsPatch(m.repoSettings[key], patch);
       if (Object.keys(merged).length === 0) delete m.repoSettings[key];
       else m.repoSettings[key] = merged;
       await saveOrchestratorManifest(deps!.manifestFilePath, m);
