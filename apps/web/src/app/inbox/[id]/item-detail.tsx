@@ -55,14 +55,21 @@ function defaultTabFor(item: TrackedItem): DetailTab {
 }
 
 // The interlocutor the shell FAB/drawer routes to for the active tab (#170).
-function interlocutorFor(tab: DetailTab, item: TrackedItem, planAvailable: boolean): ChatKind | null {
+// The coder needs a session to resume (#187): the worktree exists from plan time,
+// but only the coder writes worktree.sessionId — before that there is nothing to
+// interrogate.
+export function interlocutorFor(
+  tab: DetailTab,
+  item: TrackedItem,
+  planAvailable: boolean,
+): ChatKind | null {
   switch (tab) {
     case "plan":
       return planAvailable ? "plan" : null;
     case "review":
       return item.review != null && item.state !== "agent-review" ? "reviewer" : null;
     case "worktree":
-      return item.worktree != null && item.state !== "coding" ? "coder" : null;
+      return item.worktree?.sessionId != null && item.state !== "coding" ? "coder" : null;
     default:
       return null;
   }
