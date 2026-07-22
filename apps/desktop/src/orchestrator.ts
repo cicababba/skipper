@@ -12,7 +12,6 @@ import {
   listUserInstallationRepos,
   listMembershipProjects,
   listJiraProjects,
-  codeHosts,
   codeHostFor,
   codeHostForProvider,
   resolveGate,
@@ -69,11 +68,12 @@ import type {
 import { loadCursors, saveCursors, type InboxCursorFile } from "./inbox-cursor-store";
 import { runGit } from "./git";
 import {
+  branchesForLocalClone,
   cloneRepo,
+  detectHostForLocalPath,
   listRemoteHeads,
   loadRepoLinks,
   saveRepoLinks,
-  validateRepoOrigin,
   type RepoLinksFile,
 } from "./repo-links";
 import { resolveBaseChangeActions, type WorktreeProbe } from "./base-change";
@@ -112,7 +112,6 @@ import {
   discardWorktree,
   ensureWorktree,
   fetchOrigin,
-  parseRemoteBranches,
   refreshWorktreeBase,
   resolveBaseRef,
   worktreeDirFor,
@@ -433,53 +432,6 @@ function accountForRepo(owner: string, name: string, accountKey?: string): Accou
     }
   }
   return issueAccounts()[0];
-}
-
-/** Confirms localPath is a clone of owner/name on some registered code host, trying
- *  each host's cloud default and its accounts' self-hosted baseUrls. Throws the last
- *  origin-mismatch error when nothing matches. */
-async function detectHostForLocalPath(
-  owner: string,
-  name: string,
-  localPath: string,
-): Promise<void> {
-  const repo = { owner, name };
-  const accounts = deps?.getAccounts() ?? [];
-  let lastErr: unknown;
-  for (const host of Object.values(codeHosts)) {
-    const urls = accounts
-      .filter((a) => a.provider === host.authProvider)
-      .map((a) => a.baseUrl)
-      .filter((u): u is string => u !== undefined);
-    // undefined (the host's cloud/fixed default) stays first; self-hosted baseUrls follow.
-    for (const baseUrl of [undefined, ...new Set(urls)]) {
-      try {
-        await validateRepoOrigin(localPath, repo, host, baseUrl);
-        return;
-      } catch (err) {
-        lastErr = err;
-      }
-    }
-  }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
-}
-
-/** Branch list + default branch of a local clone's origin, shared by the branch-listing
- *  and link-inspect IPC handlers. */
-async function branchesForLocalClone(localPath: string): Promise<ListRepoBranchesResult> {
-  const refs = await runGit(localPath, [
-    "for-each-ref",
-    "--format=%(refname:short)",
-    "refs/remotes/origin",
-  ]);
-  if (refs.code !== 0) {
-    return { ok: false, error: refs.stderr.trim() || `git exit ${refs.code}` };
-  }
-  const branches = parseRemoteBranches(refs.stdout);
-  const defaultBranch = await resolveBaseRef(localPath, undefined)
-    .then((ref) => ref.replace(/^origin\//, ""))
-    .catch(() => undefined);
-  return { ok: true, branches, defaultBranch };
 }
 
 // Planner concurrency (2) and the coder can hit the same clone at once; git
@@ -1497,7 +1449,7 @@ export function initOrchestrator(
     "skipper:orchestrator:linkRepo",
     async (_e, owner: string, name: string, localPath: string, baseBranch?: string) => {
       try {
-        await detectHostForLocalPath(owner, name, localPath);
+        await detectHostForLocalPath(deps!.getAccounts(), owner, name, localPath);
         const trimmed = baseBranch?.trim();
         if (trimmed) {
           const onOrigin = async (): Promise<boolean> =>
@@ -1580,7 +1532,7 @@ export function initOrchestrator(
       localPath: string,
     ): Promise<ListRepoBranchesResult> => {
       try {
-        await detectHostForLocalPath(owner, name, localPath);
+        await detectHostForLocalPath(deps!.getAccounts(), owner, name, localPath);
         // Best-effort authed fetch so the branch list + default are current; a
         // fetch failure never fails the inspect (offline link still works).
         const account = accountForRepo(owner, name);

@@ -6,8 +6,10 @@ import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rename, rm, writeFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import type { RepoRef } from "@skipper/shared";
-import type { CodeHost, PushCredentials } from "@skipper/core";
+import type { Account, ListRepoBranchesResult, RepoRef } from "@skipper/shared";
+import { codeHosts, type CodeHost, type PushCredentials } from "@skipper/core";
+import { runGit } from "./git";
+import { parseRemoteBranches, resolveBaseRef } from "./worktrees";
 
 export interface RepoLink {
   localPath: string;
@@ -243,4 +245,51 @@ export async function listRemoteHeads(
     throw new Error(`git ls-remote failed: ${r.stderr.trim() || `exit ${r.code}`}`);
   }
   return parseLsRemoteHeads(r.stdout);
+}
+
+/** Confirms localPath is a clone of owner/name on some registered code host, trying
+ *  each host's cloud default and its accounts' self-hosted baseUrls. Throws the last
+ *  origin-mismatch error when nothing matches. */
+export async function detectHostForLocalPath(
+  accounts: Account[],
+  owner: string,
+  name: string,
+  localPath: string,
+): Promise<void> {
+  const repo = { owner, name };
+  let lastErr: unknown;
+  for (const host of Object.values(codeHosts)) {
+    const urls = accounts
+      .filter((a) => a.provider === host.authProvider)
+      .map((a) => a.baseUrl)
+      .filter((u): u is string => u !== undefined);
+    // undefined (the host's cloud/fixed default) stays first; self-hosted baseUrls follow.
+    for (const baseUrl of [undefined, ...new Set(urls)]) {
+      try {
+        await validateRepoOrigin(localPath, repo, host, baseUrl);
+        return;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+/** Branch list + default branch of a local clone's origin, shared by the branch-listing
+ *  and link-inspect IPC handlers. */
+export async function branchesForLocalClone(localPath: string): Promise<ListRepoBranchesResult> {
+  const refs = await runGit(localPath, [
+    "for-each-ref",
+    "--format=%(refname:short)",
+    "refs/remotes/origin",
+  ]);
+  if (refs.code !== 0) {
+    return { ok: false, error: refs.stderr.trim() || `git exit ${refs.code}` };
+  }
+  const branches = parseRemoteBranches(refs.stdout);
+  const defaultBranch = await resolveBaseRef(localPath, undefined)
+    .then((ref) => ref.replace(/^origin\//, ""))
+    .catch(() => undefined);
+  return { ok: true, branches, defaultBranch };
 }
