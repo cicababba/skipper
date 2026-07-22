@@ -42,7 +42,7 @@ function parseRateLimit(res: Response, headers: VendorHttpConfig["rateLimitHeade
 
 export async function vendorRequest<T>(
   config: VendorHttpConfig,
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "PATCH" | "PUT",
   url: string,
   getToken: TokenProvider,
   opts?: { etag?: string; body?: unknown },

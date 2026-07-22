@@ -90,6 +90,21 @@ const en = {
       (hasWorktree ? " Its worktree will be pruned (uncommitted changes are lost)." : "") +
       (hasPr ? " Its PR stays open on the platform." : ""),
   },
+  closeDialog: {
+    title: "Close this issue",
+    closeOnTracker: (tracker: string) => `Close on ${tracker}`,
+    closeOnTrackerHint:
+      "Closes the issue on the tracker. Skipper settles it as closed on the next reconcile.",
+    noRemoteClose: (tracker: string) =>
+      `Skipper can't close ${tracker} issues yet — close it on the tracker, then remove it here.`,
+    openInTracker: (tracker: string) => `Open in ${tracker}`,
+    untrack: "Remove from Skipper",
+    untrackHint: (hasWorktree: boolean, hasPr: boolean) =>
+      "Stops tracking this issue here; it may return on a later poll." +
+      (hasWorktree ? " Its worktree is pruned (uncommitted changes are lost)." : "") +
+      (hasPr ? " Its PR stays open on the platform." : ""),
+    cancel: "Cancel",
+  },
   refresh: {
     fullHint: "Shift-click: reset cursors and refetch everything",
   },
@@ -517,6 +532,21 @@ const it: typeof en = {
       (hasWorktree ? " Il suo worktree verrà eliminato (le modifiche non salvate vanno perse)." : "") +
       (hasPr ? " La sua PR resta aperta sulla piattaforma." : ""),
   },
+  closeDialog: {
+    title: "Chiudi questa issue",
+    closeOnTracker: (tracker) => `Chiudi su ${tracker}`,
+    closeOnTrackerHint:
+      "Chiude la issue sul tracker. Skipper la segna chiusa al prossimo reconcile.",
+    noRemoteClose: (tracker) =>
+      `Skipper non può ancora chiudere le issue di ${tracker} — chiudila sul tracker, poi rimuovila qui.`,
+    openInTracker: (tracker) => `Apri su ${tracker}`,
+    untrack: "Rimuovi da Skipper",
+    untrackHint: (hasWorktree, hasPr) =>
+      "Smette di tracciare questa issue qui; potrebbe tornare a un poll successivo." +
+      (hasWorktree ? " Il suo worktree verrà eliminato (le modifiche non salvate vanno perse)." : "") +
+      (hasPr ? " La sua PR resta aperta sulla piattaforma." : ""),
+    cancel: "Annulla",
+  },
   refresh: {
     fullHint: "Shift-click: azzera i cursori e riscarica tutto",
   },
@@ -942,6 +972,21 @@ const fr: typeof en = {
       "Arrêter de suivre cette issue ? Elle peut revenir à un poll ultérieur." +
       (hasWorktree ? " Son worktree sera supprimé (les modifications non validées sont perdues)." : "") +
       (hasPr ? " Sa PR reste ouverte sur la plateforme." : ""),
+  },
+  closeDialog: {
+    title: "Fermer cette issue",
+    closeOnTracker: (tracker) => `Fermer sur ${tracker}`,
+    closeOnTrackerHint:
+      "Ferme l'issue sur le tracker. Skipper la marque fermée à la prochaine réconciliation.",
+    noRemoteClose: (tracker) =>
+      `Skipper ne peut pas encore fermer les issues ${tracker} — fermez-la sur le tracker, puis retirez-la ici.`,
+    openInTracker: (tracker) => `Ouvrir sur ${tracker}`,
+    untrack: "Retirer de Skipper",
+    untrackHint: (hasWorktree, hasPr) =>
+      "Arrête de suivre cette issue ici ; elle peut revenir à un poll ultérieur." +
+      (hasWorktree ? " Son worktree sera supprimé (les modifications non validées sont perdues)." : "") +
+      (hasPr ? " Sa PR reste ouverte sur la plateforme." : ""),
+    cancel: "Annuler",
   },
   refresh: {
     fullHint: "Shift-clic : réinitialiser les curseurs et tout recharger",
@@ -1370,6 +1415,21 @@ const es: typeof en = {
       "¿Dejar de rastrear esta issue? Puede volver en un poll posterior." +
       (hasWorktree ? " Su worktree se eliminará (los cambios sin confirmar se pierden)." : "") +
       (hasPr ? " Su PR sigue abierta en la plataforma." : ""),
+  },
+  closeDialog: {
+    title: "Cerrar esta issue",
+    closeOnTracker: (tracker) => `Cerrar en ${tracker}`,
+    closeOnTrackerHint:
+      "Cierra la issue en el tracker. Skipper la marca como cerrada en el próximo reconcile.",
+    noRemoteClose: (tracker) =>
+      `Skipper aún no puede cerrar issues de ${tracker} — ciérrala en el tracker y luego quítala aquí.`,
+    openInTracker: (tracker) => `Abrir en ${tracker}`,
+    untrack: "Quitar de Skipper",
+    untrackHint: (hasWorktree, hasPr) =>
+      "Deja de rastrear esta issue aquí; puede volver en un poll posterior." +
+      (hasWorktree ? " Su worktree se eliminará (los cambios sin confirmar se pierden)." : "") +
+      (hasPr ? " Su PR sigue abierta en la plataforma." : ""),
+    cancel: "Cancelar",
   },
   refresh: {
     fullHint: "Shift-clic: reinicia los cursores y vuelve a descargar todo",

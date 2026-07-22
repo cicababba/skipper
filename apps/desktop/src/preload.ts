@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   AgentChatKind,
   ArchiveItemResult,
+  CloseItemOnTrackerResult,
   AuthProviderId,
   AuthProviderMeta,
   AuthState,
@@ -212,6 +213,8 @@ const api = {
       ipcRenderer.invoke("skipper:orchestrator:archiveItem", itemId, force),
     untrackItem: (itemId: string, force?: boolean): Promise<UntrackItemResult> =>
       ipcRenderer.invoke("skipper:orchestrator:untrackItem", itemId, force),
+    closeItemOnTracker: (itemId: string): Promise<CloseItemOnTrackerResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:closeItemOnTracker", itemId),
     getWorktreeChanges: (itemId: string): Promise<WorktreeChangesResult> =>
       ipcRenderer.invoke("skipper:orchestrator:getWorktreeChanges", itemId),
     readWorktreeFile: (itemId: string, path: string, oldPath?: string): Promise<WorktreeFileResult> =>

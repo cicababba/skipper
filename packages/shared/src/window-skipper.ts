@@ -1,6 +1,7 @@
 import type { AuthProviderId, AuthProviderMeta, AuthState } from "./types";
 import type {
   ArchiveItemResult,
+  CloseItemOnTrackerResult,
   FollowCandidatesResult,
   LifecycleState,
   ListRepoBranchesResult,
@@ -258,6 +259,7 @@ export interface WindowSkipper {
     openPr: (itemId: string) => Promise<OrchestratorTransitionResult>;
     archiveItem: (itemId: string, force?: boolean) => Promise<ArchiveItemResult>;
     untrackItem: (itemId: string, force?: boolean) => Promise<UntrackItemResult>;
+    closeItemOnTracker: (itemId: string) => Promise<CloseItemOnTrackerResult>;
     getWorktreeChanges: (itemId: string) => Promise<WorktreeChangesResult>;
     readWorktreeFile: (
       itemId: string,

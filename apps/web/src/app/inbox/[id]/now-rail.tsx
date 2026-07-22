@@ -14,6 +14,7 @@ import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useTerminal } from "@/lib/terminal-context";
 import { useT } from "@/lib/app-i18n";
 import { pct, bandClasses } from "@/components/confidence-popover";
+import { CloseItemDialog } from "@/components/close-item-dialog";
 import { actionsFor } from "@/lib/inbox/actions";
 import { nowSentence, railPrimary } from "@/lib/inbox/now";
 import { formatDuration } from "@/lib/inbox/timeline";
@@ -42,11 +43,13 @@ export function NowRail({
   const n = t.inbox.now;
   const router = useRouter();
   const { openTerminal } = useTerminal();
-  const { openPr, requestTransition } = useOrchestrator();
+  const { openPr, requestTransition, closeItemOnTracker, untrackItem, state } = useOrchestrator();
 
-  const [busyAction, setBusyAction] = useState<"openPr" | "close" | "resume" | null>(null);
+  const [busyAction, setBusyAction] = useState<"openPr" | "resume" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
+  const canCloseOnTracker = state?.sourceCapabilities[item.source]?.closeIssue ?? false;
 
   const runOpenPr = async () => {
     setBusyAction("openPr");
@@ -60,8 +63,8 @@ export function NowRail({
     }
   };
 
-  const runTransition = async (kind: "close" | "resume", to: TrackedItem["state"]) => {
-    setBusyAction(kind);
+  const runTransition = async (to: TrackedItem["state"]) => {
+    setBusyAction("resume");
     setActionError(null);
     try {
       const result = await requestTransition(item.id, to);
@@ -113,6 +116,7 @@ export function NowRail({
   };
 
   return (
+    <>
     <div className="self-start wide:col-start-2 wide:row-start-1 wide:sticky wide:top-4 wide:max-h-[calc(100vh-230px)] wide:overflow-y-auto rounded-lg border border-card-hover bg-card p-4 space-y-4">
       <div className="space-y-1">
         <p className="text-[11px] font-medium uppercase tracking-wide text-muted/70">{n.title}</p>
@@ -133,11 +137,10 @@ export function NowRail({
                 {t.inbox.actions.openPr}
               </button>
               <button
-                onClick={() => void runTransition("close", "closed")}
+                onClick={() => setCloseOpen(true)}
                 disabled={busyAction !== null}
                 className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-50"
               >
-                {busyAction === "close" && <Loader2 size={11} className="animate-spin" />}
                 {t.inbox.actions.close}
               </button>
             </div>
@@ -147,7 +150,7 @@ export function NowRail({
               <ResumeSessionButton itemId={item.id} item={item} sessionId={primary.sessionId} running={false} />
             ) : resumeAction && resumeAction.kind === "transition" ? (
               <button
-                onClick={() => void runTransition("resume", resumeAction.to)}
+                onClick={() => void runTransition(resumeAction.to)}
                 disabled={busyAction !== null}
                 className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50"
               >
@@ -236,5 +239,24 @@ export function NowRail({
         </button>
       </div>
     </div>
+    {closeOpen && (
+      <CloseItemDialog
+        item={item}
+        canCloseOnTracker={canCloseOnTracker}
+        onCloseOnTracker={async () => {
+          const res = await closeItemOnTracker(item.id);
+          if (res.ok) router.push("/inbox");
+          return res;
+        }}
+        onUntrack={async () => {
+          const res = await untrackItem(item.id, true);
+          if (res.ok) router.push("/inbox");
+          return res.ok;
+        }}
+        onOpenInTracker={() => void window.skipper?.openExternal(item.url)}
+        onDismiss={() => setCloseOpen(false)}
+      />
+    )}
+    </>
   );
 }

@@ -36,3 +36,11 @@ export async function githubPost<T>(
 ): Promise<GitHubResponse<T>> {
   return vendorRequest<T>(CONFIG, "POST", url, getToken, { body });
 }
+
+export async function githubPatch<T>(
+  url: string,
+  getToken: GitHubTokenProvider,
+  body: unknown,
+): Promise<GitHubResponse<T>> {
+  return vendorRequest<T>(CONFIG, "PATCH", url, getToken, { body });
+}

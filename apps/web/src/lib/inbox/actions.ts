@@ -19,14 +19,19 @@ export type ItemAction =
   | { id: "openPr"; kind: "openPr" }
   | { id: "pin" | "unpin"; kind: "pin"; pinned: boolean }
   | { id: "archive"; kind: "archive" }
-  | { id: "untrack"; kind: "untrack" };
+  | { id: "untrack"; kind: "untrack" }
+  | { id: "close"; kind: "closeDialog" };
 
 function transition(id: ItemActionId, item: TrackedItem, to: LifecycleState): ItemAction[] {
   return canTransition(item.state, to) ? [{ id, kind: "transition", to }] : [];
 }
 
 function baseActionsFor(item: TrackedItem): ItemAction[] {
-  const close = transition("close", item, "closed");
+  // Close (#132) opens the capability-aware dialog instead of a bare lifecycle
+  // transition; still gated on the legal → closed transition.
+  const close: ItemAction[] = canTransition(item.state, "closed")
+    ? [{ id: "close", kind: "closeDialog" }]
+    : [];
   switch (item.state) {
     case "triage":
       return [...transition("plan", item, "planning"), ...close];
