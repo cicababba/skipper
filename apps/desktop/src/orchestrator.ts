@@ -12,19 +12,11 @@ import {
   listUserInstallationRepos,
   listMembershipProjects,
   listJiraProjects,
-  codeHosts,
   codeHostFor,
   codeHostForProvider,
   resolveGate,
   DEFAULT_ORCHESTRATOR_SETTINGS,
   IssuePlanSchema,
-  readSolutionRecord,
-  writeSolutionRecord,
-  listSolutionRecords,
-  deleteSolutionRecord,
-  reconcileMemoryIndex,
-  memoryFileName,
-  applyFeedbackVote,
   type IssueComment,
   type OrchestratorManifest,
   type OrchestratorSettings,
@@ -48,7 +40,6 @@ import type {
   AuthProviderId,
   CodeHostId,
   CodingEvent,
-  CodingEventEnvelope,
   ConfidenceReport,
   FollowCandidate,
   FollowCandidatesResult,
@@ -77,19 +68,22 @@ import type {
 import { loadCursors, saveCursors, type InboxCursorFile } from "./inbox-cursor-store";
 import { runGit } from "./git";
 import {
+  branchesForLocalClone,
   cloneRepo,
+  detectHostForLocalPath,
   listRemoteHeads,
   loadRepoLinks,
   saveRepoLinks,
-  validateRepoOrigin,
   type RepoLinksFile,
 } from "./repo-links";
 import { resolveBaseChangeActions, type WorktreeProbe } from "./base-change";
+import { makeEventStream } from "./event-stream";
+import { discardItemWorktreeUnderLock, archivePlanAndDeleteChats } from "./item-teardown";
+import { registerMemoryHandlers } from "./memory-ipc";
+import { registerWorktreeDiffHandlers } from "./worktree-diff-ipc";
 import { readLlmSettings, readLlmSettingsSync } from "./llm-settings";
-import { archiveStoredPlan, readStoredPlan, updateStoredPlan } from "./plan-store";
+import { readStoredPlan, updateStoredPlan } from "./plan-store";
 import { readStoredCoderReport } from "./report-store";
-import { deletePlanChat } from "./plan-chat-store";
-import { deleteAgentChats } from "./agent-chat-store";
 import {
   initPlanChat,
   sendPlanChatMessage,
@@ -118,16 +112,10 @@ import {
   discardWorktree,
   ensureWorktree,
   fetchOrigin,
-  listWorktreeChanges,
-  parseRemoteBranches,
-  readWorktreeFileVersions,
   refreshWorktreeBase,
   resolveBaseRef,
-  worktreeDiffTotals,
   worktreeDirFor,
   worktreeDirtyFiles,
-  worktreeStatus,
-  writeWorktreeFile,
 } from "./worktrees";
 
 export { killAllCodingRuns, killAllPlanningRuns, killAllRescores };
@@ -209,83 +197,40 @@ function broadcast(): void {
   }
 }
 
-// Fine-grained coding progress (#9): replay buffer + per-item channel, the
-// terminal.ts per-id pattern. Coarse state changes ride the broadcast above.
-const CODING_EVENT_BUFFER_MAX = 500;
-const codingEvents = new Map<string, CodingEventEnvelope[]>();
-const codingEventSeq = new Map<string, number>();
-
-function emitCodingEvent(itemId: string, event: CodingEvent): void {
+// Fine-grained agent progress (#9): replay buffer + per-item channel. Coarse
+// state changes ride the broadcast above. getWindow is a module let reassigned
+// in initOrchestrator, so the streams take the thunk (a bare reference would
+// capture the pre-init value and silently kill every live send).
+const codingStream = makeEventStream({
+  channel: "coding",
+  resetPhase: "fetching",
+  getWindow: () => getWindow(),
   // A new run restarts the stream: reset the buffer so replay never mixes runs.
-  if (event.kind === "status" && event.phase === "fetching") {
-    codingEvents.set(itemId, []);
-    codingEventSeq.set(itemId, 0);
-    void resetMemoryUse(itemId, "coding");
-  }
-  const seq = codingEventSeq.get(itemId) ?? 0;
-  codingEventSeq.set(itemId, seq + 1);
-  const envelope: CodingEventEnvelope = { itemId, seq, at: new Date().toISOString(), event };
-  const buffer = codingEvents.get(itemId) ?? [];
-  buffer.push(envelope);
-  if (buffer.length > CODING_EVENT_BUFFER_MAX) buffer.shift();
-  codingEvents.set(itemId, buffer);
-  if (isMemoryGet(event)) void recordMemoryUse(itemId, "coding", event.detail);
-  const win = getWindow();
-  if (win && !win.isDestroyed()) {
-    win.webContents.send(`skipper:coding:event:${itemId}`, envelope);
-  }
-}
+  onReset: (itemId) => void resetMemoryUse(itemId, "coding"),
+  onEvent: (itemId, event) => {
+    if (isMemoryGet(event)) void recordMemoryUse(itemId, "coding", event.detail);
+  },
+});
 
-// Planner console stream (#32): same machinery as coding events, own channel
-// pair so a coding run's buffer reset never wipes planner history.
-const planningEvents = new Map<string, CodingEventEnvelope[]>();
-const planningEventSeq = new Map<string, number>();
+// Planner console stream (#32): own channel pair so a coding run's buffer reset
+// never wipes planner history. Every planner run opens with agent-start.
+const planningStream = makeEventStream({
+  channel: "planning",
+  resetPhase: "agent-start",
+  getWindow: () => getWindow(),
+  onReset: (itemId) => void resetMemoryUse(itemId, "planning"),
+  onEvent: (itemId, event) => {
+    if (isMemoryGet(event)) void recordMemoryUse(itemId, "planning", event.detail);
+  },
+});
 
-function emitPlanningEvent(itemId: string, event: CodingEvent): void {
-  // Every planner run opens with agent-start: reset so replay never mixes runs.
-  if (event.kind === "status" && event.phase === "agent-start") {
-    planningEvents.set(itemId, []);
-    planningEventSeq.set(itemId, 0);
-    void resetMemoryUse(itemId, "planning");
-  }
-  const seq = planningEventSeq.get(itemId) ?? 0;
-  planningEventSeq.set(itemId, seq + 1);
-  const envelope: CodingEventEnvelope = { itemId, seq, at: new Date().toISOString(), event };
-  const buffer = planningEvents.get(itemId) ?? [];
-  buffer.push(envelope);
-  if (buffer.length > CODING_EVENT_BUFFER_MAX) buffer.shift();
-  planningEvents.set(itemId, buffer);
-  if (isMemoryGet(event)) void recordMemoryUse(itemId, "planning", event.detail);
-  const win = getWindow();
-  if (win && !win.isDestroyed()) {
-    win.webContents.send(`skipper:planning:event:${itemId}`, envelope);
-  }
-}
-
-// Reviewer console stream (#113): same machinery, own channel pair. The
-// reviewer runs no tools, so there is no memory-use bookkeeping here.
-const reviewEvents = new Map<string, CodingEventEnvelope[]>();
-const reviewEventSeq = new Map<string, number>();
-
-function emitReviewEvent(itemId: string, event: CodingEvent): void {
-  // Every review round opens with a fetching status: reset so replay never
-  // mixes rounds (mirrors the coding buffer-reset heuristic).
-  if (event.kind === "status" && event.phase === "fetching") {
-    reviewEvents.set(itemId, []);
-    reviewEventSeq.set(itemId, 0);
-  }
-  const seq = reviewEventSeq.get(itemId) ?? 0;
-  reviewEventSeq.set(itemId, seq + 1);
-  const envelope: CodingEventEnvelope = { itemId, seq, at: new Date().toISOString(), event };
-  const buffer = reviewEvents.get(itemId) ?? [];
-  buffer.push(envelope);
-  if (buffer.length > CODING_EVENT_BUFFER_MAX) buffer.shift();
-  reviewEvents.set(itemId, buffer);
-  const win = getWindow();
-  if (win && !win.isDestroyed()) {
-    win.webContents.send(`skipper:review:event:${itemId}`, envelope);
-  }
-}
+// Reviewer console stream (#113): own channel pair, reset on the fetching status
+// that opens every round. The reviewer runs no tools, so no memory bookkeeping.
+const reviewStream = makeEventStream({
+  channel: "review",
+  resetPhase: "fetching",
+  getWindow: () => getWindow(),
+});
 
 // "Memories used" (#46): record which solutions a run fetched in full via
 // get_memory — the ground truth for the card, persisted on the tracked item so
@@ -487,53 +432,6 @@ function accountForRepo(owner: string, name: string, accountKey?: string): Accou
     }
   }
   return issueAccounts()[0];
-}
-
-/** Confirms localPath is a clone of owner/name on some registered code host, trying
- *  each host's cloud default and its accounts' self-hosted baseUrls. Throws the last
- *  origin-mismatch error when nothing matches. */
-async function detectHostForLocalPath(
-  owner: string,
-  name: string,
-  localPath: string,
-): Promise<void> {
-  const repo = { owner, name };
-  const accounts = deps?.getAccounts() ?? [];
-  let lastErr: unknown;
-  for (const host of Object.values(codeHosts)) {
-    const urls = accounts
-      .filter((a) => a.provider === host.authProvider)
-      .map((a) => a.baseUrl)
-      .filter((u): u is string => u !== undefined);
-    // undefined (the host's cloud/fixed default) stays first; self-hosted baseUrls follow.
-    for (const baseUrl of [undefined, ...new Set(urls)]) {
-      try {
-        await validateRepoOrigin(localPath, repo, host, baseUrl);
-        return;
-      } catch (err) {
-        lastErr = err;
-      }
-    }
-  }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
-}
-
-/** Branch list + default branch of a local clone's origin, shared by the branch-listing
- *  and link-inspect IPC handlers. */
-async function branchesForLocalClone(localPath: string): Promise<ListRepoBranchesResult> {
-  const refs = await runGit(localPath, [
-    "for-each-ref",
-    "--format=%(refname:short)",
-    "refs/remotes/origin",
-  ]);
-  if (refs.code !== 0) {
-    return { ok: false, error: refs.stderr.trim() || `git exit ${refs.code}` };
-  }
-  const branches = parseRemoteBranches(refs.stdout);
-  const defaultBranch = await resolveBaseRef(localPath, undefined)
-    .then((ref) => ref.replace(/^origin\//, ""))
-    .catch(() => undefined);
-  return { ok: true, branches, defaultBranch };
 }
 
 // Planner concurrency (2) and the coder can hit the same clone at once; git
@@ -1024,13 +922,7 @@ async function completeMergedCleanup(itemId: string, memoryRef: string): Promise
   const m = await ensureManifest();
   const item = m.items[itemId];
   if (!item) throw new Error(`unknown item ${itemId}`);
-  let plan = item.plan;
-  if (plan?.ref) {
-    const archivedRef = await archiveStoredPlan(deps.plansDir, plan.ref).catch(() => null);
-    if (archivedRef) plan = { ...plan, ref: archivedRef };
-  }
-  void deletePlanChat(deps.plansDir, itemId).catch(() => {});
-  void deleteAgentChats(deps.plansDir, itemId).catch(() => {});
+  const plan = await archivePlanAndDeleteChats(deps.plansDir, itemId, item.plan);
   m.items[itemId] = {
     ...item,
     worktree: undefined,
@@ -1557,7 +1449,7 @@ export function initOrchestrator(
     "skipper:orchestrator:linkRepo",
     async (_e, owner: string, name: string, localPath: string, baseBranch?: string) => {
       try {
-        await detectHostForLocalPath(owner, name, localPath);
+        await detectHostForLocalPath(deps!.getAccounts(), owner, name, localPath);
         const trimmed = baseBranch?.trim();
         if (trimmed) {
           const onOrigin = async (): Promise<boolean> =>
@@ -1640,7 +1532,7 @@ export function initOrchestrator(
       localPath: string,
     ): Promise<ListRepoBranchesResult> => {
       try {
-        await detectHostForLocalPath(owner, name, localPath);
+        await detectHostForLocalPath(deps!.getAccounts(), owner, name, localPath);
         // Best-effort authed fetch so the branch list + default are current; a
         // fetch failure never fails the inspect (offline link still works).
         const account = accountForRepo(owner, name);
@@ -1897,123 +1789,22 @@ export function initOrchestrator(
   });
   // Replay for renderers that mount mid-run; live events ride the per-item channel.
   ipcMain.handle("skipper:coding:getEvents", (_e, itemId: string) => {
-    return codingEvents.get(itemId) ?? [];
+    return codingStream.getEvents(itemId);
   });
   ipcMain.handle("skipper:planning:getEvents", (_e, itemId: string) => {
-    return planningEvents.get(itemId) ?? [];
+    return planningStream.getEvents(itemId);
   });
   ipcMain.handle("skipper:review:getEvents", (_e, itemId: string) => {
-    return reviewEvents.get(itemId) ?? [];
+    return reviewStream.getEvents(itemId);
   });
-  // Solutions memory surface (#46). get/feedback drive the "memories used" card;
-  // list is the read side #47's browser will consume.
-  ipcMain.handle("skipper:memory:get", async (_e, id: string) => {
-    return readSolutionRecord(deps!.memoryDir, memoryFileName(id));
+  registerMemoryHandlers({
+    ipcMain,
+    memoryDir: orchestratorDeps.memoryDir,
+    manifestFilePath: orchestratorDeps.manifestFilePath,
+    ensureManifest,
+    broadcast,
   });
-  ipcMain.handle("skipper:memory:list", async (_e, repo: RepoRef) => {
-    const key = repoKey(repo);
-    const entries = await listSolutionRecords(deps!.memoryDir);
-    return entries
-      .map((e) => e.record)
-      .filter((r) => repoKey(r.repo) === key);
-  });
-  // 👍/👎 (#46): move the record's aggregate counters by the delta between the
-  // item entry's old vote and the new one, and store the new vote as the local
-  // idempotency anchor. Feedback is query-time only — no reindex.
-  ipcMain.handle(
-    "skipper:memory:feedback",
-    async (_e, itemId: string, phase: MemoryPhase, id: string, vote: "up" | "down" | null) => {
-      const m = await ensureManifest();
-      const entry = m.items[itemId]?.usedMemory?.[phase]?.find((ref) => ref.id === id);
-      if (!entry) return { ok: false as const, error: "used-memory entry not found" };
-      const record = await readSolutionRecord(deps!.memoryDir, memoryFileName(id));
-      if (!record) return { ok: false as const, error: `no memory record for id "${id}"` };
-      const oldVote = entry.vote;
-      if (oldVote === (vote ?? undefined)) return { ok: true as const };
-      record.feedback = applyFeedbackVote(record.feedback, oldVote, vote);
-      try {
-        await writeSolutionRecord(deps!.memoryDir, record);
-      } catch (err) {
-        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-      }
-      if (vote) entry.vote = vote;
-      else delete entry.vote;
-      await saveOrchestratorManifest(deps!.manifestFilePath, m);
-      broadcast();
-      return { ok: true as const };
-    },
-  );
-  // Delete a record from the browser (#47): drop the file, then reconcile the
-  // vector index so the removed record stops surfacing in retrieval.
-  ipcMain.handle("skipper:memory:delete", async (_e, id: string) => {
-    const removed = await deleteSolutionRecord(deps!.memoryDir, memoryFileName(id));
-    if (!removed) return { ok: false as const, error: `no memory record for id "${id}"` };
-    try {
-      await reconcileMemoryIndex(deps!.memoryDir);
-    } catch (err) {
-      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-    }
-    broadcast();
-    return { ok: true as const };
-  });
-  // Worktree diff viewer (#114). The renderer may read and save any worktree
-  // that exists on disk, in any lifecycle state — the user owns the worktree.
-  async function usableWorktree(
-    itemId: string,
-  ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
-    const m = await ensureManifest();
-    const item = m.items[itemId];
-    if (!item) return { ok: false, error: `unknown item ${itemId}` };
-    const st = await worktreeStatus(item.worktree);
-    if (!st.ok) return st;
-    if (!st.present) return { ok: false, error: "worktree folder is missing on disk" };
-    return { ok: true, path: st.path };
-  }
-
-  ipcMain.handle("skipper:orchestrator:getWorktreeChanges", async (_e, itemId: string) => {
-    const wt = await usableWorktree(itemId);
-    if (!wt.ok) return wt;
-    try {
-      const files = await listWorktreeChanges(wt.path);
-      const totals = await worktreeDiffTotals(wt.path);
-      return { ok: true as const, files, totals };
-    } catch (err) {
-      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  ipcMain.handle(
-    "skipper:orchestrator:readWorktreeFile",
-    async (_e, itemId: string, path: string, oldPath?: string) => {
-      const wt = await usableWorktree(itemId);
-      if (!wt.ok) return wt;
-      try {
-        return { ok: true as const, file: await readWorktreeFileVersions(wt.path, path, oldPath) };
-      } catch (err) {
-        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
-  ipcMain.handle(
-    "skipper:orchestrator:saveWorktreeFile",
-    async (_e, itemId: string, path: string, content: string) => {
-      const wt = await usableWorktree(itemId);
-      if (!wt.ok) return wt;
-      try {
-        await writeWorktreeFile(wt.path, path, content);
-        return { ok: true as const };
-      } catch (err) {
-        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
-  // Worktree control center (#40): location + liveness for any item with a
-  // worktree, in any lifecycle state — unlike the review-gated diff handlers.
-  ipcMain.handle("skipper:orchestrator:getWorktreeStatus", async (_e, itemId: string) => {
-    const m = await ensureManifest();
-    const item = m.items[itemId];
-    if (!item) return { ok: false as const, error: `unknown item ${itemId}` };
-    return worktreeStatus(item.worktree);
-  });
+  registerWorktreeDiffHandlers({ ipcMain, ensureManifest });
   // Open the draft PR from human-review, or push a fix round's updates (#11).
   ipcMain.handle("skipper:orchestrator:openPr", async (_e, itemId: string) => {
     await ensureManifest();
@@ -2041,28 +1832,19 @@ export function initOrchestrator(
         }
         const link = repoLinks?.repos[repoKey(item.repo)];
         if (link) {
-          const worktreePath = item.worktree.path;
-          const branch = item.worktree.branch;
-          try {
-            await withRepoGitLock(item.repo, async () => {
-              const baseRef = await resolveBaseRef(link.localPath, link.baseBranch).catch(
-                () => undefined,
-              );
-              await discardWorktree({ repoPath: link.localPath, worktreePath, branch, baseRef });
-            });
-          } catch (err) {
-            return { ok: false, error: err instanceof Error ? err.message : String(err) };
-          }
+          const res = await discardItemWorktreeUnderLock({
+            repo: item.repo,
+            localPath: link.localPath,
+            baseBranch: link.baseBranch,
+            worktreePath: item.worktree.path,
+            branch: item.worktree.branch,
+            withRepoGitLock,
+          });
+          if (!res.ok) return res;
         }
       }
 
-      let plan = item.plan;
-      if (plan?.ref) {
-        const archivedRef = await archiveStoredPlan(deps!.plansDir, plan.ref).catch(() => null);
-        if (archivedRef) plan = { ...plan, ref: archivedRef };
-      }
-      void deletePlanChat(deps!.plansDir, itemId).catch(() => {});
-      void deleteAgentChats(deps!.plansDir, itemId).catch(() => {});
+      const plan = await archivePlanAndDeleteChats(deps!.plansDir, itemId, item.plan);
 
       // Re-read after the slow git ops so a concurrent update is not clobbered.
       const current = m.items[itemId] ?? item;
@@ -2108,26 +1890,19 @@ export function initOrchestrator(
       if (item.worktree) {
         const link = repoLinks?.repos[repoKey(item.repo)];
         if (link) {
-          const worktreePath = item.worktree.path;
-          const branch = item.worktree.branch;
-          try {
-            await withRepoGitLock(item.repo, async () => {
-              const baseRef = await resolveBaseRef(link.localPath, link.baseBranch).catch(
-                () => undefined,
-              );
-              await discardWorktree({ repoPath: link.localPath, worktreePath, branch, baseRef });
-            });
-          } catch (err) {
-            return { ok: false, error: err instanceof Error ? err.message : String(err) };
-          }
+          const res = await discardItemWorktreeUnderLock({
+            repo: item.repo,
+            localPath: link.localPath,
+            baseBranch: link.baseBranch,
+            worktreePath: item.worktree.path,
+            branch: item.worktree.branch,
+            withRepoGitLock,
+          });
+          if (!res.ok) return res;
         }
       }
 
-      if (item.plan?.ref) {
-        await archiveStoredPlan(deps!.plansDir, item.plan.ref).catch(() => null);
-      }
-      void deletePlanChat(deps!.plansDir, itemId).catch(() => {});
-      void deleteAgentChats(deps!.plansDir, itemId).catch(() => {});
+      await archivePlanAndDeleteChats(deps!.plansDir, itemId, item.plan);
 
       delete m.items[itemId];
       delete m.parked[itemId];
@@ -2164,7 +1939,7 @@ export function initOrchestrator(
     setPlanSessionId,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
-    emitEvent: emitPlanningEvent,
+    emitEvent: planningStream.emit,
     plansDir: orchestratorDeps.plansDir,
     getMemoryMcp: (item) =>
       orchestratorDeps.cliBundlePath
@@ -2188,7 +1963,7 @@ export function initOrchestrator(
       updateStoredPlan(orchestratorDeps.plansDir, item.plan!.ref!, plan, "chat-apply"),
     setPlanSessionId,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
-    emitEvent: emitPlanningEvent,
+    emitEvent: planningStream.emit,
     plansDir: orchestratorDeps.plansDir,
     getMemoryMcp: (item) =>
       orchestratorDeps.cliBundlePath
@@ -2214,7 +1989,7 @@ export function initOrchestrator(
         : Promise.resolve(null),
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
     emitEvent: (kind, itemId, e) =>
-      (kind === "coder" ? emitCodingEvent : emitReviewEvent)(itemId, e),
+      (kind === "coder" ? codingStream.emit : reviewStream.emit)(itemId, e),
     plansDir: orchestratorDeps.plansDir,
     getMemoryMcp: (item) =>
       orchestratorDeps.cliBundlePath
@@ -2233,7 +2008,7 @@ export function initOrchestrator(
     getRepoSettings: repoOrch,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
-    emitEvent: emitPlanningEvent,
+    emitEvent: planningStream.emit,
     plansDir: orchestratorDeps.plansDir,
     setPlanRescoring,
     completeRescore,
@@ -2259,7 +2034,7 @@ export function initOrchestrator(
     getRepoPriority: (repo) => repoOrch(repo).priority,
     getRepoWipLimit: (repo) => repoOrch(repo).wipLimit,
     getRepoSettings: repoOrch,
-    emitEvent: emitCodingEvent,
+    emitEvent: codingStream.emit,
     getMemoryMcp: (item) =>
       orchestratorDeps.cliBundlePath
         ? { cliBundlePath: orchestratorDeps.cliBundlePath, repo: item.repo }
@@ -2289,7 +2064,7 @@ export function initOrchestrator(
       item.coderReport?.ref
         ? readStoredCoderReport(orchestratorDeps.plansDir, item.coderReport.ref)
         : Promise.resolve(null),
-    emitEvent: emitReviewEvent,
+    emitEvent: reviewStream.emit,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getRepoSettings: repoOrch,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
