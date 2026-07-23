@@ -419,7 +419,6 @@ const en = {
     noBody: "No issue body available for this item.",
   },
   worktree: {
-    openTerminal: "Open terminal",
     resumeClaude: "Resume Claude session",
     allFiles: "All files",
     changedOnly: "Changed only",
@@ -894,7 +893,6 @@ const it: typeof en = {
     noBody: "Nessuna descrizione disponibile per questo item.",
   },
   worktree: {
-    openTerminal: "Apri terminale",
     resumeClaude: "Riprendi la sessione Claude",
     allFiles: "Tutti i file",
     changedOnly: "Solo modificati",
@@ -1371,7 +1369,6 @@ const fr: typeof en = {
     noBody: "Aucune description disponible pour cet élément.",
   },
   worktree: {
-    openTerminal: "Ouvrir un terminal",
     resumeClaude: "Reprendre la session Claude",
     allFiles: "Tous les fichiers",
     changedOnly: "Modifiés seulement",
@@ -1847,7 +1844,6 @@ const es: typeof en = {
     noBody: "No hay descripción disponible para este elemento.",
   },
   worktree: {
-    openTerminal: "Abrir terminal",
     resumeClaude: "Reanudar la sesión de Claude",
     allFiles: "Todos los archivos",
     changedOnly: "Solo cambiados",
