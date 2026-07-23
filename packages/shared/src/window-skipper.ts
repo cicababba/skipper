@@ -22,6 +22,7 @@ import type {
   UntrackItemResult,
   UpdatePlanResult,
   WorktreeChangesResult,
+  WorktreeDiffResult,
   WorktreeFileResult,
   WorktreeStatusResult,
 } from "./orchestrator";
@@ -98,6 +99,9 @@ export interface CliStatus {
   /** True when target exists but points at the wrong place (e.g. app moved). */
   stale: boolean;
 }
+
+/** Markdown export save-dialog result (#216). canceled = user dismissed the dialog. */
+export type SaveMarkdownResult = { ok: true; canceled?: boolean } | { ok: false; error: string };
 
 export interface UpdateState {
   /** Why the updater is or isn't running. */
@@ -273,8 +277,13 @@ export interface WindowSkipper {
       content: string,
     ) => Promise<SaveWorktreeFileResult>;
     getWorktreeStatus: (itemId: string) => Promise<WorktreeStatusResult>;
+    getWorktreeDiff: (itemId: string) => Promise<WorktreeDiffResult>;
     cleanWorktree: (itemId: string) => Promise<CleanWorktreeResult>;
     onStateChanged: (callback: (state: OrchestratorState) => void) => () => void;
+  };
+  /** Markdown export (#216): save an artifact/dossier to a user-chosen .md file. */
+  export: {
+    saveMarkdown: (defaultFilename: string, content: string) => Promise<SaveMarkdownResult>;
   };
   /** Coding runner progress stream (#9). */
   coding: {

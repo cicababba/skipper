@@ -548,6 +548,11 @@ export type WorktreeFileResult =
 
 export type SaveWorktreeFileResult = { ok: true } | { ok: false; error: string };
 
+// Markdown export (#216): the worktree's HEAD diff as a unified patch string,
+// exposed to the renderer for the worktree/dossier export. Carries only the diff
+// text — DiffStats is a @skipper/core type shared cannot import.
+export type WorktreeDiffResult = { ok: true; diff: string } | { ok: false; error: string };
+
 // Worktree control center (#40): worktree location + liveness for any tracked
 // item that has one, regardless of lifecycle state.
 

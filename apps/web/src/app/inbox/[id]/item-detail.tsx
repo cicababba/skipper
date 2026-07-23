@@ -28,6 +28,7 @@ import { ItemChatProvider, useItemChat, type ChatKind } from "./item-chat";
 import { ChatDrawer, ChatFab } from "./chat-drawer";
 import { PlanChatPanel } from "./plan-chat";
 import { AgentChatPanel } from "./agent-chat";
+import { ExportControls } from "./export-controls";
 
 type DetailTab = "overview" | "plan" | "review" | "worktree";
 
@@ -195,6 +196,10 @@ function ItemDetailShell() {
             </button>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
+            <ExportControls
+              item={item}
+              artifact={activeTab === "overview" ? "dossier" : activeTab}
+            />
             {showTerminal && (
               <button
                 onClick={() => {

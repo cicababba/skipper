@@ -34,8 +34,10 @@ import {
   type CliStatus,
   type FsEntry,
 } from "@skipper/shared";
+import { writeFile as writeFileAsync } from "node:fs/promises";
 import { registerGitHandlers } from "./git";
 import { registerTerminalHandlers, type TerminalApi } from "./terminal";
+import { registerExportHandlers } from "./export-ipc";
 import { assertInsideWorktrees as assertInsideWorktreesRoot, looksBinary } from "./fs-guard";
 
 // Set once the lazy updater bundle loads; lets auth changes refresh the
@@ -522,6 +524,13 @@ registerGitHandlers(ipcMain);
 const publicTerminal: TerminalApi = registerTerminalHandlers({
   ipcMain,
   getMainWindow: () => mainWindow,
+});
+
+registerExportHandlers({
+  ipcMain,
+  getMainWindow: () => mainWindow,
+  showSaveDialog: (w, o) => dialog.showSaveDialog(w, o),
+  writeFile: (p, c) => writeFileAsync(p, c, "utf8"),
 });
 
 function killAllPtySessions(): void {
