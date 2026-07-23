@@ -23,10 +23,12 @@ export {
   discussCoder,
   distillCoderChatInstructions,
   renderCoderReportBlock,
+  renderReviewBlock,
 } from "./chat";
 export type {
   CoderChatContext,
   CoderChatInstruction,
+  CoderChatReviewInfo,
   DiscussCoderOptions,
   DistillCoderChatOptions,
 } from "./chat";

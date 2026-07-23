@@ -420,6 +420,110 @@ describe("reviewer driver", () => {
   });
 });
 
+// #205: the reviewer feeds the prior round into the critic and records resolutions.
+describe("reviewer continuity (#205)", () => {
+  function capturingPriorCritic(
+    verdict: "approve" | "concerns" | "reject",
+    objections: CriticObjection[] = [],
+    resolved?: CriticObjection[],
+  ) {
+    let seenPrior: { objections: CriticObjection[]; deliveredToCoder: boolean } | undefined;
+    const critic = vi.fn(async (args: { prior?: typeof seenPrior }) => {
+      seenPrior = args.prior;
+      return { score: 1, verdict, objections, ...(resolved ? { resolved } : {}) };
+    }) as unknown as typeof critiqueDiff;
+    return { critic, get: () => seenPrior };
+  }
+
+  const priorObjection: CriticObjection = { kind: "risk", detail: "prior risk", blocking: true };
+
+  it("chained fix round hands the priors as deliveredToCoder true", async () => {
+    const h = makeHarness();
+    const { critic, get } = capturingPriorCritic("approve");
+    initReviewer(h.deps, critic);
+    h.items.set(
+      "github:1",
+      makeItem("agent-review", {
+        rounds: 1,
+        outcome: "reject",
+        objections: [priorObjection],
+        pendingObjections: [priorObjection],
+        at: "2026-07-13T00:00:00.000Z",
+      }),
+    );
+    pokeReviewer();
+    await settle();
+    expect(get()).toEqual({ objections: [priorObjection], deliveredToCoder: true });
+  });
+
+  it("a chat-apply re-entry (objections, no pending) hands priors as deliveredToCoder false", async () => {
+    const h = makeHarness({ getSettings: settings({ review: "on" }) });
+    const { critic, get } = capturingPriorCritic("approve");
+    initReviewer(h.deps, critic);
+    h.items.set(
+      "github:1",
+      makeItem("agent-review", {
+        rounds: 1,
+        outcome: "concerns",
+        objections: [priorObjection],
+        at: "2026-07-13T00:00:00.000Z",
+      }),
+    );
+    pokeReviewer();
+    await settle();
+    expect(get()).toEqual({ objections: [priorObjection], deliveredToCoder: false });
+  });
+
+  it("passes no prior when the previous outcome was unavailable", async () => {
+    const h = makeHarness({ getSettings: settings({ review: "on" }) });
+    const { critic, get } = capturingPriorCritic("approve");
+    initReviewer(h.deps, critic);
+    h.items.set(
+      "github:1",
+      makeItem("agent-review", {
+        rounds: 0,
+        outcome: "unavailable",
+        objections: [priorObjection],
+        at: "2026-07-13T00:00:00.000Z",
+      }),
+    );
+    pokeReviewer();
+    await settle();
+    expect(get()).toBeUndefined();
+  });
+
+  it("passes no prior on a first review with no prior objections", async () => {
+    const h = makeHarness({ getSettings: settings({ review: "on" }) });
+    const { critic, get } = capturingPriorCritic("approve");
+    initReviewer(h.deps, critic);
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+    expect(get()).toBeUndefined();
+  });
+
+  it("records resolvedObjections on the completed review", async () => {
+    const h = makeHarness();
+    const resolved: CriticObjection = { kind: "risk", detail: "prior risk", blocking: true };
+    const { critic } = capturingPriorCritic("approve", [], [resolved]);
+    initReviewer(h.deps, critic);
+    h.items.set(
+      "github:1",
+      makeItem("agent-review", {
+        rounds: 1,
+        outcome: "reject",
+        objections: [priorObjection],
+        pendingObjections: [priorObjection],
+        at: "2026-07-13T00:00:00.000Z",
+      }),
+    );
+    pokeReviewer();
+    await settle();
+    expect(h.completions[0].to).toBe("human-review");
+    expect(h.completions[0].review.resolvedObjections).toEqual([resolved]);
+  });
+});
+
 // #111: the reviewer mints a per-round claude-cli session, persists it before the
 // critic runs, and stamps it on the AgentReview it completes.
 describe("reviewer session persistence (#111)", () => {

@@ -147,6 +147,17 @@ async function run(itemId: string): Promise<void> {
     // is a signal.
     const chained = (item.review?.pendingObjections?.length ?? 0) > 0;
     const round = chained ? item.review!.rounds + 1 : 1;
+    // Priors flow whenever the last outcome was a real verdict carrying objections —
+    // even on a chat-apply re-entry that reset the round counter (#205). chained tells
+    // the prompt whether the coder was explicitly instructed to fix them.
+    const prevReview = item.review;
+    const prior =
+      prevReview &&
+      prevReview.outcome !== "skipped" &&
+      prevReview.outcome !== "unavailable" &&
+      (prevReview.objections?.length ?? 0) > 0
+        ? { objections: prevReview.objections!, deliveredToCoder: chained }
+        : undefined;
     const now = () => new Date().toISOString();
     const emit = deps.emitEvent;
 
@@ -247,6 +258,7 @@ async function run(itemId: string): Promise<void> {
           acceptance: stored?.plan.acceptance ?? [],
           ...(storedReport ? { report: storedReport.report } : {}),
           ...(sessionId ? { session: { id: sessionId, cwd: wtPath! } } : {}),
+          ...(prior ? { prior } : {}),
         },
         provider,
       );
@@ -283,6 +295,7 @@ async function run(itemId: string): Promise<void> {
           rounds: round,
           outcome: signal.verdict,
           objections: signal.objections,
+          ...(signal.resolved?.length ? { resolvedObjections: signal.resolved } : {}),
           ...(sessionId ? { sessionId } : {}),
           at: now(),
         },
@@ -303,6 +316,7 @@ async function run(itemId: string): Promise<void> {
           rounds: round,
           outcome: signal.verdict,
           objections: signal.objections,
+          ...(signal.resolved?.length ? { resolvedObjections: signal.resolved } : {}),
           ...(sessionId ? { sessionId } : {}),
           at: now(),
         },
@@ -322,6 +336,7 @@ async function run(itemId: string): Promise<void> {
           outcome: signal.verdict,
           objections: signal.objections,
           pendingObjections: signal.objections,
+          ...(signal.resolved?.length ? { resolvedObjections: signal.resolved } : {}),
           ...(sessionId ? { sessionId } : {}),
           at: now(),
         },

@@ -1,8 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
-import type { IssuePlan } from "@skipper/shared";
+import type { CriticObjection, IssuePlan } from "@skipper/shared";
 import type { LLMProviderInterface, LLMResponse } from "../src/llm/provider";
 import type { PlanIssueInput } from "../src/planner";
-import { buildCriticPrompt, critiquePlan, runCritic, CriticError } from "../src/confidence";
+import {
+  buildCriticPrompt,
+  critiquePlan,
+  runCritic,
+  CriticError,
+  type CriticPriorRound,
+} from "../src/confidence";
 
 const ISSUE: PlanIssueInput = {
   key: "42",
@@ -108,5 +114,98 @@ describe("runCritic / critiquePlan", () => {
     });
     expect(prompt).toContain("plan");
     expect(prompt).toContain("--- Plan ---");
+  });
+});
+
+// #205: a continuity round classifies its objections against the prior round.
+describe("runCritic continuity (#205)", () => {
+  const priorObjections: CriticObjection[] = [
+    { kind: "risk", detail: "P-one detail", blocking: true },
+    { kind: "acceptance-gap", detail: "P-two detail", blocking: false },
+    { kind: "other", detail: "P-three detail", blocking: false },
+  ];
+
+  const diffInput = (prior?: CriticPriorRound) => ({
+    artifactKind: "diff" as const,
+    artifactLabel: "diff for PR #7",
+    artifact: "--- a/x.ts\n+++ b/x.ts",
+    context: "Issue #7: fix x",
+    ...(prior ? { prior } : {}),
+  });
+
+  it("hands the continuity schema to askStructured only when a prior is set", async () => {
+    const { llm: base, askStructured: baseAsk } = fakeLLM({ verdict: "approve", objections: [] });
+    await runCritic(diffInput(), base);
+    const baseSchema = baseAsk.mock.calls[0][1] as { properties: Record<string, unknown> };
+    expect(baseSchema.properties).not.toHaveProperty("resolved");
+
+    const { llm, askStructured } = fakeLLM({ verdict: "approve", objections: [], resolved: [] });
+    await runCritic(diffInput({ objections: priorObjections, deliveredToCoder: true }), llm);
+    const schema = askStructured.mock.calls[0][1] as { properties: Record<string, unknown> };
+    expect(schema.properties).toHaveProperty("resolved");
+  });
+
+  it("renders the P-labelled priors plus the status/resolved instructions", async () => {
+    const { llm, askStructured } = fakeLLM({ verdict: "approve", objections: [], resolved: [] });
+    await runCritic(diffInput({ objections: priorObjections, deliveredToCoder: true }), llm);
+    const prompt = askStructured.mock.calls[0][0] as string;
+    expect(prompt).toContain("--- Previous review round ---");
+    expect(prompt).toContain("P1. [risk] (blocking) P-one detail");
+    expect(prompt).toContain("P2. [acceptance-gap] P-two detail");
+    expect(prompt).toContain('status: "persisting"');
+    expect(prompt).toContain('In "resolved", list the labels');
+  });
+
+  it("switches the priors phrasing on deliveredToCoder", async () => {
+    const { llm: handed, askStructured: handedAsk } = fakeLLM({
+      verdict: "approve",
+      objections: [],
+      resolved: [],
+    });
+    await runCritic(diffInput({ objections: priorObjections, deliveredToCoder: true }), handed);
+    expect(handedAsk.mock.calls[0][0] as string).toContain("specifically instructed to address");
+
+    const { llm: notHanded, askStructured: notHandedAsk } = fakeLLM({
+      verdict: "approve",
+      objections: [],
+      resolved: [],
+    });
+    await runCritic(diffInput({ objections: priorObjections, deliveredToCoder: false }), notHanded);
+    expect(notHandedAsk.mock.calls[0][0] as string).toContain("NOT explicitly handed to the coder");
+  });
+
+  it("maps resolved labels tolerantly: first digit, 1-based, bounded, deduped", async () => {
+    const { llm } = fakeLLM({
+      verdict: "concerns",
+      objections: [],
+      resolved: ["P1", "p2", "3.", "P99", "P1", "nonsense"],
+    });
+    const signal = await runCritic(
+      diffInput({ objections: priorObjections, deliveredToCoder: true }),
+      llm,
+    );
+    // P99 (out of bounds) and "nonsense" (no digit) dropped; duplicate P1 deduped.
+    expect(signal.resolved).toEqual([priorObjections[0], priorObjections[1], priorObjections[2]]);
+  });
+
+  it("keeps the objection status through to the signal", async () => {
+    const { llm } = fakeLLM({
+      verdict: "reject",
+      objections: [{ kind: "risk", detail: "still here", blocking: true, status: "persisting" }],
+      resolved: [],
+    });
+    const signal = await runCritic(
+      diffInput({ objections: priorObjections, deliveredToCoder: true }),
+      llm,
+    );
+    expect(signal.objections[0]).toMatchObject({ status: "persisting" });
+    expect(signal.resolved).toEqual([]);
+  });
+
+  it("throws CriticError on a malformed continuity reply", async () => {
+    const { llm } = fakeLLM({ verdict: "approve", objections: [], resolved: "not-an-array" });
+    await expect(
+      runCritic(diffInput({ objections: priorObjections, deliveredToCoder: true }), llm),
+    ).rejects.toThrow(CriticError);
   });
 });

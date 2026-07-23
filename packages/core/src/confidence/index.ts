@@ -7,8 +7,9 @@ export {
   buildCriticPrompt,
   CriticError,
   CriticVerdictSchema,
+  CriticContinuityVerdictSchema,
 } from "./critic";
-export type { CriticInput } from "./critic";
+export type { CriticInput, CriticPriorRound } from "./critic";
 export { computeConfidence, reachableBand, DEFAULT_CONFIDENCE_WEIGHTS } from "./score";
 export type { ComputeConfidenceOptions } from "./score";
 export { resolveGate, DEFAULT_CONFIDENCE_THRESHOLDS } from "./gate";
