@@ -14,6 +14,7 @@
   --accent-hover: #8BB4FF;
   --sidebar: #0F131A;
   --sidebar-border: #232A34;
+  --terminal-bg: #0F131A;
   --code-bg: #0E1116;
 
   --success: #46D49E;
@@ -43,6 +44,7 @@
   --accent-hover: #264FB8;
   --sidebar: #E5E9EF;
   --sidebar-border: #CDD5DE;
+  --terminal-bg: #C4CDD9;
   --code-bg: #F6F8FA;
 
   --success: #0E7A55;  --success-bg: #D8F3E6;

@@ -3,15 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ExternalLink, EyeOff, SquareTerminal } from "lucide-react";
-import {
-  displayKey,
-  slugKey,
-  type TrackedItem,
-  type WorktreeStatusResult,
-} from "@skipper/shared";
+import { ArrowLeft, EyeOff } from "lucide-react";
+import { displayKey, type TrackedItem } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
-import { useTerminal } from "@/lib/terminal-context";
 import { useT } from "@/lib/app-i18n";
 import { repoKey } from "@/lib/inbox/model";
 import { resolveBackHref } from "@/lib/inbox/nav";
@@ -91,7 +85,6 @@ export function ItemDetailView() {
 function ItemDetailShell() {
   const id = useItemId();
   const { state, untrackItem } = useOrchestrator();
-  const { openTerminal } = useTerminal();
   const { t } = useT();
   const router = useRouter();
   const backHref = resolveBackHref(useSearchParams().get("from"));
@@ -108,21 +101,6 @@ function ItemDetailShell() {
 
   const [tab, setTab] = useState<DetailTab | null>(null);
   if (tab === null && item) setTab(defaultTabFor(item));
-
-  const [wtStatus, setWtStatus] = useState<Extract<WorktreeStatusResult, { ok: true }> | null>(
-    null,
-  );
-  const worktreePath = item?.worktree?.path;
-  useEffect(() => {
-    if (!worktreePath || !window.skipper) return;
-    let cancelled = false;
-    window.skipper.orchestrator.getWorktreeStatus(id).then((result) => {
-      if (!cancelled) setWtStatus(result.ok ? result : null);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [id, worktreePath]);
 
   // Per-interlocutor drawer/seen (localStorage) + live message count. Plan reuses
   // the pre-#170 keys so an in-flight discussion keeps its badge across the lift.
@@ -154,9 +132,6 @@ function ItemDetailShell() {
   const activeTab = tab ?? defaultTabFor(item);
   const tabs = VISIBLE_TABS.filter((tk) => tk !== "worktree" || item.worktree != null);
 
-  const terminalReady = wtStatus?.present === true ? wtStatus : null;
-  const showTerminal = item.worktree != null;
-
   const interlocutor = interlocutorFor(activeTab, item, planAvailable);
   const chatByKind: Record<ChatKind, { open: string; setOpen: typeof setPlanOpen; count: number; seen: string }> = {
     plan: { open: planOpen, setOpen: setPlanOpen, count: planCount, seen: planSeen },
@@ -187,32 +162,12 @@ function ItemDetailShell() {
               {displayKey(item.key)}
             </span>
             <h1 className="text-xl font-semibold tracking-tight min-w-0">{item.title}</h1>
-            <button
-              onClick={() => void window.skipper?.openExternal(item.url)}
-              className="p-1 rounded text-muted hover:text-accent transition-colors shrink-0 self-center"
-              title={item.url}
-            >
-              <ExternalLink size={14} />
-            </button>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <ExportControls
               item={item}
               artifact={activeTab === "overview" ? "dossier" : activeTab}
             />
-            {showTerminal && (
-              <button
-                onClick={() => {
-                  if (terminalReady)
-                    void openTerminal(terminalReady.path, `issue-${slugKey(item.key)}`);
-                }}
-                disabled={!terminalReady}
-                className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-              >
-                <SquareTerminal size={13} />
-                {t.inbox.worktree.openTerminal}
-              </button>
-            )}
             <button
               onClick={() => {
                 void confirmAndUntrack(item, untrackItem, t).then((done) => {

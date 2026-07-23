@@ -7,7 +7,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { useTerminal, type TerminalSession } from "@/lib/terminal-context";
 import { useStoredState } from "@/lib/use-stored-state";
 import { useTheme } from "@/lib/theme-context";
-import { cssVar } from "@/lib/theme-colors";
+import { ansiPalette, cssVar, type ThemeName } from "@/lib/theme-colors";
 import "@xterm/xterm/css/xterm.css";
 
 // Terminal panel (public core — issue #18). One xterm instance per session,
@@ -28,13 +28,21 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function readXtermTheme() {
+function readXtermTheme(theme: ThemeName) {
   return {
-    background: cssVar("--sidebar"),
+    background: cssVar("--terminal-bg"),
     foreground: cssVar("--foreground"),
     cursor: cssVar("--foreground"),
     selectionBackground: hexToRgba(cssVar("--accent") || "#6C9CFC", 0.35),
+    ...ansiPalette(theme),
   };
+}
+
+function safeFit(fit: FitAddon, el: HTMLElement): boolean {
+  // Zero-size while hidden — fitting then would corrupt the pty size.
+  if (el.clientWidth === 0 || el.clientHeight === 0) return false;
+  fit.fit();
+  return true;
 }
 
 function XtermView({ session, visible }: { session: TerminalSession; visible: boolean }) {
@@ -42,6 +50,10 @@ function XtermView({ session, visible }: { session: TerminalSession; visible: bo
   const fitRef = useRef<FitAddon | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const { theme } = useTheme();
+  const themeRef = useRef(theme);
+  useEffect(() => {
+    themeRef.current = theme;
+  }, [theme]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -53,29 +65,37 @@ function XtermView({ session, visible }: { session: TerminalSession; visible: bo
       cursorBlink: true,
       fontSize: 12.5,
       fontFamily: styles.fontFamily || "monospace",
-      theme: readXtermTheme(),
+      theme: readXtermTheme(themeRef.current),
       scrollback: 5000,
     });
     termRef.current = term;
     const fit = new FitAddon();
     fitRef.current = fit;
     term.loadAddon(fit);
-    term.open(el);
-    fit.fit();
-    api.resize(session.id, term.cols, term.rows);
+    // Defer open() one frame: xterm 5.5.0's Viewport schedules an uncancelled
+    // setTimeout(syncScrollArea) in its constructor, which reads dimensions off
+    // the (by-then-disposed) renderer and throws on StrictMode's throwaway mount.
+    // Opening only after the container has size skips that mount entirely and
+    // avoids mis-measuring while display:none.
+    let opened = false;
+    const openAndFit = () => {
+      if (el.clientWidth === 0 || el.clientHeight === 0) return;
+      if (!opened) {
+        opened = true;
+        term.open(el);
+      }
+      if (safeFit(fit, el)) api.resize(session.id, term.cols, term.rows);
+    };
+    const initialFit = requestAnimationFrame(openAndFit);
 
     const offData = api.onData(session.id, (data) => term.write(data));
     const onInput = term.onData((data) => api.write(session.id, data));
 
-    const observer = new ResizeObserver(() => {
-      // Zero-size while hidden — fitting then would corrupt the pty size.
-      if (el.clientWidth === 0 || el.clientHeight === 0) return;
-      fit.fit();
-      api.resize(session.id, term.cols, term.rows);
-    });
+    const observer = new ResizeObserver(openAndFit);
     observer.observe(el);
 
     return () => {
+      cancelAnimationFrame(initialFit);
       observer.disconnect();
       offData();
       onInput.dispose();
@@ -86,14 +106,15 @@ function XtermView({ session, visible }: { session: TerminalSession; visible: bo
   }, [session.id]);
 
   useEffect(() => {
-    if (visible) fitRef.current?.fit();
+    const el = containerRef.current;
+    if (visible && el && fitRef.current) safeFit(fitRef.current, el);
   }, [visible]);
 
   useEffect(() => {
-    if (termRef.current) termRef.current.options.theme = readXtermTheme();
+    if (termRef.current) termRef.current.options.theme = readXtermTheme(theme);
   }, [theme]);
 
-  return <div ref={containerRef} className={`h-full w-full ${visible ? "" : "hidden"}`} />;
+  return <div ref={containerRef} className={`h-full w-full font-mono ${visible ? "" : "hidden"}`} />;
 }
 
 function clampHeight(raw: string): number {
