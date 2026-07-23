@@ -9,6 +9,7 @@ import { CliInstallSection } from "@/components/cli-install-section";
 import { UpdatesSection } from "@/components/updates-section";
 import { LanguageSection } from "@/components/language-section";
 import { ModelSelect } from "@/components/model-select";
+import { AppVersionFooter } from "@/components/app-version-footer";
 import { useT } from "@/lib/app-i18n";
 import { useAuth } from "@/lib/auth-context";
 import { getAppSettings, updateAppSettings } from "@/lib/app-settings";
@@ -164,6 +165,8 @@ export default function SettingsPage() {
             </span>
           )}
         </div>
+
+        <AppVersionFooter />
 
       </div>
     </div>
