@@ -354,6 +354,14 @@ const en = {
     review: "Review",
     worktree: "Worktree",
   },
+  // Markdown export (#216): tab-aware Copy/Save controls in the detail header.
+  exportControls: {
+    copy: "Copy as Markdown",
+    copied: "Copied",
+    save: "Save as .md",
+    saved: "Saved",
+    failed: "Export failed",
+  },
   // Per-tab agent chat (#170): shared strings across the plan / coder / reviewer
   // interlocutors. Panels reuse inbox.plan.chat.* for send/thinking/cancelled/etc.
   chat: {
@@ -823,6 +831,13 @@ const it: typeof en = {
     plan: "Piano",
     review: "Review",
     worktree: "Worktree",
+  },
+  exportControls: {
+    copy: "Copia come Markdown",
+    copied: "Copiato",
+    save: "Salva come .md",
+    saved: "Salvato",
+    failed: "Esportazione fallita",
   },
   chat: {
     planTitle: "Chat sul piano",
@@ -1294,6 +1309,13 @@ const fr: typeof en = {
     review: "Review",
     worktree: "Worktree",
   },
+  exportControls: {
+    copy: "Copier en Markdown",
+    copied: "Copié",
+    save: "Enregistrer en .md",
+    saved: "Enregistré",
+    failed: "Échec de l'export",
+  },
   chat: {
     planTitle: "Discussion du plan",
     reviewerTitle: "Discussion de la review",
@@ -1762,6 +1784,13 @@ const es: typeof en = {
     plan: "Plan",
     review: "Review",
     worktree: "Worktree",
+  },
+  exportControls: {
+    copy: "Copiar como Markdown",
+    copied: "Copiado",
+    save: "Guardar como .md",
+    saved: "Guardado",
+    failed: "Error al exportar",
   },
   chat: {
     planTitle: "Chat del plan",

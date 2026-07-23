@@ -1,6 +1,7 @@
 import type { IpcMain } from "electron";
 import type { OrchestratorManifest } from "@skipper/core";
 import {
+  captureWorktreeDiff,
   listWorktreeChanges,
   readWorktreeFileVersions,
   worktreeDiffTotals,
@@ -68,6 +69,18 @@ export function registerWorktreeDiffHandlers(deps: WorktreeDiffIpcDeps): void {
   );
   // Worktree control center (#40): location + liveness for any item with a
   // worktree, in any lifecycle state — unlike the review-gated diff handlers.
+  // Markdown export (#216): the worktree's HEAD diff as a unified patch, for the
+  // worktree/dossier export. Same usableWorktree gate as the diff viewer.
+  ipcMain.handle("skipper:orchestrator:getWorktreeDiff", async (_e, itemId: string) => {
+    const wt = await usableWorktree(itemId);
+    if (!wt.ok) return wt;
+    try {
+      const { diff } = await captureWorktreeDiff(wt.path);
+      return { ok: true as const, diff };
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
   ipcMain.handle("skipper:orchestrator:getWorktreeStatus", async (_e, itemId: string) => {
     const m = await ensureManifest();
     const item = m.items[itemId];

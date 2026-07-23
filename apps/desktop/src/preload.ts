@@ -30,6 +30,7 @@ import type {
   RepoSettingsRow,
   RepoUnlinkResult,
   ResumeRiteAction,
+  SaveMarkdownResult,
   SaveWorktreeFileResult,
   SetRepoBaseBranchResult,
   SolutionRecord,
@@ -41,6 +42,7 @@ import type {
   UpdateState,
   WindowSkipper,
   WorktreeChangesResult,
+  WorktreeDiffResult,
   WorktreeFileResult,
   WorktreeStatusResult,
 } from "@skipper/shared";
@@ -224,6 +226,8 @@ const api = {
       ipcRenderer.invoke("skipper:orchestrator:saveWorktreeFile", itemId, path, content),
     getWorktreeStatus: (itemId: string): Promise<WorktreeStatusResult> =>
       ipcRenderer.invoke("skipper:orchestrator:getWorktreeStatus", itemId),
+    getWorktreeDiff: (itemId: string): Promise<WorktreeDiffResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:getWorktreeDiff", itemId),
     cleanWorktree: (itemId: string): Promise<CleanWorktreeResult> =>
       ipcRenderer.invoke("skipper:orchestrator:cleanWorktree", itemId),
     onStateChanged: (callback: (state: OrchestratorState) => void) => {
@@ -326,6 +330,12 @@ const api = {
       ipcRenderer.invoke("skipper:memory:feedback", itemId, phase, id, vote),
     delete: (id: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("skipper:memory:delete", id),
+  },
+
+  // Markdown export (issue #216): save an artifact/dossier to a user-chosen .md file.
+  export: {
+    saveMarkdown: (defaultFilename: string, content: string): Promise<SaveMarkdownResult> =>
+      ipcRenderer.invoke("skipper:export:saveMarkdown", defaultFilename, content),
   },
 
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke("skipper:openExternal", url),
