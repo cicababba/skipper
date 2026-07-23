@@ -58,8 +58,12 @@
     ],
     "extraResources": [
       {
-        "from": "../../apps/web/.next/standalone",
+        "from": "../../apps/web/out",
         "to": "web"
+      },
+      {
+        "from": "build/cli-runtime",
+        "to": "cli-runtime"
       },
       {
         "from": "build/cli",

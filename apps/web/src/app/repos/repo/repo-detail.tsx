@@ -5,8 +5,9 @@ import Link from "next/link";
 import { ExternalLink, FolderGit2, Settings as SettingsIcon } from "lucide-react";
 import type { RepoSettingsRow } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
-import { Section } from "@/app/inbox/[id]/plan-sections";
+import { Section } from "@/app/inbox/item/plan-sections";
 import { InboxView } from "@/app/inbox/inbox-view";
+import { repoSettingsHref } from "@/lib/inbox/nav";
 import { MemoryBrowser } from "./memory-browser";
 import { useRepoParams } from "./use-repo-params";
 
@@ -44,7 +45,7 @@ export function RepoDetailView() {
           <ExternalLink size={15} />
         </button>
         <Link
-          href={`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/settings`}
+          href={repoSettingsHref({ owner, name })}
           className="text-muted hover:text-accent transition-colors"
           title={rp.settings}
         >

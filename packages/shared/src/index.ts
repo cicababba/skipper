@@ -1,4 +1,5 @@
 export * from "./types";
+export * from "./settings";
 export * from "./account-key";
 export * from "./constants";
 export * from "./base-url";

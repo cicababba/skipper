@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   AgentChatKind,
+  AppSettings,
+  AppSettingsPatch,
   ArchiveItemResult,
   CleanWorktreeResult,
   CloseItemOnTrackerResult,
@@ -61,6 +63,13 @@ const api = {
 
   getBootstrap: () => ipcRenderer.invoke("skipper:getBootstrap"),
   selectDirectory: () => ipcRenderer.invoke("skipper:selectDirectory"),
+
+  // App settings (settings.json) over IPC (#208) — get returns a masked key.
+  settings: {
+    get: (): Promise<AppSettings> => ipcRenderer.invoke("skipper:settings:get"),
+    set: (patch: AppSettingsPatch): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("skipper:settings:set", patch),
+  },
 
   session: {
     run: (mode: "save" | "resume", projectDir: string): Promise<{ ok: boolean; output: string }> =>

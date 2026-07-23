@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
 import type {
   PlanChatMessage,
   StoredPlan,
@@ -13,6 +12,7 @@ import { buildTimeline } from "@/lib/inbox/timeline";
 import { OverviewIssueBody } from "./overview-issue-body";
 import { OverviewTimeline } from "./overview-timeline";
 import { NowRail } from "./now-rail";
+import { useItemId } from "./use-item-id";
 
 type Ready = Extract<WorktreeStatusResult, { ok: true }>;
 
@@ -20,8 +20,7 @@ type Ready = Extract<WorktreeStatusResult, { ok: true }>;
 // left, the "Now" rail on the right (#167 two-pane grammar). Tab state lives in
 // the shell, so cross-tab jumps arrive as onNavigateTab.
 export function OverviewDetailView({ onNavigateTab }: { onNavigateTab: (tab: "plan" | "review") => void }) {
-  const params = useParams();
-  const id = decodeURIComponent(String(params.id));
+  const id = useItemId();
   const { state } = useOrchestrator();
   const item = state?.items.find((i) => i.id === id);
 

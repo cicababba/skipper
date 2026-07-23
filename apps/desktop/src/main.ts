@@ -5,13 +5,11 @@ import {
   Menu,
   ipcMain,
   dialog,
-  utilityProcess,
-  UtilityProcess,
+  protocol,
   powerMonitor,
   powerSaveBlocker,
   safeStorage,
 } from "electron";
-import { createServer } from "node:net";
 import { join, dirname, resolve } from "node:path";
 import {
   existsSync,
@@ -38,6 +36,8 @@ import { writeFile as writeFileAsync } from "node:fs/promises";
 import { registerGitHandlers } from "./git";
 import { registerTerminalHandlers, type TerminalApi } from "./terminal";
 import { registerExportHandlers } from "./export-ipc";
+import { registerSettingsHandlers } from "./settings-ipc";
+import { registerAppProtocol } from "./app-protocol";
 import { assertInsideWorktrees as assertInsideWorktreesRoot, looksBinary } from "./fs-guard";
 
 // Set once the lazy updater bundle loads; lets auth changes refresh the
@@ -136,6 +136,23 @@ const DEV_RELOAD_DELAY_MS = 500;
 // Must be set before app is ready so the menu bar shows "Skipper" not "Electron"
 app.setName("Skipper");
 
+// The static-export web UI is served over app://skipper (#208). The scheme must
+// be registered as privileged before app ready so the app-router client nav
+// (RSC fetches, Link prefetch) and code caching work like a normal https origin.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "app",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+      codeCache: true,
+    },
+  },
+]);
+
 // Dev-only: Linux boxes without a Secret Service (e.g. WSL) have no
 // safeStorage backend, so token persistence is refused and every restart
 // logs the account out. The "basic" store is weak obfuscation — acceptable
@@ -175,10 +192,6 @@ if (!gotInstanceLock) {
     }
   });
 }
-let nextServer: UtilityProcess | null = null;
-let serverUrl: string | null = null;
-let currentPort: number | null = null;
-let lastServerOutput = "";
 let authManager: AuthManager | null = null;
 
 function getDataDir(): string {
@@ -193,142 +206,15 @@ function getLlmSettingsDir(): string {
   return isDev ? join(__dirname, "..", "..", "..", "data") : getDataDir();
 }
 
-function findFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = createServer();
-    srv.unref();
-    srv.on("error", reject);
-    srv.listen(0, () => {
-      const addr = srv.address();
-      if (addr && typeof addr === "object") {
-        const port = addr.port;
-        srv.close(() => resolve(port));
-      } else {
-        reject(new Error("Failed to get free port"));
-      }
-    });
-  });
-}
-
-async function startNextServer(reusePort = false): Promise<string> {
-  const port = reusePort && currentPort ? currentPort : await findFreePort();
-  currentPort = port;
-  const dataDir = getDataDir();
-
-  const resourcesRoot = app.isPackaged
+/** Static-export web root: packaged resources in production, the local
+ *  `apps/web/out` build in an unpackaged non-dev run (#208). */
+function getWebRoot(): string {
+  return app.isPackaged
     ? join(process.resourcesPath, "web")
-    : join(__dirname, "../../web/.next/standalone");
-
-  const serverJs = join(resourcesRoot, "apps/web/server.js");
-
-  if (!existsSync(serverJs)) {
-    throw new Error(`Next.js standalone server not found at: ${serverJs}`);
-  }
-
-  nextServer = utilityProcess.fork(serverJs, [], {
-    cwd: join(resourcesRoot, "apps/web"),
-    env: {
-      ...process.env,
-      PORT: String(port),
-      HOSTNAME: "127.0.0.1",
-      SKIPPER_DATA_DIR: dataDir,
-      // Writable, update-surviving cache for the local embedding model
-      // (downloaded from huggingface.co on first use).
-      SKIPPER_HF_CACHE: join(app.getPath("userData"), "hf-cache"),
-      NODE_ENV: "production",
-    },
-    stdio: "pipe",
-    serviceName: "skipper-next-server",
-  });
-
-  lastServerOutput = "";
-  nextServer.stdout?.on("data", (d: Buffer) => {
-    const line = d.toString().trim();
-    console.log("[next]", line);
-    lastServerOutput += line + "\n";
-    if (lastServerOutput.length > 8000) lastServerOutput = lastServerOutput.slice(-6000);
-  });
-  nextServer.stderr?.on("data", (d: Buffer) => {
-    const line = d.toString().trim();
-    console.error("[next]", line);
-    lastServerOutput += "[stderr] " + line + "\n";
-    if (lastServerOutput.length > 8000) lastServerOutput = lastServerOutput.slice(-6000);
-  });
-  nextServer.on("exit", (code: number) => {
-    console.log(`[next] exited with code ${code}`);
-    // Only quit if the main window closed. If we killed it for a restart, don't quit.
-    if (!shuttingDown && mainWindow && !mainWindow.isDestroyed()) {
-      // Server died unexpectedly — leave window open with whatever is cached
-    }
-  });
-
-  const url = `http://127.0.0.1:${port}`;
-  await waitForServer(url, 60000);
-  return url;
-}
-
-async function waitForServer(url: string, timeoutMs: number): Promise<void> {
-  const start = Date.now();
-
-  // If the server process exits (crash, missing module, etc.) reject
-  // immediately instead of polling until timeout.
-  let serverExited = false;
-  let exitReason = "";
-  const onExit = (code: number) => {
-    serverExited = true;
-    exitReason = `Server process exited with code ${code}`;
-  };
-  nextServer?.on("exit", onExit);
-
-  try {
-    while (Date.now() - start < timeoutMs) {
-      if (serverExited) {
-        const output = lastServerOutput
-          ? `\n\nServer output:\n${lastServerOutput.slice(-3000)}`
-          : "\n\n(no output captured)";
-        throw new Error(`${exitReason}${output}`);
-      }
-      try {
-        // ANY HTTP response (even 500) means the server is alive and
-        // listening. A 500 just means a page render error (e.g. a native
-        // module failed to load on this platform) — the app can still
-        // show the UI and the user gets a visible error instead of a
-        // silent quit. Only ECONNREFUSED (caught below) means "not ready".
-        await fetch(url);
-        return;
-      } catch {
-        // ECONNREFUSED — server hasn't bound the port yet
-      }
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    const output = lastServerOutput
-      ? `\n\nServer output:\n${lastServerOutput.slice(-3000)}`
-      : "\n\n(no output captured from server process)";
-    throw new Error(
-      `Next.js server did not respond within ${timeoutMs / 1000}s.${output}`,
-    );
-  } finally {
-    nextServer?.removeListener("exit", onExit);
-  }
+    : join(__dirname, "../../web/out");
 }
 
 let shuttingDown = false;
-
-function killNextServer(): Promise<void> {
-  return new Promise((resolve) => {
-    if (!nextServer) return resolve();
-    const srv = nextServer;
-    nextServer = null;
-    srv.once("exit", () => resolve());
-    try {
-      srv.kill();
-    } catch {
-      resolve();
-    }
-    // Safety timeout
-    setTimeout(resolve, 2000);
-  });
-}
 
 /**
  * Black-window recovery, part 2. After the window was backgrounded/occluded,
@@ -438,16 +324,15 @@ function createWindow(): void {
   mainWindow.on("restore", () => void ensureRendererAlive());
   mainWindow.on("show", () => void ensureRendererAlive());
 
-  const url = isDev ? DEV_URL : serverUrl;
-  if (!url) return;
+  const url = isDev ? DEV_URL : "app://skipper/inbox";
   if (!isDev) {
     mainWindow.loadURL(url);
     return;
   }
   // Dev only: `pnpm dev` starts the Next dev server and Electron in parallel
   // (turbo runs both `dev` tasks at once), so this loadURL often lands before
-  // the server binds the port. The packaged path can't hit this — it awaits
-  // waitForServer first — and a failed load never retries on its own, leaving
+  // the server binds the port. The packaged path can't hit this — app:// is
+  // served synchronously — and a failed load never retries on its own, leaving
   // a black window forever. Retry until the server answers.
   const loadDev = (): void => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -532,6 +417,8 @@ registerExportHandlers({
   showSaveDialog: (w, o) => dialog.showSaveDialog(w, o),
   writeFile: (p, c) => writeFileAsync(p, c, "utf8"),
 });
+
+registerSettingsHandlers({ ipcMain, settingsDir: getLlmSettingsDir });
 
 function killAllPtySessions(): void {
   publicTerminal.killAllPtySessions();
@@ -801,13 +688,14 @@ function cliWrapperSource(): string {
  * Absolute path of the CLI JS bundle shipped with the running app, or null when
  * it isn't present (dev before `pnpm --filter @skipper/cli build`). The
  * orchestrator hands this to planner/coder runs so they can spawn the
- * skipper-memory MCP server (#45). NOT next to the wrapper: prepare-cli-bundle
- * drops the bundle INSIDE the Next.js standalone tree (next to server.js) so it
- * sits with its externalized node_modules (@huggingface/transformers, onnx).
+ * skipper-memory MCP server (#45). Packaged, the bundle lives in
+ * resources/cli-runtime next to its externalized node_modules
+ * (@huggingface/transformers, onnx) — the embedder host that survived the
+ * standalone tree's removal (#208).
  */
 function cliBundlePath(): string | null {
   const bundle = app.isPackaged
-    ? join(process.resourcesPath, "web", "apps", "web", "skipper.bundle.cjs")
+    ? join(process.resourcesPath, "cli-runtime", "skipper.bundle.cjs")
     : join(__dirname, "../../../packages/cli/dist/skipper.bundle.cjs");
   return existsSync(bundle) ? bundle : null;
 }
@@ -1048,7 +936,13 @@ app.whenReady().then(async () => {
 
   try {
     if (!isDev) {
-      serverUrl = await startNextServer();
+      const webRoot = getWebRoot();
+      if (!existsSync(join(webRoot, "index.html"))) {
+        throw new Error(
+          `Web UI not found at: ${webRoot}. The static export (apps/web/out) is missing from this build.`,
+        );
+      }
+      registerAppProtocol(webRoot);
     }
     createWindow();
     // Auto-update (official builds only). The updater + electron-updater are
@@ -1068,15 +962,14 @@ app.whenReady().then(async () => {
         () => mainWindow,
         async () => {
           // Everything that could hold the install hostage dies BEFORE
-          // quitAndInstall: pty shells (conhost children) and the Next
-          // utilityProcess (a second Skipper.exe that blocks the NSIS
-          // file replacement on Windows).
+          // quitAndInstall: pty shells (conhost children) and any coding/
+          // planning agent children that would block the NSIS file
+          // replacement on Windows.
           shuttingDown = true;
           coderKillAll?.();
           plannerKillAll?.();
           rescoreKillAll?.();
           killAllPtySessions();
-          await killNextServer();
         },
         getUpdateCredentials,
       );
@@ -1119,8 +1012,8 @@ app.whenReady().then(async () => {
   }
 
   app.on("activate", () => {
-    // Never respawn a window mid-quit: the embedded server is already dead and
-    // the new window would just render black until the process exits.
+    // Never respawn a window mid-quit: it would just render black until the
+    // process exits.
     if (shuttingDown) return;
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -1128,7 +1021,6 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => {
   shuttingDown = true;
-  killNextServer();
   if (process.platform !== "darwin") app.quit();
 });
 
@@ -1137,7 +1029,6 @@ app.on("before-quit", () => {
   // Drop the dock icon immediately: while the (bounded) teardown runs, a
   // still-clickable icon could relaunch into a black window.
   if (process.platform === "darwin") app.dock?.hide();
-  killNextServer();
   // Live node-pty children (integrated terminals) and coding agents keep the
   // process alive past app.quit() — the classic "window gone, app still in
   // the dock" zombie.
@@ -1149,10 +1040,9 @@ app.on("before-quit", () => {
 });
 
 // Force-exit that takes the WHOLE TREE down. On Windows a plain SIGKILL
-// (TerminateProcess) leaves children alive — and our Next server is a
-// utilityProcess, i.e. a second Skipper.exe: orphaned, it blocks the NSIS
-// updater with "Skipper non può essere chiuso" until killed manually.
-// taskkill /T terminates the tree (utility process, pty conhosts and all).
+// (TerminateProcess) leaves children alive — pty conhosts and coding-agent
+// children orphan and can block the NSIS updater until killed manually.
+// taskkill /T terminates the whole tree (pty conhosts and all).
 function forceExitNow(): void {
   if (process.platform === "win32") {
     try {
@@ -1172,7 +1062,7 @@ function forceExitNow(): void {
 }
 
 // Belt-and-braces: once a quit is underway, the process MUST die. If any
-// native handle (pty, fsevents, utility process) still wedges the event loop,
+// native handle (pty, fsevents) still wedges the event loop,
 // force the exit. quitAndInstall spawns its installer before this can fire.
 let quitFailsafeArmed = false;
 function armQuitFailsafe(): void {

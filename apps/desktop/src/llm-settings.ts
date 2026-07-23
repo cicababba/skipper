@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_LLM_SETTINGS, type LlmSettings } from "@skipper/shared";
 
-// settings.json is written by the embedded Next server, never by main — so this
-// re-reads per call instead of caching: a provider switch in Settings has to
-// reach the planner/reviewer without an app restart.
+// settings.json is written by main's settings IPC (#208) — this re-reads per
+// call instead of caching so a model switch in Settings reaches the
+// planner/reviewer without an app restart.
 
 function mergeLlmSettings(raw: string): LlmSettings {
   const saved = JSON.parse(raw);

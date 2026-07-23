@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { OnboardingFlow } from "@/components/onboarding";
+import { getAppSettings } from "@/lib/app-settings";
 
 type GateState = "loading" | "needed" | "done";
 
@@ -16,7 +17,7 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
         return;
       }
       try {
-        const settingsRes = await fetch("/api/settings").then((r) => r.json());
+        const settingsRes = await getAppSettings();
         const completed = settingsRes?.onboardingCompleted === true;
         setState(completed ? "done" : "needed");
       } catch {

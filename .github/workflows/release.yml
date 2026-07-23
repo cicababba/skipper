@@ -7,27 +7,24 @@ name: Build & Release
 #   2. desktop:package:mac/win
 #      ├─ desktop:build
 #      │   ├─ pnpm build the @skipper/web ... + sync + cli packages
-#      │   │   (cli's `build` script is `tsc && pnpm bundle`; bundle.mjs
-#      │   │    invokes esbuild to produce dist/skipper.bundle.cjs)
-#      │   ├─ desktop:copy-assets       (next/static + public into standalone)
-#      │   ├─ desktop:prepare-standalone (dereference workspace symlinks)
-#      │   ├─ desktop:prepare-cli       (copy skipper.bundle.cjs into the
-#      │   │                             standalone tree so the wrapper at
-#      │   │                             resources/cli/skipper finds its
-#      │   │                             runtime deps via Node resolution)
+#      │   │   (web is `next build` with output: export → apps/web/out;
+#      │   │    cli's `build` is `tsc && pnpm bundle`; bundle.mjs invokes
+#      │   │    esbuild to produce dist/skipper.bundle.cjs)
+#      │   ├─ desktop:prepare-cli-runtime (assemble build/cli-runtime/: the
+#      │   │                             skipper.bundle.cjs + its native
+#      │   │                             embedder deps copied as real files,
+#      │   │                             zero symlinks, asserted)
 #      │   └─ build:ts                  (ensure-oauth-config writes the
 #      │                                 real Client ID/secret from CI env,
 #      │                                 then tsc for the main process)
 #      └─ electron-builder              (DMG/EXE incl. extraResources:
-#                                       skeleton, web standalone, cli/)
+#                                       web static export, cli-runtime/, cli/)
 #
 # Past CI gotchas to preserve invariants for:
-#   * Workspace symlinks must be dereferenced before electron-builder packs;
-#     prepare-standalone.mjs handles it.
+#   * The Windows NSIS installer drops symlinks — the cli-runtime tree must be
+#     zero-symlink; prepare-cli-runtime.mjs copies dereferenced and asserts it.
 #   * Don't ship .d.ts.map (electron-builder choked); tsconfig sets
 #     declarationMap: false in every workspace package.
-#   * chokidar transitive deps must be hydrated when dereferencing
-#     @skipper/sync — handled by prepare-standalone.
 #   * OAuth client ID/secret must be present as env vars BEFORE desktop's
 #     build:ts runs; without them ensure-oauth-config.mjs falls back to
 #     placeholder values that ship a broken sign-in flow.

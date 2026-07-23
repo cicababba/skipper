@@ -6,7 +6,8 @@ import { ArrowLeft, Settings as SettingsIcon } from "lucide-react";
 import type { RepoIntakeSettings, RepoSettingsRow } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
-import { Section } from "@/app/inbox/[id]/plan-sections";
+import { Section } from "@/app/inbox/item/plan-sections";
+import { repoHref } from "@/lib/inbox/nav";
 import { useRepoParams } from "../use-repo-params";
 import { RepoIntakeControls } from "./repo-intake-controls";
 import { RepoModelControls } from "./repo-model-controls";
@@ -50,7 +51,7 @@ export function RepoSettingsView() {
     <div className="min-h-full p-6 space-y-6">
       <div>
         <Link
-          href={`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`}
+          href={repoHref({ owner, name })}
           className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground transition-colors"
         >
           <ArrowLeft size={14} />

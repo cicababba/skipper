@@ -41,8 +41,8 @@ function rmIfExists(p, label) {
  * onnxruntime-node ships prebuilds for darwin/linux/win32 × arm64/x64.
  * We only need the one matching the bundle we're packaging. Drop the rest.
  */
-function pruneOnnxPrebuilds(platformName, resourcesWebDir) {
-  const napi = join(resourcesWebDir, "node_modules", "onnxruntime-node", "bin", "napi-v6");
+function pruneOnnxPrebuilds(platformName, cliRuntimeDir) {
+  const napi = join(cliRuntimeDir, "node_modules", "onnxruntime-node", "bin", "napi-v6");
   if (!existsSync(napi)) return 0;
 
   // Keep list: which "<os>/<arch>" to preserve based on target platform.
@@ -78,20 +78,21 @@ function pruneOnnxPrebuilds(platformName, resourcesWebDir) {
 exports.default = async function afterPack(context) {
   const { appOutDir, electronPlatformName, packager } = context;
 
-  // Resolve the packaged web resources dir for the current platform.
-  // On darwin: <appOutDir>/<AppName>.app/Contents/Resources/web
-  // On win32/linux: <appOutDir>/resources/web
-  let resourcesWebDir;
+  // Resolve the packaged cli-runtime resources dir for the current platform —
+  // it now holds the onnxruntime-node prebuilds (#208).
+  // On darwin: <appOutDir>/<AppName>.app/Contents/Resources/cli-runtime
+  // On win32/linux: <appOutDir>/resources/cli-runtime
+  let cliRuntimeDir;
   if (electronPlatformName === "darwin" || electronPlatformName === "mas") {
     const appName = packager.appInfo.productFilename;
-    resourcesWebDir = join(appOutDir, `${appName}.app`, "Contents", "Resources", "web");
+    cliRuntimeDir = join(appOutDir, `${appName}.app`, "Contents", "Resources", "cli-runtime");
   } else {
-    resourcesWebDir = join(appOutDir, "resources", "web");
+    cliRuntimeDir = join(appOutDir, "resources", "cli-runtime");
   }
 
   // 1) Prune onnxruntime-node prebuilds for other platforms.
-  if (existsSync(resourcesWebDir)) {
-    const prunedBytes = pruneOnnxPrebuilds(electronPlatformName, resourcesWebDir);
+  if (existsSync(cliRuntimeDir)) {
+    const prunedBytes = pruneOnnxPrebuilds(electronPlatformName, cliRuntimeDir);
     if (prunedBytes > 0) {
       console.log(
         `  • afterPack: freed ${(prunedBytes / 1024 / 1024).toFixed(0)} MB ` +
@@ -99,7 +100,7 @@ exports.default = async function afterPack(context) {
       );
     }
   } else {
-    console.warn(`  • afterPack: resources/web dir not found at ${resourcesWebDir}`);
+    console.warn(`  • afterPack: resources/cli-runtime dir not found at ${cliRuntimeDir}`);
   }
 
   // 2) macOS xattr sanitization (pre-existing behavior).

@@ -11,6 +11,9 @@ dist/
 .next/
 out/
 
+# Desktop packaging: assembled CLI runtime tree (prepare-cli-runtime.mjs)
+apps/desktop/build/cli-runtime/
+
 # Runtime data
 data/raw/*
 data/wiki/*

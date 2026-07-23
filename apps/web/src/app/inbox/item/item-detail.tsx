@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ExternalLink, EyeOff, SquareTerminal } from "lucide-react";
 import {
   displayKey,
@@ -29,6 +29,7 @@ import { ChatDrawer, ChatFab } from "./chat-drawer";
 import { PlanChatPanel } from "./plan-chat";
 import { AgentChatPanel } from "./agent-chat";
 import { ExportControls } from "./export-controls";
+import { useItemId } from "./use-item-id";
 
 type DetailTab = "overview" | "plan" | "review" | "worktree";
 
@@ -88,8 +89,7 @@ export function ItemDetailView() {
 }
 
 function ItemDetailShell() {
-  const params = useParams();
-  const id = decodeURIComponent(String(params.id));
+  const id = useItemId();
   const { state, untrackItem } = useOrchestrator();
   const { openTerminal } = useTerminal();
   const { t } = useT();

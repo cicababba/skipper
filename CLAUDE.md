@@ -66,12 +66,12 @@ pnpm format                        # prettier write
 
 ```bash
 pnpm desktop:dev                   # build TS + launch Electron with SKIPPER_DEV=1
-pnpm desktop:build                 # build web standalone + copy assets + build desktop TS
+pnpm desktop:build                 # static-export web + assemble cli-runtime + build desktop TS
 pnpm desktop:package:mac           # DMG into apps/desktop/release/
 pnpm desktop:package:win           # NSIS .exe into apps/desktop/release/
 ```
 
-`desktop:build` runs `apps/desktop/build/copy-assets.mjs`, `prepare-standalone.mjs`, and `prepare-cli-bundle.mjs` — these dereference pnpm symlinks and promote hoisted deps so the packaged app works on Windows.
+`desktop:build` builds the web UI as a Next.js static export (`apps/web/out`, served in the app over the `app://skipper` protocol) and runs `apps/desktop/build/prepare-cli-runtime.mjs`, which assembles `build/cli-runtime/` — the `skipper` CLI bundle plus its native embedder deps copied as real files (zero symlinks, so the Windows NSIS installer can't drop them).
 
 ### CLI (after `pnpm build`)
 

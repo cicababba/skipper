@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { displayKey, type SolutionRecord } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
-import { Section } from "@/app/inbox/[id]/plan-sections";
+import { Section } from "@/app/inbox/item/plan-sections";
 
 /**
  * Full read view of one captured SolutionRecord (#47): plan gist + diff, the
