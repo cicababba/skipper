@@ -44,6 +44,8 @@ interface DecisionRailProps {
   busyAction: GateAction | null;
   actionError: string | null;
   saving: boolean;
+  dirtyFiles: string[] | null;
+  onCleanWorktree: () => void;
   onAction: (action: GateAction, note?: string) => void;
   onSizeChange: (size: IssuePlan["estimatedSize"]) => void;
 }
@@ -60,6 +62,8 @@ export function DecisionRail({
   busyAction,
   actionError,
   saving,
+  dirtyFiles,
+  onCleanWorktree,
   onAction,
   onSizeChange,
 }: DecisionRailProps) {
@@ -70,6 +74,7 @@ export function DecisionRail({
   const [parkOpen, setParkOpen] = useState(false);
   const [parkNote, setParkNote] = useState("");
   const [reportOpen, setReportOpen] = useState(false);
+  const [dirtyOpen, setDirtyOpen] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
   const [, setOpenCsv] = useStoredState(`skipper-plan-doc-open:${itemId}`, "");
@@ -240,6 +245,35 @@ export function DecisionRail({
               <AnomalyReport report={report} />
             </div>
           )}
+        </div>
+      )}
+
+      {/* Dirty worktree (#204) */}
+      {dirtyFiles && dirtyFiles.length > 0 && (
+        <div className="space-y-2">
+          <button
+            onClick={() => setDirtyOpen((v) => !v)}
+            className="flex items-center gap-1.5 text-left text-[12px] font-medium text-muted hover:text-foreground transition-colors"
+          >
+            {dirtyOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+            {p.rail.dirtyWorktree(dirtyFiles.length)}
+          </button>
+          {dirtyOpen && (
+            <ul className="font-mono text-[11px] text-muted space-y-0.5 pl-5">
+              {dirtyFiles.map((path) => (
+                <li key={path} className="truncate">
+                  {path}
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            onClick={onCleanWorktree}
+            className="w-full flex items-center justify-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition-colors"
+          >
+            {p.rail.cleanWorktree}
+          </button>
         </div>
       )}
 

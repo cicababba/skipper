@@ -235,6 +235,16 @@ const en = {
       deltaUp: (from: string) => `↑ from ${from}`,
       deltaDown: (from: string) => `↓ from ${from}`,
       recomputed: (when: string) => `Recomputed ${when}`,
+      dirtyWorktree: (n: number) => `Worktree has ${n} uncommitted file${n === 1 ? "" : "s"}`,
+      cleanWorktree: "Clean worktree",
+    },
+    cleanDialog: {
+      title: "Clean worktree?",
+      body: (branch: string) =>
+        `This discards all uncommitted changes and local commits on ${branch}, resetting it to the base branch. This cannot be undone.`,
+      files: (n: number) => `${n} file${n === 1 ? "" : "s"} will be discarded`,
+      confirm: "Clean worktree",
+      cancel: "Cancel",
     },
     chat: {
       title: "Discuss the plan",
@@ -685,6 +695,17 @@ const it: typeof en = {
       deltaUp: (from: string) => `↑ da ${from}`,
       deltaDown: (from: string) => `↓ da ${from}`,
       recomputed: (when: string) => `Ricalcolato ${when}`,
+      dirtyWorktree: (n: number) =>
+        `Il worktree ha ${n} file non committat${n === 1 ? "o" : "i"}`,
+      cleanWorktree: "Pulisci worktree",
+    },
+    cleanDialog: {
+      title: "Pulire il worktree?",
+      body: (branch: string) =>
+        `Scarta tutte le modifiche non committate e i commit locali su ${branch}, riportandolo al branch di base. Non è reversibile.`,
+      files: (n: number) => `${n} file ${n === 1 ? "verrà scartato" : "verranno scartati"}`,
+      confirm: "Pulisci worktree",
+      cancel: "Annulla",
     },
     chat: {
       title: "Discuti il piano",
@@ -1134,6 +1155,17 @@ const fr: typeof en = {
       deltaUp: (from: string) => `↑ depuis ${from}`,
       deltaDown: (from: string) => `↓ depuis ${from}`,
       recomputed: (when: string) => `Recalculé ${when}`,
+      dirtyWorktree: (n: number) =>
+        `Le worktree a ${n} fichier${n === 1 ? "" : "s"} non validé${n === 1 ? "" : "s"}`,
+      cleanWorktree: "Nettoyer le worktree",
+    },
+    cleanDialog: {
+      title: "Nettoyer le worktree ?",
+      body: (branch: string) =>
+        `Cela supprime toutes les modifications non validées et les commits locaux sur ${branch}, en le réinitialisant sur la branche de base. Action irréversible.`,
+      files: (n: number) => `${n} fichier${n === 1 ? "" : "s"} ser${n === 1 ? "a" : "ont"} supprimé${n === 1 ? "" : "s"}`,
+      confirm: "Nettoyer le worktree",
+      cancel: "Annuler",
     },
     chat: {
       title: "Discuter du plan",
@@ -1584,6 +1616,17 @@ const es: typeof en = {
       deltaUp: (from: string) => `↑ desde ${from}`,
       deltaDown: (from: string) => `↓ desde ${from}`,
       recomputed: (when: string) => `Recalculado ${when}`,
+      dirtyWorktree: (n: number) =>
+        `El worktree tiene ${n} archivo${n === 1 ? "" : "s"} sin confirmar`,
+      cleanWorktree: "Limpiar worktree",
+    },
+    cleanDialog: {
+      title: "¿Limpiar el worktree?",
+      body: (branch: string) =>
+        `Esto descarta todos los cambios sin confirmar y los commits locales en ${branch}, restableciéndolo a la rama base. No se puede deshacer.`,
+      files: (n: number) => `Se descartará${n === 1 ? "" : "n"} ${n} archivo${n === 1 ? "" : "s"}`,
+      confirm: "Limpiar worktree",
+      cancel: "Cancelar",
     },
     chat: {
       title: "Discutir el plan",

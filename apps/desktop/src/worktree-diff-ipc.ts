@@ -5,6 +5,7 @@ import {
   readWorktreeFileVersions,
   worktreeDiffTotals,
   worktreeStatus,
+  worktreeStatusWithDirt,
   writeWorktreeFile,
 } from "./worktrees";
 
@@ -71,6 +72,6 @@ export function registerWorktreeDiffHandlers(deps: WorktreeDiffIpcDeps): void {
     const m = await ensureManifest();
     const item = m.items[itemId];
     if (!item) return { ok: false as const, error: `unknown item ${itemId}` };
-    return worktreeStatus(item.worktree);
+    return worktreeStatusWithDirt(item.worktree);
   });
 }

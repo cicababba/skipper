@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { WorktreeFileChange } from "@skipper/shared";
-import { changeForRelPath, worktreeRelPath } from "./worktree";
+import type { WorktreeFileChange, WorktreeStatusResult } from "@skipper/shared";
+import { changeForRelPath, presentDirtyFiles, worktreeRelPath } from "./worktree";
 
 describe("worktreeRelPath", () => {
   it("maps an absolute POSIX path under the root to a relative path", () => {
@@ -38,5 +38,39 @@ describe("changeForRelPath", () => {
 
   it("returns undefined for an unchanged path", () => {
     expect(changeForRelPath(changes, "src/untouched.ts")).toBeUndefined();
+  });
+});
+
+describe("presentDirtyFiles", () => {
+  const ok = (extra: Partial<Extract<WorktreeStatusResult, { ok: true }>>): WorktreeStatusResult => ({
+    ok: true,
+    path: "/wt",
+    branch: "feature/issue-204",
+    present: true,
+    ...extra,
+  });
+
+  it("returns null for a null status", () => {
+    expect(presentDirtyFiles(null)).toBeNull();
+  });
+
+  it("returns null for an error status", () => {
+    expect(presentDirtyFiles({ ok: false, error: "boom" })).toBeNull();
+  });
+
+  it("returns null when the worktree is absent", () => {
+    expect(presentDirtyFiles(ok({ present: false, dirtyFiles: ["a.ts"] }))).toBeNull();
+  });
+
+  it("returns null when the probe could not run (dirtyFiles null)", () => {
+    expect(presentDirtyFiles(ok({ dirtyFiles: null }))).toBeNull();
+  });
+
+  it("returns null for a clean worktree (empty dirtyFiles)", () => {
+    expect(presentDirtyFiles(ok({ dirtyFiles: [] }))).toBeNull();
+  });
+
+  it("returns the paths when the worktree is dirty", () => {
+    expect(presentDirtyFiles(ok({ dirtyFiles: ["a.ts", "b.ts"] }))).toEqual(["a.ts", "b.ts"]);
   });
 });

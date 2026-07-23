@@ -552,7 +552,14 @@ export type SaveWorktreeFileResult = { ok: true } | { ok: false; error: string }
 // item that has one, regardless of lifecycle state.
 
 export type WorktreeStatusResult =
-  | { ok: true; path: string; branch: string; sessionId?: string; present: boolean }
+  | {
+      ok: true;
+      path: string;
+      branch: string;
+      sessionId?: string;
+      present: boolean;
+      dirtyFiles?: string[] | null;
+    }
   | { ok: false; error: string };
 
 // End-of-flow cleanup (#115): manual archive of a closed item — removes its
@@ -573,6 +580,10 @@ export type UntrackItemResult =
 // closeIssue capability. reconcile then settles the item through its existing
 // "closed on GitHub" path.
 export type CloseItemOnTrackerResult = { ok: true } | { ok: false; error: string };
+
+// Dirty-worktree cleanup (#204): reset the item's worktree to its base ref +
+// clean untracked files, discarding leftover uncommitted work and local commits.
+export type CleanWorktreeResult = { ok: true } | { ok: false; error: string };
 
 export type RepoLinkResult = { ok: true; localPath: string } | { ok: false; error: string };
 

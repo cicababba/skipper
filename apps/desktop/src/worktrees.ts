@@ -39,6 +39,22 @@ export async function worktreeStatus(
   };
 }
 
+/**
+ * worktreeStatus plus a git dirt probe (#204): when the worktree is present, the
+ * ok branch carries `dirtyFiles` — display-ready relative paths (porcelain
+ * prefixes stripped), `[]` when clean, `null` when git couldn't run. Kept
+ * separate from worktreeStatus so the stat-only path (usableWorktree, diff/read/
+ * save) never pays for the probe.
+ */
+export async function worktreeStatusWithDirt(
+  worktree: { path: string; branch: string; sessionId?: string } | undefined,
+): Promise<WorktreeStatusResult> {
+  const status = await worktreeStatus(worktree);
+  if (!status.ok || !status.present) return status;
+  const dirty = await worktreeDirtyFiles(status.path);
+  return { ...status, dirtyFiles: dirty === null ? null : porcelainPaths(dirty) };
+}
+
 /** git fetch origin; on failure with credentials, retry once under GIT_ASKPASS. */
 export async function fetchOrigin(
   repoPath: string,
@@ -491,6 +507,23 @@ export async function refreshWorktreeBase(
     throw new Error(`git reset --hard failed: ${reset.stderr.trim() || `exit ${reset.code}`}`);
   }
   return { refreshed: true };
+}
+
+/**
+ * Discard everything in a worktree (#204): reset --hard to the base ref, then
+ * clean -fd for untracked files. Unlike refreshWorktreeBase this is
+ * unconditional — the user has confirmed the loss of uncommitted work and any
+ * local commits. The worktree dir and its branch survive, pointed at base.
+ */
+export async function forceCleanWorktree(worktreePath: string, baseRef: string): Promise<void> {
+  const reset = await runGit(worktreePath, ["reset", "--hard", baseRef]);
+  if (reset.code !== 0) {
+    throw new Error(`git reset --hard failed: ${reset.stderr.trim() || `exit ${reset.code}`}`);
+  }
+  const clean = await runGit(worktreePath, ["clean", "-fd"]);
+  if (clean.code !== 0) {
+    throw new Error(`git clean -fd failed: ${clean.stderr.trim() || `exit ${clean.code}`}`);
+  }
 }
 
 /**

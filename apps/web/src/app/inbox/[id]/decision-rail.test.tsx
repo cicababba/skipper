@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ConfidenceReport, IssuePlan, StoredPlan } from "@skipper/shared";
 import { DecisionRail } from "./decision-rail";
@@ -63,6 +63,8 @@ function renderRail(overrides: Partial<React.ComponentProps<typeof DecisionRail>
     busyAction: null,
     actionError: null,
     saving: false,
+    dirtyFiles: null,
+    onCleanWorktree: () => {},
     onAction: () => {},
     onSizeChange: () => {},
     ...overrides,
@@ -203,5 +205,42 @@ describe("DecisionRail — Full report anomaly gating", () => {
     });
     fireEvent.click(fullReportToggle()!);
     expect(container.textContent ?? "").toContain("composite decisive already");
+  });
+});
+
+describe("DecisionRail — dirty worktree (#204)", () => {
+  const dirtyToggle = () => screen.queryByRole("button", { name: /Worktree has/ });
+  const cleanButton = () => screen.queryByRole("button", { name: "Clean worktree" });
+
+  it("shows no indicator when dirtyFiles is null", () => {
+    renderRail({ dirtyFiles: null });
+    expect(dirtyToggle()).toBeNull();
+    expect(cleanButton()).toBeNull();
+  });
+
+  it("shows no indicator when dirtyFiles is empty", () => {
+    renderRail({ dirtyFiles: [] });
+    expect(dirtyToggle()).toBeNull();
+    expect(cleanButton()).toBeNull();
+  });
+
+  it("renders the count label when the worktree is dirty", () => {
+    renderRail({ dirtyFiles: ["src/a.ts", "src/b.ts"] });
+    expect(screen.getByText("Worktree has 2 uncommitted files")).toBeTruthy();
+  });
+
+  it("reveals the path list on chevron click, hidden until then", () => {
+    renderRail({ dirtyFiles: ["src/a.ts", "src/b.ts"] });
+    expect(screen.queryByText("src/a.ts")).toBeNull();
+    fireEvent.click(dirtyToggle()!);
+    expect(screen.getByText("src/a.ts")).toBeTruthy();
+    expect(screen.getByText("src/b.ts")).toBeTruthy();
+  });
+
+  it("fires onCleanWorktree when the Clean worktree button is clicked", () => {
+    const onCleanWorktree = vi.fn();
+    renderRail({ dirtyFiles: ["src/a.ts"], onCleanWorktree });
+    fireEvent.click(cleanButton()!);
+    expect(onCleanWorktree).toHaveBeenCalledTimes(1);
   });
 });
