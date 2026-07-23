@@ -107,7 +107,7 @@ export function FollowPickerModal({
           )}
 
           {result?.ok === false && (
-            <div className="flex items-center gap-3 py-2 text-red-400">
+            <div className="flex items-center gap-3 py-2 text-danger">
               <span className="flex-1">{p.loadFailed} {result.error}</span>
               <button
                 onClick={() => void load()}
@@ -123,23 +123,23 @@ export function FollowPickerModal({
               <p>{p.desc}</p>
 
               {result.installationCount === 0 && (
-                <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3">
-                  <p className="flex items-center gap-1.5 font-medium text-amber-300">
+                <div className="mt-3 rounded-lg border border-warning/25 bg-warning-bg p-3">
+                  <p className="flex items-center gap-1.5 font-medium text-warning">
                     <AlertTriangle size={12} />
                     {p.noInstallationsTitle}
                   </p>
-                  <p className="mt-1 text-amber-200/70">{p.noInstallationsBody}</p>
+                  <p className="mt-1 text-warning/70">{p.noInstallationsBody}</p>
                   <div className="mt-2 flex items-center gap-3">
                     <button
                       onClick={() => result.installUrl && window.skipper?.openExternal(result.installUrl)}
-                      className="flex items-center gap-1.5 h-7 px-2.5 rounded-md bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 transition-colors font-medium"
+                      className="flex items-center gap-1.5 h-7 px-2.5 rounded-md bg-warning/20 text-warning hover:bg-warning/30 transition-colors font-medium"
                     >
                       <ExternalLink size={11} />
                       {p.installApp}
                     </button>
                     <button
                       onClick={() => void load()}
-                      className="text-amber-200/70 hover:text-amber-200 underline-offset-2 hover:underline"
+                      className="text-warning/70 hover:text-warning underline-offset-2 hover:underline"
                     >
                       {p.recheck}
                     </button>

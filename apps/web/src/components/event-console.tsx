@@ -108,7 +108,7 @@ export function EventConsole({
         return <ToolUseLine event={event} />;
       case "result":
         return (
-          <div className={`flex items-center gap-2 ${event.ok ? "text-green-300" : "text-red-300"}`}>
+          <div className={`flex items-center gap-2 ${event.ok ? "text-success" : "text-danger"}`}>
             {event.ok ? (
               <CheckCircle2 size={13} className="shrink-0" />
             ) : (
@@ -124,7 +124,7 @@ export function EventConsole({
         );
       case "error":
         return (
-          <div className="flex items-center gap-2 text-red-300">
+          <div className="flex items-center gap-2 text-danger">
             <AlertCircle size={13} className="shrink-0" />
             <span className="whitespace-pre-wrap break-words">{event.message}</span>
           </div>

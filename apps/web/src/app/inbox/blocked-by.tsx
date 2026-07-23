@@ -30,7 +30,7 @@ export function BlockedByBadges({ item }: { item: TrackedItem }) {
               e.stopPropagation();
               openExternal(blocker.url);
             }}
-            className="inline-block text-[11px] font-medium px-1.5 py-0.5 rounded border whitespace-nowrap bg-amber-500/10 text-amber-300 border-amber-500/20 hover:bg-amber-500/20 transition-colors"
+            className="inline-block text-[11px] font-medium px-1.5 py-0.5 rounded border whitespace-nowrap bg-warning-bg text-warning border-warning/25 hover:bg-warning/20 transition-colors"
             title={blocker.title}
             aria-label={`${t.inbox.blockedBy} ${label}`}
           >

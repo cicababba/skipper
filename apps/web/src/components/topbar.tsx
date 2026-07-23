@@ -47,7 +47,7 @@ function OrchestratorChip() {
         disabled={busy}
         style={noDrag}
         title={t.inbox.intake.resumeTooltip}
-        className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-amber-500/20 bg-amber-500/10 text-amber-300 text-[11px] font-medium hover:bg-amber-500/20 transition-colors"
+        className="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-warning/25 bg-warning-bg text-warning text-[11px] font-medium hover:bg-warning/20 transition-colors"
       >
         <Pause size={11} />
         {t.inbox.intake.paused}
@@ -98,7 +98,7 @@ function AutoPlanChip() {
       title={paused ? t.inbox.autoPlan.resumeTooltip : t.inbox.autoPlan.pauseTooltip}
       className={
         paused
-          ? "flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-amber-500/20 bg-amber-500/10 text-amber-300 text-[11px] font-medium hover:bg-amber-500/20 transition-colors"
+          ? "flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-warning/25 bg-warning-bg text-warning text-[11px] font-medium hover:bg-warning/20 transition-colors"
           : "flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border bg-card text-muted text-[11px] font-medium hover:bg-card-hover hover:text-foreground transition-colors"
       }
     >
@@ -174,7 +174,7 @@ function AccountWidget() {
 
   if (state.status === "error") {
     return (
-      <div style={noDrag} className="flex items-center gap-2 h-7 px-3 text-xs text-red-400">
+      <div style={noDrag} className="flex items-center gap-2 h-7 px-3 text-xs text-danger">
         <span title={state.error}>{t.tree.topbar.signInFailed}</span>
         <button
           onClick={() => void signIn("google")}
@@ -215,7 +215,7 @@ function AccountWidget() {
           </Link>
           <button
             onClick={async () => { setMenuOpen(false); await signOut("google", account.key); }}
-            className="flex items-center gap-2 px-3 py-2 text-xs w-full text-left hover:bg-card-hover transition-colors text-red-400/90"
+            className="flex items-center gap-2 px-3 py-2 text-xs w-full text-left hover:bg-card-hover transition-colors text-danger/90"
           >
             <LogOut size={13} />
             {t.tree.topbar.signOut}

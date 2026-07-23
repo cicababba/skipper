@@ -167,7 +167,7 @@ export function NowRail({
               <ArrowRight size={12} />
             </button>
           )}
-          {actionError && <p className="text-[12px] text-red-300 break-all">{actionError}</p>}
+          {actionError && <p className="text-[12px] text-danger break-all">{actionError}</p>}
         </div>
       )}
 
@@ -184,8 +184,8 @@ export function NowRail({
         )}
         {totals && (
           <span className="text-[11px] font-medium px-1.5 py-0.5 rounded border bg-card border-border">
-            <span className="text-emerald-300">+{totals.additions}</span>{" "}
-            <span className="text-red-300">−{totals.deletions}</span>
+            <span className="text-success">+{totals.additions}</span>{" "}
+            <span className="text-danger">−{totals.deletions}</span>
           </span>
         )}
       </div>
@@ -198,7 +198,7 @@ export function NowRail({
           <span className="text-muted">
             {review.rounds} {t.inbox.review.rounds}
           </span>
-          {blockingCount > 0 && <span className="text-red-300">{n.blocking(blockingCount)}</span>}
+          {blockingCount > 0 && <span className="text-danger">{n.blocking(blockingCount)}</span>}
           <button
             onClick={() => onNavigateTab("review")}
             className="inline-flex items-center gap-1 text-muted hover:text-accent transition-colors"
@@ -218,7 +218,7 @@ export function NowRail({
           >
             <GitBranch size={12} className="shrink-0" />
             <span className="font-mono text-[11px] truncate flex-1">{item.worktree.branch}</span>
-            {copied ? <Check size={12} className="shrink-0 text-emerald-300" /> : <Copy size={12} className="shrink-0 opacity-60" />}
+            {copied ? <Check size={12} className="shrink-0 text-success" /> : <Copy size={12} className="shrink-0 opacity-60" />}
           </button>
         )}
         {wtStatus?.present && (

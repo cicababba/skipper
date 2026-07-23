@@ -40,7 +40,7 @@ export function ChatFab({
       {unread > 0 && (
         <span
           aria-label={unreadLabel(unread)}
-          className="absolute -top-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white"
+          className="absolute -top-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-danger px-1 text-[10px] font-medium text-background"
         >
           {unread > 9 ? "9+" : unread}
         </span>

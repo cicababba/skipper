@@ -103,14 +103,14 @@ export function pickMarker(file: GitFileStatus | undefined): string {
 export function markerClass(marker: string): string {
   switch (marker) {
     case "M":
-      return "text-amber-400";
+      return "text-warning";
     case "U":
     case "A":
-      return "text-emerald-400";
+      return "text-success";
     case "D":
-      return "text-red-400";
+      return "text-danger";
     case "R":
-      return "text-violet-400";
+      return "text-merged";
     default:
       return "text-muted/40";
   }

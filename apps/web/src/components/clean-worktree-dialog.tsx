@@ -66,12 +66,12 @@ export function CleanWorktreeDialog({
           </ul>
         </div>
 
-        {error && <p className="text-[12px] text-red-300 break-words">{error}</p>}
+        {error && <p className="text-[12px] text-danger break-words">{error}</p>}
 
         <button
           onClick={() => void runClean()}
           disabled={busy}
-          className="w-full flex items-center justify-center gap-1.5 text-[13px] font-medium px-3 py-2 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-1.5 text-[13px] font-medium px-3 py-2 rounded-lg border border-danger/25 bg-danger-bg text-danger hover:bg-danger/20 transition-colors disabled:opacity-50"
         >
           {busy && <Loader2 size={13} className="animate-spin" />}
           {c.confirm}

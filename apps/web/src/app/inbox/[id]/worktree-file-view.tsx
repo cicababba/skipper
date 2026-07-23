@@ -102,13 +102,13 @@ export function WorktreeFileView({ path }: { path: string }) {
           {fileName}
         </span>
         {saveError && (
-          <span className="flex items-center gap-1 text-red-300 break-all">
+          <span className="flex items-center gap-1 text-danger break-all">
             <AlertTriangle size={11} />
             {r.saveFailed}: {saveError}
           </span>
         )}
         {savedFlash && (
-          <span className="flex items-center gap-1 text-green-300">
+          <span className="flex items-center gap-1 text-success">
             <Check size={11} />
             {r.saved}
           </span>
@@ -129,7 +129,7 @@ export function WorktreeFileView({ path }: { path: string }) {
           </div>
         )}
         {state.kind === "error" && (
-          <p className="p-4 text-sm text-red-300 break-all">
+          <p className="p-4 text-sm text-danger break-all">
             {r.loadFailed}: {state.message}
           </p>
         )}

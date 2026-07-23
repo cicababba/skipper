@@ -11,7 +11,7 @@ export function StaleRepoBadge({ item }: { item: TrackedItem }) {
   if (!item.staleRepo) return null;
   return (
     <span
-      className="text-[11px] font-medium px-1.5 py-0.5 rounded border border-amber-500/20 bg-amber-500/10 text-amber-300 whitespace-nowrap"
+      className="text-[11px] font-medium px-1.5 py-0.5 rounded border border-warning/25 bg-warning-bg text-warning whitespace-nowrap"
       title={t.inbox.staleRepo.tooltip}
     >
       {t.inbox.staleRepo.badge}

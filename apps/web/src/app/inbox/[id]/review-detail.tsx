@@ -15,7 +15,7 @@ function ObjectionRow({ o }: { o: CriticObjection }) {
     <li className="flex items-start gap-1.5 text-muted">
       <AlertTriangle
         size={12}
-        className={`mt-0.5 shrink-0 ${o.blocking ? "text-red-400" : "text-amber-400"}`}
+        className={`mt-0.5 shrink-0 ${o.blocking ? "text-danger" : "text-warning"}`}
       />
       <span>
         <span className="uppercase text-[10px] text-muted/60 mr-1">{o.kind}</span>
@@ -57,12 +57,12 @@ function EntryGroups({ entry }: { entry: ReviewChangelogEntry }) {
   return (
     <div className="space-y-2 pt-1">
       <ObjectionGroup
-        icon={<Check size={12} className="text-emerald-400" />}
+        icon={<Check size={12} className="text-success" />}
         label={c.resolved}
         objections={entry.resolved}
       />
       <ObjectionGroup
-        icon={<RefreshCw size={12} className="text-amber-400" />}
+        icon={<RefreshCw size={12} className="text-warning" />}
         label={c.persisting}
         objections={entry.persisting}
       />
@@ -166,7 +166,7 @@ export function ReviewDetailView() {
   return (
     <div className="min-h-full p-6 space-y-4 max-w-3xl mx-auto">
       {!live && (
-        <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 px-3 py-2 text-sm">
+        <div className="flex items-center gap-2 rounded-lg border border-warning/25 bg-warning-bg text-warning px-3 py-2 text-sm">
           <AlertTriangle size={14} className="shrink-0" />
           {r.leftReview}
         </div>

@@ -115,7 +115,7 @@ function DocSection({
         )}
         <h3
           className={`text-[11px] font-medium uppercase tracking-wide ${
-            tone === "warning" ? "text-amber-300/80" : "text-muted"
+            tone === "warning" ? "text-warning/80" : "text-muted"
           }`}
         >
           {title}
@@ -162,7 +162,7 @@ function DocSection({
         )}
       </div>
       {showBody && (
-        <div className={`mt-2 ${tone === "warning" ? "border-l-2 border-amber-500/40 pl-4" : ""}`}>
+        <div className={`mt-2 ${tone === "warning" ? "border-l-2 border-warning/40 pl-4" : ""}`}>
           {children}
         </div>
       )}

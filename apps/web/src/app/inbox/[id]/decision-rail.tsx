@@ -13,23 +13,23 @@ export type GateAction = "approve" | "replan" | "park";
 const SIZES: IssuePlan["estimatedSize"][] = ["xs", "s", "m", "l", "xl"];
 
 function bandText(score: number): string {
-  if (score >= 0.75) return "text-emerald-300";
-  if (score >= 0.5) return "text-amber-300";
+  if (score >= 0.75) return "text-success";
+  if (score >= 0.5) return "text-warning";
   return "text-muted";
 }
 
 function barFill(score: number): string {
-  if (score >= 0.75) return "bg-emerald-400";
-  if (score >= 0.5) return "bg-amber-400";
+  if (score >= 0.75) return "bg-success";
+  if (score >= 0.5) return "bg-warning";
   return "bg-muted";
 }
 
 function verdictColor(verdict: CriticVerdict): string {
   return verdict === "approve"
-    ? "text-emerald-300"
+    ? "text-success"
     : verdict === "concerns"
-      ? "text-amber-300"
-      : "text-red-300";
+      ? "text-warning"
+      : "text-danger";
 }
 
 interface DecisionRailProps {
@@ -138,7 +138,7 @@ export function DecisionRail({
     <div className="self-start wide:col-start-2 wide:row-start-1 wide:sticky wide:top-4 wide:max-h-[calc(100vh-230px)] wide:overflow-y-auto rounded-lg border border-card-hover bg-card p-4 space-y-4">
       {/* Verdict strip */}
       <div className="space-y-1">
-        {editedWarning && <p className="text-[11px] text-amber-300/80">{p.edited}</p>}
+        {editedWarning && <p className="text-[11px] text-warning/80">{p.edited}</p>}
         {rescoring ? (
           <div className="flex items-center gap-2 text-sm text-muted">
             <Loader2 size={14} className="animate-spin" />
@@ -152,7 +152,7 @@ export function DecisionRail({
             {prevComposite !== null && prevComposite !== composite && (
               <p
                 className={`text-[12px] ${
-                  composite > prevComposite ? "text-emerald-400" : "text-amber-400"
+                  composite > prevComposite ? "text-success" : "text-warning"
                 }`}
               >
                 {composite > prevComposite
@@ -172,7 +172,7 @@ export function DecisionRail({
         {report && report.errors.length > 0 && (
           <div className="space-y-0.5 pt-1">
             {report.errors.map((e, i) => (
-              <p key={i} className="text-[11px] text-red-300/80 break-all">
+              <p key={i} className="text-[11px] text-danger/80 break-all">
                 {e}
               </p>
             ))}
@@ -213,17 +213,17 @@ export function DecisionRail({
             {p.rail.attention}
           </p>
           {blockingCount > 0 && (
-            <AttentionRow color="bg-red-400" onClick={revealReport}>
+            <AttentionRow color="bg-danger" onClick={revealReport}>
               {p.rail.attentionObjections(blockingCount)}
             </AttentionRow>
           )}
           {questionCount > 0 && (
-            <AttentionRow color="bg-amber-400" onClick={() => expandAndScroll("openQuestions")}>
+            <AttentionRow color="bg-warning" onClick={() => expandAndScroll("openQuestions")}>
               {p.rail.attentionOpenQuestions(questionCount)}
             </AttentionRow>
           )}
           {riskCount > 0 && (
-            <AttentionRow color="bg-amber-400" onClick={() => expandAndScroll("risks")}>
+            <AttentionRow color="bg-warning" onClick={() => expandAndScroll("risks")}>
               {p.rail.attentionRisks(riskCount)}
             </AttentionRow>
           )}
@@ -256,7 +256,7 @@ export function DecisionRail({
             className="flex items-center gap-1.5 text-left text-[12px] font-medium text-muted hover:text-foreground transition-colors"
           >
             {dirtyOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
             {p.rail.dirtyWorktree(dirtyFiles.length)}
           </button>
           {dirtyOpen && (
@@ -270,7 +270,7 @@ export function DecisionRail({
           )}
           <button
             onClick={onCleanWorktree}
-            className="w-full flex items-center justify-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition-colors"
+            className="w-full flex items-center justify-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-warning/25 bg-warning-bg text-warning hover:bg-warning/20 transition-colors"
           >
             {p.rail.cleanWorktree}
           </button>
@@ -293,7 +293,7 @@ export function DecisionRail({
                 <button
                   onClick={() => onAction("park", parkNote.trim() || undefined)}
                   disabled={actionsDisabled}
-                  className="flex-1 flex items-center justify-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                  className="flex-1 flex items-center justify-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-warning/25 bg-warning-bg text-warning hover:bg-warning/20 transition-colors disabled:opacity-50"
                 >
                   {busyAction === "park" && <Loader2 size={11} className="animate-spin" />}
                   {p.parkConfirm}
@@ -339,7 +339,7 @@ export function DecisionRail({
               </div>
             </div>
           )}
-          {actionError && <p className="text-[12px] text-red-300 break-all">{actionError}</p>}
+          {actionError && <p className="text-[12px] text-danger break-all">{actionError}</p>}
         </div>
       ) : (
         <p className="text-[12px] text-muted/70">{p.readOnly}</p>
@@ -420,7 +420,7 @@ function AnomalyReport({ report }: { report: ConfidenceReport }) {
       {convergence && (convergence.divergent || convergence.disputedFiles.length > 0) && (
         <div className="space-y-1">
           {convergence.divergent && (
-            <p className="text-amber-300 font-medium">{pop.divergent}</p>
+            <p className="text-warning font-medium">{pop.divergent}</p>
           )}
           {convergence.disputedFiles.length > 0 && (
             <p className="text-muted break-all">
@@ -442,7 +442,7 @@ function AnomalyReport({ report }: { report: ConfidenceReport }) {
             <p key={i} className="text-muted break-all">
               <span className="text-[10px] uppercase tracking-wide text-muted/60">{o.kind}</span>
               {o.blocking && (
-                <span className="ml-1 text-[10px] uppercase tracking-wide text-red-300">
+                <span className="ml-1 text-[10px] uppercase tracking-wide text-danger">
                   {pop.blocking}
                 </span>
               )}{" "}

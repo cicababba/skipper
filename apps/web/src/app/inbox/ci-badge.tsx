@@ -21,9 +21,9 @@ export function useTrackedPull(item: TrackedItem): PullRequest | undefined {
 }
 
 const CI_STYLES = {
-  passing: { icon: CircleCheck, classes: "text-emerald-500 border-emerald-500/30" },
-  failing: { icon: CircleX, classes: "text-red-500 border-red-500/30" },
-  pending: { icon: CircleDashed, classes: "text-amber-500 border-amber-500/30" },
+  passing: { icon: CircleCheck, classes: "text-success border-success/25" },
+  failing: { icon: CircleX, classes: "text-danger border-danger/25" },
+  pending: { icon: CircleDashed, classes: "text-warning border-warning/25" },
 } as const;
 
 export function CiBadge({ item }: { item: TrackedItem }) {

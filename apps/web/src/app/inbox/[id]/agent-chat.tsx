@@ -200,7 +200,7 @@ export function AgentChatPanel({
           />
         )}
 
-        {fresh && <p className="text-[12px] text-amber-300/80">{strings.fresh}</p>}
+        {fresh && <p className="text-[12px] text-warning/80">{strings.fresh}</p>}
 
         {pendingApply && (
           <div className="space-y-2 rounded-lg border border-accent/30 bg-accent/5 p-3">
@@ -275,9 +275,9 @@ export function AgentChatPanel({
 
         {notice && <p className="text-[12px] text-muted/80">{notice}</p>}
         {error && (
-          <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 text-red-300 px-3 py-2 text-[12px]">
+          <div className="flex items-center gap-2 rounded-lg border border-danger/25 bg-danger-bg text-danger px-3 py-2 text-[12px]">
             <span className="flex-1 break-all">{error}</span>
-            <button onClick={() => setError(null)} className="shrink-0 hover:text-red-200">
+            <button onClick={() => setError(null)} className="shrink-0 hover:opacity-70">
               <X size={14} />
             </button>
           </div>

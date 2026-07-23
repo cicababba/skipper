@@ -6,6 +6,8 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { useTerminal, type TerminalSession } from "@/lib/terminal-context";
 import { useStoredState } from "@/lib/use-stored-state";
+import { useTheme } from "@/lib/theme-context";
+import { cssVar } from "@/lib/theme-colors";
 import "@xterm/xterm/css/xterm.css";
 
 // Terminal panel (public core — issue #18). One xterm instance per session,
@@ -17,9 +19,29 @@ const DEFAULT_HEIGHT = 260;
 const MIN_HEIGHT = 120;
 const MAX_HEIGHT = 600;
 
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function readXtermTheme() {
+  return {
+    background: cssVar("--sidebar"),
+    foreground: cssVar("--foreground"),
+    cursor: cssVar("--foreground"),
+    selectionBackground: hexToRgba(cssVar("--accent") || "#6C9CFC", 0.35),
+  };
+}
+
 function XtermView({ session, visible }: { session: TerminalSession; visible: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const termRef = useRef<Terminal | null>(null);
+  const { theme } = useTheme();
 
   useEffect(() => {
     const el = containerRef.current;
@@ -31,14 +53,10 @@ function XtermView({ session, visible }: { session: TerminalSession; visible: bo
       cursorBlink: true,
       fontSize: 12.5,
       fontFamily: styles.fontFamily || "monospace",
-      theme: {
-        background: "#0a0c10",
-        foreground: "#d4d8de",
-        cursor: "#d4d8de",
-        selectionBackground: "#2d4f67",
-      },
+      theme: readXtermTheme(),
       scrollback: 5000,
     });
+    termRef.current = term;
     const fit = new FitAddon();
     fitRef.current = fit;
     term.loadAddon(fit);
@@ -62,6 +80,7 @@ function XtermView({ session, visible }: { session: TerminalSession; visible: bo
       offData();
       onInput.dispose();
       term.dispose();
+      termRef.current = null;
     };
     // Session identity is stable for the lifetime of the tab.
   }, [session.id]);
@@ -69,6 +88,10 @@ function XtermView({ session, visible }: { session: TerminalSession; visible: bo
   useEffect(() => {
     if (visible) fitRef.current?.fit();
   }, [visible]);
+
+  useEffect(() => {
+    if (termRef.current) termRef.current.options.theme = readXtermTheme();
+  }, [theme]);
 
   return <div ref={containerRef} className={`h-full w-full ${visible ? "" : "hidden"}`} />;
 }
@@ -116,7 +139,7 @@ export function TerminalPanel() {
 
   return (
     <div
-      className={`shrink-0 border-t border-border bg-[#0a0c10] flex flex-col ${panelOpen ? "" : "hidden"}`}
+      className={`shrink-0 border-t border-border bg-sidebar flex flex-col ${panelOpen ? "" : "hidden"}`}
       style={{ height }}
     >
       <div

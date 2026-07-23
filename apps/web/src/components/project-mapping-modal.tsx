@@ -118,7 +118,7 @@ export function ProjectMappingModal({
           )}
 
           {result?.ok === false && (
-            <div className="flex items-center gap-3 py-2 text-red-400">
+            <div className="flex items-center gap-3 py-2 text-danger">
               <span className="flex-1">
                 {m.loadFailed} {result.error}
               </span>
@@ -136,8 +136,8 @@ export function ProjectMappingModal({
               <p>{m.desc}</p>
 
               {unmappedForHost.length > 0 && (
-                <div className="mt-3 flex items-start gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-amber-200/80">
-                  <AlertTriangle size={12} className="mt-0.5 shrink-0 text-amber-300" />
+                <div className="mt-3 flex items-start gap-1.5 rounded-lg border border-warning/25 bg-warning-bg p-3 text-warning/80">
+                  <AlertTriangle size={12} className="mt-0.5 shrink-0 text-warning" />
                   <span>{m.unmapped(unmappedForHost.length)}</span>
                 </div>
               )}

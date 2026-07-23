@@ -81,13 +81,13 @@ export function InboxKanban({ items }: { items: TrackedItem[] }) {
   return (
     <div className="space-y-4">
       {attention.length > 0 && (
-        <section className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+        <section className="rounded-xl border border-signal/25 bg-signal-bg p-3">
           <div className="flex items-center gap-2 mb-2">
-            <TriangleAlert size={14} className="text-amber-300" />
-            <h2 className="text-[11px] font-medium uppercase tracking-wide text-amber-300">
+            <TriangleAlert size={14} className="text-signal" />
+            <h2 className="text-[11px] font-medium uppercase tracking-wide text-signal">
               {t.inbox.columns.attention}
             </h2>
-            <span className="text-[11px] text-amber-300/70">{attention.length}</span>
+            <span className="text-[11px] text-signal/70">{attention.length}</span>
           </div>
           <div className="flex gap-2.5 flex-wrap">
             {attention.map((item) => (

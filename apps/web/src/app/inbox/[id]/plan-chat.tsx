@@ -133,7 +133,7 @@ export function PlanChatPanel({
             !isPlanChatText(m) ? (
               <div key={i} className="flex justify-center py-1">
                 <span className="flex items-center gap-1.5 rounded-full bg-card-hover/40 px-2.5 py-0.5 text-[11px] text-muted/70">
-                  <Check size={11} className="text-emerald-400" />
+                  <Check size={11} className="text-success" />
                   {chat.applied(m.changeCount)} · {hhmm(m.at)}
                 </span>
               </div>
@@ -205,9 +205,9 @@ export function PlanChatPanel({
 
         {notice && <p className="text-[12px] text-muted/80">{notice}</p>}
         {error && (
-          <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 text-red-300 px-3 py-2 text-[12px]">
+          <div className="flex items-center gap-2 rounded-lg border border-danger/25 bg-danger-bg text-danger px-3 py-2 text-[12px]">
             <span className="flex-1 break-all">{error}</span>
-            <button onClick={() => setError(null)} className="shrink-0 hover:text-red-200">
+            <button onClick={() => setError(null)} className="shrink-0 hover:opacity-70">
               <X size={14} />
             </button>
           </div>

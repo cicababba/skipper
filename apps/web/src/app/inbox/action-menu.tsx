@@ -156,7 +156,7 @@ export function ActionMenu({
       }}
       onMouseEnter={() => setActiveIndex(index)}
       className={`w-full flex items-center px-3 py-1.5 text-left transition-colors disabled:opacity-50 ${
-        danger ? "text-red-400/90 hover:bg-red-500/10" : "text-foreground hover:bg-accent/10"
+        danger ? "text-danger/90 hover:bg-danger/10" : "text-foreground hover:bg-accent/10"
       }`}
     >
       {t.inbox.actions[action.id]}

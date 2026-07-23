@@ -66,7 +66,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
       {/* Animated ambient background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full bg-accent/10 blur-3xl animate-pulse-slow" />
-        <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] rounded-full bg-purple-500/10 blur-3xl animate-pulse-slow" />
+        <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] rounded-full bg-merged/10 blur-3xl animate-pulse-slow" />
       </div>
 
       <div
@@ -95,7 +95,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
         {/* Step content */}
         {step === "welcome" && (
           <div className="text-center space-y-8 animate-fade-in">
-            <div className="inline-flex items-center justify-center w-24 h-24 rounded-3xl bg-gradient-to-br from-accent to-purple-500 shadow-2xl shadow-accent/30 animate-float">
+            <div className="inline-flex items-center justify-center w-24 h-24 rounded-3xl bg-gradient-to-br from-accent to-merged shadow-2xl shadow-accent/30 animate-float">
               <Sparkles size={44} className="text-white" />
             </div>
             <div className="space-y-3">
@@ -119,7 +119,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
         {step === "settings" && (
           <div className="space-y-6 animate-fade-in">
             <div className="text-center space-y-3">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-accent to-purple-500 shadow-xl shadow-accent/30">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-accent to-merged shadow-xl shadow-accent/30">
                 <Cpu size={28} className="text-white" />
               </div>
               <h2 className="text-3xl font-bold tracking-tight">
@@ -193,7 +193,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                   />
                 ))}
               </div>
-              <div className="relative inline-flex items-center justify-center w-28 h-28 rounded-full bg-gradient-to-br from-amber-400 via-accent to-purple-500 shadow-2xl shadow-accent/40 animate-trophy">
+              <div className="relative inline-flex items-center justify-center w-28 h-28 rounded-full bg-gradient-to-br from-warning via-accent to-merged shadow-2xl shadow-accent/40 animate-trophy">
                 <Trophy size={50} className="text-white" />
               </div>
             </div>

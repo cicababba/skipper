@@ -157,7 +157,7 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
                       )}
                       <button
                         onClick={() => void signOut(provider.id, a.key)}
-                        className="shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-md text-xs text-red-400/90 hover:bg-red-500/10 transition-colors"
+                        className="shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-md text-xs text-danger/90 hover:bg-danger/10 transition-colors"
                       >
                         <LogOut size={12} />
                         {copy.signOut}
@@ -210,7 +210,7 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
             )}
 
             {flow.status === "error" && (
-              <div className="text-sm text-red-400 flex items-center gap-3">
+              <div className="text-sm text-danger flex items-center gap-3">
                 <span>{common.signInFailed(flow.error)}</span>
                 <button
                   onClick={connect}

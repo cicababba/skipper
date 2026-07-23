@@ -60,8 +60,8 @@ export function CoderReportCard({ item }: { item: TrackedItem }) {
         {report.deviations.length > 0 ? (
           <ul className="space-y-1">
             {report.deviations.map((d, i) => (
-              <li key={i} className="flex items-start gap-1.5 text-amber-300">
-                <AlertTriangle size={12} className="mt-0.5 shrink-0 text-amber-400" />
+              <li key={i} className="flex items-start gap-1.5 text-warning">
+                <AlertTriangle size={12} className="mt-0.5 shrink-0 text-warning" />
                 <span>{d}</span>
               </li>
             ))}
@@ -82,8 +82,8 @@ export function CoderReportCard({ item }: { item: TrackedItem }) {
                 <span
                   className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] uppercase shrink-0 ${
                     v.passed
-                      ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/20"
-                      : "text-red-400 bg-red-500/10 border-red-500/30"
+                      ? "text-success bg-success-bg border-success/25"
+                      : "text-danger bg-danger-bg border-danger/25"
                   }`}
                 >
                   {v.passed ? <Check size={11} /> : <X size={11} />}

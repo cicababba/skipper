@@ -118,7 +118,7 @@ export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
         )}
         <div className="flex-1" />
         {state?.intakePaused && (
-          <span className="flex items-center gap-1.5 text-[12px] px-2.5 py-1 rounded-full border border-amber-500/20 bg-amber-500/10 text-amber-300">
+          <span className="flex items-center gap-1.5 text-[12px] px-2.5 py-1 rounded-full border border-warning/25 bg-warning-bg text-warning">
             <Pause size={12} />
             {t.inbox.intake.paused}
             {state.parkedCount > 0 && ` · ${state.parkedCount} ${t.inbox.intake.queued}`}
@@ -162,14 +162,14 @@ export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
                 className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors ${
                   active
                     ? isAttention
-                      ? "border-amber-500/40 bg-amber-500/10"
+                      ? "border-signal/40 bg-signal-bg"
                       : "border-accent/40 bg-accent/10"
                     : "border-border bg-card/40 hover:bg-card"
                 }`}
               >
                 <span
                   className={`text-xl font-semibold tabular-nums ${
-                    isAttention && counts[id] > 0 ? "text-amber-300" : "text-foreground"
+                    isAttention && counts[id] > 0 ? "text-signal" : "text-foreground"
                   }`}
                 >
                   {counts[id]}
@@ -185,9 +185,9 @@ export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
 
       {/* Error strip */}
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 text-red-300 px-3 py-2 text-sm">
+        <div className="flex items-center gap-2 rounded-lg border border-danger/25 bg-danger-bg text-danger px-3 py-2 text-sm">
           <span className="flex-1 break-all">{error}</span>
-          <button onClick={clearError} className="shrink-0 hover:text-red-200">
+          <button onClick={clearError} className="shrink-0 hover:opacity-70">
             <X size={14} />
           </button>
         </div>
@@ -195,19 +195,19 @@ export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
 
       {/* Unmapped-projects warning (#79): tracker issues waiting on a repo mapping. */}
       {state && state.unmappedProjects.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-300 px-3 py-2 text-sm">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-warning/25 bg-warning-bg text-warning px-3 py-2 text-sm">
           <span className="font-medium">
             {t.inbox.unmapped.title(
               state.unmappedProjects.reduce((n, u) => n + u.count, 0),
               state.unmappedProjects.length,
             )}
           </span>
-          <span className="text-amber-200/70">{t.inbox.unmapped.body}</span>
+          <span className="text-warning/70">{t.inbox.unmapped.body}</span>
           <div className="flex flex-wrap items-center gap-1.5">
             {state.unmappedProjects.map((u) => (
               <span
                 key={`${u.accountId}:${u.host}:${u.projectKey}`}
-                className="text-[11px] px-1.5 py-0.5 rounded-full border border-amber-500/30 text-amber-200/80"
+                className="text-[11px] px-1.5 py-0.5 rounded-full border border-warning/25 text-warning/80"
               >
                 {u.host} · {u.projectKey} · {u.count}
               </span>
@@ -232,7 +232,7 @@ export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
               className={`px-2 py-1 rounded-full text-[11px] font-medium border transition-colors ${
                 columns.has(id)
                   ? id === "attention"
-                    ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                    ? "border-signal/40 bg-signal-bg text-signal"
                     : "border-accent/40 bg-accent/10 text-accent"
                   : "border-border text-muted hover:text-foreground hover:bg-card"
               }`}
