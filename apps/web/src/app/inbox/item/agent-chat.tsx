@@ -205,7 +205,7 @@ export function AgentChatPanel({
         {pendingApply && (
           <div className="space-y-2 rounded-lg border border-accent/30 bg-accent/5 p-3">
             <p className="text-[12px] font-medium text-accent">{c.applyPreviewTitle}</p>
-            <ul className="space-y-1.5">
+            <ul className="max-h-[40vh] space-y-1.5 overflow-y-auto">
               {pendingApply.map((instr, i) => (
                 <li key={i} className="text-[12px] text-foreground/90">
                   {instr.path && (
