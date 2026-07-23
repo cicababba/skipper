@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Inbox, Loader2, X } from "lucide-react";
-import { type IssuePlan, type StoredPlan } from "@skipper/shared";
+import { type IssuePlan, type StoredPlan, type WorktreeStatusResult } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { EventConsole } from "@/components/event-console";
@@ -14,6 +14,8 @@ import {
   type SectionDraft,
   type SectionId,
 } from "@/lib/inbox/plan-edit";
+import { presentDirtyFiles } from "@/lib/inbox/worktree";
+import { CleanWorktreeDialog } from "@/components/clean-worktree-dialog";
 import { PlanDocument } from "./plan-document";
 import { DecisionRail, type GateAction } from "./decision-rail";
 import { useItemChat } from "./item-chat";
@@ -22,12 +24,13 @@ export function PlanDetailView() {
   const params = useParams();
   const id = decodeURIComponent(String(params.id));
   const router = useRouter();
-  const { state, requestTransition } = useOrchestrator();
+  const { state, requestTransition, cleanWorktree } = useOrchestrator();
   const { t } = useT();
   const p = t.inbox.plan;
 
   const item = state?.items.find((i) => i.id === id);
   const gate = item?.state === "plan-gate";
+  const worktree = item?.worktree;
 
   const [stored, setStored] = useState<StoredPlan | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,6 +91,36 @@ export function PlanDetailView() {
     setPrevComposite(null);
     wasRescoring.current = false;
   }, [id]);
+
+  // Dirty-worktree indicator (#204): probe the worktree's git status so the rail
+  // can surface leftover uncommitted work. statusEpoch re-triggers the fetch
+  // after a clean (no manifest broadcast to lean on).
+  const [worktreeStatus, setWorktreeStatus] = useState<WorktreeStatusResult | null>(null);
+  const [statusEpoch, setStatusEpoch] = useState(0);
+  const [cleanOpen, setCleanOpen] = useState(false);
+  useEffect(() => {
+    if (!worktree || !window.skipper) {
+      setWorktreeStatus(null);
+      return;
+    }
+    let cancelled = false;
+    window.skipper.orchestrator.getWorktreeStatus(id).then((result) => {
+      if (!cancelled) setWorktreeStatus(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, worktree, statusEpoch]);
+  const dirtyFiles = presentDirtyFiles(worktreeStatus);
+
+  const confirmClean = async () => {
+    const result = await cleanWorktree(id);
+    if (result.ok) {
+      setCleanOpen(false);
+      setStatusEpoch((n) => n + 1);
+    }
+    return result;
+  };
 
   const plan = stored?.plan;
 
@@ -254,6 +287,8 @@ export function PlanDetailView() {
               busyAction={busyAction}
               actionError={actionError}
               saving={saving}
+              dirtyFiles={dirtyFiles}
+              onCleanWorktree={() => setCleanOpen(true)}
               onAction={(action, note) => void runAction(action, note)}
               onSizeChange={(size) => void saveSize(size)}
             />
@@ -274,6 +309,15 @@ export function PlanDetailView() {
             />
           </div>
         </>
+      )}
+
+      {cleanOpen && dirtyFiles && worktree && (
+        <CleanWorktreeDialog
+          branch={worktree.branch}
+          dirtyFiles={dirtyFiles}
+          onConfirm={confirmClean}
+          onDismiss={() => setCleanOpen(false)}
+        />
       )}
     </div>
   );

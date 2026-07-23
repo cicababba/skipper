@@ -65,6 +65,7 @@ import type {
   ArchiveItemResult,
   UntrackItemResult,
   CloseItemOnTrackerResult,
+  CleanWorktreeResult,
   IssueSourceCapabilities,
   IssueSourceId,
 } from "@skipper/shared";
@@ -121,6 +122,7 @@ import {
   discardWorktree,
   ensureWorktree,
   fetchOrigin,
+  forceCleanWorktree,
   refreshWorktreeBase,
   resolveBaseRef,
   worktreeDirFor,
@@ -1594,6 +1596,43 @@ export function initOrchestrator(
       await saveOrchestratorManifest(deps!.manifestFilePath, m);
       broadcast();
       return { ok: true };
+    },
+  );
+  // Dirty-worktree cleanup (#204): reset the item's worktree to its base ref and
+  // clean untracked files — discards leftover uncommitted work AND local commits;
+  // worktree + branch survive. Never automatic: the renderer confirms with the
+  // file list first. Refuses while an agent run holds the worktree.
+  ipcMain.handle(
+    "skipper:orchestrator:cleanWorktree",
+    async (_e, itemId: string): Promise<CleanWorktreeResult> => {
+      const m = await ensureManifest();
+      await ensureRepoLinks();
+      const item = m.items[itemId];
+      if (!item) return { ok: false, error: `unknown item ${itemId}` };
+      if (!item.worktree) return { ok: false, error: "no worktree recorded for item" };
+      if (item.state === "coding" || item.state === "planning") {
+        return { ok: false, error: "a run is active in this worktree" };
+      }
+      const link = repoLinks?.repos[repoKey(item.repo)];
+      if (!link) {
+        return { ok: false, error: `repo ${item.repo.owner}/${item.repo.name} is not linked` };
+      }
+      const worktree = item.worktree;
+      try {
+        return await withRepoGitLock(item.repo, async () => {
+          const dirty = await worktreeDirtyFiles(worktree.path);
+          if (dirty === null) return { ok: false, error: "worktree folder is missing on disk" };
+          const account = codeHostAccountFor(item.codeHost, item.accountId);
+          const token = account ? await deps!.getToken(account.key) : null;
+          const creds = token ? codeHostFor(item.codeHost).pushCredentials(token) : undefined;
+          await fetchOrigin(link.localPath, creds).catch(() => {});
+          const baseRef = await resolveBaseRef(link.localPath, link.baseBranch);
+          await forceCleanWorktree(worktree.path, baseRef);
+          return { ok: true };
+        });
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
     },
   );
   // Close-on-tracker (#132): close the issue on its tracker via the source's

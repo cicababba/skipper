@@ -10,6 +10,7 @@ import {
 } from "react";
 import type {
   ArchiveItemResult,
+  CleanWorktreeResult,
   CloseItemOnTrackerResult,
   LifecycleState,
   OrchestratorSettings,
@@ -34,6 +35,7 @@ interface OrchestratorContextValue {
   archiveItem: (itemId: string, force?: boolean) => Promise<ArchiveItemResult>;
   untrackItem: (itemId: string, force?: boolean) => Promise<UntrackItemResult>;
   closeItemOnTracker: (itemId: string) => Promise<CloseItemOnTrackerResult>;
+  cleanWorktree: (itemId: string) => Promise<CleanWorktreeResult>;
   setIntakePaused: (paused: boolean) => Promise<void>;
   /** Global settings writer (#62); the handler validates each key. */
   updateSettings: (patch: Partial<OrchestratorSettings>) => Promise<void>;
@@ -129,6 +131,16 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
     [],
   );
 
+  const cleanWorktree = useCallback(
+    async (itemId: string): Promise<CleanWorktreeResult> => {
+      if (!window.skipper) return { ok: false, error: "desktop only" };
+      const result = await window.skipper.orchestrator.cleanWorktree(itemId);
+      if (!result.ok) setError(result.error);
+      return result;
+    },
+    [],
+  );
+
   const setIntakePaused = useCallback(async (paused: boolean) => {
     if (!window.skipper) return;
     try {
@@ -182,6 +194,7 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
       archiveItem,
       untrackItem,
       closeItemOnTracker,
+      cleanWorktree,
       setIntakePaused,
       updateSettings,
       resolveResumeRite,
@@ -198,6 +211,7 @@ export function OrchestratorProvider({ children }: { children: React.ReactNode }
       archiveItem,
       untrackItem,
       closeItemOnTracker,
+      cleanWorktree,
       setIntakePaused,
       updateSettings,
       resolveResumeRite,

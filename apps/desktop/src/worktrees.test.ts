@@ -15,6 +15,7 @@ import {
   deleteBranchIfNoUniqueCommits,
   discardWorktree,
   ensureWorktree,
+  forceCleanWorktree,
   listWorktreeChanges,
   listWorktrees,
   parseNameStatusZ,
@@ -29,6 +30,7 @@ import {
   worktreeDirFor,
   worktreeDirtyFiles,
   worktreeStatus,
+  worktreeStatusWithDirt,
   writeWorktreeFile,
 } from "./worktrees";
 
@@ -703,6 +705,101 @@ describe("worktreeDirtyFiles (#115)", () => {
 
   it("returns null when the directory is gone", async () => {
     expect(await worktreeDirtyFiles(join(dir, "does-not-exist"))).toBeNull();
+  });
+});
+
+describe("worktreeStatusWithDirt (#204)", () => {
+  it("reports an empty dirtyFiles array for a clean worktree", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-204a");
+    await ensureWorktree({
+      repoPath: clone,
+      worktreePath,
+      branch: "feature/issue-204a",
+      baseRef: "origin/main",
+    });
+    const status = await worktreeStatusWithDirt({ path: worktreePath, branch: "feature/issue-204a" });
+    expect(status).toMatchObject({ ok: true, present: true, dirtyFiles: [] });
+  });
+
+  it("returns prefix-free relative paths for a modified + untracked worktree", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-204b");
+    await ensureWorktree({
+      repoPath: clone,
+      worktreePath,
+      branch: "feature/issue-204b",
+      baseRef: "origin/main",
+    });
+    await writeFile(join(worktreePath, "README.md"), "changed\n");
+    await writeFile(join(worktreePath, "new.md"), "new\n");
+    const status = await worktreeStatusWithDirt({ path: worktreePath, branch: "feature/issue-204b" });
+    if (!status.ok) throw new Error("expected ok status");
+    expect(status.dirtyFiles).toEqual(expect.arrayContaining(["README.md", "new.md"]));
+    expect(status.dirtyFiles).toHaveLength(2);
+  });
+
+  it("omits dirtyFiles when the worktree is not present", async () => {
+    const status = await worktreeStatusWithDirt({
+      path: join(dir, "gone"),
+      branch: "feature/issue-204c",
+    });
+    expect(status).toEqual({
+      ok: true,
+      path: join(dir, "gone"),
+      branch: "feature/issue-204c",
+      sessionId: undefined,
+      present: false,
+    });
+    if (!status.ok) throw new Error("expected ok status");
+    expect(status.dirtyFiles).toBeUndefined();
+  });
+
+  it("errors when no worktree is recorded", async () => {
+    await expect(worktreeStatusWithDirt(undefined)).resolves.toEqual({
+      ok: false,
+      error: "no worktree recorded for item",
+    });
+  });
+});
+
+describe("forceCleanWorktree (#204)", () => {
+  it("discards uncommitted work and local commits, keeping the branch and dir at base", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-204d");
+    await ensureWorktree({
+      repoPath: clone,
+      worktreePath,
+      branch: "feature/issue-204d",
+      baseRef: "origin/main",
+    });
+    const baseRev = git(worktreePath, "rev-parse", "origin/main").trim();
+    git(worktreePath, "config", "user.email", "t@t");
+    git(worktreePath, "config", "user.name", "t");
+    await writeFile(join(worktreePath, "own.md"), "own\n");
+    git(worktreePath, "add", ".");
+    git(worktreePath, "commit", "-qm", "own work");
+    await writeFile(join(worktreePath, "README.md"), "changed\n");
+    await writeFile(join(worktreePath, "stray.md"), "stray\n");
+
+    await forceCleanWorktree(worktreePath, "origin/main");
+
+    expect(await worktreeDirtyFiles(worktreePath)).toEqual([]);
+    expect(git(worktreePath, "rev-parse", "HEAD").trim()).toBe(baseRev);
+    expect(git(clone, "branch", "--list", "feature/issue-204d").trim()).not.toBe("");
+    expect((await listWorktrees(clone)).some((w) => w.branch === "feature/issue-204d")).toBe(true);
+  });
+
+  it("throws on a bad base ref", async () => {
+    const { clone } = await makeCloneWithOrigin();
+    const worktreePath = join(dir, "wt", "issue-204e");
+    await ensureWorktree({
+      repoPath: clone,
+      worktreePath,
+      branch: "feature/issue-204e",
+      baseRef: "origin/main",
+    });
+    await expect(forceCleanWorktree(worktreePath, "origin/does-not-exist")).rejects.toThrow();
   });
 });
 

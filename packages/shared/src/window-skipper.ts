@@ -1,6 +1,7 @@
 import type { AuthProviderId, AuthProviderMeta, AuthState } from "./types";
 import type {
   ArchiveItemResult,
+  CleanWorktreeResult,
   CloseItemOnTrackerResult,
   FollowCandidatesResult,
   LifecycleState,
@@ -272,6 +273,7 @@ export interface WindowSkipper {
       content: string,
     ) => Promise<SaveWorktreeFileResult>;
     getWorktreeStatus: (itemId: string) => Promise<WorktreeStatusResult>;
+    cleanWorktree: (itemId: string) => Promise<CleanWorktreeResult>;
     onStateChanged: (callback: (state: OrchestratorState) => void) => () => void;
   };
   /** Coding runner progress stream (#9). */

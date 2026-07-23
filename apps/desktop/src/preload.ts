@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   AgentChatKind,
   ArchiveItemResult,
+  CleanWorktreeResult,
   CloseItemOnTrackerResult,
   AuthProviderId,
   AuthProviderMeta,
@@ -223,6 +224,8 @@ const api = {
       ipcRenderer.invoke("skipper:orchestrator:saveWorktreeFile", itemId, path, content),
     getWorktreeStatus: (itemId: string): Promise<WorktreeStatusResult> =>
       ipcRenderer.invoke("skipper:orchestrator:getWorktreeStatus", itemId),
+    cleanWorktree: (itemId: string): Promise<CleanWorktreeResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:cleanWorktree", itemId),
     onStateChanged: (callback: (state: OrchestratorState) => void) => {
       const handler = (_e: unknown, state: OrchestratorState) => callback(state);
       ipcRenderer.on("skipper:orchestrator:stateChanged", handler);
