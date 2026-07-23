@@ -119,9 +119,11 @@ export const JIRA_OAUTH_ENDPOINTS = {
 // token endpoint authenticates the client with HTTP Basic, not body params
 // (tokenAuth: "basic"). Refresh tokens rotate: every refresh returns a new
 // refresh_token and the old one expires shortly after; access tokens live ~1–2h.
-// The consumer registers ONE callback URL, prefix-matched, and Bitbucket ignores
-// the loopback port at request time (RFC 8252) — so any free port works and no
-// redirectPorts are pinned. GET /2.0/user carries no email; the primary lives
+// Workspaces on Atlassian-managed OAuth clients (secrets prefixed ATOA, same
+// infrastructure as Jira) enforce an EXACT callback match — the classic
+// consumer's prefix-match/any-port behavior is gone, so the redirect port is
+// pinned like Jira's and the client must register exactly
+// http://127.0.0.1:8134/callback. GET /2.0/user carries no email; the primary lives
 // behind /2.0/user/emails (covered by the `account` scope). Bitbucket Data Center
 // (self-hosted, /rest/api/1.0/) is a separate product and is out of scope.
 
@@ -134,4 +136,5 @@ export const BITBUCKET_OAUTH_ENDPOINTS = {
   userEndpoint: "https://api.bitbucket.org/2.0/user",
   emailsEndpoint: "https://api.bitbucket.org/2.0/user/emails",
   scopes: ["repository", "pullrequest:write", "account"],
+  redirectPorts: [8134],
 } as const;
