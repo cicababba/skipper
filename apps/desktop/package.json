@@ -1,6 +1,6 @@
 {
   "name": "@skipper/desktop",
-  "version": "1.16.3",
+  "version": "0.1.0",
   "private": true,
   "description": "Skipper native desktop app",
   "main": "dist/main.js",
@@ -35,7 +35,7 @@
     "typescript": "^5.9.3"
   },
   "build": {
-    "appId": "com.nextepochs.skipper",
+    "appId": "com.cicababba.skipper",
     "productName": "Skipper",
     "copyright": "Copyright © 2026 NextEpochs",
     "npmRebuild": false,
