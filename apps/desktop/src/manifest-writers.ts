@@ -1,5 +1,6 @@
 import { applyTransition, resolveGate, type OrchestratorManifest } from "@skipper/core";
 import {
+  appendReviewHistory,
   latestCodingTransitionAt,
   latestPlanningTransitionAt,
   type AgentReview,
@@ -105,7 +106,8 @@ export function makeManifestWriters(d: ManifestWriterDeps) {
 
   /**
    * Sets item.review + the transition in a single manifest write (#10) — atomic
-   * rounds+transition so a crash can never burn a review round.
+   * rounds+transition so a crash can never burn a review round. The prior record is
+   * snapshotted onto review.history before overwrite (#205).
    */
   async function completeReview(
     itemId: string,
@@ -117,7 +119,13 @@ export function makeManifestWriters(d: ManifestWriterDeps) {
     const m = await d.ensureManifest();
     const item = m.items[itemId];
     if (!item) throw new Error(`unknown item ${itemId}`);
-    m.items[itemId] = applyTransition({ ...item, review }, to, "reviewer", reason, { resumeTo });
+    m.items[itemId] = applyTransition(
+      { ...item, review: appendReviewHistory(item.review, review) },
+      to,
+      "reviewer",
+      reason,
+      { resumeTo },
+    );
     await d.saveManifest(m);
     d.broadcast();
     // Fix round lands the item back in queued-for-coding territory — wake the coder.

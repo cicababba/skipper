@@ -1,5 +1,12 @@
 import { displayKey, isPlanChatText } from "@skipper/shared";
-import type { CoderReport, CodingEvent, IssuePlan, PlanChatMessage } from "@skipper/shared";
+import type {
+  AgentReviewOutcome,
+  CoderReport,
+  CodingEvent,
+  CriticObjection,
+  IssuePlan,
+  PlanChatMessage,
+} from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import type { RunConfinement } from "../llm/confinement";
@@ -13,16 +20,27 @@ import { parseJsonReply } from "../llm/json";
 // fully-seeded turn from the issue + plan + coder report + transcript.
 
 const MAX_BODY_CHARS = 20_000;
+const MAX_OBJECTION_DETAIL_CHARS = 400;
 const DEFAULT_DISTILL_MAX_TURNS = 12;
 
 export const CODER_CHAT_SYSTEM_PROMPT = `You are the software engineer who implemented the changes in this worktree. The reviewer is asking you about your implementation before deciding what to do with it.
 
 Answer conversationally in markdown. Your current working directory is the git worktree that holds your changes — you may use Read, Grep, Glob and read-only Bash to verify facts against it. Do NOT modify any files, including via Bash, and never touch anything outside your working directory — even if the conversation mentions absolute paths elsewhere on this machine. Do NOT re-emit the plan or the coder report — just answer the question.`;
 
+/** The reviewer's verdict injected into the coder chat context (#203). */
+export interface CoderChatReviewInfo {
+  outcome: AgentReviewOutcome;
+  rounds: number;
+  reason?: string;
+  objections?: CriticObjection[];
+}
+
 export interface CoderChatContext {
   issue: PlanIssueInput;
   plan?: IssuePlan;
   report?: CoderReport;
+  /** The reviewer's verdict, so a fallback run answers "fix the reviewer's point 2" (#203). */
+  review?: CoderChatReviewInfo;
   history: PlanChatMessage[];
 }
 
@@ -38,6 +56,9 @@ export interface DiscussCoderOptions {
   sessionId?: string;
   /** The file the user currently has open in the worktree, treated as the subject. */
   selectedFile?: string;
+  /** Reviewer verdict injected on the first resume turn only (#203); the caller
+   *  gates it on an empty transcript. Fallback runs embed context.review instead. */
+  resumeReview?: CoderChatReviewInfo;
   maxTurns?: number;
   onEvent?: (event: CodingEvent) => void;
   memory?: MemoryMcp;
@@ -102,11 +123,45 @@ export function renderCoderReportBlock(report: CoderReport): string {
   return lines.join("\n");
 }
 
-function buildResumePrompt(message: string, selectedFile?: string): string {
+/** Compact rendering of the reviewer verdict for injection into the coder chat (#203). */
+export function renderReviewBlock(review: CoderChatReviewInfo): string {
+  const lines: string[] = [`--- Review (round ${review.rounds}, ${review.outcome}) ---`];
+  if (review.reason) lines.push(`Reason: ${review.reason}`);
+  if (review.objections && review.objections.length > 0) {
+    lines.push(`Objections:`);
+    for (const o of review.objections) {
+      const detail =
+        o.detail.length > MAX_OBJECTION_DETAIL_CHARS
+          ? `${o.detail.slice(0, MAX_OBJECTION_DETAIL_CHARS)}…`
+          : o.detail;
+      lines.push(`- ${o.blocking ? "[BLOCKING] " : ""}(${o.kind}) ${detail}`);
+    }
+  } else {
+    lines.push(`Objections: none.`);
+  }
+  lines.push(`--- End review ---`);
+  return lines.join("\n");
+}
+
+function reviewLines(review?: CoderChatReviewInfo): string[] {
+  if (!review) return [];
+  return [
+    ``,
+    `An independent reviewer has reviewed your changes — here is the outcome:`,
+    renderReviewBlock(review),
+  ];
+}
+
+function buildResumePrompt(
+  message: string,
+  selectedFile?: string,
+  review?: CoderChatReviewInfo,
+): string {
   return [
     `The reviewer is asking about the changes you implemented in this worktree.`,
     `Answer conversationally. Do NOT modify any files or re-emit the plan or report.`,
     ...selectedFileLine(selectedFile),
+    ...reviewLines(review),
     ``,
     `Reviewer: ${message}`,
   ].join("\n");
@@ -122,6 +177,7 @@ function buildFallbackPrompt(ctx: CoderChatContext, message: string, selectedFil
       ? [``, `--- Approved plan (JSON) ---`, JSON.stringify(ctx.plan, null, 2), `--- End approved plan ---`]
       : []),
     ...(ctx.report ? [``, renderCoderReportBlock(ctx.report)] : []),
+    ...(ctx.review ? [``, renderReviewBlock(ctx.review)] : []),
     ...(history ? [``, `--- Conversation so far ---`, history, `--- End conversation ---`] : []),
     ...selectedFileLine(selectedFile),
     ``,
@@ -139,7 +195,7 @@ export async function discussCoder(
 ): Promise<{ reply: string; sessionId?: string }> {
   const { llm, cwd, message } = opts;
   const prompt = opts.resumeSessionId
-    ? buildResumePrompt(message, opts.selectedFile)
+    ? buildResumePrompt(message, opts.selectedFile, opts.resumeReview)
     : opts.context
       ? buildFallbackPrompt(opts.context, message, opts.selectedFile)
       : undefined;
@@ -234,6 +290,7 @@ function buildDistillFallbackPrompt(ctx: CoderChatContext): string {
       ? [``, `--- Approved plan (JSON) ---`, JSON.stringify(ctx.plan, null, 2), `--- End approved plan ---`]
       : []),
     ...(ctx.report ? [``, renderCoderReportBlock(ctx.report)] : []),
+    ...(ctx.review ? [``, renderReviewBlock(ctx.review)] : []),
     ...(history ? [``, `--- Conversation so far ---`, history, `--- End conversation ---`] : []),
     ``,
     INSTRUCTIONS_JSON_DEMAND,

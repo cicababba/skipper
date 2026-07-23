@@ -1,7 +1,7 @@
 import { displayKey, type CoderReport, type CriticSignal, type PlanAcceptance } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm";
 import type { PlanIssueInput } from "../planner";
-import { runCritic } from "../confidence";
+import { runCritic, type CriticPriorRound } from "../confidence";
 
 // Second mount point of the #8 adversarial critic (issue #10): same
 // component, artifactKind "diff". Core stays git-free — the diff arrives
@@ -35,6 +35,8 @@ export interface CritiqueDiffArgs {
   /** Persist this round under a session (#111). id + cwd are bundled — a session
    *  id is only resumable from the worktree it was minted in. */
   session?: { id: string; cwd: string };
+  /** Prior review round for continuity classification (#205). */
+  prior?: CriticPriorRound;
 }
 
 export async function critiqueDiff(
@@ -78,6 +80,7 @@ export async function critiqueDiff(
       artifactLabel: `working-tree diff for issue ${displayKey(issue.key)}: ${issue.title}`,
       artifact: truncateDiff(args.diff).text,
       context,
+      ...(args.prior ? { prior: args.prior } : {}),
     },
     llm,
     args.session ? { cwd: args.session.cwd, sessionId: args.session.id } : undefined,

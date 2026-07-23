@@ -1,7 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
 import type { CoderReport, IssuePlan, PlanChatMessage } from "@skipper/shared";
 import type { AgentOptions, LLMProviderInterface, LLMResponse } from "../src/llm/provider";
-import { distillCoderChatInstructions, type CoderChatContext, type PlanIssueInput } from "../src/coder";
+import {
+  discussCoder,
+  distillCoderChatInstructions,
+  renderReviewBlock,
+  type CoderChatContext,
+  type CoderChatReviewInfo,
+  type PlanIssueInput,
+} from "../src/coder";
 
 const ISSUE: PlanIssueInput = {
   key: "42",
@@ -146,5 +153,98 @@ describe("distillCoderChatInstructions", () => {
   it("throws when there is neither a session nor context", async () => {
     const { llm } = fakeLLM({});
     await expect(distillCoderChatInstructions({ llm, cwd: "/wt" })).rejects.toThrow(/needs context/);
+  });
+
+  // #205: the distill fallback also carries the review block.
+  it("distill fallback embeds the review block only when context.review is set", async () => {
+    const { llm, agent } = fakeLLM({ agentReply: JSON.stringify(INSTRUCTIONS) });
+    await distillCoderChatInstructions({
+      llm,
+      cwd: "/wt",
+      sessionId: "mint-1",
+      context: { issue: ISSUE, plan: PLAN, review: REVIEW, history: HISTORY },
+    });
+    expect(agent.mock.calls[0][0] as string).toContain("--- Review (round 2, reject) ---");
+
+    const { llm: llm2, agent: agent2 } = fakeLLM({ agentReply: JSON.stringify(INSTRUCTIONS) });
+    await distillCoderChatInstructions({
+      llm: llm2,
+      cwd: "/wt",
+      sessionId: "mint-1",
+      context: { issue: ISSUE, plan: PLAN, history: HISTORY },
+    });
+    expect(agent2.mock.calls[0][0] as string).not.toContain("--- Review (");
+  });
+});
+
+// #203: the reviewer verdict is injected into the coder chat context.
+const REVIEW: CoderChatReviewInfo = {
+  outcome: "reject",
+  rounds: 2,
+  reason: "did not converge",
+  objections: [
+    { kind: "risk", detail: "the blocking one", blocking: true },
+    { kind: "other", detail: "a minor nit", blocking: false },
+  ],
+};
+
+describe("renderReviewBlock", () => {
+  it("renders round, outcome, reason and blocking-tagged objections", () => {
+    const block = renderReviewBlock(REVIEW);
+    expect(block).toContain("--- Review (round 2, reject) ---");
+    expect(block).toContain("Reason: did not converge");
+    expect(block).toContain("Objections:");
+    expect(block).toContain("- [BLOCKING] (risk) the blocking one");
+    expect(block).toContain("- (other) a minor nit");
+    expect(block).toContain("--- End review ---");
+  });
+
+  it("renders an explicit none when there are no objections", () => {
+    const block = renderReviewBlock({ outcome: "approve", rounds: 1 });
+    expect(block).toContain("Objections: none.");
+  });
+
+  it("caps a long objection detail", () => {
+    const block = renderReviewBlock({
+      outcome: "reject",
+      rounds: 1,
+      objections: [{ kind: "risk", detail: "x".repeat(500), blocking: true }],
+    });
+    expect(block).toContain("…");
+    expect(block).not.toContain("x".repeat(401));
+  });
+});
+
+describe("discussCoder review injection (#203)", () => {
+  it("resume path injects the review block only when resumeReview is given", async () => {
+    const { llm, agent } = fakeLLM({ agentReply: "an answer" });
+    await discussCoder({ llm, cwd: "/wt", message: "fix point 1", resumeSessionId: "s", resumeReview: REVIEW });
+    const prompt = agent.mock.calls[0][0] as string;
+    expect(prompt).toContain("An independent reviewer has reviewed your changes");
+    expect(prompt).toContain("--- Review (round 2, reject) ---");
+
+    const { llm: llm2, agent: agent2 } = fakeLLM({ agentReply: "an answer" });
+    await discussCoder({ llm: llm2, cwd: "/wt", message: "fix point 1", resumeSessionId: "s" });
+    expect(agent2.mock.calls[0][0] as string).not.toContain("--- Review (");
+  });
+
+  it("fallback path embeds the review block only when context.review is set", async () => {
+    const { llm, agent } = fakeLLM({ agentReply: "an answer" });
+    await discussCoder({
+      llm,
+      cwd: "/wt",
+      message: "why?",
+      context: { issue: ISSUE, plan: PLAN, review: REVIEW, history: HISTORY },
+    });
+    expect(agent.mock.calls[0][0] as string).toContain("--- Review (round 2, reject) ---");
+
+    const { llm: llm2, agent: agent2 } = fakeLLM({ agentReply: "an answer" });
+    await discussCoder({
+      llm: llm2,
+      cwd: "/wt",
+      message: "why?",
+      context: { issue: ISSUE, plan: PLAN, history: HISTORY },
+    });
+    expect(agent2.mock.calls[0][0] as string).not.toContain("--- Review (");
   });
 });

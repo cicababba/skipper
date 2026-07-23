@@ -156,4 +156,29 @@ describe("critiqueDiff", () => {
     expect(prompt).not.toContain("deviations from the plan");
     expect(prompt).not.toContain("Verification commands the coder ran:");
   });
+
+  // #205: the prior round threads into runCritic, switching on the continuity path.
+  it("threads a prior round into the critic prompt and returns mapped resolutions", async () => {
+    const { llm, askStructured } = fakeLLM({
+      verdict: "approve",
+      objections: [],
+      resolved: ["P1"],
+    });
+    const signal = await critiqueDiff(
+      {
+        diff: "+1",
+        issue,
+        acceptance: [],
+        prior: {
+          objections: [{ kind: "risk", detail: "the prior blocker", blocking: true }],
+          deliveredToCoder: true,
+        },
+      },
+      llm,
+    );
+    const prompt = askStructured.mock.calls[0][0] as string;
+    expect(prompt).toContain("--- Previous review round ---");
+    expect(prompt).toContain("P1. [risk] (blocking) the prior blocker");
+    expect(signal.resolved).toEqual([{ kind: "risk", detail: "the prior blocker", blocking: true }]);
+  });
 });

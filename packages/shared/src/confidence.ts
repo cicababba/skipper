@@ -38,6 +38,8 @@ export interface CriticObjection {
   kind: "missing-step" | "wrong-approach" | "risk" | "acceptance-gap" | "underspecified" | "other";
   detail: string;
   blocking: boolean;
+  /** Continuity classification against the prior review round (#205); absent = "new". */
+  status?: "new" | "persisting";
 }
 
 export interface CriticSignal {
@@ -45,6 +47,8 @@ export interface CriticSignal {
   score: number;
   verdict: CriticVerdict;
   objections: CriticObjection[];
+  /** Prior-round objections the current artifact genuinely addressed (#205). */
+  resolved?: CriticObjection[];
 }
 
 export interface ClaritySignal {

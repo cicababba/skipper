@@ -342,6 +342,81 @@ describe("completeReview / completePrOpen / completeReentry / completeMergedClea
     expect(h.pokes.shepherd).toBe(1);
   });
 
+  it("completeReview starts an item with no review history (#205)", async () => {
+    const item = mkItem("1", "agent-review", [
+      txn(null, "triage", "2026-07-13T00:00:00.000Z"),
+      txn("triage", "agent-review", "2026-07-13T03:00:00.000Z"),
+    ]);
+    const h = makeHarness({ items: [item] });
+    const review: AgentReview = { rounds: 1, outcome: "approve", at: "2026-07-13T04:00:00.000Z" };
+    await h.writers.completeReview("1", review, "human-review", "approved");
+    expect(h.manifest.items["1"].review?.history).toBeUndefined();
+  });
+
+  it("completeReview snapshots the prior record onto history, stripping transients (#205)", async () => {
+    const prior: AgentReview = {
+      rounds: 1,
+      outcome: "reject",
+      objections: [{ kind: "risk", detail: "boom", blocking: true }],
+      pendingObjections: [{ kind: "risk", detail: "boom", blocking: true }],
+      sessionId: "sess-1",
+      at: "2026-07-13T04:00:00.000Z",
+    };
+    const item = mkItem(
+      "1",
+      "agent-review",
+      [
+        txn(null, "triage", "2026-07-13T00:00:00.000Z"),
+        txn("triage", "agent-review", "2026-07-13T03:00:00.000Z"),
+      ],
+      { review: prior },
+    );
+    const h = makeHarness({ items: [item] });
+    const next: AgentReview = { rounds: 2, outcome: "approve", at: "2026-07-13T05:00:00.000Z" };
+    await h.writers.completeReview("1", next, "human-review", "approved");
+    const review = h.manifest.items["1"].review;
+    expect(review?.rounds).toBe(2);
+    expect(review?.history).toHaveLength(1);
+    expect(review?.history?.[0]).toMatchObject({ round: 1, outcome: "reject" });
+    expect(review?.history?.[0]).not.toHaveProperty("pendingObjections");
+    expect(review?.history?.[0]).not.toHaveProperty("sessionId");
+  });
+
+  it("completeReview stacks two priors oldest-first (#205)", async () => {
+    const item = mkItem("1", "agent-review", [
+      txn(null, "triage", "2026-07-13T00:00:00.000Z"),
+      txn("triage", "agent-review", "2026-07-13T03:00:00.000Z"),
+    ]);
+    const h = makeHarness({ items: [item] });
+    const backToReview = () => {
+      h.manifest.items["1"] = { ...h.manifest.items["1"], state: "agent-review" };
+    };
+    await h.writers.completeReview(
+      "1",
+      { rounds: 1, outcome: "reject", at: "2026-07-13T04:00:00.000Z" },
+      "coding",
+      "r1",
+    );
+    backToReview();
+    await h.writers.completeReview(
+      "1",
+      { rounds: 2, outcome: "reject", at: "2026-07-13T05:00:00.000Z" },
+      "coding",
+      "r2",
+    );
+    backToReview();
+    await h.writers.completeReview(
+      "1",
+      { rounds: 3, outcome: "approve", at: "2026-07-13T06:00:00.000Z" },
+      "human-review",
+      "r3",
+    );
+    const review = h.manifest.items["1"].review;
+    expect(review?.rounds).toBe(3);
+    expect(review?.history?.map((r) => r.round)).toEqual([1, 2]);
+    expect(review?.history?.map((r) => r.outcome)).toEqual(["reject", "reject"]);
+  });
+
   it("completePrOpen sets pr + lastPushedSha, clears pending comments, no poke", async () => {
     const item = mkItem("1", "human-review", [
       txn(null, "triage", "2026-07-13T00:00:00.000Z"),

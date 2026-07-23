@@ -283,6 +283,31 @@ describe("sendAgentChatMessage resume vs fallback", () => {
   });
 });
 
+// #203: the coder chat sees the reviewer verdict — on the first resume turn and
+// through the fallback context, but not on later resume turns.
+describe("coder chat review injection (#203)", () => {
+  it("injects the review block on the first resume turn but not the second", async () => {
+    const provider = fakeProvider();
+    const h = makeHarness(plansDir, makeItem());
+    initAgentChat(h.deps, provider);
+    await sendAgentChatMessage("coder", "github:1", "fix point 1");
+    expect(provider.agent.mock.calls[0][0] as string).toContain("--- Review (");
+    await sendAgentChatMessage("coder", "github:1", "and point 2?");
+    expect(provider.agent.mock.calls[1][0] as string).not.toContain("--- Review (");
+  });
+
+  it("carries the review into the coder fallback context", async () => {
+    const provider = fakeProvider();
+    // No worktree session → the coder runs a fresh, fully-seeded fallback turn.
+    const item = makeItem({ worktree: { path: "/wt/issue-1", branch: "feature/issue-1" } });
+    const h = makeHarness(plansDir, item);
+    initAgentChat(h.deps, provider);
+    const res = await sendAgentChatMessage("coder", "github:1", "why?");
+    expect(res.ok).toBe(true);
+    expect(provider.agent.mock.calls[0][0] as string).toContain("--- Review (round 1, concerns) ---");
+  });
+});
+
 describe("sendAgentChatMessage cancel + drift", () => {
   it("returns cancelled and persists nothing on abort", async () => {
     const provider = fakeProvider(

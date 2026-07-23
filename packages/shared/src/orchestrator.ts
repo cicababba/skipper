@@ -15,6 +15,18 @@ import { DEFAULT_LLM_SETTINGS } from "./types";
 
 export type AgentReviewOutcome = CriticVerdict | "skipped" | "unavailable";
 
+/** One snapshotted prior review record (#205), oldest-first on AgentReview.history.
+ *  Position in the history array = the record's attempt ordinal. */
+export interface ReviewRound {
+  /** Chain-local rounds at snapshot time (resets on re-entry). */
+  round: number;
+  outcome: AgentReviewOutcome;
+  reason?: string;
+  objections?: CriticObjection[];
+  resolvedObjections?: CriticObjection[];
+  at: string; // ISO 8601
+}
+
 export interface AgentReview {
   /** Reviews performed in the current fix chain. A round = one review of one coding attempt; first review = 1. */
   rounds: number;
@@ -23,11 +35,34 @@ export interface AgentReview {
   reason?: string;
   /** Full objection list from the last review (UI surface for #13). */
   objections?: CriticObjection[];
+  /** Prior-round objections this round's diff genuinely addressed (#205). */
+  resolvedObjections?: CriticObjection[];
   /** Set only when the reviewer sent the item back to coding — the coder's fix-round seam. */
   pendingObjections?: CriticObjection[];
   /** Last critic round's Claude session, cwd-scoped to worktree.path, overwritten each round (#111). */
   sessionId?: string;
+  /** Prior review records snapshotted before overwrite (#205), oldest-first. */
+  history?: ReviewRound[];
   at: string; // ISO 8601
+}
+
+/** Snapshot a review record for history — strips the transient/derived fields
+ *  (pendingObjections, sessionId, history) that never belong on a past round. */
+export function toReviewRound(review: AgentReview): ReviewRound {
+  return {
+    round: review.rounds,
+    outcome: review.outcome,
+    ...(review.reason ? { reason: review.reason } : {}),
+    ...(review.objections ? { objections: review.objections } : {}),
+    ...(review.resolvedObjections ? { resolvedObjections: review.resolvedObjections } : {}),
+    at: review.at,
+  };
+}
+
+/** Merge a fresh review over the previous one, snapshotting the previous record
+ *  onto history (#205). No prior = passthrough. */
+export function appendReviewHistory(prev: AgentReview | undefined, next: AgentReview): AgentReview {
+  return prev ? { ...next, history: [...(prev.history ?? []), toReviewRound(prev)] } : next;
 }
 
 /** One piece of human PR feedback — a change-request review body or an inline comment (#11). */
@@ -292,7 +327,8 @@ export interface TrackedItem {
   /** Shared worktree, created at planning (#110) and reused for coding/review (#9).
    *  sessionId is cwd-scoped: only resumable from the same worktree path. */
   worktree?: { path: string; branch: string; sessionId?: string };
-  /** Agent review overlay (#10). Written only via completeReview; replaced wholesale each review. */
+  /** Agent review overlay (#10). Written only via completeReview; the prior record is
+   *  snapshotted onto review.history before overwrite (#205). */
   review?: AgentReview;
   /** Linked PR (#11 writes the authoritative link; reconcile has a branch heuristic). */
   pr?: { id: string; number: number; url: string };

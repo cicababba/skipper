@@ -126,11 +126,12 @@ export {
   resolveGate,
   CriticError,
   CriticVerdictSchema,
+  CriticContinuityVerdictSchema,
   DEFAULT_CONFIDENCE_WEIGHTS,
   DEFAULT_CONFIDENCE_THRESHOLDS,
   DIVERGENCE_THRESHOLD,
 } from "./confidence";
-export type { CriticInput, ComputeConfidenceOptions, GateTarget } from "./confidence";
+export type { CriticInput, CriticPriorRound, ComputeConfidenceOptions, GateTarget } from "./confidence";
 
 // Coder (issue #9)
 export {
@@ -158,10 +159,12 @@ export {
   discussCoder,
   distillCoderChatInstructions,
   renderCoderReportBlock,
+  renderReviewBlock,
 } from "./coder";
 export type {
   CoderChatContext,
   CoderChatInstruction,
+  CoderChatReviewInfo,
   DiscussCoderOptions,
   DistillCoderChatOptions,
 } from "./coder";

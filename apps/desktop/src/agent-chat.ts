@@ -6,6 +6,7 @@ import {
   discussReviewer,
   distillCoderChatInstructions,
   type CoderChatContext,
+  type CoderChatReviewInfo,
   type LLMProviderInterface,
   type MemoryMcp,
   type PlanIssueInput,
@@ -16,6 +17,7 @@ import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
 import {
   CODER_CHAT_APPLY_STATES,
   type AgentChatKind,
+  type AgentReview,
   type CodingEvent,
   type Issue,
   type LlmSettings,
@@ -180,6 +182,15 @@ export function cancelAgentChat(kind: AgentChatKind, itemId: string): void {
   inFlight.get(flightKey(kind, itemId))?.abort();
 }
 
+function reviewInfoOf(review: AgentReview): CoderChatReviewInfo {
+  return {
+    outcome: review.outcome,
+    rounds: review.rounds,
+    ...(review.reason ? { reason: review.reason } : {}),
+    ...(review.objections ? { objections: review.objections } : {}),
+  };
+}
+
 async function buildContext(
   kind: AgentChatKind,
   item: TrackedItem,
@@ -194,17 +205,10 @@ async function buildContext(
     ...(storedPlan?.plan ? { plan: storedPlan.plan } : {}),
     ...(storedReport?.report ? { report: storedReport.report } : {}),
   };
-  if (kind === "coder") return base;
-  const review = item.review!;
-  return {
-    ...base,
-    review: {
-      outcome: review.outcome,
-      rounds: review.rounds,
-      ...(review.reason ? { reason: review.reason } : {}),
-      ...(review.objections ? { objections: review.objections } : {}),
-    },
-  };
+  if (kind === "coder") {
+    return item.review ? { ...base, review: reviewInfoOf(item.review) } : base;
+  }
+  return { ...base, review: reviewInfoOf(item.review!) };
 }
 
 export async function sendAgentChatMessage(
@@ -318,7 +322,13 @@ export async function sendAgentChatMessage(
         signal: controller.signal,
       };
       return kind === "coder"
-        ? discussCoder({ ...common, ...(opts?.selectedFile ? { selectedFile: opts.selectedFile } : {}) })
+        ? discussCoder({
+            ...common,
+            ...(opts?.selectedFile ? { selectedFile: opts.selectedFile } : {}),
+            ...(history.length === 0 && item.review
+              ? { resumeReview: reviewInfoOf(item.review) }
+              : {}),
+          })
         : discussReviewer(common);
     };
 
