@@ -5,6 +5,7 @@ import { ExternalLink } from "lucide-react";
 import { displayKey, type TrackedItem } from "@skipper/shared";
 import { ATTENTION_SECTION_STATES, repoKey } from "@/lib/inbox/model";
 import { formatAge } from "@/lib/inbox/table";
+import { itemHref } from "@/lib/inbox/nav";
 import { ConfidenceBadge } from "@/components/confidence-popover";
 import { useT } from "@/lib/app-i18n";
 import { StateBadge } from "./state-badge";
@@ -67,11 +68,7 @@ export function InboxTable({ items, repoScoped }: { items: TrackedItem[]; repoSc
                 <td className="px-3 py-2.5 max-w-[420px]">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <button
-                      onClick={() =>
-                        router.push(
-                          `/inbox/${encodeURIComponent(item.id)}?from=${encodeURIComponent(from)}`,
-                        )
-                      }
+                      onClick={() => router.push(itemHref(item.id, from))}
                       className="flex items-baseline gap-2 text-left hover:text-accent transition-colors min-w-0 flex-1"
                       title={item.title}
                     >

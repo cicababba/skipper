@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { Sparkles, Cpu, Trophy, ArrowRight, Loader2 } from "lucide-react";
 import { useT } from "@/lib/app-i18n";
 import { ModelSelect } from "@/components/model-select";
+import { updateAppSettings } from "@/lib/app-settings";
 
 type Step =
   | "welcome"
@@ -34,11 +35,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
   async function finishOnboarding() {
     // Mark onboardingCompleted in settings
     try {
-      await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ onboardingCompleted: true }),
-      });
+      await updateAppSettings({ onboardingCompleted: true });
     } catch { /* ignore */ }
     next("celebrate");
     setTimeout(() => onFinish(), 3200);
@@ -47,11 +44,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
   async function handleSaveSettings() {
     setSavingSettings(true);
     try {
-      await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ llm: { provider: "claude-cli", claudeModel } }),
-      });
+      await updateAppSettings({ llm: { provider: "claude-cli", claudeModel } });
       void finishOnboarding();
     } catch {
       /* ignore */

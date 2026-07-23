@@ -7,6 +7,7 @@ import type { AuthProviderId, RepoSettingsRow } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useAuth } from "@/lib/auth-context";
 import { useT } from "@/lib/app-i18n";
+import { repoHref } from "@/lib/inbox/nav";
 import { FollowPickerModal } from "@/components/follow-picker-modal";
 
 // Settings → Repositories (#15, reworked in #47): the *global* coding WIP
@@ -100,7 +101,7 @@ export function RepositoriesSection() {
               {rows.map((row) => (
                 <li key={row.key}>
                   <Link
-                    href={`/repos/${encodeURIComponent(row.repo.owner)}/${encodeURIComponent(row.repo.name)}`}
+                    href={repoHref(row.repo)}
                     className="flex items-center gap-3 py-2.5 hover:text-accent transition-colors"
                   >
                     <div className="flex-1 min-w-0">

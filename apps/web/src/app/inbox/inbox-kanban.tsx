@@ -5,6 +5,7 @@ import { ExternalLink, TriangleAlert } from "lucide-react";
 import { displayKey, type TrackedItem } from "@skipper/shared";
 import { ATTENTION_SECTION_STATES, KANBAN_COLUMNS, repoKey } from "@/lib/inbox/model";
 import { formatAge } from "@/lib/inbox/table";
+import { itemHref } from "@/lib/inbox/nav";
 import { ConfidenceBadge } from "@/components/confidence-popover";
 import { useT } from "@/lib/app-i18n";
 import { StateBadge } from "./state-badge";
@@ -28,7 +29,7 @@ function KanbanCard({ item, showState }: { item: TrackedItem; showState: boolean
     <article className="rounded-lg border border-border bg-background/60 p-2.5 space-y-2">
       <button
         onClick={() =>
-          router.push(`/inbox/${encodeURIComponent(item.id)}?from=${encodeURIComponent(from)}`)
+          router.push(itemHref(item.id, from))
         }
         className="text-left hover:text-accent transition-colors w-full"
         title={item.title}

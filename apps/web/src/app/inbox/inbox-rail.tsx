@@ -9,6 +9,7 @@ import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { KANBAN_COLUMNS, columnCounts, type ColumnId } from "@/lib/inbox/model";
 import { filterItems } from "@/lib/inbox/table";
+import { itemHref } from "@/lib/inbox/nav";
 import { accountsSummary, attentionItems, attentionTone } from "@/lib/inbox/rail";
 
 const LABEL = "text-[11px] font-medium uppercase tracking-wide text-muted/70";
@@ -55,7 +56,7 @@ export function InboxRail({
   const unmappedIssues = unmapped.reduce((n, u) => n + u.count, 0);
 
   const navigate = (id: string) =>
-    router.push(`/inbox/${encodeURIComponent(id)}?from=${encodeURIComponent(from)}`);
+    router.push(itemHref(id, from));
 
   return (
     <div className="self-start wide:col-start-2 wide:row-start-1 wide:sticky wide:top-4 wide:max-h-[calc(100vh-230px)] wide:overflow-y-auto rounded-lg border border-card-hover bg-card p-4 space-y-4">
@@ -173,7 +174,7 @@ export function InboxRail({
             worktrees.map((it) => (
               <Link
                 key={it.id}
-                href={`/inbox/${encodeURIComponent(it.id)}?from=${encodeURIComponent(pathname)}`}
+                href={itemHref(it.id, pathname)}
                 className="flex min-w-0 items-center gap-2 text-[12px] text-muted hover:text-accent transition-colors"
               >
                 <span className="font-mono text-[11px] shrink-0">{displayKey(it.key)}</span>

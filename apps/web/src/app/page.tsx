@@ -1,5 +1,14 @@
-import { redirect } from "next/navigation";
+"use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+
+// Static export can't server-redirect (#208), so the root path — kept for the
+// sidebar's href="/" — redirects on the client.
 export default function Home() {
-  redirect("/inbox");
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/inbox");
+  }, [router]);
+  return null;
 }

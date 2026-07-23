@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   Settings,
@@ -16,6 +16,7 @@ import { RepoManagerModal } from "./repo-manager-modal";
 import { BranchIndicator } from "./branch-indicator";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { attentionCounts, repoKey } from "@/lib/inbox/model";
+import { repoHref } from "@/lib/inbox/nav";
 import { useT } from "@/lib/app-i18n";
 import { useTheme } from "@/lib/theme-context";
 import { useStoredState } from "@/lib/use-stored-state";
@@ -175,12 +176,9 @@ function AttentionBadge({ count, title }: { count: number; title?: string }) {
   );
 }
 
-function repoHref(repo: { owner: string; name: string }): string {
-  return `/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`;
-}
-
 function InboxNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { state } = useOrchestrator();
   const { t } = useT();
   const [storedCollapsed, setStoredCollapsed] = useStoredState(INBOX_COLLAPSE_KEY, "0");
@@ -237,7 +235,13 @@ function InboxNav() {
       {!collapsed &&
         rows.map((row) => {
           const href = repoHref(row.repo);
-          const isActive = pathname === href || pathname.startsWith(href + "/");
+          // Every repo route now collapses to the pathname /repos/repo (detail)
+          // or /repos/repo/settings, so the owner/name live in the query — match
+          // on either pathname plus the query to highlight the row.
+          const isActive =
+            (pathname === "/repos/repo" || pathname === "/repos/repo/settings") &&
+            searchParams.get("owner") === row.repo.owner &&
+            searchParams.get("name") === row.repo.name;
           return (
             <Link
               key={row.key}

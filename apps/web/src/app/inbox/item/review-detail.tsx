@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useParams } from "next/navigation";
 import { AlertTriangle, Check, ChevronDown, ChevronRight, Inbox, Loader2, Plus, RefreshCw } from "lucide-react";
 import type { AgentReview, CriticObjection } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
@@ -9,6 +8,7 @@ import { useT } from "@/lib/app-i18n";
 import { buildReviewChangelog, hasReviewChangelog, type ReviewChangelogEntry } from "@/lib/inbox/review-changelog";
 import { EventConsole } from "@/components/event-console";
 import { CoderReportCard } from "./report-card";
+import { useItemId } from "./use-item-id";
 
 function ObjectionRow({ o }: { o: CriticObjection }) {
   return (
@@ -130,8 +130,7 @@ function FlatObjections({ objections }: { objections: CriticObjection[] }) {
 }
 
 export function ReviewDetailView() {
-  const params = useParams();
-  const id = decodeURIComponent(String(params.id));
+  const id = useItemId();
   const { state } = useOrchestrator();
   const { t } = useT();
   const r = t.inbox.review;

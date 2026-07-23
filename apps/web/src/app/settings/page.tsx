@@ -11,6 +11,7 @@ import { LanguageSection } from "@/components/language-section";
 import { ModelSelect } from "@/components/model-select";
 import { useT } from "@/lib/app-i18n";
 import { useAuth } from "@/lib/auth-context";
+import { getAppSettings, updateAppSettings } from "@/lib/app-settings";
 
 export default function SettingsPage() {
   const { t } = useT();
@@ -23,11 +24,10 @@ export default function SettingsPage() {
 
   // Load current settings
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
+    getAppSettings()
       .then((data) => {
-        if (data.llm) setClaudeModel(data.llm.claudeModel ?? "sonnet");
-        setAutoExtractAtoms(data.autoExtractAtoms ?? true);
+        if (data?.llm) setClaudeModel(data.llm.claudeModel ?? "sonnet");
+        setAutoExtractAtoms(data?.autoExtractAtoms ?? true);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -37,15 +37,11 @@ export default function SettingsPage() {
     setSaving(true);
     setSaved(false);
     try {
-      await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        // provider is pinned: claude-cli is the only backend that drives the
-        // planner and the coder end-to-end. See the LLM section below.
-        body: JSON.stringify({
-          llm: { provider: "claude-cli", claudeModel },
-          autoExtractAtoms,
-        }),
+      // provider is pinned: claude-cli is the only backend that drives the
+      // planner and the coder end-to-end. See the LLM section below.
+      await updateAppSettings({
+        llm: { provider: "claude-cli", claudeModel },
+        autoExtractAtoms,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);

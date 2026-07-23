@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
 import { AlertTriangle, FolderX, GitBranch, Inbox, Loader2 } from "lucide-react";
 import { slugKey, type WorktreeFileChange, type WorktreeStatusResult } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
@@ -13,6 +12,7 @@ import { MemoriesCard } from "./memories-card";
 import { WorktreeFileView } from "./worktree-file-view";
 import { WorktreeChangesList } from "./worktree-changes-list";
 import { WorktreeDiffView } from "./worktree-diff-view";
+import { useItemId } from "./use-item-id";
 
 type StatusState =
   | { kind: "loading" }
@@ -32,8 +32,7 @@ type Selection =
 // item's worktree, with a changed-only toggle. Terminal access lives in the
 // shell header; agent access in the coder chat drawer (#187).
 export function WorktreeDetailView() {
-  const params = useParams();
-  const id = decodeURIComponent(String(params.id));
+  const id = useItemId();
   const { state } = useOrchestrator();
   const { t } = useT();
   const w = t.inbox.worktree;

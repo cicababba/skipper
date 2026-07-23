@@ -31,6 +31,7 @@ import type { AgentChatKind, IssuePlan, PlanChatMessage, StoredPlan } from "./pl
 import type { MemoryPhase, SolutionRecord } from "./memory";
 import type { StoredCoderReport } from "./coder-report";
 import type { RepoRef } from "./inbox";
+import type { AppSettings, AppSettingsPatch } from "./settings";
 
 // Single source of truth for the Electron preload bridge (`window.skipper`).
 // The preload declares `... satisfies WindowSkipper` and the renderer's global
@@ -125,6 +126,12 @@ export interface WindowSkipper {
     platform: SkipperPlatform;
   }>;
   selectDirectory: () => Promise<string | null>;
+  /** App settings (settings.json) — moved off the embedded server onto IPC (#208).
+   *  `get` returns the openaiApiKey masked; `set` merges a patch and persists. */
+  settings: {
+    get: () => Promise<AppSettings>;
+    set: (patch: AppSettingsPatch) => Promise<{ ok: boolean }>;
+  };
   session: {
     run: (
       mode: "save" | "resume",

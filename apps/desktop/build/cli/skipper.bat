@@ -1,6 +1,6 @@
 @echo off
 REM `skipper` CLI Windows wrapper bundled with Skipper.
 REM Lives at <install-dir>\resources\cli\skipper.bat. Resolves the
-REM bundled JS via a relative path so PATH-installed `skipper` works
-REM regardless of where the user installed Skipper.
-node "%~dp0..\web\apps\web\skipper.bundle.cjs" %*
+REM bundled JS in resources\cli-runtime via a relative path so
+REM PATH-installed `skipper` works regardless of where Skipper is installed.
+node "%~dp0..\cli-runtime\skipper.bundle.cjs" %*

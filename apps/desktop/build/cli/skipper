@@ -19,13 +19,14 @@ done
 script_dir="$(cd -P "$(dirname "$src")" && pwd)"
 
 # Candidate locations for the bundle, in priority order:
-#   1. Packaged layout: <resources>/cli/ + <resources>/web/apps/web/
+#   1. Packaged layout: <resources>/cli/ + <resources>/cli-runtime/
 #   2. Dev layout:      <repo>/apps/desktop/build/cli/ +
-#                       <repo>/apps/web/.next/standalone/apps/web/
+#                       <repo>/packages/cli/dist/ (workspace node_modules
+#                       resolves the embedder deps in dev)
 # Resolve the first one that exists, error out if neither does.
 candidates="
-  $script_dir/../web/apps/web/skipper.bundle.cjs
-  $script_dir/../../../web/.next/standalone/apps/web/skipper.bundle.cjs
+  $script_dir/../cli-runtime/skipper.bundle.cjs
+  $script_dir/../../../../packages/cli/dist/skipper.bundle.cjs
 "
 bundle=""
 for c in $candidates; do

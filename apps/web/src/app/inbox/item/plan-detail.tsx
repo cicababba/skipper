@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, Inbox, Loader2, X } from "lucide-react";
 import { type IssuePlan, type StoredPlan, type WorktreeStatusResult } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
@@ -19,10 +19,10 @@ import { CleanWorktreeDialog } from "@/components/clean-worktree-dialog";
 import { PlanDocument } from "./plan-document";
 import { DecisionRail, type GateAction } from "./decision-rail";
 import { useItemChat } from "./item-chat";
+import { useItemId } from "./use-item-id";
 
 export function PlanDetailView() {
-  const params = useParams();
-  const id = decodeURIComponent(String(params.id));
+  const id = useItemId();
   const router = useRouter();
   const { state, requestTransition, cleanWorktree } = useOrchestrator();
   const { t } = useT();
