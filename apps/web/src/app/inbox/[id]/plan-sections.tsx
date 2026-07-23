@@ -95,7 +95,7 @@ function RemoveButton({ onClick, disabled }: { onClick: () => void; disabled?: b
     <button
       onClick={onClick}
       disabled={disabled}
-      className="p-1 rounded text-muted hover:text-red-300 transition-colors disabled:opacity-30 shrink-0"
+      className="p-1 rounded text-muted hover:text-danger transition-colors disabled:opacity-30 shrink-0"
       title={t.inbox.plan.remove}
     >
       <Trash2 size={13} />
@@ -111,7 +111,7 @@ function EmptyHint() {
 function statusPill(status: PlanFileRef["status"], labels: { existing: string; new: string }) {
   if (status === "new")
     return (
-      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded border bg-emerald-500/10 text-emerald-300 border-emerald-500/20">
+      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded border bg-success-bg text-success border-success/25">
         {labels.new}
       </span>
     );

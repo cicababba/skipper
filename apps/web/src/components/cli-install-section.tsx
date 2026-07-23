@@ -102,11 +102,11 @@ export function CliInstallSection() {
                 {t.settings.cli.checking}
               </span>
             ) : status.installed && !status.stale ? (
-              <span className="text-emerald-300 inline-flex items-center gap-1">
+              <span className="text-success inline-flex items-center gap-1">
                 <Check size={13} /> {t.settings.cli.installed}
               </span>
             ) : status.installed && status.stale ? (
-              <span className="text-amber-300 inline-flex items-center gap-1">
+              <span className="text-warning inline-flex items-center gap-1">
                 <AlertTriangle size={13} /> {t.settings.cli.stale}
               </span>
             ) : (
@@ -119,7 +119,7 @@ export function CliInstallSection() {
               <button
                 onClick={uninstall}
                 disabled={busy}
-                className="px-3 py-1.5 rounded-md text-xs text-muted hover:text-red-300 hover:bg-red-500/10 transition-colors disabled:opacity-40 inline-flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-md text-xs text-muted hover:text-danger hover:bg-danger/10 transition-colors disabled:opacity-40 inline-flex items-center gap-1.5"
               >
                 <Trash2 size={13} /> {t.settings.cli.uninstall}
               </button>
@@ -140,7 +140,7 @@ export function CliInstallSection() {
         </div>
 
         {error && (
-          <p className="mt-3 text-[11px] text-red-300 break-words">{error}</p>
+          <p className="mt-3 text-[11px] text-danger break-words">{error}</p>
         )}
       </div>
     </section>

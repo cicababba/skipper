@@ -7,8 +7,8 @@ import type { ConfidenceReport, TrackedItem } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 
 export function bandClasses(score: number): string {
-  if (score >= 0.75) return "bg-emerald-500/10 text-emerald-300 border-emerald-500/20";
-  if (score >= 0.5) return "bg-amber-500/10 text-amber-300 border-amber-500/20";
+  if (score >= 0.75) return "bg-success-bg text-success border-success/25";
+  if (score >= 0.5) return "bg-warning-bg text-warning border-warning/25";
   return "bg-card text-muted border-border";
 }
 
@@ -110,7 +110,7 @@ export function ConfidenceBadge({ item }: { item: TrackedItem }) {
               </div>
             )}
             {!loading && loadError && (
-              <p className="text-red-300">{t.inbox.popover.loadFailed}</p>
+              <p className="text-danger">{t.inbox.popover.loadFailed}</p>
             )}
             {!loading && !loadError && !report && (
               <p className="text-muted">{t.inbox.popover.reportUnavailable}</p>
@@ -185,7 +185,7 @@ export function ReportBody({ report }: { report: ConfidenceReport }) {
             {convergence.planCount} {p.plans} · jaccard {convergence.fileJaccard.toFixed(2)}
           </p>
           {convergence.divergent && (
-            <p className="text-amber-300 font-medium">{p.divergent}</p>
+            <p className="text-warning font-medium">{p.divergent}</p>
           )}
           <TruncatedList label={p.disputed} entries={convergence.disputedFiles} />
         </SignalSection>
@@ -206,10 +206,10 @@ export function ReportBody({ report }: { report: ConfidenceReport }) {
           <p
             className={
               critic.verdict === "approve"
-                ? "text-emerald-300"
+                ? "text-success"
                 : critic.verdict === "concerns"
-                  ? "text-amber-300"
-                  : "text-red-300"
+                  ? "text-warning"
+                  : "text-danger"
             }
           >
             {p.verdicts[critic.verdict]}
@@ -218,7 +218,7 @@ export function ReportBody({ report }: { report: ConfidenceReport }) {
             <p key={i} className="text-muted">
               <span className="text-[10px] uppercase tracking-wide text-muted/60">{o.kind}</span>
               {o.blocking && (
-                <span className="ml-1 text-[10px] uppercase tracking-wide text-red-300">
+                <span className="ml-1 text-[10px] uppercase tracking-wide text-danger">
                   {p.blocking}
                 </span>
               )}{" "}
@@ -247,7 +247,7 @@ export function ReportBody({ report }: { report: ConfidenceReport }) {
           <>
             <p className="text-[10px] uppercase tracking-wide text-muted/60">{p.errors}</p>
             {report.errors.map((e, i) => (
-              <p key={i} className="text-red-300/80 break-all">
+              <p key={i} className="text-danger/80 break-all">
                 {e}
               </p>
             ))}

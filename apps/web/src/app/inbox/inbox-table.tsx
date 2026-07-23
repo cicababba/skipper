@@ -83,7 +83,7 @@ export function InboxTable({
               <tr
                 key={item.id}
                 className={`hover:bg-card-hover/50 transition-colors ${
-                  attention ? "border-l-2 border-l-amber-500/60" : ""
+                  attention ? "border-l-2 border-l-signal/50" : ""
                 }`}
               >
                 <td className="px-3 py-2 max-w-[360px]">

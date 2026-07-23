@@ -123,7 +123,7 @@ function TimelineRow({
           <div className="flex items-center gap-2 flex-wrap text-[12px] mt-1">
             <span className="text-muted">{o.round(artifact.round)}</span>
             {artifact.failed && (
-              <span className="inline-flex items-center gap-1 text-amber-300">
+              <span className="inline-flex items-center gap-1 text-warning">
                 <AlertTriangle size={12} className="shrink-0" />
                 {o.roundFailed}
               </span>

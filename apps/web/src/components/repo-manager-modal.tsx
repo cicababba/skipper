@@ -152,7 +152,7 @@ export function RepoManagerModal({ isOpen, onClose }: { isOpen: boolean; onClose
         </div>
         <div className="flex-1 overflow-auto p-5 space-y-4">
           {error && (
-            <p className="rounded-lg border border-red-500/20 bg-red-500/10 text-red-300 px-3 py-2 text-[12px] break-all">
+            <p className="rounded-lg border border-danger/25 bg-danger-bg text-danger px-3 py-2 text-[12px] break-all">
               {error}
             </p>
           )}
@@ -211,7 +211,7 @@ export function RepoManagerModal({ isOpen, onClose }: { isOpen: boolean; onClose
             <>
               {repos.unlinked.length > 0 && (
                 <section className="space-y-1.5">
-                  <h3 className="text-[10px] font-medium uppercase tracking-wide text-amber-300">
+                  <h3 className="text-[10px] font-medium uppercase tracking-wide text-warning">
                     {t.inbox.repos.unlinked}
                   </h3>
                   <div className="rounded-lg border border-border divide-y divide-border">

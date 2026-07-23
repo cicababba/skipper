@@ -39,8 +39,8 @@ export function BranchIndicator() {
     >
       <GitBranch size={10} className="shrink-0" />
       <span className="truncate">{status.branch}</span>
-      {status.ahead > 0 && <span className="text-emerald-400 shrink-0">↑{status.ahead}</span>}
-      {status.behind > 0 && <span className="text-amber-400 shrink-0">↓{status.behind}</span>}
+      {status.ahead > 0 && <span className="text-success shrink-0">↑{status.ahead}</span>}
+      {status.behind > 0 && <span className="text-warning shrink-0">↓{status.behind}</span>}
     </span>
   );
 }

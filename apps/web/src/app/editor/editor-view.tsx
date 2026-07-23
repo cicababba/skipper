@@ -228,13 +228,13 @@ export function EditorView() {
 
         <div className="flex items-center gap-3 px-4 shrink-0">
           {error && (
-            <span className="flex items-center gap-1.5 text-[11px] text-red-400">
+            <span className="flex items-center gap-1.5 text-[11px] text-danger">
               <AlertTriangle size={11} />
               {error}
             </span>
           )}
           {savedFlash && (
-            <span className="flex items-center gap-1.5 text-[11px] text-green-400/80">
+            <span className="flex items-center gap-1.5 text-[11px] text-success/80">
               <Check size={11} />
               {te.saved}
             </span>
@@ -260,7 +260,7 @@ export function EditorView() {
           </div>
         )}
         {state.kind === "error" && (
-          <div className="h-full flex items-center justify-center text-red-400/80 text-sm">
+          <div className="h-full flex items-center justify-center text-danger/80 text-sm">
             {state.message ??
               (state.code === "noPath"
                 ? te.errNoPath

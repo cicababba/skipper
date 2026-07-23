@@ -22,8 +22,8 @@ export function MarkdownRenderer({ content, meta }: MarkdownRendererProps) {
               meta.type === "concept"
                 ? "bg-accent/10 text-accent"
                 : meta.type === "source-summary"
-                  ? "bg-purple-500/10 text-purple-400"
-                  : "bg-green-500/10 text-green-400"
+                  ? "bg-merged-bg text-merged"
+                  : "bg-success-bg text-success"
             }`}>
               {meta.type.replace("-", " ")}
             </span>
@@ -66,7 +66,7 @@ export function MarkdownRenderer({ content, meta }: MarkdownRendererProps) {
         [&>blockquote]:text-muted [&>blockquote]:italic
         [&_code]:text-accent [&_code]:bg-accent/[0.06] [&_code]:px-1.5 [&_code]:py-0.5
         [&_code]:rounded [&_code]:text-[13px] [&_code]:font-mono
-        [&>pre]:my-4 [&>pre]:p-4 [&>pre]:bg-[#0c0c0e] [&>pre]:border [&>pre]:border-border/50
+        [&>pre]:my-4 [&>pre]:p-4 [&>pre]:bg-code-bg [&>pre]:border [&>pre]:border-border/50
         [&>pre]:rounded-xl [&>pre]:overflow-x-auto
         [&>pre_code]:bg-transparent [&>pre_code]:p-0 [&>pre_code]:text-foreground/80
         [&>hr]:my-8 [&>hr]:border-border/30
@@ -104,7 +104,7 @@ export function MarkdownRenderer({ content, meta }: MarkdownRendererProps) {
 
               if (lang) {
                 return (
-                  <pre className="my-4 p-4 bg-[#0c0c0e] border border-border/50 rounded-xl overflow-x-auto">
+                  <pre className="my-4 p-4 bg-code-bg border border-border/50 rounded-xl overflow-x-auto">
                     <code className={className}>{children}</code>
                   </pre>
                 );

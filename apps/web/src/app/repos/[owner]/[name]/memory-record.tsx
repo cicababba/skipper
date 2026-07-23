@@ -52,7 +52,7 @@ export function MemoryRecordView({
         <button
           onClick={onDelete}
           disabled={busy}
-          className="flex items-center gap-1.5 text-[12px] px-2 py-1 rounded-md border border-red-500/30 text-red-300 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+          className="flex items-center gap-1.5 text-[12px] px-2 py-1 rounded-md border border-danger/25 text-danger hover:bg-danger/10 transition-colors disabled:opacity-40"
         >
           {busy ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
           {m.delete}

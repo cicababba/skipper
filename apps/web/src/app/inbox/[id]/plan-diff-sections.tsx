@@ -12,24 +12,24 @@ import {
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 
 // Inline diff mode for the plan document (#201): re-renders each section's
-// current items classified against the revision diff — additions emerald,
-// modifications amber, removals appended struck-through red. Read-only; the
+// current items classified against the revision diff — additions success,
+// modifications warning, removals appended struck-through danger. Read-only; the
 // color language mirrors plan-changes.tsx.
 
 type Change = "added" | "modified" | "removed" | "unchanged";
 
 const BORDER: Record<Exclude<Change, "unchanged" | "removed">, string> = {
-  added: "border-l-2 border-emerald-500/50 pl-2 -ml-2",
-  modified: "border-l-2 border-amber-500/50 pl-2 -ml-2",
+  added: "border-l-2 border-success/50 pl-2 -ml-2",
+  modified: "border-l-2 border-warning/50 pl-2 -ml-2",
 };
 
 const MARKER: Record<Exclude<Change, "unchanged">, string> = {
-  added: "text-emerald-400",
-  modified: "text-amber-400",
-  removed: "text-red-400/70",
+  added: "text-success",
+  modified: "text-warning",
+  removed: "text-danger/70",
 };
 
-const REMOVED_CLASS = "text-red-400/70 line-through";
+const REMOVED_CLASS = "text-danger/70 line-through";
 
 function markerGlyph(change: Exclude<Change, "unchanged">): string {
   return change === "removed" ? "−" : change === "added" ? "+" : "~";
@@ -170,7 +170,7 @@ export function SummaryDiffView({ summary, before }: { summary: string; before: 
     <div className="space-y-3">
       <MarkdownRenderer content={summary} />
       {before !== null && (
-        <div className="border-l-2 border-red-400/40 pl-3 text-[13px] text-muted/70 line-through whitespace-pre-wrap">
+        <div className="border-l-2 border-danger/40 pl-3 text-[13px] text-muted/70 line-through whitespace-pre-wrap">
           {before}
         </div>
       )}

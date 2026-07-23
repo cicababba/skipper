@@ -100,7 +100,7 @@ export function RepoBaseBranchControl({
           </select>
         </div>
       </Row>
-      {error && <p className="text-[11px] text-red-300 leading-relaxed">{error}</p>}
+      {error && <p className="text-[11px] text-danger leading-relaxed">{error}</p>}
       {report && (
         <p className="text-[11px] text-muted leading-relaxed">
           {rp.baseBranchReplanned(report.replanned.length)}

@@ -163,7 +163,7 @@ export default function SettingsPage() {
             {saved ? t.settings.save.saved : t.settings.save.button}
           </button>
           {saved && (
-            <span className="text-xs text-green-400/70">
+            <span className="text-xs text-success/70">
               {t.settings.save.success}
             </span>
           )}

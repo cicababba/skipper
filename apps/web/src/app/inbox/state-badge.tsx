@@ -3,23 +3,26 @@
 import type { LifecycleState, TrackedItem } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 
+const STATE_CLASSES: Record<LifecycleState, string> = {
+  triage: "bg-card text-muted border-border",
+  queued: "bg-card text-muted border-border",
+  closed: "bg-card text-muted border-border",
+  planning: "bg-info-bg text-info border-info/25",
+  coding: "bg-info-bg text-info border-info/25",
+  "agent-review": "bg-info-bg text-info border-info/25",
+  "plan-gate": "bg-signal-bg text-signal border-signal/25",
+  "human-review": "bg-signal-bg text-signal border-signal/25",
+  "needs-input": "bg-signal-bg text-signal border-signal/25",
+  "changes-requested": "bg-signal-bg text-signal border-signal/25",
+  "pr-open": "bg-success-bg text-success border-success/25",
+  "in-review": "bg-success-bg text-success border-success/25",
+  merged: "bg-merged-bg text-merged border-merged/25",
+  failed: "bg-danger-bg text-danger border-danger/25",
+  blocked: "bg-danger-bg text-danger border-danger/25",
+};
+
 function stateClasses(state: LifecycleState): string {
-  switch (state) {
-    case "failed":
-      return "bg-red-500/10 text-red-300 border-red-500/20";
-    case "needs-input":
-    case "blocked":
-      return "bg-amber-500/10 text-amber-300 border-amber-500/20";
-    case "plan-gate":
-    case "human-review":
-      return "bg-accent/15 text-accent border-accent/30";
-    case "merged":
-      return "bg-emerald-500/10 text-emerald-300 border-emerald-500/20";
-    case "closed":
-      return "bg-card text-muted border-border";
-    default:
-      return "bg-accent/10 text-accent/90 border-accent/20";
-  }
+  return STATE_CLASSES[state];
 }
 
 export function StateBadge({ item }: { item: TrackedItem }) {

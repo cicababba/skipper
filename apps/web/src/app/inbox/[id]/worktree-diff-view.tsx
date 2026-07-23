@@ -175,12 +175,12 @@ export function WorktreeDiffView({
           </div>
         )}
         {saveError && (
-          <span className="text-red-300 break-all">
+          <span className="text-danger break-all">
             {r.saveFailed}: {saveError}
           </span>
         )}
         {savedFlash && (
-          <span className="flex items-center gap-1 text-green-300">
+          <span className="flex items-center gap-1 text-success">
             <Check size={11} />
             {r.saved}
           </span>
@@ -203,7 +203,7 @@ export function WorktreeDiffView({
           </div>
         )}
         {fileState.kind === "error" && (
-          <p className="p-4 text-sm text-red-300 break-all">
+          <p className="p-4 text-sm text-danger break-all">
             {r.loadFailed}: {fileState.message}
           </p>
         )}
@@ -219,7 +219,7 @@ export function WorktreeDiffView({
         )}
         {ready && !ready.binary && !ready.tooLarge && ready.modified === null && (
           <div className="h-full flex flex-col">
-            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border text-[11px] text-red-300 shrink-0">
+            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border text-[11px] text-danger shrink-0">
               <X size={11} />
               {r.deletedFile}
             </div>

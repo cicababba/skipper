@@ -45,11 +45,11 @@ export function UpdatesSection() {
         <div className="text-[12px] text-muted/70 flex items-center gap-2 min-w-0">
           {state.status === "checking" && (<><Loader2 size={13} className="animate-spin text-accent" /> {t.settings.updates.checking}</>)}
           {state.status === "downloading" && (<><Download size={13} className="text-accent" /> {t.settings.updates.downloading(state.available ?? "", state.percent ?? 0)}</>)}
-          {state.status === "ready" && (<><CheckCircle2 size={13} className="text-green-400" /> {t.settings.updates.ready(state.available ?? "")}</>)}
-          {state.status === "error" && (<><AlertCircle size={13} className="text-amber-400" /> <span className="truncate">{t.settings.updates.checkFailed(state.error ?? "")}</span></>)}
+          {state.status === "ready" && (<><CheckCircle2 size={13} className="text-success" /> {t.settings.updates.ready(state.available ?? "")}</>)}
+          {state.status === "error" && (<><AlertCircle size={13} className="text-warning" /> <span className="truncate">{t.settings.updates.checkFailed(state.error ?? "")}</span></>)}
           {state.status === "idle" && (
             <>
-              <CheckCircle2 size={13} className="text-green-500/70" /> {t.settings.updates.upToDate(state.current ?? "")}
+              <CheckCircle2 size={13} className="text-success/70" /> {t.settings.updates.upToDate(state.current ?? "")}
               {state.via === "account" && <span className="text-muted/40">{t.settings.updates.viaAccount}</span>}
             </>
           )}

@@ -350,7 +350,7 @@ function MenuItem({
       onClick={onClick}
       className={`w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors ${
         danger
-          ? "text-red-400/90 hover:bg-red-500/10"
+          ? "text-danger/90 hover:bg-danger/10"
           : "text-foreground hover:bg-accent/10"
       }`}
     >
@@ -480,7 +480,7 @@ function CreateInput({
         />
       </div>
       {error && (
-        <div className="mt-1 text-[10px] text-red-400/80">{error}</div>
+        <div className="mt-1 text-[10px] text-danger/80">{error}</div>
       )}
     </div>
   );

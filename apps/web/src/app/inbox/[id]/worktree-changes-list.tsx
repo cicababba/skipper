@@ -54,7 +54,7 @@ export function WorktreeChangesList({
           </div>
         )}
         {changes.kind === "error" && (
-          <p className="px-3 py-2 text-[12px] text-red-300 break-all">
+          <p className="px-3 py-2 text-[12px] text-danger break-all">
             {r.loadFailed}: {changes.message}
           </p>
         )}

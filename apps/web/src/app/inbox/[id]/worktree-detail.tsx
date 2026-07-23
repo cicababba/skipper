@@ -167,7 +167,7 @@ export function WorktreeDetailView() {
       </div>
 
       {status.kind === "error" && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 px-3 py-2 text-sm shrink-0">
+        <div className="flex items-center gap-2 rounded-lg border border-danger/25 bg-danger-bg text-danger px-3 py-2 text-sm shrink-0">
           <AlertTriangle size={14} className="shrink-0" />
           {w.statusFailed}: {status.message}
         </div>

@@ -74,12 +74,12 @@ function StringListDetail({ diff }: { diff: StringListDiff }) {
   return (
     <>
       {diff.removed.map((l, i) => (
-        <div key={`r${i}`} className="text-red-400">
+        <div key={`r${i}`} className="text-danger">
           − {l}
         </div>
       ))}
       {diff.added.map((l, i) => (
-        <div key={`a${i}`} className="text-emerald-400">
+        <div key={`a${i}`} className="text-success">
           + {l}
         </div>
       ))}
@@ -100,18 +100,18 @@ function FilesDetail({ diff }: { diff: FilesDiff }) {
   return (
     <>
       {diff.removed.map((f, i) => (
-        <div key={`r${i}`} className="text-red-400">
+        <div key={`r${i}`} className="text-danger">
           − {fileLine(f)}
         </div>
       ))}
       {diff.added.map((f, i) => (
-        <div key={`a${i}`} className="text-emerald-400">
+        <div key={`a${i}`} className="text-success">
           + {fileLine(f)}
         </div>
       ))}
       {diff.modified.map(({ before, after }, i) => (
         <div key={`m${i}`}>
-          <span className="font-mono text-amber-400">{after.path}</span>
+          <span className="font-mono text-warning">{after.path}</span>
           {before.reason !== after.reason && (
             <BeforeAfter before={before.reason} after={after.reason} />
           )}
@@ -150,18 +150,18 @@ function StepsDetail({ diff }: { diff: StepsDiff }) {
   return (
     <>
       {diff.removed.map((s, i) => (
-        <div key={`r${i}`} className="text-red-400">
+        <div key={`r${i}`} className="text-danger">
           − {s.title}
         </div>
       ))}
       {diff.added.map((s, i) => (
-        <div key={`a${i}`} className="text-emerald-400">
+        <div key={`a${i}`} className="text-success">
           + {s.title}
         </div>
       ))}
       {diff.modified.map(({ before, after }, i) => (
         <div key={`m${i}`}>
-          <span className="text-amber-400">{after.title}</span>
+          <span className="text-warning">{after.title}</span>
           {fieldDiff(before, after).map((row, j) => (
             <div key={j} className="mt-1">
               <div className="text-[11px] uppercase tracking-wide text-muted/70">{row.label}</div>
@@ -199,7 +199,7 @@ export function PlanChangesBody({
   if (diff.size) {
     rows.push(
       <ChangeRow key="size" label={p.size} counts={c.changed}>
-        <div className="font-mono text-amber-400">
+        <div className="font-mono text-warning">
           {diff.size.before} → {diff.size.after}
         </div>
       </ChangeRow>,
