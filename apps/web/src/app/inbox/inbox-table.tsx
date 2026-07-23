@@ -1,10 +1,10 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowDown, ArrowUp, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { displayKey, type TrackedItem } from "@skipper/shared";
 import { ATTENTION_SECTION_STATES, repoKey } from "@/lib/inbox/model";
-import { formatAge, type SortDir, type SortKey } from "@/lib/inbox/table";
+import { formatAge } from "@/lib/inbox/table";
 import { ConfidenceBadge } from "@/components/confidence-popover";
 import { useT } from "@/lib/app-i18n";
 import { StateBadge } from "./state-badge";
@@ -17,66 +17,44 @@ function openExternal(url: string) {
   void window.skipper?.openExternal(url);
 }
 
-function Age({ iso }: { iso: string }) {
+function AgeText({ iso }: { iso: string }) {
   const { t } = useT();
   const { value, unit } = formatAge(iso, new Date());
   return (
-    <span className="text-muted whitespace-nowrap">
+    <span className="whitespace-nowrap">
       {value}
       {t.inbox.age[unit]}
     </span>
   );
 }
 
-export function InboxTable({
-  items,
-  sortKey,
-  sortDir,
-  onSort,
-}: {
-  items: TrackedItem[];
-  sortKey: SortKey;
-  sortDir: SortDir;
-  onSort: (key: SortKey) => void;
-}) {
+const Dot = () => <span className="text-muted/40">·</span>;
+
+export function InboxTable({ items, repoScoped }: { items: TrackedItem[]; repoScoped: boolean }) {
   const { t } = useT();
   const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
   const from = search.size > 0 ? `${pathname}?${search.toString()}` : pathname;
 
-  const header = (label: string, key?: SortKey) => (
+  const header = (label: string) => (
     <th className="text-left font-medium text-[11px] uppercase tracking-wide text-muted/70 px-3 py-2">
-      {key ? (
-        <button
-          onClick={() => onSort(key)}
-          className="flex items-center gap-1 hover:text-foreground transition-colors uppercase tracking-wide"
-        >
-          {label}
-          {sortKey === key &&
-            (sortDir === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
-        </button>
-      ) : (
-        label
-      )}
+      {label}
     </th>
   );
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-x-auto">
+    <div className="rounded-lg border border-card-hover bg-card overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="sticky top-0 bg-card border-b border-border">
+        <thead className="sticky top-0 bg-card border-b border-card-hover">
           <tr>
             {header(t.inbox.table.issue)}
-            {header(t.inbox.table.repo, "repo")}
-            {header(t.inbox.table.state, "state")}
-            {header(t.inbox.table.confidence, "confidence")}
-            {header(t.inbox.table.pr)}
-            {header(t.inbox.table.age, "age")}
+            {header(t.inbox.table.state)}
+            {header(t.inbox.table.confidence)}
             {header(t.inbox.table.actions)}
           </tr>
         </thead>
-        <tbody className="divide-y divide-border">
+        <tbody className="divide-y divide-card-hover">
           {items.map((item) => {
             const attention = ATTENTION_SECTION_STATES.includes(item.state);
             return (
@@ -86,7 +64,7 @@ export function InboxTable({
                   attention ? "border-l-2 border-l-signal/50" : ""
                 }`}
               >
-                <td className="px-3 py-2 max-w-[360px]">
+                <td className="px-3 py-2.5 max-w-[420px]">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <button
                       onClick={() =>
@@ -113,42 +91,47 @@ export function InboxTable({
                       <ExternalLink size={11} />
                     </button>
                   </div>
-                </td>
-                <td className="px-3 py-2 text-muted whitespace-nowrap">
-                  <div className="flex items-center gap-1.5">
-                    {repoKey(item.repo)}
-                    <StaleRepoBadge item={item} />
+                  <div className="flex items-center gap-1.5 flex-wrap mt-1 text-[11px] text-muted/70">
+                    {!repoScoped && (
+                      <>
+                        <span className="flex items-center gap-1">
+                          {repoKey(item.repo)}
+                          <StaleRepoBadge item={item} />
+                        </span>
+                        <Dot />
+                      </>
+                    )}
+                    <AgeText iso={item.createdAt} />
+                    {item.pr && (
+                      <>
+                        <Dot />
+                        <span className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openExternal(item.pr!.url);
+                            }}
+                            className="flex items-center gap-1 text-accent hover:underline whitespace-nowrap"
+                          >
+                            #{item.pr.number}
+                            <ExternalLink size={10} />
+                          </button>
+                          <CiBadge item={item} />
+                        </span>
+                      </>
+                    )}
                   </div>
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-3 py-2.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <StateBadge item={item} />
                     <BlockedByBadges item={item} />
                   </div>
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-3 py-2.5">
                   <ConfidenceBadge item={item} />
                 </td>
-                <td className="px-3 py-2">
-                  {item.pr ? (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => openExternal(item.pr!.url)}
-                        className="flex items-center gap-1 text-accent hover:underline whitespace-nowrap"
-                      >
-                        #{item.pr.number}
-                        <ExternalLink size={11} />
-                      </button>
-                      <CiBadge item={item} />
-                    </div>
-                  ) : (
-                    <span className="text-muted/40">—</span>
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  <Age iso={item.createdAt} />
-                </td>
-                <td className="px-3 py-2">
+                <td className="px-3 py-2.5">
                   <ItemActions item={item} />
                 </td>
               </tr>

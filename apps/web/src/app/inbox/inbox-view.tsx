@@ -3,17 +3,17 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Inbox, Loader2, Pause, RefreshCw, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Inbox, Loader2, RefreshCw, X } from "lucide-react";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useAuth } from "@/lib/auth-context";
 import { RepoManagerModal } from "@/components/repo-manager-modal";
 import { useT } from "@/lib/app-i18n";
 import { useStoredState } from "@/lib/use-stored-state";
 import { inboxGate } from "@/lib/inbox/gate";
-import { KANBAN_COLUMNS, columnCounts, type ColumnId } from "@/lib/inbox/model";
+import { KANBAN_COLUMNS, type ColumnId } from "@/lib/inbox/model";
 import { filterItems, sortItems, type SortDir, type SortKey } from "@/lib/inbox/table";
 import { InboxTable } from "./inbox-table";
-import { InboxKanban } from "./inbox-kanban";
+import { InboxRail } from "./inbox-rail";
 
 const VIEW_KEY = "skipper-inbox-view";
 
@@ -23,7 +23,7 @@ type ColumnFilter = ColumnId | "attention";
 const CONFIDENCE_THRESHOLDS = [0.5, 0.75] as const;
 
 export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
-  const { state, error, refreshing, refresh, clearError } = useOrchestrator();
+  const { state, refreshing, refresh } = useOrchestrator();
   const { authState, providers, loaded: authLoaded } = useAuth();
   const { t } = useT();
   const router = useRouter();
@@ -31,22 +31,19 @@ export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
   // Embedded in a repo page (repoProp) the filter comes from the route, not the URL query.
   const repo = repoProp ?? searchParams.get("repo");
 
-  const [storedView, setStoredView] = useStoredState(VIEW_KEY, "table");
-  const view: ViewMode = storedView === "kanban" ? "kanban" : "table";
+  // Kanban is WIP (#193): the view renders table only, but the stored preference is
+  // left untouched so it returns once kanban ships.
+  const [, setStoredView] = useStoredState(VIEW_KEY, "table");
+  const switchView = (mode: ViewMode) => setStoredView(mode);
   const [sortKey, setSortKey] = useState<SortKey>("age");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [columns, setColumns] = useState<Set<ColumnFilter>>(new Set());
   const [minConfidence, setMinConfidence] = useState<number | undefined>(undefined);
   const [reposOpen, setReposOpen] = useState(false);
 
-  const switchView = (mode: ViewMode) => setStoredView(mode);
-
-  const onSort = (key: SortKey) => {
-    if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else {
-      setSortKey(key);
-      setSortDir(key === "confidence" || key === "age" ? "desc" : "asc");
-    }
+  const changeSortKey = (key: SortKey) => {
+    setSortKey(key);
+    setSortDir(key === "confidence" || key === "age" ? "desc" : "asc");
   };
 
   const toggleColumn = (id: ColumnFilter) => {
@@ -62,24 +59,11 @@ export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
     if (!state) return [];
     const filtered = filterItems(state.items, {
       repo: repo ?? undefined,
-      columns: view === "table" ? columns : undefined,
+      columns,
       minConfidence,
     });
-    return view === "table" ? sortItems(filtered, sortKey, sortDir) : filtered;
-  }, [state, repo, view, columns, minConfidence, sortKey, sortDir]);
-
-  // Dashboard tiles reflect the whole (repo-scoped) queue, independent of the
-  // column/confidence filters — clicking a tile is what applies the filter.
-  const counts = useMemo(
-    () => columnCounts(state ? filterItems(state.items, { repo: repo ?? undefined }) : []),
-    [state, repo],
-  );
-
-  // Click a tile → drill into that bucket in the table view.
-  const drillTo = (id: ColumnFilter) => {
-    if (view !== "table") switchView("table");
-    toggleColumn(id);
-  };
+    return sortItems(filtered, sortKey, sortDir);
+  }, [state, repo, columns, minConfidence, sortKey, sortDir]);
 
   const isElectron = typeof window !== "undefined" && !!window.skipper;
 
@@ -117,27 +101,26 @@ export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
           </button>
         )}
         <div className="flex-1" />
-        {state?.intakePaused && (
-          <span className="flex items-center gap-1.5 text-[12px] px-2.5 py-1 rounded-full border border-warning/25 bg-warning-bg text-warning">
-            <Pause size={12} />
-            {t.inbox.intake.paused}
-            {state.parkedCount > 0 && ` · ${state.parkedCount} ${t.inbox.intake.queued}`}
-          </span>
-        )}
         <div className="flex items-center rounded-lg border border-border overflow-hidden">
-          {(["table", "kanban"] as const).map((mode) => (
-            <button
-              key={mode}
-              onClick={() => switchView(mode)}
-              className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${
-                view === mode
-                  ? "bg-accent/10 text-accent"
-                  : "text-muted hover:text-foreground hover:bg-card"
-              }`}
-            >
-              {t.inbox.views[mode]}
-            </button>
-          ))}
+          {(["table", "kanban"] as const).map((mode) => {
+            const isKanban = mode === "kanban";
+            return (
+              <button
+                key={mode}
+                onClick={() => switchView(mode)}
+                disabled={isKanban}
+                title={isKanban ? t.inbox.views.kanbanWip : undefined}
+                className={`px-3 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                  mode === "table"
+                    ? "bg-accent/10 text-accent"
+                    : "text-muted hover:text-foreground hover:bg-card"
+                }`}
+              >
+                {t.inbox.views[mode]}
+                {isKanban && " (WIP)"}
+              </button>
+            );
+          })}
         </div>
         <button
           onClick={(e) => void refresh(e.shiftKey)}
@@ -148,118 +131,6 @@ export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
           <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
         </button>
       </div>
-
-      {/* Dashboard tiles — one per bucket, click to drill into the table. */}
-      {state && state.items.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
-          {(["attention", ...KANBAN_COLUMNS.map((c) => c.id)] as ColumnFilter[]).map((id) => {
-            const active = columns.has(id);
-            const isAttention = id === "attention";
-            return (
-              <button
-                key={id}
-                onClick={() => drillTo(id)}
-                className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors ${
-                  active
-                    ? isAttention
-                      ? "border-signal/40 bg-signal-bg"
-                      : "border-accent/40 bg-accent/10"
-                    : "border-border bg-card/40 hover:bg-card"
-                }`}
-              >
-                <span
-                  className={`text-xl font-semibold tabular-nums ${
-                    isAttention && counts[id] > 0 ? "text-signal" : "text-foreground"
-                  }`}
-                >
-                  {counts[id]}
-                </span>
-                <span className="text-[11px] text-muted/70 truncate w-full">
-                  {t.inbox.columns[id]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Error strip */}
-      {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/25 bg-danger-bg text-danger px-3 py-2 text-sm">
-          <span className="flex-1 break-all">{error}</span>
-          <button onClick={clearError} className="shrink-0 hover:opacity-70">
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
-      {/* Unmapped-projects warning (#79): tracker issues waiting on a repo mapping. */}
-      {state && state.unmappedProjects.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-warning/25 bg-warning-bg text-warning px-3 py-2 text-sm">
-          <span className="font-medium">
-            {t.inbox.unmapped.title(
-              state.unmappedProjects.reduce((n, u) => n + u.count, 0),
-              state.unmappedProjects.length,
-            )}
-          </span>
-          <span className="text-warning/70">{t.inbox.unmapped.body}</span>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {state.unmappedProjects.map((u) => (
-              <span
-                key={`${u.accountId}:${u.host}:${u.projectKey}`}
-                className="text-[11px] px-1.5 py-0.5 rounded-full border border-warning/25 text-warning/80"
-              >
-                {u.host} · {u.projectKey} · {u.count}
-              </span>
-            ))}
-          </div>
-          <Link
-            href="/settings"
-            className="ml-auto text-[13px] underline-offset-2 hover:underline"
-          >
-            {t.inbox.unmapped.cta}
-          </Link>
-        </div>
-      )}
-
-      {/* Filter row (table only) */}
-      {view === "table" && state && state.items.length > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {(["attention", ...KANBAN_COLUMNS.map((c) => c.id)] as ColumnFilter[]).map((id) => (
-            <button
-              key={id}
-              onClick={() => toggleColumn(id)}
-              className={`px-2 py-1 rounded-full text-[11px] font-medium border transition-colors ${
-                columns.has(id)
-                  ? id === "attention"
-                    ? "border-signal/40 bg-signal-bg text-signal"
-                    : "border-accent/40 bg-accent/10 text-accent"
-                  : "border-border text-muted hover:text-foreground hover:bg-card"
-              }`}
-            >
-              {t.inbox.columns[id]}
-            </button>
-          ))}
-          <div className="flex-1" />
-          <label className="flex items-center gap-1.5 text-[11px] text-muted">
-            {t.inbox.filters.minConfidence}
-            <select
-              value={minConfidence ?? ""}
-              onChange={(e) =>
-                setMinConfidence(e.target.value === "" ? undefined : Number(e.target.value))
-              }
-              className="bg-card border border-border rounded-md px-1.5 py-1 text-[11px] text-foreground focus:outline-none focus:border-accent/60"
-            >
-              <option value="">{t.inbox.filters.any}</option>
-              {CONFIDENCE_THRESHOLDS.map((v) => (
-                <option key={v} value={v}>
-                  ≥ {Math.round(v * 100)}%
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      )}
 
       {/* Body */}
       {gate === "desktop-only" ? (
@@ -287,19 +158,83 @@ export function InboxView({ repo: repoProp }: { repo?: string } = {}) {
             {t.inbox.repos.manage}
           </button>
         </EmptyState>
-      ) : visible.length === 0 && repo ? (
-        <EmptyState message={t.inbox.empty.noItemsForRepo}>
-          <button
-            onClick={() => router.push("/inbox")}
-            className="text-[13px] text-accent hover:underline"
-          >
-            {t.inbox.filters.clear}
-          </button>
-        </EmptyState>
-      ) : view === "table" ? (
-        <InboxTable items={visible} sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
       ) : (
-        <InboxKanban items={visible} />
+        <div className="flex flex-col gap-4 wide:grid wide:grid-cols-[minmax(0,1fr)_300px] wide:gap-8 wide:items-start">
+          <InboxRail
+            repo={repo ?? undefined}
+            repoScoped={!!repoProp}
+            activeColumns={columns}
+            onToggleColumn={toggleColumn}
+          />
+          <div className="min-w-0 space-y-4 wide:col-start-1 wide:row-start-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {(["attention", ...KANBAN_COLUMNS.map((c) => c.id)] as ColumnFilter[]).map((id) => (
+                <button
+                  key={id}
+                  onClick={() => toggleColumn(id)}
+                  className={`text-[12px] font-medium px-2.5 py-1 rounded-md border transition-colors ${
+                    columns.has(id)
+                      ? id === "attention"
+                        ? "border-signal/30 bg-signal-bg text-signal"
+                        : "border-accent/30 bg-accent/10 text-accent"
+                      : "border-border text-muted hover:text-foreground hover:bg-card-hover"
+                  }`}
+                >
+                  {t.inbox.columns[id]}
+                </button>
+              ))}
+              <div className="flex-1" />
+              <label className="flex items-center gap-1.5 text-[11px] text-muted">
+                {t.inbox.filters.sortBy}
+                <select
+                  value={sortKey}
+                  onChange={(e) => changeSortKey(e.target.value as SortKey)}
+                  className="bg-card border border-card-hover rounded-md px-1.5 py-1 text-[11px] text-foreground focus:outline-none focus:border-accent/60"
+                >
+                  <option value="age">{t.inbox.table.age}</option>
+                  <option value="confidence">{t.inbox.table.confidence}</option>
+                  <option value="repo">{t.inbox.table.repo}</option>
+                  <option value="state">{t.inbox.table.state}</option>
+                </select>
+              </label>
+              <button
+                onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+                className="p-1 rounded-md border border-card-hover text-muted hover:text-foreground hover:bg-card-hover transition-colors"
+              >
+                {sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
+              </button>
+              <label className="flex items-center gap-1.5 text-[11px] text-muted">
+                {t.inbox.filters.minConfidence}
+                <select
+                  value={minConfidence ?? ""}
+                  onChange={(e) =>
+                    setMinConfidence(e.target.value === "" ? undefined : Number(e.target.value))
+                  }
+                  className="bg-card border border-card-hover rounded-md px-1.5 py-1 text-[11px] text-foreground focus:outline-none focus:border-accent/60"
+                >
+                  <option value="">{t.inbox.filters.any}</option>
+                  {CONFIDENCE_THRESHOLDS.map((v) => (
+                    <option key={v} value={v}>
+                      ≥ {Math.round(v * 100)}%
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {visible.length === 0 && repo ? (
+              <EmptyState message={t.inbox.empty.noItemsForRepo}>
+                <button
+                  onClick={() => router.push("/inbox")}
+                  className="text-[13px] text-accent hover:underline"
+                >
+                  {t.inbox.filters.clear}
+                </button>
+              </EmptyState>
+            ) : (
+              <InboxTable items={visible} repoScoped={!!repoProp} />
+            )}
+          </div>
+        </div>
       )}
 
       <RepoManagerModal isOpen={reposOpen} onClose={() => setReposOpen(false)} />

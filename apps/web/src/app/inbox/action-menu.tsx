@@ -23,7 +23,7 @@ function menuHeight(entryCount: number, hasSeparator: boolean): number {
 
 type Entry = { action: ItemAction; danger: boolean };
 
-// Kebab dropdown for every non-primary row action (#133). The busy spinner lives on the
+// Kebab dropdown for every row action (#133, all-in since #193). The busy spinner lives on the
 // trigger, not on the entries: selecting one closes the menu in the same commit that
 // sets busyId, so a per-item spinner would never be rendered.
 export function ActionMenu({

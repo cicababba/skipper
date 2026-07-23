@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
 import type { TrackedItem, UntrackItemResult } from "@skipper/shared";
 import { actionsFor, splitActions, type ItemAction } from "@/lib/inbox/actions";
 import { useOrchestrator } from "@/lib/orchestrator-context";
@@ -31,9 +30,10 @@ export function ItemActions({ item }: { item: TrackedItem }) {
   const actions = actionsFor(item);
   if (actions.length === 0) return null;
   const { primary, menu, destructive } = splitActions(actions);
-  // Exactly one spinner at a time: on the inline button when the primary runs, on the
-  // kebab trigger otherwise (the menu is unmounted while an action is in flight).
-  const busyInMenu = busyId !== null && busyId !== primary?.id;
+  // Every action lives in the kebab now (#193): the primary keeps its first-place
+  // ordering, and the busy spinner always rides the trigger since nothing renders inline.
+  const menuActions = primary ? [primary, ...menu] : menu;
+  const busy = busyId !== null;
   const canCloseOnTracker = state?.sourceCapabilities[item.source]?.closeIssue ?? false;
 
   const run = async (action: ItemAction) => {
@@ -59,28 +59,13 @@ export function ItemActions({ item }: { item: TrackedItem }) {
 
   return (
     <>
-      <div className="flex items-center gap-1.5">
-        {primary && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              void run(primary);
-            }}
-            disabled={busyId !== null}
-            className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md border transition-colors disabled:opacity-50 whitespace-nowrap border-accent/30 bg-accent/10 text-accent hover:bg-accent/20"
-          >
-            {busyId === primary.id && <Loader2 size={11} className="animate-spin" />}
-            {t.inbox.actions[primary.id]}
-          </button>
-        )}
-        <ActionMenu
-          actions={menu}
-          destructive={destructive}
-          busyId={busyId}
-          busyInMenu={busyInMenu}
-          onSelect={(action) => void run(action)}
-        />
-      </div>
+      <ActionMenu
+        actions={menuActions}
+        destructive={destructive}
+        busyId={busyId}
+        busyInMenu={busy}
+        onSelect={(action) => void run(action)}
+      />
       {closeOpen && (
         <CloseItemDialog
           item={item}
