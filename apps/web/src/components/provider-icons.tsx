@@ -9,6 +9,7 @@ export const PROVIDER_ICONS: Partial<Record<AuthProviderId, ProviderIcon>> = {
   gitlab: GitLabMark,
   jira: JiraMark,
   bitbucket: BitbucketMark,
+  openproject: OpenProjectMark,
 };
 
 export const FALLBACK_PROVIDER_ICON: ProviderIcon = KeyRound;
@@ -49,6 +50,17 @@ function JiraMark({ size = 14 }: { size?: number; className?: string }) {
       <path
         fill="#2684FF"
         d="M23.063 0H11.492a5.215 5.215 0 0 0 5.215 5.214h2.129v2.058a5.218 5.218 0 0 0 5.168 5.215V1.005A1.005 1.005 0 0 0 23.063 0z"
+      />
+    </svg>
+  );
+}
+
+function OpenProjectMark({ size = 14 }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+      <path
+        fill="#1A67A3"
+        d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 4.5A5.5 5.5 0 1 1 6.5 12 5.506 5.506 0 0 1 12 6.5zm0 3A2.5 2.5 0 1 0 14.5 12 2.5 2.5 0 0 0 12 9.5z"
       />
     </svg>
   );

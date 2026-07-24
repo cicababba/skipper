@@ -621,7 +621,7 @@ ipcMain.handle("skipper:auth:getProviders", (): AuthProviderMeta[] => {
 });
 
 for (const provider of AUTH_PROVIDER_IDS) {
-  ipcMain.handle(`skipper:auth:${provider}:signIn`, async (_e, options?: { baseUrl?: string }) => {
+  ipcMain.handle(`skipper:auth:${provider}:signIn`, async (_e, options?: { baseUrl?: string; clientId?: string }) => {
     if (!authManager) throw new Error("Auth not initialized");
     await authManager.signIn(provider, options);
   });

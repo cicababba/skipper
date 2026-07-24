@@ -26,6 +26,10 @@ import { loadStore, saveStore, clearStore, isEncryptionAvailable } from "./token
 // sign-in would only fail at the provider with invalid_client, so surface a
 // clear per-provider "unconfigured" state and the UI shows a disabled control.
 function isConfigured(config: ProviderConfig): boolean {
+  // A clientIdFromUser provider (OpenProject) ships an empty clientId — the user
+  // supplies it at connect time — so it must never render "unconfigured" (which
+  // would also hide its PAT form).
+  if (config.clientIdFromUser) return true;
   return !!config.clientId && !config.clientId.startsWith("YOUR_");
 }
 
@@ -101,7 +105,7 @@ export class AuthManager {
     this.signInAborts.delete(provider);
   }
 
-  async signIn(provider: AuthProviderId, options?: { baseUrl?: string }): Promise<void> {
+  async signIn(provider: AuthProviderId, options?: { baseUrl?: string; clientId?: string }): Promise<void> {
     const config = this.providers[provider];
     if (!isConfigured(config)) return; // source build — nothing to sign in to
     if (this.isFlowBusy(provider)) {
@@ -110,17 +114,27 @@ export class AuthManager {
     }
     const baseUrl = this.resolveBaseUrl(config, options);
     if (baseUrl === null) return;
+    // clientIdFromUser providers (OpenProject) carry no shipped client id — the
+    // user supplies it at connect time; splice it into the config the flow reads.
+    const clientId = options?.clientId?.trim();
+    if (config.clientIdFromUser && !clientId) {
+      this.failFlow(provider, new OAuthError("An OAuth Client ID is required"));
+      return;
+    }
+    const effectiveConfig = this.withClientId(config, clientId);
     this.setFlow(provider, { status: "signing-in" });
     const abort = new AbortController();
     this.signInAborts.set(provider, abort);
     try {
-      const tokens = await runOAuthFlow(config, abort.signal, baseUrl);
-      const resource = await this.resolveResource(provider, config, tokens.accessToken, abort.signal);
-      const mapped = await config.mapUser(tokens.accessToken, baseUrl, resource);
+      const tokens = await runOAuthFlow(effectiveConfig, abort.signal, baseUrl);
+      const resource = await this.resolveResource(provider, effectiveConfig, tokens.accessToken, abort.signal);
+      const mapped = await effectiveConfig.mapUser(tokens.accessToken, baseUrl, resource);
       const account: Omit<Account, "key"> = {
         ...mapped,
         authMethod: "oauth",
         ...(baseUrl ? { baseUrl } : {}),
+        // Persist the client id so refreshAccount can rebuild the effective config.
+        ...(config.clientIdFromUser && clientId ? { clientId } : {}),
       };
       await this.storeAccount(provider, account, tokens);
       this.setFlow(provider, { status: "idle" });
@@ -130,6 +144,12 @@ export class AuthManager {
       this.signInAborts.delete(provider);
       this.pendingResourceChoices.delete(provider);
     }
+  }
+
+  /** For a clientIdFromUser provider, splice the supplied/stored client id into
+   *  the config the OAuth flow reads; any other provider is returned unchanged. */
+  private withClientId(config: ProviderConfig, clientId?: string): ProviderConfig {
+    return config.clientIdFromUser && clientId ? { ...config, clientId } : config;
   }
 
   /**
@@ -316,7 +336,8 @@ export class AuthManager {
     const provider = stored.account.provider;
     const config = this.providers[provider];
     try {
-      const refreshed = await refreshTokens(config, stored.tokens.refreshToken, stored.account.baseUrl);
+      const effectiveConfig = this.withClientId(config, stored.account.clientId);
+      const refreshed = await refreshTokens(effectiveConfig, stored.tokens.refreshToken, stored.account.baseUrl);
       // Re-read: signOut (or another mutation) may have run while we awaited.
       const cur = this.store.accounts[key];
       if (!cur) return null;

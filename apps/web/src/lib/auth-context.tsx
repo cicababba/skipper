@@ -28,7 +28,7 @@ interface AuthContextValue {
   loaded: boolean;
   viewFor: (provider: AuthProviderId) => ProviderAuthView;
   accountsFor: (provider: AuthProviderId) => ProviderAccountsView;
-  signIn: (provider: AuthProviderId, options?: { baseUrl?: string }) => Promise<void>;
+  signIn: (provider: AuthProviderId, options?: { baseUrl?: string; clientId?: string }) => Promise<void>;
   signInWithPat: (
     provider: AuthProviderId,
     pat: string,
@@ -80,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [authState],
   );
 
-  const signIn = useCallback(async (provider: AuthProviderId, options?: { baseUrl?: string }) => {
+  const signIn = useCallback(async (provider: AuthProviderId, options?: { baseUrl?: string; clientId?: string }) => {
     if (!window.skipper) return;
     await window.skipper.auth.signIn(provider, options);
   }, []);

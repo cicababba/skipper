@@ -5,6 +5,7 @@ import { githubProvider } from "./github";
 import { gitlabProvider } from "./gitlab";
 import { jiraProvider } from "./jira";
 import { bitbucketProvider } from "./bitbucket";
+import { openprojectProvider } from "./openproject";
 
 export const PROVIDERS: Record<AuthProviderId, ProviderConfig> = {
   google: googleProvider,
@@ -12,6 +13,7 @@ export const PROVIDERS: Record<AuthProviderId, ProviderConfig> = {
   gitlab: gitlabProvider,
   jira: jiraProvider,
   bitbucket: bitbucketProvider,
+  openproject: openprojectProvider,
 };
 
 export function providerMetadata(
@@ -26,5 +28,6 @@ export function providerMetadata(
     supportsPat: PROVIDERS[id].supportsPat,
     ...(PROVIDERS[id].patRequiresBaseUrl ? { patRequiresBaseUrl: true } : {}),
     ...(PROVIDERS[id].needsProjectMapping ? { needsProjectMapping: true } : {}),
+    ...(PROVIDERS[id].clientIdFromUser ? { clientIdFromUser: true } : {}),
   }));
 }

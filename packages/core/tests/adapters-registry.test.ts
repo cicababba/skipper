@@ -11,6 +11,7 @@ import { bitbucketCodeHost } from "../src/adapters/bitbucket";
 import { githubCodeHost, githubIssueSource } from "../src/adapters/github";
 import { gitlabCodeHost, gitlabIssueSource } from "../src/adapters/gitlab";
 import { jiraIssueSource } from "../src/adapters/jira";
+import { openprojectIssueSource } from "../src/adapters/openproject";
 
 describe("issue-source registry", () => {
   it("registers the GitHub adapter under its self-declared platform", () => {
@@ -31,26 +32,40 @@ describe("issue-source registry", () => {
     expect(issueSourceFor("jira")).toBe(jiraIssueSource);
   });
 
+  it("registers the OpenProject adapter under its self-declared platform", () => {
+    expect(issueSources.openproject).toBe(openprojectIssueSource);
+    expect(openprojectIssueSource.id).toBe("openproject");
+    expect(openprojectIssueSource.authProvider).toBe("openproject");
+    expect(issueSourceFor("openproject")).toBe(openprojectIssueSource);
+  });
+
   it("resolves an issue source from the auth provider", () => {
     expect(issueSourceForAuthProvider("github")).toBe(githubIssueSource);
     expect(issueSourceForAuthProvider("gitlab")).toBe(gitlabIssueSource);
     expect(issueSourceForAuthProvider("jira")).toBe(jiraIssueSource);
+    expect(issueSourceForAuthProvider("openproject")).toBe(openprojectIssueSource);
   });
 
   it("returns undefined for identity-only providers", () => {
     expect(issueSourceForAuthProvider("google")).toBeUndefined();
   });
 
-  it("exposes fetchDependencies on GitHub but not GitLab or Jira (#85)", () => {
+  it("exposes fetchDependencies on GitHub but not GitLab, Jira, or OpenProject (#85)", () => {
     expect(typeof githubIssueSource.fetchDependencies).toBe("function");
     expect(gitlabIssueSource.fetchDependencies).toBeUndefined();
     expect(jiraIssueSource.fetchDependencies).toBeUndefined();
+    expect(openprojectIssueSource.fetchDependencies).toBeUndefined();
   });
 
-  it("exposes closeIssue on GitHub and GitLab but not Jira (#132)", () => {
+  it("exposes closeIssue on GitHub and GitLab but not Jira or OpenProject (#132)", () => {
     expect(typeof githubIssueSource.closeIssue).toBe("function");
     expect(typeof gitlabIssueSource.closeIssue).toBe("function");
     expect(jiraIssueSource.closeIssue).toBeUndefined();
+    expect(openprojectIssueSource.closeIssue).toBeUndefined();
+  });
+
+  it("exposes fetchComments on the OpenProject adapter (#144)", () => {
+    expect(typeof openprojectIssueSource.fetchComments).toBe("function");
   });
 });
 
@@ -86,6 +101,7 @@ describe("code-host registry", () => {
     expect(codeHostForProvider("bitbucket")).toBe("bitbucket");
     expect(codeHostForProvider("github")).toBe("github");
     expect(codeHostForProvider("jira")).toBeUndefined();
+    expect(codeHostForProvider("openproject")).toBeUndefined();
   });
 
   it("has no issue source for the Bitbucket auth provider", () => {

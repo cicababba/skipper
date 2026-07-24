@@ -31,6 +31,7 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
   const [mappingAccount, setMappingAccount] = useState<Account | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [baseUrl, setBaseUrl] = useState(provider.defaultBaseUrl ?? "");
+  const [clientId, setClientId] = useState("");
   const [patOpen, setPatOpen] = useState(false);
   const [pat, setPat] = useState("");
 
@@ -51,10 +52,20 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
   // OAuth carries the instance URL only for genuinely self-hosted providers;
   // Jira OAuth is fixed-host (its site comes from the picker), but the PAT
   // fallback still needs a Data Center instance URL.
-  const oauthBaseUrlOptions = provider.requiresBaseUrl ? { baseUrl } : undefined;
+  // OpenProject's OAuth client id is user-supplied (clientIdFromUser) — carry it
+  // alongside the instance URL on connect, and gate the OAuth button on it.
+  const oauthBaseUrlOptions =
+    provider.requiresBaseUrl || provider.clientIdFromUser
+      ? {
+          ...(provider.requiresBaseUrl ? { baseUrl } : {}),
+          ...(provider.clientIdFromUser ? { clientId } : {}),
+        }
+      : undefined;
   const patNeedsBaseUrl = provider.requiresBaseUrl || !!provider.patRequiresBaseUrl;
   const patBaseUrlOptions = patNeedsBaseUrl ? { baseUrl } : undefined;
-  const baseUrlMissing = provider.requiresBaseUrl && normalizeBaseUrl(baseUrl) === null;
+  const clientIdMissing = !!provider.clientIdFromUser && clientId.trim() === "";
+  const baseUrlMissing =
+    (provider.requiresBaseUrl && normalizeBaseUrl(baseUrl) === null) || clientIdMissing;
   const patBaseUrlMissing = patNeedsBaseUrl && normalizeBaseUrl(baseUrl) === null;
   const defaultHost = provider.defaultBaseUrl
     ? hostOf(normalizeBaseUrl(provider.defaultBaseUrl) ?? provider.defaultBaseUrl)
@@ -242,6 +253,8 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
                   common={common}
                   baseUrl={baseUrl}
                   setBaseUrl={setBaseUrl}
+                  clientId={clientId}
+                  setClientId={setClientId}
                   patOpen={patOpen}
                   setPatOpen={setPatOpen}
                   pat={pat}
@@ -276,6 +289,13 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
                     />
                   </label>
                 )}
+                {provider.clientIdFromUser && (
+                  <ClientIdField
+                    common={common}
+                    clientId={clientId}
+                    setClientId={setClientId}
+                  />
+                )}
                 <div className="flex items-center gap-3">
                   <button
                     onClick={connect}
@@ -297,6 +317,8 @@ export function ProviderAccountSection({ provider }: { provider: AuthProviderMet
                   common={common}
                   baseUrl={baseUrl}
                   setBaseUrl={setBaseUrl}
+                  clientId={clientId}
+                  setClientId={setClientId}
                   patOpen={patOpen}
                   setPatOpen={setPatOpen}
                   pat={pat}
@@ -333,6 +355,8 @@ function ConnectExtras({
   common,
   baseUrl,
   setBaseUrl,
+  clientId,
+  setClientId,
   patOpen,
   setPatOpen,
   pat,
@@ -345,6 +369,8 @@ function ConnectExtras({
   common: AccountCopy;
   baseUrl: string;
   setBaseUrl: (v: string) => void;
+  clientId: string;
+  setClientId: (v: string) => void;
   patOpen: boolean;
   setPatOpen: (v: boolean) => void;
   pat: string;
@@ -369,6 +395,9 @@ function ConnectExtras({
             className="mt-1 w-full h-9 px-3 rounded-lg border border-border bg-background text-xs"
           />
         </label>
+      )}
+      {provider.clientIdFromUser && !hideBaseUrl && (
+        <ClientIdField common={common} clientId={clientId} setClientId={setClientId} />
       )}
       {provider.supportsPat && !patOpen && (
         <button
@@ -413,6 +442,32 @@ function ConnectExtras({
         </div>
       )}
     </>
+  );
+}
+
+// User-supplied OAuth Client ID input (clientIdFromUser providers, e.g.
+// OpenProject) — the id the user registered on their own instance.
+function ClientIdField({
+  common,
+  clientId,
+  setClientId,
+}: {
+  common: AccountCopy;
+  clientId: string;
+  setClientId: (v: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="text-[11px] text-muted/60">{common.clientIdLabel}</span>
+      <input
+        type="text"
+        value={clientId}
+        onChange={(e) => setClientId(e.target.value)}
+        placeholder={common.clientIdPlaceholder}
+        className="mt-1 w-full h-9 px-3 rounded-lg border border-border bg-background text-xs"
+      />
+      <span className="mt-1 block text-[11px] text-muted/50 leading-relaxed">{common.clientIdHelp}</span>
+    </label>
   );
 }
 

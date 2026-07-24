@@ -39,6 +39,15 @@ describe("provider registry", () => {
         requiresBaseUrl: false,
         supportsPat: false,
       },
+      {
+        id: "openproject",
+        displayName: "OpenProject",
+        isIssueSource: true,
+        requiresBaseUrl: true,
+        supportsPat: true,
+        needsProjectMapping: true,
+        clientIdFromUser: true,
+      },
     ]);
   });
 
@@ -75,5 +84,22 @@ describe("provider registry", () => {
     expect(bitbucket.requiresBaseUrl).toBe(false);
     expect(bitbucket.supportsPat).toBe(false);
     expect(bitbucket.revoke).toBeUndefined();
+  });
+
+  it("configures the openproject provider (self-hosted public PKCE client, user client id, ports 8135-8137)", () => {
+    const op = PROVIDERS.openproject;
+    expect(op.usesPkce).toBe(true);
+    expect(op.clientSecret).toBeUndefined();
+    expect(op.clientId).toBe("");
+    expect(op.clientIdFromUser).toBe(true);
+    expect(op.rotatesRefreshToken).toBe(true);
+    expect(op.requiresRefreshTokenOnExchange).toBe(true);
+    expect(op.redirectPorts).toEqual([8135, 8136, 8137]);
+    expect(op.scopes).toEqual(["api_v3"]);
+    expect(op.requiresBaseUrl).toBe(true);
+    expect(op.needsProjectMapping).toBe(true);
+    expect(op.supportsPat).toBe(true);
+    expect(op.revoke).toBeUndefined();
+    expect(op.listResources).toBeUndefined();
   });
 });

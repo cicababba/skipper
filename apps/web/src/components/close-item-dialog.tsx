@@ -10,6 +10,7 @@ const SOURCE_LABELS: Record<IssueSourceId, string> = {
   github: "GitHub",
   gitlab: "GitLab",
   jira: "Jira",
+  openproject: "OpenProject",
 };
 
 interface CloseItemDialogProps {

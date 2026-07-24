@@ -19,6 +19,9 @@ export interface VendorHttpConfig {
   errorDetail?: (res: Response) => Promise<string>;
   /** if-none-match sending + 304 short-circuit (GitHub only). */
   supportsEtag?: boolean;
+  /** Builds the Authorization header value from the token; defaults to
+   *  `Bearer ${token}`. OpenProject PAT auth wraps it as HTTP Basic. */
+  authHeader?: (token: string) => string;
 }
 
 export interface CoreResponse<T> {
@@ -52,7 +55,7 @@ export async function vendorRequest<T>(
   const doFetch = async (token: string) => {
     const headers: Record<string, string> = {
       ...config.baseHeaders,
-      authorization: `Bearer ${token}`,
+      authorization: config.authHeader?.(token) ?? `Bearer ${token}`,
     };
     if (config.supportsEtag && opts?.etag) headers["if-none-match"] = opts.etag;
     if (opts?.body !== undefined) headers["content-type"] = "application/json";

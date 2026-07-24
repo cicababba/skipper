@@ -66,6 +66,12 @@ export {
   listJiraProjects,
   jiraGet,
   jiraApiBase,
+  openprojectIssueSource,
+  pollOpenProjectAccount,
+  listOpenProjectProjects,
+  openprojectGet,
+  openprojectApiBase,
+  emptyOpenProjectCursor,
 } from "./adapters";
 export type { IssueComment, IssueSource, PollOptions, PollResult, RateLimit, TokenProvider } from "./adapters";
 export type {
@@ -95,6 +101,13 @@ export type {
   GitLabPollResult,
 } from "./adapters";
 export type { JiraTokenProvider, JiraTarget } from "./adapters";
+export type {
+  OpenProjectTokenProvider,
+  OpenProjectStreamCursor,
+  OpenProjectAccountCursor,
+  OpenProjectPollOptions,
+  OpenProjectPollResult,
+} from "./adapters";
 
 // Planner (issue #7)
 export {

@@ -26,7 +26,7 @@ export const DEFAULT_LLM_SETTINGS: LlmSettings = {
 // Auth
 // ============================================================
 
-export const AUTH_PROVIDER_IDS = ["google", "github", "gitlab", "jira", "bitbucket"] as const;
+export const AUTH_PROVIDER_IDS = ["google", "github", "gitlab", "jira", "bitbucket", "openproject"] as const;
 export type AuthProviderId = (typeof AUTH_PROVIDER_IDS)[number];
 
 /** Renderer-facing provider row (skipper:auth:getProviders), derived in main
@@ -48,6 +48,9 @@ export interface AuthProviderMeta {
   /** Tracker whose projects have no inherent repo — Settings shows the
    *  project→repo mapping editor for its accounts (#79). */
   needsProjectMapping?: boolean;
+  /** OAuth client id is registered by the user on their own instance and pasted
+   *  at connect time (OpenProject Doorkeeper) — Settings shows a Client ID input. */
+  clientIdFromUser?: boolean;
 }
 
 /** A site/resource the OAuth token can reach — the user picks one per account
@@ -78,6 +81,9 @@ export interface Account {
   baseUrl?: string;
   /** Atlassian cloudId — the API routes through api.atlassian.com/ex/jira/<cloudId>. */
   cloudId?: string;
+  /** User-supplied public OAuth client id (OpenProject Doorkeeper) — non-secret,
+   *  same class as baseUrl; needed to refresh the account's tokens. */
+  clientId?: string;
   /** Absent = "oauth" (pre-#73 accounts). */
   authMethod?: "oauth" | "pat";
   /** Epoch ms of the last sign-in — row ordering + most-recent pick. */

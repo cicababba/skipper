@@ -30,6 +30,9 @@ export interface PollOptions<C = unknown> {
   /** Atlassian cloudId — routes Jira Cloud calls via api.atlassian.com/ex/jira/<cloudId>.
    *  Fixed-host and self-hosted adapters ignore it. */
   cloudId?: string;
+  /** How the account authenticates — some adapters build a different auth header
+   *  per method (OpenProject PAT uses HTTP Basic). Adapters that don't care ignore it. */
+  authMethod?: "oauth" | "pat";
   /** Opaque cursor from the previous poll. undefined (or a shape the adapter
    *  doesn't recognize) → full walk of the current open set. */
   cursor?: C;
@@ -76,6 +79,7 @@ export interface IssueSource<C = unknown> {
     getToken: TokenProvider,
     baseUrl?: string,
     cloudId?: string,
+    authMethod?: "oauth" | "pat",
   ): Promise<IssueComment[]>;
   /** Optional capability (#132): close the issue on its tracker. Adapters without
    *  it omit the method — the source is then not close-capable and the UI offers

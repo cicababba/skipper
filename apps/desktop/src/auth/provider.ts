@@ -61,6 +61,10 @@ export interface ProviderConfig {
   /** Tracker whose projects have no inherent repo — Settings shows the
    *  project→repo mapping editor for its accounts (#79). */
   needsProjectMapping?: boolean;
+  /** OAuth client id is registered by the user on their own instance and supplied
+   *  at connect time (OpenProject Doorkeeper) — clientId ships empty and the
+   *  effective one is threaded through signIn/refresh. */
+  clientIdFromUser?: boolean;
   /** Prefill for the instance-URL field (the provider's public host). */
   defaultBaseUrl?: string;
   /** Personal-access-token sign-in fallback (no refresh, no expiry). */

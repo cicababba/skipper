@@ -12,6 +12,7 @@ import {
   listUserInstallationRepos,
   listMembershipProjects,
   listJiraProjects,
+  listOpenProjectProjects,
   codeHostFor,
   codeHostForProvider,
   resolveGate,
@@ -430,6 +431,7 @@ function fetchIssueCommentsFor(item: TrackedItem): Promise<IssueComment[]> {
     (force) => deps!.getToken(account.key, force),
     account.baseUrl,
     account.cloudId,
+    account.authMethod,
   );
 }
 
@@ -607,6 +609,7 @@ async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<vo
       getToken: (force) => deps!.getToken(accountId, force),
       baseUrl: account.baseUrl,
       cloudId: account.cloudId,
+      authMethod: account.authMethod,
       cursor,
       deepHydrate,
     });
@@ -1123,22 +1126,31 @@ export function initOrchestrator(
     },
   );
   // Live project listing for the mapping editor (#79). Use getAccounts directly —
-  // issueAccounts() filters through the issue-source registry, which has no jira
-  // entry until #78; this handler is the only path to a Jira account's projects.
+  // needs-project-mapping trackers (Jira, OpenProject) carry no inherent repo, so
+  // this handler is the path to an account's projects for the mapping UI.
   ipcMain.handle(
     "skipper:orchestrator:listTrackerProjects",
     async (_e, accountId: string): Promise<TrackerProjectsResult> => {
       const account = deps?.getAccounts().find((a) => a.key === accountId);
       if (!account) return { ok: false, error: "unknown account" };
-      if (account.provider !== "jira") {
-        return { ok: false, error: "account is not a Jira account" };
-      }
       try {
-        const projects = await listJiraProjects((force) => deps!.getToken(account.key, force), {
-          cloudId: account.cloudId,
-          baseUrl: account.baseUrl,
-        });
-        return { ok: true, source: "jira", host: mappingHost(account.baseUrl), projects };
+        if (account.provider === "jira") {
+          const projects = await listJiraProjects((force) => deps!.getToken(account.key, force), {
+            cloudId: account.cloudId,
+            baseUrl: account.baseUrl,
+          });
+          return { ok: true, source: "jira", host: mappingHost(account.baseUrl), projects };
+        }
+        if (account.provider === "openproject") {
+          if (!account.baseUrl) return { ok: false, error: "account has no instance URL" };
+          const projects = await listOpenProjectProjects(
+            (force) => deps!.getToken(account.key, force),
+            account.baseUrl,
+            account.authMethod,
+          );
+          return { ok: true, source: "openproject", host: mappingHost(account.baseUrl), projects };
+        }
+        return { ok: false, error: "account does not support project mapping" };
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
