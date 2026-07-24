@@ -1,7 +1,7 @@
-// Single-file CJS bundle for the `nestbrain` CLI.
+// Single-file CJS bundle for the `skipper` CLI.
 //
-// Produces dist/nestbrain.bundle.cjs with @nestbrain/core inlined and a
-// shebang up front, runnable as `node dist/nestbrain.bundle.cjs ...` (or
+// Produces dist/skipper.bundle.cjs with @skipper/core inlined and a
+// shebang up front, runnable as `node dist/skipper.bundle.cjs ...` (or
 // directly when chmod +x'd). The desktop builder ships this file inside
 // `<App>/Contents/Resources/cli/` so installed users have a working CLI
 // without cloning the repo.
@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = resolve(__dirname, "..");
 
-// Bake the package.json version into the bundle so `nestbrain --version`
+// Bake the package.json version into the bundle so `skipper --version`
 // always reports the right thing without needing a sibling package.json
 // at runtime.
 const pkgJson = JSON.parse(await readFile(resolve(pkgRoot, "package.json"), "utf-8"));
@@ -36,14 +36,14 @@ const EXTERNAL = [
   "pdfjs-dist",
   "node-pty",
   // Electron-only — never reachable from CLI but transitively referenced
-  // through `@nestbrain/core` type-only paths; mark external just in case.
+  // through `@skipper/core` type-only paths; mark external just in case.
   "electron",
   // Optional/dev — never used at runtime from a CLI invocation
   "chokidar",
 ];
 
 await mkdir(resolve(pkgRoot, "dist"), { recursive: true });
-const outfile = resolve(pkgRoot, "dist/nestbrain.bundle.cjs");
+const outfile = resolve(pkgRoot, "dist/skipper.bundle.cjs");
 
 const result = await build({
   entryPoints: [resolve(pkgRoot, "src/index.ts")],
@@ -63,7 +63,7 @@ const result = await build({
   // import would otherwise crash if NODE_ENV is undefined.
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
-    __NESTBRAIN_CLI_VERSION__: JSON.stringify(VERSION),
+    __SKIPPER_CLI_VERSION__: JSON.stringify(VERSION),
   },
 });
 

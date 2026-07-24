@@ -1,4 +1,4 @@
-// Replace pnpm-managed workspace symlinks in apps/desktop/node_modules/@nestbrain/
+// Replace pnpm-managed workspace symlinks in apps/desktop/node_modules/@skipper/
 // with real copies of the target packages, AND hydrate their full transitive
 // dependency tree into the copy so the result is self-contained.
 //
@@ -6,7 +6,7 @@
 // ---------------
 // electron-builder validates that every file it bundles resolves under the
 // app dir (apps/desktop/). pnpm workspaces give us
-// apps/desktop/node_modules/@nestbrain/<pkg> as a symlink to packages/<pkg>,
+// apps/desktop/node_modules/@skipper/<pkg> as a symlink to packages/<pkg>,
 // whose contents live outside apps/desktop/. electron-builder follows the
 // link, finds the real files outside the app dir, and aborts with
 // "<file> must be under apps/desktop/".
@@ -48,11 +48,11 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCOPE_DIR = join(__dirname, "../node_modules/@nestbrain");
+const SCOPE_DIR = join(__dirname, "../node_modules/@skipper");
 const require = createRequire(import.meta.url);
 
 if (!existsSync(SCOPE_DIR)) {
-  console.log("[deref] no apps/desktop/node_modules/@nestbrain/ to dereference; nothing to do.");
+  console.log("[deref] no apps/desktop/node_modules/@skipper/ to dereference; nothing to do.");
   process.exit(0);
 }
 
@@ -89,7 +89,7 @@ function resolveDepDir(depName, fromPath) {
  */
 function hydrateDep(depName, resolvedFrom, dstNodeModules, copied) {
   if (copied.has(depName)) return;
-  if (depName.startsWith("@nestbrain/")) return; // workspace deps come via cpSync of their package
+  if (depName.startsWith("@skipper/")) return; // workspace deps come via cpSync of their package
   const src = resolveDepDir(depName, resolvedFrom);
   if (!src) {
     console.warn(`[deref]   ⚠ cannot resolve "${depName}" from ${resolvedFrom}; skipping`);
@@ -130,7 +130,7 @@ for (const pkg of readdirSync(SCOPE_DIR)) {
     continue;
   }
   if (!st.isSymbolicLink()) {
-    console.log(`[deref] @nestbrain/${pkg}: already a real dir, skipping.`);
+    console.log(`[deref] @skipper/${pkg}: already a real dir, skipping.`);
     continue;
   }
   const target = realpathSync(link);
@@ -141,7 +141,7 @@ for (const pkg of readdirSync(SCOPE_DIR)) {
     dereference: true,
     filter: copyFilter(target),
   });
-  console.log(`[deref] @nestbrain/${pkg}: copied ${target} → ${link}`);
+  console.log(`[deref] @skipper/${pkg}: copied ${target} → ${link}`);
 
   // Hydrate third-party transitive deps so chokidar's require('readdirp')
   // etc. can resolve at runtime inside the asar.
@@ -166,7 +166,7 @@ for (const pkg of readdirSync(SCOPE_DIR)) {
   for (const dep of directDeps) {
     hydrateDep(dep, target, dstNM, copied);
   }
-  console.log(`[deref]   hydrated ${copied.size} transitive dep(s) for @nestbrain/${pkg}`);
+  console.log(`[deref]   hydrated ${copied.size} transitive dep(s) for @skipper/${pkg}`);
   changed += 1;
 }
 

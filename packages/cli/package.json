@@ -1,20 +1,22 @@
 {
-  "name": "@nestbrain/cli",
+  "name": "@skipper/cli",
   "version": "1.16.3",
   "private": true,
   "bin": {
-    "nestbrain": "./dist/nestbrain.bundle.cjs"
+    "skipper": "./dist/skipper.bundle.cjs"
   },
   "scripts": {
     "build": "tsc && pnpm bundle",
     "bundle": "node build/bundle.mjs",
     "dev": "tsc --watch",
     "lint": "eslint src/",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@nestbrain/core": "workspace:*",
-    "@nestbrain/shared": "workspace:*",
+    "@huggingface/transformers": "^4.0.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@skipper/core": "workspace:*",
+    "@skipper/shared": "workspace:*",
     "commander": "^13.1.0"
   },
   "devDependencies": {

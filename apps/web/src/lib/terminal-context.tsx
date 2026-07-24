@@ -1,11 +1,18 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
-// Open-core stub — the real terminal session manager ships with the Dev
-// module (private nestbrain-modules repo) and replaces this file in official
-// builds. Public source builds keep the same API surface as inert no-ops so
-// every consumer compiles unchanged.
+// Terminal session manager (public core — issue #18). Owns the session
+// list and panel state; the xterm rendering lives in terminal-panel.tsx.
+// Backend is the public PTY engine in apps/desktop/src/terminal.ts.
 
 export interface TerminalSession {
   id: string;
@@ -17,7 +24,7 @@ interface TerminalState {
   sessions: TerminalSession[];
   activeId: string | null;
   panelOpen: boolean;
-  openTerminal: (cwd: string, label: string) => Promise<void>;
+  openTerminal: (cwd: string, label: string, initialCommand?: string) => Promise<void>;
   newTerminal: () => Promise<void>;
   setActive: (id: string) => void;
   closeTerminal: (id: string) => void;
@@ -37,8 +44,117 @@ const TerminalContext = createContext<TerminalState>({
   toggleOrOpen: async () => {},
 });
 
+function terminalApi() {
+  if (typeof window === "undefined") return null;
+  return window.skipper?.terminal ?? null;
+}
+
 export function TerminalProvider({ children }: { children: ReactNode }) {
-  return <>{children}</>;
+  const [sessions, setSessions] = useState<TerminalSession[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const exitUnsubs = useRef<Map<string, () => void>>(new Map());
+
+  const removeSession = useCallback((id: string) => {
+    exitUnsubs.current.get(id)?.();
+    exitUnsubs.current.delete(id);
+    setSessions((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+      setActiveId((cur) => (cur === id ? (next[next.length - 1]?.id ?? null) : cur));
+      if (next.length === 0) setPanelOpen(false);
+      return next;
+    });
+  }, []);
+
+  const openTerminal = useCallback(
+    async (cwd: string, label: string, initialCommand?: string) => {
+      const api = terminalApi();
+      if (!api) return;
+      const { id } = await api.create({ cwd });
+      // Shell exited on its own (user typed `exit`, crash): drop the tab.
+      exitUnsubs.current.set(
+        id,
+        api.onExit(id, () => removeSession(id)),
+      );
+      if (initialCommand) {
+        // Type the command once the shell prompt shows (first output chunk);
+        // fall back to a timer for shells that stay silent until input.
+        let sent = false;
+        const send = () => {
+          if (sent) return;
+          sent = true;
+          unsubData();
+          clearTimeout(timer);
+          api.write(id, initialCommand + "\r");
+        };
+        const unsubData = api.onData(id, send);
+        const timer = setTimeout(send, 500);
+      }
+      setSessions((prev) => [...prev, { id, cwd, label }]);
+      setActiveId(id);
+      setPanelOpen(true);
+    },
+    [removeSession],
+  );
+
+  // "+" clones the active session's cwd — there is no app-wide default cwd
+  // since the workspace was removed (#39). No-op while the panel is empty.
+  const newTerminal = useCallback(async () => {
+    const current = sessions.find((s) => s.id === activeId) ?? sessions[sessions.length - 1];
+    if (current) await openTerminal(current.cwd, current.label);
+  }, [sessions, activeId, openTerminal]);
+
+  const setActive = useCallback((id: string) => {
+    setActiveId(id);
+  }, []);
+
+  const closeTerminal = useCallback(
+    (id: string) => {
+      terminalApi()?.kill(id);
+      removeSession(id);
+    },
+    [removeSession],
+  );
+
+  const togglePanel = useCallback(() => {
+    setPanelOpen((v) => !v);
+  }, []);
+
+  const toggleOrOpen = useCallback(async () => {
+    if (sessions.length === 0) {
+      await newTerminal();
+    } else {
+      setPanelOpen((v) => !v);
+    }
+  }, [sessions.length, newTerminal]);
+
+  // Unmount (page navigation in dev): drop exit listeners; the sessions
+  // themselves survive in the main process until killed or app quit.
+  useEffect(() => {
+    const unsubs = exitUnsubs.current;
+    return () => {
+      for (const unsub of unsubs.values()) unsub();
+      unsubs.clear();
+    };
+  }, []);
+
+  return (
+    <TerminalContext.Provider
+      value={{
+        sessions,
+        activeId,
+        panelOpen,
+        openTerminal,
+        newTerminal,
+        setActive,
+        closeTerminal,
+        togglePanel,
+        toggleOrOpen,
+      }}
+    >
+      {children}
+    </TerminalContext.Provider>
+  );
 }
 
 export function useTerminal() {

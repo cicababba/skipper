@@ -1,45 +1,39 @@
-# NestBrain
+# Skipper (pivoted from NestBrain)
 
-LLM-powered personal knowledge base packaged as a native desktop workspace. Raw sources go in, a structured Markdown wiki comes out — compiled, linked, and maintained entirely by AI. Ships as an Electron app with an embedded Next.js UI, a real PTY terminal, and deep Claude Code integration.
+**This codebase has pivoted.** It was born as NestBrain (LLM-powered personal knowledge base, sold at [nestbrain.app](https://nestbrain.app)); it is now a **cross-platform issue inbox + orchestration layer on top of coding agents**: assigned issues arrive with an eager plan and a verifiable confidence score, coding runs in isolated worktrees behind a human gate, PRs are shepherded to merge. The v1 loop (epic #3) is largely implemented — orchestrator, planner, coder, reviewer, and shepherd live in `apps/desktop/src/` and `packages/core/src/`, with issue sources/code hosts for GitHub, GitLab, Jira, and Bitbucket. Vision, decisions, and phasing live in [`docs/DIRECTION.md`](docs/DIRECTION.md) (authoritative, in Italian). Foundational issues: #1 (open-core boundary), #2 (demolition of the old product surface), #3 (v1 loop epic).
 
-Published binaries are sold at [nestbrain.app](https://nestbrain.app) ($29 one-time, signed + notarized). The source in this repo is **GPL-3.0** and fully buildable.
+**Skipper is the product name** (decided 2026-07-14; the repo codename was promoted). The coordinated rename landed with #16: package scopes are `@skipper/*`, the IPC prefix is `skipper:*`, the CLI is `skipper`, env vars are `SKIPPER_*`, appId is `com.cicababba.skipper` (originally `com.nextepochs.skipper`, renamed pre-beta with #195). Historical NestBrain references in docs are intentional. Skipper is a **clean break** for installs: no migration from NestBrain userData/workspaces — both apps can coexist on one machine.
 
-## Project Overview
-
-NestBrain ingests raw documents (URLs, PDFs, GitHub repos, arXiv papers, YouTube transcripts, RSS feeds) and uses an LLM to compile them into an interconnected wiki of Markdown files. The wiki is Obsidian-compatible and queryable through hybrid search + LLM-grounded Q&A. The desktop app wraps all of this in a workspace UI: VS Code-style file tree, CodeMirror editor, integrated xterm.js terminal, session-aware Claude Code skills.
+The old product surface (wiki ingest/compile pipeline, Google Drive sync, Team Server client, `packages/db`) was demolished in #2; the private-modules overlay machinery (open-core gating seam) was removed with #16 — feature gating gets redesigned if/when monetization needs it. What survives from NestBrain: the Electron shell (PATH fixes, embedded server), editor + file tree + terminal, the Google OAuth desktop flow, the LLM provider layer, embeddings + vectorstore (now backing the solutions memory in `packages/core/src/memory`), the knowledge-atom pipeline (structured extraction prototype), and the `SyncBackend`/manifest seams the orchestrator builds on. NestBrain 1.16.x remains sold and maintained **from its own upstream repo** — this repo's release pipeline is intentionally **disarmed** (zero Actions secrets, publishes nothing) until the distribution cutover (#17), and external identifiers in it (update-feed domain, Polar product, private releases repo) are placeholders to be provisioned at that cutover. Don't add release secrets here before that cutover is intentional.
 
 ## Repo Layout (pnpm monorepo)
 
 ```
-nestbrain/
+skipper/
 ├── apps/
 │   ├── desktop/                # Electron 33 shell (main + preload + builder config)
 │   │   ├── src/main.ts         # Electron main: PATH fix, IPC, embedded server
-│   │   ├── src/dev-module.ts   # Open-core seam: guarded require of src/dev-impl/ (gitignored,
-│   │   │                       #   lives in the PRIVATE nestbrain-modules repo; CI overlays it,
-│   │   │                       #   local dev uses scripts/sync-modules.sh)
+│   │   ├── src/git.ts          # Git backend (public core, #1)
+│   │   ├── src/terminal.ts     # PTY session manager (public core, #18)
+│   │   ├── src/auth/           # Multi-provider OAuth desktop flow (Google, GitHub, GitLab, Jira, Bitbucket; loopback)
+│   │   ├── src/orchestrator.ts # Issue-orchestration loop (+ planner, coder, reviewer, shepherd,
+│   │   │                       #   plan-store, worktrees, repo-links, inbox-cursor-store, updater)
 │   │   ├── src/preload.ts      # Renderer-safe IPC bridge
 │   │   └── build/              # electron-builder hooks, icons, NSIS installer
 │   └── web/                    # Next.js 16 + React 19 UI (runs as standalone inside Electron)
 │       └── src/{app,components,lib,types}
 ├── packages/
-│   ├── cli/                    # `nestbrain` CLI (commander)
+│   ├── cli/                    # `skipper` CLI (commander): knowledge, projects, session, memory
 │   ├── core/                   # Domain logic
-│   │   └── src/{compiler,ingest,llm,qa,search,lint,vectorstore}
-│   ├── db/                     # Chroma client + embeddings wrapper
-│   ├── shared/                 # Types and constants (auth/sync types live here so main + renderer share them)
-│   └── sync/                   # Drive-backed multi-device sync engine
-│       └── src/{engine,drive-adapter,watcher,manifest,excludes,walker,hash}
-├── skeleton/                   # Workspace template copied to NestBrain/ on first run
-│   ├── CLAUDE.md
-│   └── Skills/{start_session,end_session}/SKILL.md
-├── docker/                     # Dockerfile + compose (includes a chromadb service)
-├── data/                       # Local-dev workspace (raw/, wiki/, chromadb/)
+│   │   └── src/{llm,vectorstore,knowledge,orchestrator,planner,coder,reviewer,shepherd,confidence,memory,adapters}
+│   ├── shared/                 # Types and constants (auth types live here so main + renderer share them)
+│   └── sync/                   # Orchestrator seams kept from the retired Drive engine
+│       └── src/{backend,manifest,types}   # diffFiles + SyncBackend contract, local manifest
+├── data/                       # Local-dev workspace (legacy artifacts; untouched by the build)
 ├── docs/screenshots/
-├── nestbrain.yaml              # Default workspace config (provider, embeddings, search, server)
 ├── pnpm-workspace.yaml
 ├── turbo.json
-└── package.json                # version: 1.14.3
+└── package.json                # version source of truth (kept aligned with apps/desktop/package.json)
 ```
 
 ## Tech Stack
@@ -47,16 +41,12 @@ nestbrain/
 - **Language**: TypeScript 5.9 (Node 20+, ESM where possible, CJS where Electron forces it)
 - **Package manager**: pnpm 10 + Turborepo
 - **Desktop shell**: Electron 33, `node-pty` (lazy-loaded), `electron-builder` (mac DMG signed/notarized, Windows NSIS, Linux placeholder)
-- **UI**: Next.js 16.2 + React 19, CodeMirror 6, xterm.js + addon-fit, mermaid, react-force-graph-2d, lucide-react, Tailwind v4
+- **UI**: Next.js 16.2 + React 19, CodeMirror 6, xterm.js + addon-fit, lucide-react, Tailwind v4
 - **CLI**: `commander`
-- **LLM providers** (`packages/core/src/llm/`): `claude-cli` (default — spawns the user's `claude` CLI) and `openai`
-- **Embeddings**: `@huggingface/transformers` running ONNX locally (`Xenova/all-MiniLM-L6-v2`)
-- **Vector store**: `packages/core/src/vectorstore` is the primary path used by the compiler; `packages/db` wraps `chromadb` for the dockerized setup
-- **Ingest**: `@mozilla/readability` + `linkedom` + `turndown` for URLs, `pdf-parse` for PDFs, `rss-parser`, `youtube-transcript`, custom GitHub + arXiv adapters
-- **Auth**: Google OAuth 2.0 Desktop flow (PKCE, loopback redirect). Refresh token in OS keychain via Electron `safeStorage`. Code in `apps/desktop/src/auth/`.
-- **Sync**: `@nestbrain/sync` package — chokidar watcher + Drive REST adapter + manifest + engine. Wired into the main process by `apps/desktop/src/sync/`. Scope: `drive.file` (no security audit, app only sees what it created).
-- **Lint/QA**: LLM-driven against the compiled wiki
-- **Testing**: Vitest (configured at root, very thin coverage today)
+- **LLM providers** (`packages/core/src/llm/`): `claude-cli` (default — spawns the user's `claude` CLI), `openai`, `ollama`
+- **Embeddings**: `@huggingface/transformers` running ONNX locally (`Xenova/all-MiniLM-L6-v2`), in `packages/core/src/vectorstore`
+- **Auth**: multi-provider multi-account OAuth desktop flow (loopback redirect) behind a `ProviderConfig` registry in `apps/desktop/src/auth/` — registered providers: `google`, `github`, `gitlab`, `jira`, `bitbucket`. Google: PKCE, identity-only scopes — proves the email for the supporter update entitlement (`getIdToken`, Google-only path). GitHub: GitHub App user-to-server flow, fixed loopback ports 8127–8129, expiring tokens with refresh rotation — feeds the orchestrator (#5+). GitLab/Jira/Bitbucket feed the tracker/code-host adapters in `packages/core/src/adapters`. Accounts + tokens live in one `auth.enc` (v2 multi-account format, legacy single-session migrated on load) encrypted via Electron `safeStorage`.
+- **Testing**: Vitest (configured at root). Coverage is solid where it counts: `packages/core/tests/` (~43 files, incl. a 54-case reconcile suite), every desktop driver loop (planner/coder/reviewer/shepherd/rescore/plan-chat via injected deps), the pure stores (worktrees, plan-store, repo-links), and `apps/web/src/lib/inbox/*` (11 pure modules, 1:1 tests). Known holes: `apps/desktop/src/orchestrator.ts` wiring (zero tests), `packages/core/src/adapters/*` (zero tests), most of the Electron shell (`main.ts`, `auth/`). Test-writing and failure-triage rules live in [`.claude/rules/testing.md`](.claude/rules/testing.md).
 - **Lint/format**: ESLint 9 + Prettier 3
 
 ## Key Commands
@@ -75,80 +65,47 @@ pnpm format                        # prettier write
 ### Desktop app
 
 ```bash
-pnpm desktop:dev                   # build TS + launch Electron with NESTBRAIN_DEV=1
-pnpm desktop:build                 # build web standalone + copy assets + build desktop TS
+pnpm desktop:dev                   # build TS + launch Electron with SKIPPER_DEV=1
+pnpm desktop:build                 # static-export web + assemble cli-runtime + build desktop TS
 pnpm desktop:package:mac           # DMG into apps/desktop/release/
 pnpm desktop:package:win           # NSIS .exe into apps/desktop/release/
 ```
 
-`desktop:build` runs `apps/desktop/build/copy-assets.mjs` and `prepare-standalone.mjs` — these dereference pnpm symlinks and promote hoisted deps so the packaged app works on Windows.
+`desktop:build` builds the web UI as a Next.js static export (`apps/web/out`, served in the app over the `app://skipper` protocol) and runs `apps/desktop/build/prepare-cli-runtime.mjs`, which assembles `build/cli-runtime/` — the `skipper` CLI bundle plus its native embedder deps copied as real files (zero symlinks, so the Windows NSIS installer can't drop them).
 
 ### CLI (after `pnpm build`)
 
 ```bash
-nestbrain ingest <source>          # URL / file / GitHub / arXiv / YouTube / RSS
-nestbrain compile [--force]        # Incremental wiki compile from data/raw → data/wiki
-nestbrain ask "question"           # Hybrid-search-grounded Q&A
-nestbrain search "query"           # Hybrid semantic + keyword
-nestbrain lint                     # LLM health check
-nestbrain serve                    # Start the web UI standalone
+skipper knowledge extract <sha>    # Extract knowledge atoms from a git commit
+skipper knowledge list|review      # Triage the pending-atom queue
+skipper knowledge promote          # Add a curated atom from stdin
+skipper projects register          # Install the post-commit extraction hook
+skipper projects unregister|status # Remove the hook / show registration state
+skipper session save|resume        # Cross-machine session handoff
+skipper memory reindex|search|serve # Solutions-memory index: rebuild, query, serve
 ```
+
+## Git Workflow
+
+Gitflow: `main` is release-only (**every push to `main` fires `.github/workflows/release.yml`** — full signed build + publish to Polar/update feed), `develop` is the integration branch, work happens on `feature/issue-<N>-<slug>` branches. Conventions for branches, commit messages, issue/PR titles, and labels live in [`.claude/rules/conventions.md`](.claude/rules/conventions.md) — the skills in `.claude/skills/` (`/create-issue`, `/start-issue`, `/plan-issue`, `/implement-plan`, `/commit`, `/pr`, `/merge-pr`, `/release`) implement the day-to-day flow and are the preferred way to run it; `/goto` (jump to code) and `/verify` (build + drive the Electron app) round out the toolbox. Issue state is derived from git/GitHub (branch = in progress, PR = in review, closed = done); a GitHub Project board mirrors it as a prioritization view — the skills sync the board `Status` automatically via `.claude/scripts/board.sh` (contract in conventions.md).
 
 ## Coding Conventions
 
 - TypeScript everywhere. Type all exported functions; rely on inference inside function bodies.
-- ESM in `packages/*` and `apps/web`; the Electron main bundle ends up CJS (so dynamic `require` is fine when needed, e.g. lazy `node-pty`).
+- Module systems, as they actually are: `packages/cli` and `apps/web` are ESM; `packages/shared` and `packages/sync` compile to CJS (they are consumed by the CJS Electron main); the Electron main bundle ends up CJS (so dynamic `require` is fine when needed, e.g. lazy `node-pty`).
 - Use `node:fs/promises` + `node:path` for filesystem work. Use `node:path.join` with the platform separator — don't hand-build paths with `/`.
 - One responsibility per file. The `packages/core/src/<area>/index.ts` files are the public surface; siblings are internals.
 - Errors propagate inside `packages/core`. CLI commands, Next.js route handlers, and the Electron IPC layer are the boundaries that turn errors into user-facing messages.
-- All wiki output is valid Markdown with YAML frontmatter and `[[wikilinks]]` for internal references (Obsidian compatibility).
 - Prefer direct implementations over abstractions. No premature interfaces.
-- Default to no comments. Add one only when the *why* is non-obvious — a real example is the `node-pty` lazy-load block in `apps/desktop/src/main.ts`.
-- Do not log to stdout from `packages/core` — pass a `ProgressCallback` (see `CompileOptions`) so the caller decides how to surface progress.
-
-## Wiki File Format
-
-Every generated wiki article must follow this structure:
-
-```markdown
----
-title: "Article Title"
-created: 2026-01-15
-updated: 2026-01-15
-source: "raw/filename.md"        # if derived from a source
-tags: [concept, topic]
-backlinks: ["[[Other Article]]"]
----
-
-# Article Title
-
-Body…
-
-## See Also
-
-- [[Related Article]]
-- [[Another Article]]
-```
-
-## LLM Agent Guidelines
-
-- The wiki is the LLM's domain. Generate and maintain wiki content programmatically — never hand-edit files in a user's `Library/Knowledge/`.
-- Always be incremental: the compiler's `tracker.ts` records source hashes; honour it. Don't reprocess unchanged sources.
-- Maintain `_index.md` and `_concepts.md` as the navigational backbone.
-- When answering questions, cite wiki articles by `[[wikilink]]` to the actual file the answer used.
-- When linting, produce actionable suggestions with concrete file references.
-- Minimize token usage: read indexes and summaries first; dive into full articles only when needed.
-- Never delete user-provided raw data. Wiki content is regenerable.
+- Default to no comments. Never add comments that restate what the code does or narrate a change. Add one only when the *why* is non-obvious from the code — a real example is the `node-pty` lazy-load block in `apps/desktop/src/main.ts`.
+- Do not log to stdout from `packages/core` — surface progress through callbacks so the caller decides how to present it.
 
 ## Important Notes
 
-- `data/raw/` (or, in user workspaces, `<NestBrain>/.nestbrain/raw/`) is user data — never modify or delete it.
-- `data/wiki/` (and the user's `Library/Knowledge/`) is fully regenerable from raw — treat it as a build artifact, but warn before wiping if the user has hand-edited anything.
-- LLM credentials come from the user's `claude` CLI auth (default), the OpenAI key in Settings, or `nestbrain.yaml`. Never hardcode keys, never log them.
-- All paths inside the wiki must be relative for portability between machines.
+- **No workspace folder** (removed with #39): all app state lives in Electron `userData` (`~/.config/Skipper` on Linux, `%APPDATA%/Skipper` on Windows, `~/Library/Application Support/Skipper` on macOS) — `settings.json`, `knowledge/{pending,rejected,accepted}`, plus the orchestrator files (manifest, plans/, worktrees/, memory/). `<userData>/knowledge/` holds captured knowledge atoms — user data, never modify or delete it. The CLI resolves the same directory itself (no anchor file).
+- LLM credentials come from the user's `claude` CLI auth (default) or the OpenAI key in Settings. Never hardcode keys, never log them.
 - The Electron main on macOS does **not** inherit the user's shell PATH — `apps/desktop/src/main.ts` runs an inline `fix-path` equivalent so that spawning `claude` works regardless of where it's installed. Don't remove it.
 - `node-pty` is loaded with a `try/catch require` because a native-binding load failure must not crash the app — the terminal is optional.
-- **Modules (open-core)**: Enterprise add-ons (Dev = terminal/git/Projects; Anatomize planned) are gated twice — build-time (implementation only in the private `nestbrain-modules` repo, overlaid into `apps/desktop/src/dev-impl/` by CI or `scripts/sync-modules.sh`) and license-time (`module:<id>` in the org license features, served by the Team Server, decoded in `apps/desktop/src/modules.ts`). The renderer reads entitlement via `useModules()` (`apps/web/src/lib/modules-context.tsx`). Public source builds compile green without the overlay and run as the pure knowledge core.
-- `packages/sync` uses **chokidar 3** (CJS) on purpose — chokidar 4/5 are ESM-only and won't load from our CJS main bundle.
-- The Google OAuth Client ID + non-confidential Desktop client secret live in `packages/shared/src/constants.ts`. For OAuth client type "Desktop app" Google considers the secret non-confidential (PKCE is what actually secures the flow), so it's safe to embed in the distributed binary.
-- Sync details (architecture, exclude rules, conflict + delete semantics, the `drive.file` trade-off, known limits) are documented in [`docs/SYNC.md`](docs/SYNC.md). Read it before touching `packages/sync` or `apps/desktop/src/sync`.
+- **Open-core**: git + terminal are public core (decision #18). The private-modules overlay machinery (module registry, dev-impl seam, `useModules()`) was removed with #16 — there is currently **no feature gating in the code**; it gets redesigned when monetization returns (Polar keys). The supporter update-entitlement path in `main.ts` is separate and still present.
+- `packages/sync` now contains only the orchestrator seams: `backend.ts` (`diffFiles` three-way reconcile + the `SyncBackend` versioned-commit contract) and `manifest.ts`. They remain intentionally consumerless (the v1 loop landed without wiring them in) — don't delete them as dead code.
+- The Google OAuth Client ID + non-confidential Desktop client secret live in `apps/desktop/src/auth/oauth-config.ts` (gitignored; see `oauth-config.example.ts`). For OAuth client type "Desktop app" Google considers the secret non-confidential (PKCE is what actually secures the flow).

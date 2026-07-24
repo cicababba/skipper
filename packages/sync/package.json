@@ -1,5 +1,5 @@
 {
-  "name": "@nestbrain/sync",
+  "name": "@skipper/sync",
   "version": "1.16.3",
   "private": true,
   "main": "./dist/index.js",
@@ -8,10 +8,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "lint": "eslint src/",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
-  "dependencies": {
-    "@nestbrain/shared": "workspace:*",
-    "chokidar": "^3.6.0"
-  }
+  "dependencies": {}
 }

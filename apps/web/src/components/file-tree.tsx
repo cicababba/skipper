@@ -1,34 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   ChevronRight,
   Folder,
   FolderOpen,
-  FileText,
-  Plus,
   FilePlus,
   FolderPlus,
   Pencil,
   Trash2,
   ExternalLink,
-  Cloud,
   GitBranch,
-  ArrowRight,
-  FolderInput,
-  Sparkles,
-  Share2,
-  Download,
-  Loader2,
-  Copy,
-  Check,
-  X,
+  RefreshCw,
 } from "lucide-react";
-import { useSync } from "@/lib/sync-context";
 import { useT } from "@/lib/app-i18n";
-import { useModules } from "@/lib/modules-context";
-import { useTeamConnected } from "@/lib/use-team-connected";
 import { FileIcon } from "./file-icon";
 import { useGitStatus, pickMarker, markerClass } from "@/lib/git-status-context";
 import { useTerminal } from "@/lib/terminal-context";
@@ -41,27 +26,16 @@ interface FsEntry {
 
 interface FileTreeProps {
   rootPath: string;
-  onNewProject: () => void;
+  rootLabel: string;
+  onOpenFile: (path: string) => void;
 }
 
 type CreateKind = "file" | "dir";
 
-export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
-  const router = useRouter();
+export function FileTree({ rootPath, rootLabel, onOpenFile }: FileTreeProps) {
   const { t } = useT();
-  const { has: hasModule } = useModules();
-  const devModule = hasModule("dev");
-  const { state: syncState } = useSync();
-  const syncEnabled = syncState.prefs.enabled && syncState.status !== "disabled";
 
-  // Compute the workspace-relative POSIX path so it matches the sync manifest.
-  function toRelPath(absPath: string): string {
-    if (!absPath.startsWith(rootPath + "/")) return absPath;
-    return absPath.slice(rootPath.length + 1).split(/[/\\]/).join("/");
-  }
-  const [expanded, setExpanded] = useState<Set<string>>(
-    new Set([rootPath, `${rootPath}/Projects`]),
-  );
+  const [expanded, setExpanded] = useState<Set<string>>(new Set([rootPath]));
   const [refreshKey, setRefreshKey] = useState(0);
   // selectedPath can be a file or a directory. The "effective parent"
   // for creation = selectedPath if it's a directory, else its parent,
@@ -74,10 +48,6 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
   } | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
-  const [hardDeleteTarget, setHardDeleteTarget] = useState<{
-    absPath: string;
-    name: string;
-  } | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -85,24 +55,6 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
     name: string;
     isDir: boolean;
   } | null>(null);
-  const [session, setSession] = useState<{
-    mode: "save" | "resume";
-    project: string;
-    busy: boolean;
-    output: string;
-  } | null>(null);
-
-  async function runSession(mode: "save" | "resume", path: string, name: string) {
-    if (typeof window === "undefined" || !window.nestbrain?.session) return;
-    setSession({ mode, project: name, busy: true, output: "" });
-    try {
-      const r = await window.nestbrain.session.run(mode, path);
-      setSession({ mode, project: name, busy: false, output: r.output });
-    } catch (e) {
-      setSession({ mode, project: name, busy: false, output: e instanceof Error ? e.message : "Failed" });
-    }
-  }
-
   const toggle = useCallback((path: string) => {
     setExpanded((s) => {
       const next = new Set(s);
@@ -117,50 +69,7 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
     setSelectedIsDir(isDir);
   }, []);
 
-  const openFile = useCallback(
-    (path: string) => {
-      router.push(`/editor?path=${encodeURIComponent(path)}`);
-    },
-    [router],
-  );
-
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
-
-  // Import an external folder into Projects/ and make it knowledge-ready.
-  const importProject = useCallback(async () => {
-    if (!window.nestbrain?.projects) return;
-    try {
-      const res = await window.nestbrain.projects.import();
-      if (res) {
-        setExpanded((s) => new Set(s).add(`${rootPath}/Projects`));
-        refresh();
-      }
-    } catch (e) {
-      window.alert(e instanceof Error ? e.message : t.tree.projects.importFailed);
-    }
-  }, [refresh, rootPath]);
-
-  // A directory that's a direct child of Projects/ (a project root).
-  const isProjectDir = useCallback(
-    (p: string): boolean => {
-      const norm = p.replace(/\\/g, "/");
-      const base = `${rootPath.replace(/\\/g, "/")}/Projects/`;
-      if (!norm.startsWith(base)) return false;
-      const rest = norm.slice(base.length);
-      return rest.length > 0 && !rest.includes("/");
-    },
-    [rootPath],
-  );
-
-  async function handleMakeReady(targetPath: string) {
-    if (!window.nestbrain?.projects) return;
-    try {
-      await window.nestbrain.projects.makeReady(targetPath);
-      window.alert(t.tree.projects.makeReadyDone);
-    } catch (e) {
-      window.alert(e instanceof Error ? e.message : t.tree.projects.makeReadyFailed);
-    }
-  }
 
   // Auto refresh when window gains focus
   useEffect(() => {
@@ -169,15 +78,6 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
     }
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [refresh]);
-
-  // Auto refresh when the native file watcher reports a change
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.nestbrain?.fs?.onChange) {
-      return;
-    }
-    const off = window.nestbrain.fs.onChange(refresh);
-    return off;
   }, [refresh]);
 
   // Dismiss context menu on outside click or Escape
@@ -207,7 +107,7 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
   );
 
   async function handleRename(oldPath: string, newName: string) {
-    if (!window.nestbrain?.fs?.rename) return;
+    if (!window.skipper?.fs?.rename) return;
     const oldBase = oldPath.slice(oldPath.lastIndexOf("/") + 1);
     // Same name (or blur/esc) → just close the rename input, don't hit IPC
     if (!newName || newName === oldBase) {
@@ -215,7 +115,7 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
       return;
     }
     try {
-      await window.nestbrain.fs.rename(oldPath, newName);
+      await window.skipper.fs.rename(oldPath, newName);
       setRenamingPath(null);
       // Clear stale selection (path changed under us)
       if (selectedPath === oldPath) setSelectedPath(null);
@@ -226,64 +126,18 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
   }
 
   async function handleDelete(targetPath: string, name: string, isDir: boolean) {
-    if (!window.nestbrain) return;
+    if (!window.skipper) return;
     const kind = isDir ? t.tree.files.folderWord : t.tree.files.fileWord;
-    const relPath = toRelPath(targetPath);
-
-    // Sync ON + single file → soft-delete via the sync engine. The file is
-    // moved to .trash/ and the Drive copy follows. Other devices see the
-    // move on their next pull, so nothing is lost anywhere.
-    if (syncEnabled && !isDir && !relPath.startsWith(".trash/")) {
-      try {
-        await window.nestbrain.sync.softDelete(relPath);
-        if (selectedPath === targetPath) setSelectedPath(null);
-      } catch (err) {
-        window.alert(err instanceof Error ? err.message : t.tree.files.moveToTrashFailed);
-      }
-      return;
-    }
-
-    // Otherwise (sync off, or folder, or already in .trash/) → plain delete.
-    const extraMsg = relPath.startsWith(".trash/")
-      ? `\n${t.tree.files.deleteTrashNote}`
-      : isDir
-        ? `\n${t.tree.files.deleteFolderNote}`
-        : "";
+    const extraMsg = isDir ? `\n${t.tree.files.deleteFolderNote}` : "";
     const ok = window.confirm(
       `${t.tree.files.deleteConfirm(kind, name)}${extraMsg}\n\n${t.tree.files.cannotUndo}`,
     );
     if (!ok) return;
     try {
-      await window.nestbrain.fs.delete(targetPath);
+      await window.skipper.fs.delete(targetPath);
       if (selectedPath === targetPath) setSelectedPath(null);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : t.tree.files.deleteFailed);
-    }
-  }
-
-  // Hard-delete uses a custom modal instead of window.prompt (Electron
-  // blocks native prompts). The actual deletion happens in confirmHardDelete
-  // below, called by the HardDeleteDialog when the user types DELETE.
-  function handleHardDelete(targetPath: string, name: string, isDir: boolean) {
-    if (!window.nestbrain) return;
-    if (isDir) {
-      window.alert(t.tree.files.hardDeleteFolderUnsupported);
-      return;
-    }
-    setHardDeleteTarget({ absPath: targetPath, name });
-  }
-
-  async function confirmHardDelete() {
-    if (!window.nestbrain || !hardDeleteTarget) return;
-    const { absPath } = hardDeleteTarget;
-    const relPath = toRelPath(absPath);
-    try {
-      await window.nestbrain.sync.hardDelete(relPath);
-      if (selectedPath === absPath) setSelectedPath(null);
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : t.tree.files.hardDeleteFailed);
-    } finally {
-      setHardDeleteTarget(null);
     }
   }
 
@@ -304,7 +158,7 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
   }
 
   async function confirmCreate(name: string) {
-    if (!creating || !window.nestbrain?.fs) return;
+    if (!creating || !window.skipper?.fs) return;
     const trimmed = name.trim();
     if (!trimmed) {
       setCreating(null);
@@ -317,15 +171,16 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
     const fullPath = `${creating.parent}/${trimmed}`;
     try {
       if (creating.kind === "dir") {
-        await window.nestbrain.fs.createDir(fullPath);
+        await window.skipper.fs.createDir(fullPath);
       } else {
-        await window.nestbrain.fs.writeFile(fullPath, "");
+        await window.skipper.fs.writeFile(fullPath, "");
       }
       setCreating(null);
       setCreateError(null);
-      // File watcher will auto-refresh. Open the new file in the editor.
+      // No file watcher anymore (#42) — re-read explicitly, then open the file.
+      refresh();
       if (creating.kind === "file") {
-        router.push(`/editor?path=${encodeURIComponent(fullPath)}`);
+        onOpenFile(fullPath);
       }
     } catch (err) {
       setCreateError(
@@ -336,47 +191,24 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
 
   const parentLabel = creating
     ? creating.parent === rootPath
-      ? "NestBrain"
+      ? rootLabel
       : creating.parent.replace(rootPath + "/", "")
     : "";
 
   return (
-    <div className="flex-shrink-0 border-b border-sidebar-border">
-      {/* New / Import — one row, New project emphasized (Dev module only) */}
-      {devModule && (
-      <div className="px-3 pt-3 pb-2 flex items-stretch gap-1.5">
-        <button
-          onClick={onNewProject}
-          title={t.tree.projects.newProjectTitle}
-          className="group flex-1 min-w-0 flex items-center justify-between gap-2 px-3 py-2 rounded-md text-[12px] font-medium text-foreground/90 bg-card hover:bg-card-hover border border-border hover:border-accent/40 transition-colors"
-        >
-          <span className="flex items-center gap-2 min-w-0">
-            <span className="flex items-center justify-center w-5 h-5 rounded-md bg-accent/15 text-accent group-hover:bg-accent/20 transition-colors">
-              <Plus size={12} strokeWidth={2.5} />
-            </span>
-            <span className="truncate">{t.tree.projects.newProject}</span>
-          </span>
-          <ArrowRight
-            size={12}
-            className="shrink-0 text-muted/30 -translate-x-1 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 group-hover:text-accent/70 transition-all"
-          />
-        </button>
-        <button
-          onClick={importProject}
-          title={t.tree.projects.importTitle}
-          className="shrink-0 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] text-muted/70 hover:text-foreground bg-card/50 hover:bg-card border border-border/60 hover:border-border transition-colors"
-        >
-          <FolderInput size={12} className="shrink-0 text-muted/50" />
-          <span>{t.tree.projects.import}</span>
-        </button>
-      </div>
-      )}
-
+    <div className="h-full flex flex-col min-h-0">
       <div className="px-4 py-2 flex items-center justify-between">
-        <span className="text-[10px] font-semibold text-muted/60 uppercase tracking-wider">
-          NestBrain
+        <span className="text-[10px] font-semibold text-muted/60 uppercase tracking-wider truncate">
+          {rootLabel}
         </span>
         <div className="flex items-center gap-0.5">
+          <button
+            onClick={refresh}
+            className="p-1 text-muted/40 hover:text-foreground hover:bg-card rounded transition-colors"
+            title={t.tree.files.refreshTitle}
+          >
+            <RefreshCw size={12} />
+          </button>
           <button
             onClick={() => startCreate("file")}
             className="p-1 text-muted/40 hover:text-foreground hover:bg-card rounded transition-colors"
@@ -407,14 +239,14 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
         />
       )}
 
-      <div className="max-h-[300px] overflow-y-auto pb-2 pr-1">
+      <div className="flex-1 min-h-0 overflow-y-auto pb-2 pr-1">
         <TreeNode
           path={rootPath}
-          name="NestBrain"
+          name={rootLabel}
           depth={0}
           expanded={expanded}
           onToggle={toggle}
-          onOpenFile={openFile}
+          onOpenFile={onOpenFile}
           onSelect={selectEntry}
           onContextMenu={openContextMenu}
           onRenameConfirm={handleRename}
@@ -435,7 +267,7 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
             contextMenu.isDir
               ? undefined
               : () => {
-                  openFile(contextMenu.path);
+                  onOpenFile(contextMenu.path);
                   setContextMenu(null);
                 }
           }
@@ -448,206 +280,8 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
             setContextMenu(null);
             handleDelete(path, name, isDir);
           }}
-          onHardDelete={
-            syncEnabled && !contextMenu.isDir
-              ? () => {
-                  const { path, name, isDir } = contextMenu;
-                  setContextMenu(null);
-                  handleHardDelete(path, name, isDir);
-                }
-              : undefined
-          }
-          onMakeReady={
-            contextMenu.isDir && isProjectDir(contextMenu.path)
-              ? () => {
-                  const { path } = contextMenu;
-                  setContextMenu(null);
-                  handleMakeReady(path);
-                }
-              : undefined
-          }
-          onSessionSave={
-            contextMenu.isDir && isProjectDir(contextMenu.path)
-              ? () => {
-                  const { path, name } = contextMenu;
-                  setContextMenu(null);
-                  void runSession("save", path, name);
-                }
-              : undefined
-          }
-          onSessionResume={
-            contextMenu.isDir && isProjectDir(contextMenu.path)
-              ? () => {
-                  const { path, name } = contextMenu;
-                  setContextMenu(null);
-                  void runSession("resume", path, name);
-                }
-              : undefined
-          }
-          syncEnabled={syncEnabled}
         />
       )}
-      {hardDeleteTarget && (
-        <HardDeleteDialog
-          name={hardDeleteTarget.name}
-          onCancel={() => setHardDeleteTarget(null)}
-          onConfirm={confirmHardDelete}
-        />
-      )}
-      {session && <SessionDialog session={session} onClose={() => setSession(null)} />}
-    </div>
-  );
-}
-
-function SessionDialog({
-  session,
-  onClose,
-}: {
-  session: { mode: "save" | "resume"; project: string; busy: boolean; output: string };
-  onClose: () => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const title = session.mode === "save" ? "Save session for another machine" : "Resume session here";
-  return (
-    <div
-      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 p-6"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !session.busy) onClose();
-      }}
-    >
-      <div className="w-[640px] max-w-[92vw] max-h-[82vh] rounded-2xl bg-card border border-border shadow-2xl flex flex-col overflow-hidden">
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-border">
-          {session.mode === "save" ? <Share2 size={16} className="text-accent" /> : <Download size={16} className="text-accent" />}
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold leading-tight">{title}</h2>
-            <p className="text-[11px] text-muted font-mono truncate">{session.project}</p>
-          </div>
-          {!session.busy && (
-            <button onClick={onClose} className="ml-auto p-1 rounded text-muted hover:text-foreground hover:bg-card-hover">
-              <X size={14} />
-            </button>
-          )}
-        </div>
-        <div className="flex-1 overflow-auto p-5">
-          {session.busy ? (
-            <div className="flex items-center gap-2 text-sm text-muted">
-              <Loader2 size={16} className="animate-spin" />
-              {session.mode === "save" ? "Generating the session summary…" : "Building the resumption briefing…"}
-            </div>
-          ) : (
-            <pre className="text-[12px] leading-relaxed whitespace-pre-wrap font-mono text-foreground/90">{session.output}</pre>
-          )}
-        </div>
-        {!session.busy && (
-          <div className="flex items-center gap-2 px-5 py-3 border-t border-border">
-            {session.mode === "resume" && (
-              <button
-                onClick={() => {
-                  navigator.clipboard?.writeText(session.output).then(() => {
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
-                  });
-                }}
-                className="flex items-center gap-1.5 text-xs font-semibold text-background bg-accent hover:bg-accent-hover rounded-lg px-3.5 py-2 transition-colors"
-              >
-                {copied ? <Check size={13} /> : <Copy size={13} />}
-                {copied ? "Copied" : "Copy briefing"}
-              </button>
-            )}
-            <button onClick={onClose} className="text-xs font-medium text-muted hover:text-foreground border border-border hover:border-accent/40 rounded-lg px-3.5 py-2 transition-colors">
-              Close
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function HardDeleteDialog({
-  name,
-  onCancel,
-  onConfirm,
-}: {
-  name: string;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  const { t } = useT();
-  const [typed, setTyped] = useState("");
-  const [busy, setBusy] = useState(false);
-  const ready = typed === "DELETE";
-
-  async function doConfirm() {
-    if (!ready || busy) return;
-    setBusy(true);
-    try {
-      await onConfirm();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/70 backdrop-blur-sm"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onCancel();
-      }}
-    >
-      <div className="w-[460px] max-w-[90vw] rounded-2xl bg-card border border-red-500/30 shadow-2xl shadow-black/60 p-6 space-y-5">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Trash2 size={16} className="text-red-400" />
-            <h2 className="text-base font-semibold text-red-400">
-              {t.tree.files.hardDeleteTitle}
-            </h2>
-          </div>
-          <p className="text-[12px] text-muted/80 leading-relaxed">
-            <span className="font-mono text-foreground">{name}</span>{" "}
-            {t.tree.files.hardDeleteBody1}{" "}
-            <code className="text-accent/80 bg-accent/5 px-1 rounded">
-              .trash/
-            </code>{" "}
-            {t.tree.files.hardDeleteBody2}
-          </p>
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="block text-[10px] text-muted/60 uppercase tracking-wider">
-            {t.tree.files.typeDeleteToConfirm}
-          </label>
-          <input
-            autoFocus
-            type="text"
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && ready) doConfirm();
-              if (e.key === "Escape") onCancel();
-            }}
-            placeholder="DELETE"
-            className="w-full px-3 py-2 bg-background border border-red-500/30 rounded-lg text-sm font-mono placeholder:text-muted/30 focus:outline-none focus:border-red-500/60 focus:ring-1 focus:ring-red-500/20"
-          />
-        </div>
-
-        <div className="flex items-center justify-end gap-2 pt-1">
-          <button
-            onClick={onCancel}
-            disabled={busy}
-            className="px-4 py-2 rounded-lg text-xs text-muted hover:text-foreground transition-colors disabled:opacity-50"
-          >
-            {t.tree.files.cancel}
-          </button>
-          <button
-            onClick={doConfirm}
-            disabled={!ready || busy}
-            className="px-4 py-2 rounded-lg text-xs font-medium bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {busy ? t.tree.files.deleting : t.tree.files.deleteForever}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -659,29 +293,13 @@ interface ContextMenuProps {
   onOpen?: () => void;
   onRename: () => void;
   onDelete: () => void;
-  onHardDelete?: () => void;
-  onMakeReady?: () => void;
-  onSessionSave?: () => void;
-  onSessionResume?: () => void;
-  syncEnabled: boolean;
 }
 
-function ContextMenu({
-  x,
-  y,
-  onOpen,
-  onRename,
-  onDelete,
-  onHardDelete,
-  onMakeReady,
-  onSessionSave,
-  onSessionResume,
-  syncEnabled,
-}: ContextMenuProps) {
+function ContextMenu({ x, y, onOpen, onRename, onDelete }: ContextMenuProps) {
   const { t } = useT();
   // Clamp within viewport so it doesn't clip on the right/bottom
   const MENU_W = 220;
-  const MENU_H = onHardDelete ? 170 : 120;
+  const MENU_H = 120;
   const left = Math.min(x, window.innerWidth - MENU_W - 8);
   const top = Math.min(y, window.innerHeight - MENU_H - 8);
   return (
@@ -701,33 +319,6 @@ function ContextMenu({
           <div className="my-1 h-px bg-border/60" />
         </>
       )}
-      {onMakeReady && (
-        <>
-          <MenuItem
-            icon={<Sparkles size={12} />}
-            label={t.tree.projects.makeReady}
-            onClick={onMakeReady}
-          />
-          <div className="my-1 h-px bg-border/60" />
-        </>
-      )}
-      {onSessionSave && (
-        <MenuItem
-          icon={<Share2 size={12} />}
-          label="Save session for another machine"
-          onClick={onSessionSave}
-        />
-      )}
-      {onSessionResume && (
-        <>
-          <MenuItem
-            icon={<Download size={12} />}
-            label="Resume session here"
-            onClick={onSessionResume}
-          />
-          <div className="my-1 h-px bg-border/60" />
-        </>
-      )}
       <MenuItem
         icon={<Pencil size={12} />}
         label={t.tree.files.rename}
@@ -735,18 +326,10 @@ function ContextMenu({
       />
       <MenuItem
         icon={<Trash2 size={12} />}
-        label={syncEnabled ? t.tree.files.moveToTrash : t.tree.files.delete}
+        label={t.tree.files.delete}
         onClick={onDelete}
         danger
       />
-      {onHardDelete && (
-        <MenuItem
-          icon={<Cloud size={12} />}
-          label={t.tree.files.deleteAllDevices}
-          onClick={onHardDelete}
-          danger
-        />
-      )}
     </div>
   );
 }
@@ -767,7 +350,7 @@ function MenuItem({
       onClick={onClick}
       className={`w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors ${
         danger
-          ? "text-red-400/90 hover:bg-red-500/10"
+          ? "text-danger/90 hover:bg-danger/10"
           : "text-foreground hover:bg-accent/10"
       }`}
     >
@@ -897,7 +480,7 @@ function CreateInput({
         />
       </div>
       {error && (
-        <div className="mt-1 text-[10px] text-red-400/80">{error}</div>
+        <div className="mt-1 text-[10px] text-danger/80">{error}</div>
       )}
     </div>
   );
@@ -944,9 +527,6 @@ function TreeNode({
   refreshKey,
 }: TreeNodeProps) {
   const { t } = useT();
-  const { has: hasModule } = useModules();
-  const devModule = hasModule("dev");
-  const teamConnected = useTeamConnected();
   const isOpen = expanded.has(path);
   const isSelected = selectedPath === path;
   const isRenaming = renamingPath === path;
@@ -962,9 +542,9 @@ function TreeNode({
   const [isRepoTop, setIsRepoTop] = useState(false);
   useEffect(() => {
     if (!isDir) return;
-    if (typeof window === "undefined" || !window.nestbrain?.git) return;
+    if (typeof window === "undefined" || !window.skipper?.git) return;
     let cancelled = false;
-    void window.nestbrain.git.findRepo(path).then((res) => {
+    void window.skipper.git.findRepo(path).then((res) => {
       if (cancelled) return;
       if (res && res.repoPath === path) {
         setIsRepoTop(true);
@@ -1006,9 +586,9 @@ function TreeNode({
 
   useEffect(() => {
     if (!isDir || !isOpen) return;
-    if (typeof window === "undefined" || !window.nestbrain) return;
+    if (typeof window === "undefined" || !window.skipper) return;
     let cancelled = false;
-    window.nestbrain.fs.list(path).then((list) => {
+    window.skipper.fs.list(path).then((list) => {
       // Update children in place — React reconciles by entry.path, so
       // unchanged rows don't remount (no flash) and open folders stay open.
       if (!cancelled) setChildren(list);
@@ -1042,7 +622,7 @@ function TreeNode({
           // implicitly via React's batched updates — see status-bar.tsx).
           if (ancestor) {
             window.dispatchEvent(
-              new CustomEvent("nestbrain:focus-project", {
+              new CustomEvent("skipper:focus-project", {
                 detail: { repoPath: ancestor.repoPath },
               }),
             );
@@ -1106,7 +686,8 @@ function TreeNode({
             {name}
           </span>
         </button>
-        {isRepoTop && devModule && (
+        {/* Terminal is public core (#18) — repo terminal shortcut is not module-gated */}
+        {isRepoTop && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -1121,14 +702,7 @@ function TreeNode({
       </div>
       {isOpen && children && (
         <div>
-          {children
-            .filter((entry) => {
-              if (!isRoot || !entry.isDirectory) return true;
-              if (entry.name === "Projects" && !devModule) return false;
-              if (entry.name === "Team" && !teamConnected) return false;
-              return true;
-            })
-            .map((entry) => (
+          {children.map((entry) => (
             <TreeNode
               key={entry.path}
               path={entry.path}

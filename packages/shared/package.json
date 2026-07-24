@@ -1,5 +1,5 @@
 {
-  "name": "@nestbrain/shared",
+  "name": "@skipper/shared",
   "version": "1.14.3",
   "private": true,
   "main": "./dist/index.js",

@@ -2,9 +2,10 @@
 //
 // The hook fires after every commit on a registered repository and runs
 // the knowledge extractor in the background (commit terminal does NOT block).
-// Atoms land in <workspace>/.nestbrain/knowledge-pending/ for later review.
+// Atoms land in the app's <userData>/knowledge/pending/ for later review;
+// the CLI resolves that directory itself.
 //
-// Install is append-aware: if a non-NestBrain post-commit already exists, we
+// Install is append-aware: if a non-Skipper post-commit already exists, we
 // add our snippet at the end, surrounded by markers so re-install (upgrade)
 // rewrites only our portion and uninstall removes only our portion.
 
@@ -13,17 +14,17 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** Bumped when we change the hook body so re-register upgrades the snippet. */
-const HOOK_VERSION = 1;
-const BEGIN_MARKER = "# >>> nestbrain knowledge hook (managed) >>>";
-const END_MARKER = "# <<< nestbrain knowledge hook (managed) <<<";
+const HOOK_VERSION = 2;
+const BEGIN_MARKER = "# >>> skipper knowledge hook (managed) >>>";
+const END_MARKER = "# <<< skipper knowledge hook (managed) <<<";
 
 export interface InstallHookOptions {
   repoPath: string;
   /**
    * Command the hook invokes (will be exec'd in background).
    * Examples:
-   *   "nestbrain"                                  ← globally installed
-   *   "/abs/path/to/nestbrain"                     ← explicit binary
+   *   "skipper"                                  ← globally installed
+   *   "/abs/path/to/skipper"                     ← explicit binary
    *   "npx tsx /abs/path/packages/cli/src/index.ts" ← dev mode
    */
   cliCommand: string;
@@ -57,7 +58,7 @@ export function getHookStatus(repoPath: string): HookStatus {
     return { hookPath, exists: false, ours: false, version: null };
   }
   const contents = readFileSync(hookPath, "utf-8");
-  const match = /# nestbrain-knowledge-hook:(\d+)/.exec(contents);
+  const match = /# skipper-knowledge-hook:(\d+)/.exec(contents);
   return {
     hookPath,
     exists: true,
@@ -71,32 +72,13 @@ function buildHookSnippet(cliCommand: string): string {
   const safe = cliCommand.replace(/\\/g, "\\\\").replace(/'/g, "'\\''");
   return [
     BEGIN_MARKER,
-    `# nestbrain-knowledge-hook:${HOOK_VERSION}`,
-    "# Extracts knowledge atoms from the latest commit into <workspace>/.nestbrain/",
-    "# knowledge-pending/ for later review. Runs detached — does NOT block the commit.",
-    `nestbrain_cli='${safe}'`,
-    "nestbrain_repo=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0",
-    "nestbrain_workspace=''",
-    "nestbrain_dir=\"$nestbrain_repo\"",
-    "nestbrain_i=0",
-    "while [ \"$nestbrain_i\" -lt 20 ]; do",
-    "  if [ -d \"$nestbrain_dir/.nestbrain\" ]; then",
-    "    nestbrain_workspace=\"$nestbrain_dir\"",
-    "    break",
-    "  fi",
-    "  nestbrain_parent=$(dirname \"$nestbrain_dir\")",
-    "  [ \"$nestbrain_parent\" = \"$nestbrain_dir\" ] && break",
-    "  nestbrain_dir=\"$nestbrain_parent\"",
-    "  nestbrain_i=$((nestbrain_i + 1))",
-    "done",
-    "[ -z \"$nestbrain_workspace\" ] && exit 0",
-    "nestbrain_sha=$(git rev-parse HEAD)",
-    "nestbrain_log_dir=\"$nestbrain_workspace/.nestbrain/knowledge-log\"",
-    "mkdir -p \"$nestbrain_log_dir\"",
-    "{",
-    "  echo \"--- $(date -u +%Y-%m-%dT%H:%M:%SZ) commit $nestbrain_sha ---\"",
-    "  eval \"$nestbrain_cli knowledge extract \\\"$nestbrain_sha\\\" --repo \\\"$nestbrain_repo\\\" --workspace \\\"$nestbrain_workspace\\\"\"",
-    "} >> \"$nestbrain_log_dir/extract.log\" 2>&1 </dev/null &",
+    `# skipper-knowledge-hook:${HOOK_VERSION}`,
+    "# Extracts knowledge atoms from the latest commit into the Skipper app's",
+    "# knowledge/pending/ dir. Runs detached — does NOT block the commit.",
+    `skipper_cli='${safe}'`,
+    "skipper_repo=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0",
+    "skipper_sha=$(git rev-parse HEAD)",
+    "eval \"$skipper_cli knowledge extract \\\"$skipper_sha\\\" --repo \\\"$skipper_repo\\\"\" >/dev/null 2>&1 </dev/null &",
     "disown 2>/dev/null || true",
     END_MARKER,
     "",

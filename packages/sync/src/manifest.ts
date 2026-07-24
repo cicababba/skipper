@@ -1,6 +1,6 @@
 // Manifest persistence.
 //
-// Lives at <workspace>/.nestbrain/sync-manifest.json. Records the device
+// Lives at <workspace>/.skipper/sync-manifest.json. Records the device
 // identity, the Drive folder ids we've cached, and per-file hash/driveId
 // so the next sync cycle can diff cheaply without hashing every file twice.
 
@@ -10,7 +10,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import type { Manifest } from "./types";
 
-const MANIFEST_RELPATH = ".nestbrain/sync-manifest.json";
+const MANIFEST_RELPATH = ".skipper/sync-manifest.json";
 
 export function manifestPath(workspacePath: string): string {
   return join(workspacePath, MANIFEST_RELPATH);

@@ -1,25 +1,27 @@
 {
-  "name": "@nestbrain/desktop",
-  "version": "1.16.3",
+  "name": "@skipper/desktop",
+  "version": "0.1.0",
   "private": true,
-  "description": "NestBrain native desktop app",
+  "description": "Skipper native desktop app",
   "main": "dist/main.js",
   "scripts": {
     "ensure-oauth-config": "node build/ensure-oauth-config.mjs",
     "ensure-update-config": "node build/ensure-update-config.mjs",
     "bundle-updater": "node build/bundle-updater.mjs",
+    "bundle-orchestrator": "node build/bundle-orchestrator.mjs",
     "dereference-workspace-deps": "node build/dereference-workspace-deps.mjs",
-    "build:ts": "pnpm ensure-oauth-config && pnpm ensure-update-config && tsc -p tsconfig.json && pnpm bundle-updater",
+    "build:ts": "pnpm ensure-oauth-config && pnpm ensure-update-config && tsc -p tsconfig.json && pnpm bundle-updater && pnpm bundle-orchestrator",
     "build": "pnpm build:ts",
-    "dev": "pnpm build:ts && NESTBRAIN_DEV=1 electron .",
+    "test": "vitest run --passWithNoTests",
+    "dev": "pnpm build:ts && SKIPPER_DEV=1 electron .",
     "start": "electron .",
     "package": "pnpm dereference-workspace-deps && electron-builder",
     "package:mac": "pnpm dereference-workspace-deps && electron-builder --mac",
     "package:win": "pnpm dereference-workspace-deps && electron-builder --win"
   },
   "dependencies": {
-    "@nestbrain/shared": "workspace:*",
-    "@nestbrain/sync": "workspace:*",
+    "@skipper/shared": "workspace:*",
+    "@skipper/core": "workspace:*",
     "node-pty": "^1.0.0"
   },
   "devDependencies": {
@@ -33,8 +35,8 @@
     "typescript": "^5.9.3"
   },
   "build": {
-    "appId": "com.nextepochs.nestbrain",
-    "productName": "NestBrain",
+    "appId": "com.cicababba.skipper",
+    "productName": "Skipper",
     "copyright": "Copyright © 2026 NextEpochs",
     "npmRebuild": false,
     "afterPack": "build/after-pack.cjs",
@@ -56,12 +58,12 @@
     ],
     "extraResources": [
       {
-        "from": "../../apps/web/.next/standalone",
+        "from": "../../apps/web/out",
         "to": "web"
       },
       {
-        "from": "../../skeleton",
-        "to": "skeleton"
+        "from": "build/cli-runtime",
+        "to": "cli-runtime"
       },
       {
         "from": "build/cli",
@@ -70,7 +72,7 @@
     ],
     "publish": {
       "provider": "generic",
-      "url": "https://updates.nestbrain.app"
+      "url": "https://updates.skipper.app"
     },
     "mac": {
       "category": "public.app-category.productivity",

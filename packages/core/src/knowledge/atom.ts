@@ -5,11 +5,11 @@
 // hand-editable and Obsidian-compatible, and so the existing compiler can
 // ingest it without a new source type once accepted.
 //
-// On-disk layout:
+// On-disk layout (under the app's <userData>/knowledge/):
 //
-//   <workspace>/.nestbrain/knowledge-pending/   ← LLM proposed, awaiting review
-//   <workspace>/.nestbrain/knowledge-rejected/  ← user rejected, kept for re-pickup
-//   <workspace>/.nestbrain/raw/projects/<name>/ ← accepted, eligible for compile
+//   pending/          ← LLM proposed, awaiting review
+//   rejected/         ← user rejected, kept for re-pickup
+//   accepted/<name>/  ← accepted, per-project archive
 
 export interface SourceRef {
   /** Git SHA the atom was extracted from. Always present for commit-derived atoms. */

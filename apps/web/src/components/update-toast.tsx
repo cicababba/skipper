@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import type { UpdateState } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 
 // VS Code-style update toast: appears bottom-right when a new version has been
@@ -13,7 +14,7 @@ export function UpdateToast() {
   const [dismissed, setDismissed] = useState<string | null>(null);
 
   useEffect(() => {
-    const updates = typeof window !== "undefined" ? window.nestbrain?.updates : null;
+    const updates = typeof window !== "undefined" ? window.skipper?.updates : null;
     if (!updates) return;
     updates.getState().then(setState).catch(() => {});
     const off = updates.onStateChanged(setState);
@@ -34,7 +35,7 @@ export function UpdateToast() {
       </p>
       <div className="flex items-center gap-2">
         <button
-          onClick={() => void window.nestbrain?.updates.restart()}
+          onClick={() => void window.skipper?.updates.restart()}
           className="px-3 py-1.5 rounded-lg bg-accent text-background text-xs font-medium hover:bg-accent-hover transition-colors"
         >
           {t.tree.updates.restartNow}

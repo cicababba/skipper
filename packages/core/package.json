@@ -1,5 +1,5 @@
 {
-  "name": "@nestbrain/core",
+  "name": "@skipper/core",
   "version": "1.14.3",
   "private": true,
   "main": "./dist/index.js",
@@ -8,24 +8,11 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "lint": "eslint src/",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.0.1",
-    "@mozilla/readability": "^0.6.0",
-    "@nestbrain/shared": "workspace:*",
-    "crypto-js": "^4.2.0",
-    "linkedom": "^0.18.12",
-    "pdf-parse": "^2.4.5",
-    "rss-parser": "^3.13.0",
-    "turndown": "^7.2.4",
-    "uuid": "^13.0.0",
-    "yaml": "^2.8.3",
-    "youtube-transcript": "^1.3.0"
-  },
-  "devDependencies": {
-    "@types/crypto-js": "^4.2.2",
-    "@types/pdf-parse": "^1.1.5",
-    "@types/turndown": "^5.0.6"
+    "@skipper/shared": "workspace:*",
+    "zod": "^4.3.6"
   }
 }

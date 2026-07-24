@@ -8,54 +8,120 @@ import {
   useMemo,
   useState,
 } from "react";
-import type { AuthState } from "@nestbrain/shared";
+import { deriveProviderAccounts, deriveProviderView } from "@skipper/shared";
+import type {
+  AuthProviderId,
+  AuthProviderMeta,
+  AuthState,
+  ProviderAccountsView,
+  ProviderAuthView,
+} from "@skipper/shared";
 
 interface AuthContextValue {
-  state: AuthState;
-  signIn: () => Promise<void>;
-  signOut: () => Promise<void>;
-  cancelSignIn: () => Promise<void>;
+  /** Full multi-provider state, for provider-aware UI. */
+  authState: AuthState;
+  /** Registry-derived provider rows from the desktop; [] until the IPC answers. */
+  providers: AuthProviderMeta[];
+  /** True once the initial state + providers IPC round-trips settled — before
+   *  this, an empty accounts list means "unknown", not "signed out". Stays
+   *  false outside Electron, where there is no IPC to settle. */
+  loaded: boolean;
+  viewFor: (provider: AuthProviderId) => ProviderAuthView;
+  accountsFor: (provider: AuthProviderId) => ProviderAccountsView;
+  signIn: (provider: AuthProviderId, options?: { baseUrl?: string }) => Promise<void>;
+  signInWithPat: (
+    provider: AuthProviderId,
+    pat: string,
+    options?: { baseUrl?: string },
+  ) => Promise<void>;
+  signOut: (provider: AuthProviderId, accountId: string) => Promise<void>;
+  cancelSignIn: (provider: AuthProviderId) => Promise<void>;
+  chooseResource: (provider: AuthProviderId, resourceId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const DEFAULT_STATE: AuthState = { status: "signed-out" };
+const DEFAULT_STATE: AuthState = { accounts: [], flows: {} };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<AuthState>(DEFAULT_STATE);
+  const [authState, setAuthState] = useState<AuthState>(DEFAULT_STATE);
+  const [providers, setProviders] = useState<AuthProviderMeta[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !window.nestbrain) return;
-    const auth = window.nestbrain.auth;
+    if (typeof window === "undefined" || !window.skipper) return;
+    const auth = window.skipper.auth;
     let cancelled = false;
 
-    auth.getState()
-      .then((s) => { if (!cancelled) setState(s); })
+    const stateReady = auth.getState()
+      .then((s) => { if (!cancelled) setAuthState(s); })
       .catch(() => { /* keep default */ });
 
-    const off = auth.onStateChanged((s) => setState(s));
+    const providersReady = auth.getProviders()
+      .then((p) => { if (!cancelled) setProviders(p); })
+      .catch(() => { /* keep default */ });
+
+    void Promise.all([stateReady, providersReady]).then(() => {
+      if (!cancelled) setLoaded(true);
+    });
+
+    const off = auth.onStateChanged((s) => setAuthState(s));
 
     return () => { cancelled = true; off(); };
   }, []);
 
-  const signIn = useCallback(async () => {
-    if (!window.nestbrain) return;
-    await window.nestbrain.auth.signIn();
+  const viewFor = useCallback(
+    (provider: AuthProviderId) => deriveProviderView(authState, provider),
+    [authState],
+  );
+
+  const accountsFor = useCallback(
+    (provider: AuthProviderId) => deriveProviderAccounts(authState, provider),
+    [authState],
+  );
+
+  const signIn = useCallback(async (provider: AuthProviderId, options?: { baseUrl?: string }) => {
+    if (!window.skipper) return;
+    await window.skipper.auth.signIn(provider, options);
   }, []);
 
-  const signOut = useCallback(async () => {
-    if (!window.nestbrain) return;
-    await window.nestbrain.auth.signOut();
+  const signInWithPat = useCallback(
+    async (provider: AuthProviderId, pat: string, options?: { baseUrl?: string }) => {
+      if (!window.skipper) return;
+      await window.skipper.auth.signInWithPat(provider, pat, options);
+    },
+    [],
+  );
+
+  const signOut = useCallback(async (provider: AuthProviderId, accountId: string) => {
+    if (!window.skipper) return;
+    await window.skipper.auth.signOut(provider, accountId);
   }, []);
 
-  const cancelSignIn = useCallback(async () => {
-    if (!window.nestbrain) return;
-    await window.nestbrain.auth.cancelSignIn();
+  const cancelSignIn = useCallback(async (provider: AuthProviderId) => {
+    if (!window.skipper) return;
+    await window.skipper.auth.cancelSignIn(provider);
+  }, []);
+
+  const chooseResource = useCallback(async (provider: AuthProviderId, resourceId: string) => {
+    if (!window.skipper) return;
+    await window.skipper.auth.chooseResource(provider, resourceId);
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ state, signIn, signOut, cancelSignIn }),
-    [state, signIn, signOut, cancelSignIn],
+    () => ({
+      authState,
+      providers,
+      loaded,
+      viewFor,
+      accountsFor,
+      signIn,
+      signInWithPat,
+      signOut,
+      cancelSignIn,
+      chooseResource,
+    }),
+    [authState, providers, loaded, viewFor, accountsFor, signIn, signInWithPat, signOut, cancelSignIn, chooseResource],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

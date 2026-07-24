@@ -1,15 +1,13 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext } from "react";
+import { useStoredState } from "./use-stored-state";
 import { common } from "./i18n/common";
 import { settings } from "./i18n/settings";
-import { knowledge } from "./i18n/knowledge";
-import { searchask } from "./i18n/searchask";
+import { inbox } from "./i18n/inbox";
 import { wiki } from "./i18n/wiki";
-import { team } from "./i18n/team";
+import { about } from "./i18n/about";
 import { tree } from "./i18n/tree";
-import { dev } from "./i18n/dev";
-import { anatomize } from "./i18n/anatomize";
 
 // App-wide localization (EN/IT/FR/ES). Resolution order: the language chosen
 // in Settings (localStorage) wins; otherwise the OS/browser language;
@@ -29,29 +27,27 @@ function buildDict(lang: AppLang) {
   return {
     common: common[lang],
     settings: settings[lang],
-    knowledge: knowledge[lang],
-    searchask: searchask[lang],
+    inbox: inbox[lang],
     wiki: wiki[lang],
-    team: team[lang],
+    about: about[lang],
     tree: tree[lang],
-    dev: dev[lang],
-    anatomize: anatomize[lang],
   };
 }
 
 export type AppDict = ReturnType<typeof buildDict>;
 
-const STORAGE_KEY = "nestbrain-lang";
+const STORAGE_KEY = "skipper-lang";
+
+function asAppLang(value: string): AppLang | null {
+  return value === "en" || value === "it" || value === "fr" || value === "es" ? value : null;
+}
 
 function detectLang(): AppLang {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved === "en" || saved === "it" || saved === "fr" || saved === "es") return saved;
-  } catch {}
+  if (typeof navigator === "undefined") return "en";
   const prefs = navigator.languages?.length ? navigator.languages : [navigator.language];
   for (const p of prefs) {
-    const c = (p || "").slice(0, 2).toLowerCase();
-    if (c === "it" || c === "fr" || c === "es" || c === "en") return c as AppLang;
+    const c = asAppLang((p || "").slice(0, 2).toLowerCase());
+    if (c) return c;
   }
   return "en";
 }
@@ -72,31 +68,14 @@ const AppLangContext = createContext<{
 });
 
 export function AppLangProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<AppLang>("en");
-  const [explicit, setExplicit] = useState(false);
+  // "" means no explicit choice — the OS/browser language is in effect.
+  const [stored, setStored] = useStoredState(STORAGE_KEY, "");
+  const chosen = asAppLang(stored);
+  const lang = chosen ?? detectLang();
+  const explicit = chosen !== null;
 
-  useEffect(() => {
-    setLangState(detectLang());
-    try {
-      setExplicit(localStorage.getItem(STORAGE_KEY) !== null);
-    } catch {}
-  }, []);
-
-  const setLang = (l: AppLang) => {
-    setLangState(l);
-    setExplicit(true);
-    try {
-      localStorage.setItem(STORAGE_KEY, l);
-    } catch {}
-  };
-
-  const clearLang = () => {
-    setExplicit(false);
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {}
-    setLangState(detectLang());
-  };
+  const setLang = (l: AppLang) => setStored(l);
+  const clearLang = () => setStored("");
 
   return (
     <AppLangContext.Provider value={{ lang, setLang, explicit, clearLang, t: buildDict(lang) }}>

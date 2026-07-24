@@ -4,8 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { languages } from "@codemirror/language-data";
-import { LanguageSupport } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 import {
   Save,
@@ -19,6 +17,7 @@ import {
 import { useEditorTabs } from "@/lib/editor-tabs-context";
 import { FileIcon } from "@/components/file-icon";
 import { useT } from "@/lib/app-i18n";
+import { loadLanguageFor } from "@/lib/codemirror-lang";
 
 type LoadState =
   | { kind: "loading" }
@@ -34,32 +33,6 @@ export function EditorFallback() {
       {t.wiki.editor.loadingEditor}
     </div>
   );
-}
-
-// Resolves a language pack for the given filename using CodeMirror's
-// language-data index (~100 languages). The pack is loaded lazily via
-// dynamic import, so only the parser for the actual file is pulled in.
-// Unknown extensions return null → editor opens the file as plain text.
-async function loadLanguageFor(
-  filename: string,
-): Promise<LanguageSupport | null> {
-  const desc =
-    // Match by extension first (cheap)
-    languages.find((l) =>
-      l.extensions.some((ext) =>
-        filename.toLowerCase().endsWith("." + ext.toLowerCase()),
-      ),
-    ) ??
-    // Then by explicit filename (Makefile, Dockerfile, etc.)
-    languages.find((l) =>
-      l.filename?.test(filename.split("/").pop() ?? filename),
-    );
-  if (!desc) return null;
-  try {
-    return await desc.load();
-  } catch {
-    return null;
-  }
 }
 
 function formatSize(bytes: number): string {
@@ -119,16 +92,18 @@ export function EditorView() {
   // Load the file
   useEffect(() => {
     if (!filePath) {
+      // Sync guard-branch setState; fine for this legacy surface (retired via #2)
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ kind: "error", code: "noPath" });
       return;
     }
-    if (typeof window === "undefined" || !window.nestbrain?.fs?.readFile) {
+    if (typeof window === "undefined" || !window.skipper?.fs?.readFile) {
       setState({ kind: "error", code: "desktopOnly" });
       return;
     }
     let cancelled = false;
     setState({ kind: "loading" });
-    window.nestbrain.fs
+    window.skipper.fs
       .readFile(filePath)
       .then((res) => {
         if (cancelled) return;
@@ -157,12 +132,12 @@ export function EditorView() {
 
   const handleSave = useCallback(async () => {
     if (state.kind !== "ready") return;
-    if (!window.nestbrain?.fs?.writeFile) return;
+    if (!window.skipper?.fs?.writeFile) return;
     if (content === originalContent) return;
     setSaving(true);
     setError(null);
     try {
-      await window.nestbrain.fs.writeFile(filePath, content);
+      await window.skipper.fs.writeFile(filePath, content);
       setOriginalContent(content);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);
@@ -253,13 +228,13 @@ export function EditorView() {
 
         <div className="flex items-center gap-3 px-4 shrink-0">
           {error && (
-            <span className="flex items-center gap-1.5 text-[11px] text-red-400">
+            <span className="flex items-center gap-1.5 text-[11px] text-danger">
               <AlertTriangle size={11} />
               {error}
             </span>
           )}
           {savedFlash && (
-            <span className="flex items-center gap-1.5 text-[11px] text-green-400/80">
+            <span className="flex items-center gap-1.5 text-[11px] text-success/80">
               <Check size={11} />
               {te.saved}
             </span>
@@ -285,7 +260,7 @@ export function EditorView() {
           </div>
         )}
         {state.kind === "error" && (
-          <div className="h-full flex items-center justify-center text-red-400/80 text-sm">
+          <div className="h-full flex items-center justify-center text-danger/80 text-sm">
             {state.message ??
               (state.code === "noPath"
                 ? te.errNoPath

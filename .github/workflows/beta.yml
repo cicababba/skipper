@@ -1,0 +1,172 @@
+name: Beta Build
+
+# Manual beta build for early testers. Builds unsigned binaries and publishes
+# them as a GitHub *prerelease* on this public repo. Distinct from release.yml
+# (which is disarmed until the distribution cutover, #17):
+#   * Unsigned — mac uses CSC_IDENTITY_AUTO_DISCOVERY=false, no APPLE_*/CSC_*
+#     creds, so electron-builder skips notarization.
+#   * No Google OAuth (excluded from the product) and no SKIPPER_UPDATE_KEY —
+#     an empty update key makes initUpdater register inert handlers, so betas
+#     never self-update. Testers re-download each prerelease.
+#   * Publishes to the public cicababba/skipper repo, not the private
+#     releases repo.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: beta-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-mac:
+    name: Build macOS arm64 (beta)
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Cache Electron binary
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/electron
+          key: electron-mac-arm64-${{ hashFiles('apps/desktop/package.json') }}
+          restore-keys: |
+            electron-mac-arm64-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prune non-arm64 node-pty prebuilds
+        # node-pty ships prebuilds for all platforms inside one npm package.
+        # With hardenedRuntime, codesign signs every mach-O individually and
+        # chokes on Windows PE files, retrying for minutes. Strip everything
+        # except the darwin-arm64 prebuild we actually need.
+        run: |
+          cd apps/desktop/node_modules/node-pty/prebuilds
+          ls -1 | grep -v '^darwin-arm64$' | xargs -I {} rm -rf {}
+          ls -1
+
+      - name: Ensure CLI wrapper is executable
+        run: chmod +x apps/desktop/build/cli/skipper
+
+      - name: Build & package macOS DMG (unsigned)
+        env:
+          # Baked-at-build OAuth client credentials. Without them
+          # ensure-oauth-config.mjs falls back to placeholders that ship a
+          # broken sign-in flow. No Google (excluded from the product).
+          SKIPPER_GITHUB_CLIENT_ID: ${{ secrets.SKIPPER_GITHUB_CLIENT_ID }}
+          SKIPPER_GITHUB_CLIENT_SECRET: ${{ secrets.SKIPPER_GITHUB_CLIENT_SECRET }}
+          SKIPPER_GITLAB_CLIENT_ID: ${{ secrets.SKIPPER_GITLAB_CLIENT_ID }}
+          SKIPPER_JIRA_CLIENT_ID: ${{ secrets.SKIPPER_JIRA_CLIENT_ID }}
+          SKIPPER_JIRA_CLIENT_SECRET: ${{ secrets.SKIPPER_JIRA_CLIENT_SECRET }}
+          SKIPPER_BITBUCKET_CLIENT_ID: ${{ secrets.SKIPPER_BITBUCKET_CLIENT_ID }}
+          SKIPPER_BITBUCKET_CLIENT_SECRET: ${{ secrets.SKIPPER_BITBUCKET_CLIENT_SECRET }}
+        run: CSC_IDENTITY_AUTO_DISCOVERY=false pnpm desktop:package:mac
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: skipper-macos-arm64
+          path: apps/desktop/release/*.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  build-win:
+    name: Build Windows x64 (beta)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Cache Electron binary
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\electron\Cache
+          key: electron-win-x64-${{ hashFiles('apps/desktop/package.json') }}
+          restore-keys: |
+            electron-win-x64-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build & package Windows installer
+        env:
+          SKIPPER_GITHUB_CLIENT_ID: ${{ secrets.SKIPPER_GITHUB_CLIENT_ID }}
+          SKIPPER_GITHUB_CLIENT_SECRET: ${{ secrets.SKIPPER_GITHUB_CLIENT_SECRET }}
+          SKIPPER_GITLAB_CLIENT_ID: ${{ secrets.SKIPPER_GITLAB_CLIENT_ID }}
+          SKIPPER_JIRA_CLIENT_ID: ${{ secrets.SKIPPER_JIRA_CLIENT_ID }}
+          SKIPPER_JIRA_CLIENT_SECRET: ${{ secrets.SKIPPER_JIRA_CLIENT_SECRET }}
+          SKIPPER_BITBUCKET_CLIENT_ID: ${{ secrets.SKIPPER_BITBUCKET_CLIENT_ID }}
+          SKIPPER_BITBUCKET_CLIENT_SECRET: ${{ secrets.SKIPPER_BITBUCKET_CLIENT_SECRET }}
+        run: pnpm desktop:package:win
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: skipper-windows-x64
+          path: apps/desktop/release/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish beta prerelease
+    needs: [build-mac, build-win]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (source repo, just for package.json)
+        uses: actions/checkout@v4
+
+      - name: Read version from package.json
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh dist/
+
+      - name: Publish prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}-beta.${{ github.run_number }}
+          name: Skipper v${{ steps.version.outputs.version }}-beta.${{ github.run_number }}
+          prerelease: true
+          target_commitish: ${{ github.sha }}
+          body: |
+            Unsigned beta build for early testers. See
+            [docs/SETUP.md](https://github.com/cicababba/skipper/blob/develop/docs/SETUP.md)
+            for install and bypass instructions.
+
+            No auto-update — re-download each new prerelease.
+          fail_on_unmatched_files: true
+          files: |
+            dist/*.dmg
+            dist/*.exe

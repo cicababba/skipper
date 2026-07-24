@@ -8,38 +8,36 @@
 //   ▼     ▼
 // accepted  rejected
 //
-// "accepted" lives under .nestbrain/raw/projects/<project>/ so the existing
-// compiler picks it up on the next `nestbrain compile` without any new
-// source-type plumbing. "rejected" is kept (not deleted) so the user can
-// re-pickup if they change their mind.
+// "accepted" lives under <knowledgeRoot>/accepted/<project>/ — the curated
+// per-project archive the solutions memory builds on. "rejected" is kept
+// (not deleted) so the user can re-pickup if they change their mind.
 
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { atomFilename, parseAtom, serializeAtom, type KnowledgeAtom } from "./atom";
 
 export interface QueuePaths {
   pending: string;
   rejected: string;
-  /** Where accepted atoms land — under raw/projects/<project>/. */
+  /** Where accepted atoms land — under accepted/<project>/. */
   acceptedRoot: string;
 }
 
 /**
- * Resolve the queue paths for a NestBrain workspace.
- * `workspacePath` is the user's NestBrain root (the dir that holds .nestbrain).
+ * Resolve the queue paths under the knowledge root
+ * (the app's `<userData>/knowledge/` directory).
  */
-export function queuePaths(workspacePath: string): QueuePaths {
-  const dot = join(workspacePath, ".nestbrain");
+export function queuePaths(knowledgeRoot: string): QueuePaths {
   return {
-    pending: join(dot, "knowledge-pending"),
-    rejected: join(dot, "knowledge-rejected"),
-    acceptedRoot: join(dot, "raw", "projects"),
+    pending: join(knowledgeRoot, "pending"),
+    rejected: join(knowledgeRoot, "rejected"),
+    acceptedRoot: join(knowledgeRoot, "accepted"),
   };
 }
 
 /** Ensure all queue dirs exist. Idempotent. */
-export async function ensureQueueDirs(workspacePath: string): Promise<QueuePaths> {
-  const p = queuePaths(workspacePath);
+export async function ensureQueueDirs(knowledgeRoot: string): Promise<QueuePaths> {
+  const p = queuePaths(knowledgeRoot);
   await Promise.all([
     mkdir(p.pending, { recursive: true }),
     mkdir(p.rejected, { recursive: true }),
@@ -50,10 +48,10 @@ export async function ensureQueueDirs(workspacePath: string): Promise<QueuePaths
 
 /** Write a freshly extracted atom into the pending queue. Returns its path. */
 export async function writePendingAtom(
-  workspacePath: string,
+  knowledgeRoot: string,
   atom: KnowledgeAtom,
 ): Promise<string> {
-  const p = await ensureQueueDirs(workspacePath);
+  const p = await ensureQueueDirs(knowledgeRoot);
   const file = join(p.pending, atomFilename(atom));
   await writeFile(file, serializeAtom(atom), "utf-8");
   return file;
@@ -65,8 +63,8 @@ export interface PendingEntry {
 }
 
 /** List every readable atom in the pending queue, sorted by score desc, then date desc. */
-export async function listPending(workspacePath: string): Promise<PendingEntry[]> {
-  const p = queuePaths(workspacePath);
+export async function listPending(knowledgeRoot: string): Promise<PendingEntry[]> {
+  const p = queuePaths(knowledgeRoot);
   let names: string[];
   try {
     names = await readdir(p.pending);
@@ -97,10 +95,10 @@ export async function listPending(workspacePath: string): Promise<PendingEntry[]
  * picks it up. Returns the destination path.
  */
 export async function acceptAtom(
-  workspacePath: string,
+  knowledgeRoot: string,
   entry: PendingEntry,
 ): Promise<string> {
-  const p = await ensureQueueDirs(workspacePath);
+  const p = await ensureQueueDirs(knowledgeRoot);
   const projectDir = join(p.acceptedRoot, entry.atom.project);
   await mkdir(projectDir, { recursive: true });
   const dest = join(projectDir, atomFilename(entry.atom));
@@ -113,10 +111,10 @@ export async function acceptAtom(
  * user can resurrect it later if they change their mind.
  */
 export async function rejectAtom(
-  workspacePath: string,
+  knowledgeRoot: string,
   entry: PendingEntry,
 ): Promise<string> {
-  const p = await ensureQueueDirs(workspacePath);
+  const p = await ensureQueueDirs(knowledgeRoot);
   const dest = join(p.rejected, atomFilename(entry.atom));
   await rename(entry.filePath, dest);
   return dest;
@@ -130,8 +128,7 @@ export async function updatePendingAtom(
   oldPath: string,
   updated: KnowledgeAtom,
 ): Promise<string> {
-  const dir = oldPath.slice(0, oldPath.lastIndexOf("/")) || "/";
-  const next = join(dir, atomFilename(updated));
+  const next = join(dirname(oldPath), atomFilename(updated));
   await writeFile(oldPath, serializeAtom(updated), "utf-8");
   if (next !== oldPath) {
     await rename(oldPath, next);

@@ -3,15 +3,7 @@
 
 const en = {
   nav: {
-    wiki: "Wiki",
-    mindMap: "Mind Map",
-    search: "Search",
-    ask: "Ask",
-    ingest: "Ingest",
-    knowledge: "Knowledge",
-    health: "Health",
-    insights: "Insights",
-    modules: "Modules",
+    inbox: "Inbox",
     settings: "Settings",
   },
   actions: {
@@ -39,7 +31,7 @@ const en = {
   },
   language: {
     title: "Language",
-    subtitle: "NestBrain follows your system language unless you pick one explicitly.",
+    subtitle: "Skipper follows your system language unless you pick one explicitly.",
     auto: "Auto (system)",
     autoDesc: "Detected from your computer's language",
   },
@@ -47,15 +39,7 @@ const en = {
 
 const it: typeof en = {
   nav: {
-    wiki: "Wiki",
-    mindMap: "Mind Map",
-    search: "Cerca",
-    ask: "Chiedi",
-    ingest: "Ingerisci",
-    knowledge: "Knowledge",
-    health: "Salute",
-    insights: "Insights",
-    modules: "Moduli",
+    inbox: "Inbox",
     settings: "Impostazioni",
   },
   actions: {
@@ -83,7 +67,7 @@ const it: typeof en = {
   },
   language: {
     title: "Lingua",
-    subtitle: "NestBrain segue la lingua di sistema, salvo scelta esplicita.",
+    subtitle: "Skipper segue la lingua di sistema, salvo scelta esplicita.",
     auto: "Auto (sistema)",
     autoDesc: "Rilevata dalla lingua del computer",
   },
@@ -91,15 +75,7 @@ const it: typeof en = {
 
 const fr: typeof en = {
   nav: {
-    wiki: "Wiki",
-    mindMap: "Mind Map",
-    search: "Recherche",
-    ask: "Demander",
-    ingest: "Ingérer",
-    knowledge: "Knowledge",
-    health: "Santé",
-    insights: "Insights",
-    modules: "Modules",
+    inbox: "Inbox",
     settings: "Réglages",
   },
   actions: {
@@ -127,7 +103,7 @@ const fr: typeof en = {
   },
   language: {
     title: "Langue",
-    subtitle: "NestBrain suit la langue du système, sauf choix explicite.",
+    subtitle: "Skipper suit la langue du système, sauf choix explicite.",
     auto: "Auto (système)",
     autoDesc: "Détectée depuis la langue de l'ordinateur",
   },
@@ -135,15 +111,7 @@ const fr: typeof en = {
 
 const es: typeof en = {
   nav: {
-    wiki: "Wiki",
-    mindMap: "Mind Map",
-    search: "Buscar",
-    ask: "Preguntar",
-    ingest: "Ingerir",
-    knowledge: "Knowledge",
-    health: "Salud",
-    insights: "Insights",
-    modules: "Módulos",
+    inbox: "Inbox",
     settings: "Ajustes",
   },
   actions: {
@@ -171,7 +139,7 @@ const es: typeof en = {
   },
   language: {
     title: "Idioma",
-    subtitle: "NestBrain sigue el idioma del sistema, salvo elección explícita.",
+    subtitle: "Skipper sigue el idioma del sistema, salvo elección explícita.",
     auto: "Auto (sistema)",
     autoDesc: "Detectado del idioma del equipo",
   },

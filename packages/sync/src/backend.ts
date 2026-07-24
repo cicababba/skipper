@@ -2,7 +2,7 @@
  * Pluggable remote sync backend — the open-core seam.
  *
  * The GPL core defines this contract and the (pure, network-free) reconcile
- * logic. A backend implementation — e.g. the proprietary NestBrain Enterprise
+ * logic. A backend implementation — e.g. the proprietary Skipper Enterprise
  * "Team Server" adapter — provides the actual transport. This keeps the
  * *interface* open (anyone can target a backend) while the Enterprise server,
  * its HTTP client, end-to-end encryption and licensing stay proprietary.

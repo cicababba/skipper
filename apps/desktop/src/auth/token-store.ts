@@ -11,14 +11,7 @@
 import { app, safeStorage } from "electron";
 import { join } from "node:path";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
-import type { GoogleUser } from "@nestbrain/shared";
-import type { OAuthTokens } from "./google-oauth";
-
-export interface StoredSession {
-  tokens: OAuthTokens;
-  user: GoogleUser;
-  signedInAt: number;
-}
+import { parseStoreFile, type AuthStoreFile } from "./store-format";
 
 function getStorePath(): string {
   return join(app.getPath("userData"), "auth.enc");
@@ -28,7 +21,7 @@ export function isEncryptionAvailable(): boolean {
   return safeStorage.isEncryptionAvailable();
 }
 
-export async function saveSession(session: StoredSession): Promise<void> {
+export async function saveStore(store: AuthStoreFile): Promise<void> {
   if (!safeStorage.isEncryptionAvailable()) {
     throw new Error(
       "OS-level encryption is not available; refusing to persist credentials. " +
@@ -37,11 +30,11 @@ export async function saveSession(session: StoredSession): Promise<void> {
   }
   const path = getStorePath();
   await mkdir(join(path, ".."), { recursive: true });
-  const encrypted = safeStorage.encryptString(JSON.stringify(session));
+  const encrypted = safeStorage.encryptString(JSON.stringify(store));
   await writeFile(path, encrypted);
 }
 
-export async function loadSession(): Promise<StoredSession | null> {
+export async function loadStore(): Promise<AuthStoreFile | null> {
   const path = getStorePath();
   let buf: Buffer;
   try {
@@ -54,17 +47,29 @@ export async function loadSession(): Promise<StoredSession | null> {
     console.warn("[auth] auth.enc present but safeStorage unavailable — ignoring");
     return null;
   }
+  let json: string;
   try {
-    const json = safeStorage.decryptString(buf);
-    return JSON.parse(json) as StoredSession;
+    json = safeStorage.decryptString(buf);
   } catch (err) {
     console.warn("[auth] failed to decrypt auth.enc — clearing:", err);
-    await clearSession().catch(() => { /* ignore */ });
+    await clearStore().catch(() => { /* ignore */ });
     return null;
   }
+  const parsed = parseStoreFile(json);
+  if (!parsed) {
+    console.warn("[auth] unrecognized auth.enc contents — clearing");
+    await clearStore().catch(() => { /* ignore */ });
+    return null;
+  }
+  if (parsed.migrated) {
+    await saveStore(parsed.store).catch((err) =>
+      console.warn("[auth] failed to persist migrated store:", err),
+    );
+  }
+  return parsed.store;
 }
 
-export async function clearSession(): Promise<void> {
+export async function clearStore(): Promise<void> {
   try {
     await unlink(getStorePath());
   } catch {

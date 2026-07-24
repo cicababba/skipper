@@ -1,5 +1,5 @@
 {
-  // The landing page lives in its own private repo (nestbrain-landing) but
+  // The landing page lives in its own private repo (skipper-landing) but
   // the working copy is physically at apps/landing/ so local dev + rsync
   // deploys keep working. Tell VSCode to pick up that inner .git folder as
   // a second repository so the SCM panel shows both repos side-by-side and

@@ -1,5 +1,8 @@
 import { app, ipcMain, type BrowserWindow } from "electron";
+import type { UpdateState } from "@skipper/shared";
 import { UPDATE_BASE_URL, UPDATE_CHANNEL_KEY } from "./update-config";
+
+export type { UpdateState };
 
 // VS Code-style transparent auto-update, official builds only.
 //
@@ -9,26 +12,10 @@ import { UPDATE_BASE_URL, UPDATE_CHANNEL_KEY } from "./update-config";
 // download silently in the background → tell the renderer to show a
 // "Restart to update" toast → install on restart or on next quit.
 
-export interface UpdateState {
-  /** Why the updater is or isn't running. */
-  status: "disabled" | "dev" | "idle" | "checking" | "downloading" | "ready" | "error";
-  /** Running app version. */
-  current: string;
-  /** Newest version known from the feed (when found). */
-  available?: string;
-  /** Download progress 0..100 while status === "downloading". */
-  percent?: number;
-  error?: string;
-  /** Strongest entitlement attached to the last check. */
-  via?: "account" | "enterprise" | "build";
-}
-
 /** Per-plan proof attached to feed requests (phase 2 entitlement). */
 export interface UpdateCredentials {
   /** Supporter entitlement token (minted from the in-app Google sign-in). */
   entitlement?: string | null;
-  /** Enterprise org license token (from the connected Team Server). */
-  license?: string | null;
 }
 
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
@@ -42,7 +29,7 @@ function set(patch: Partial<UpdateState>): void {
   state = { ...state, ...patch };
   const win = getWindow();
   if (win && !win.isDestroyed()) {
-    win.webContents.send("nestbrain:updates:stateChanged", state);
+    win.webContents.send("skipper:updates:stateChanged", state);
   }
 }
 
@@ -55,19 +42,19 @@ export function initUpdater(
   if (onBeforeQuit) prepareQuit = onBeforeQuit;
   if (credentialsProvider) getCredentials = credentialsProvider;
 
-  ipcMain.handle("nestbrain:updates:getState", () => state);
+  ipcMain.handle("skipper:updates:getState", () => state);
 
   if (!UPDATE_CHANNEL_KEY) {
     // Source build — no entitlement, updater stays off.
-    ipcMain.handle("nestbrain:updates:check", () => state);
-    ipcMain.handle("nestbrain:updates:restart", () => undefined);
+    ipcMain.handle("skipper:updates:check", () => state);
+    ipcMain.handle("skipper:updates:restart", () => undefined);
     return;
   }
   if (!app.isPackaged) {
     // Dev run of an entitled tree: don't try to self-update the electron shell.
     state = { ...state, status: "dev" };
-    ipcMain.handle("nestbrain:updates:check", () => state);
-    ipcMain.handle("nestbrain:updates:restart", () => undefined);
+    ipcMain.handle("skipper:updates:check", () => state);
+    ipcMain.handle("skipper:updates:restart", () => undefined);
     return;
   }
 
@@ -90,9 +77,9 @@ export function initUpdater(
   });
   autoUpdater.requestHeaders = { "x-update-key": UPDATE_CHANNEL_KEY };
 
-  // Refresh the per-plan proofs before every check (phase 2): supporter
-  // entitlement (from the in-app Google sign-in) and/or the Enterprise org
-  // license. The build key always rides along as the transition fallback.
+  // Refresh the per-plan proof before every check (phase 2): the supporter
+  // entitlement (from the in-app Google sign-in). The build key always rides
+  // along as the transition fallback.
   async function checkWithCredentials(): Promise<void> {
     const headers: Record<string, string> = { "x-update-key": UPDATE_CHANNEL_KEY };
     let via: UpdateState["via"] = "build";
@@ -101,12 +88,6 @@ export function initUpdater(
       if (creds.entitlement) {
         headers["x-entitlement"] = creds.entitlement;
         via = "account";
-      }
-      // A connected Team Server wins the label: that's the identity the user
-      // actually operates under (both proofs are still sent).
-      if (creds.license) {
-        headers["x-license"] = creds.license;
-        via = "enterprise";
       }
     } catch {
       /* fall back to the build key alone */
@@ -126,7 +107,7 @@ export function initUpdater(
     set({ status: "error", error: err.message });
   });
 
-  ipcMain.handle("nestbrain:updates:check", async () => {
+  ipcMain.handle("skipper:updates:check", async () => {
     try {
       await checkWithCredentials();
     } catch {
@@ -134,7 +115,7 @@ export function initUpdater(
     }
     return state;
   });
-  ipcMain.handle("nestbrain:updates:restart", async () => {
+  ipcMain.handle("skipper:updates:restart", async () => {
     // Dispose the watchers BEFORE quitAndInstall: the main process's will-quit
     // handler defers quits to close them, and a deferred quit cancels
     // Squirrel's install — window gone, app stuck in the dock, still on the
@@ -148,7 +129,7 @@ export function initUpdater(
       // abort → no crash report — and the install still applies.
       setTimeout(() => {
         // Windows: SIGKILL leaves children (the Next utilityProcess is a
-        // second NestBrain.exe) alive and they block the NSIS installer —
+        // second Skipper.exe) alive and they block the NSIS installer —
         // take the whole tree down.
         if (process.platform === "win32") {
           try {
@@ -178,9 +159,8 @@ export function initUpdater(
 }
 
 // Re-evaluate credentials (and the "via" label) outside the periodic timer —
-// e.g. on Team Server connect/disconnect, so the Updates section doesn't keep
-// saying "via your Team Server" after a logout. Debounced: state changes come
-// in bursts during connect/sync.
+// e.g. on sign-in/sign-out, so the Updates section doesn't keep a stale
+// label. Debounced: state changes come in bursts.
 let recheck: (() => void) | null = null;
 let recheckTimer: ReturnType<typeof setTimeout> | null = null;
 export function recheckUpdates(): void {

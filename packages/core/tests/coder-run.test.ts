@@ -1,0 +1,278 @@
+import { describe, it, expect, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import type { spawn } from "node:child_process";
+import type { CodingEvent } from "@skipper/shared";
+import { runCodingAgent, CodingAbortError, CodingTimeoutError } from "../src/coder";
+
+class FakeChild extends EventEmitter {
+  stdout = new EventEmitter();
+  stderr = new EventEmitter();
+  stdin = { written: "", write(data: string) { this.written += data; }, end: vi.fn() };
+  killed: string[] = [];
+  kill(signal?: string) {
+    this.killed.push(signal ?? "SIGTERM");
+    return true;
+  }
+}
+
+function fakeSpawn(): { child: FakeChild; spawnImpl: typeof spawn; calls: { file: string; args: string[]; opts: Record<string, unknown> }[] } {
+  const child = new FakeChild();
+  const calls: { file: string; args: string[]; opts: Record<string, unknown> }[] = [];
+  const spawnImpl = ((file: string, args: string[], opts: Record<string, unknown>) => {
+    calls.push({ file, args, opts });
+    return child;
+  }) as unknown as typeof spawn;
+  return { child, spawnImpl, calls };
+}
+
+const initLine = JSON.stringify({
+  type: "system",
+  subtype: "init",
+  session_id: "11111111-1111-4111-8111-111111111111",
+});
+const okResultLine = JSON.stringify({
+  type: "result",
+  subtype: "success",
+  is_error: false,
+  result: "done",
+  num_turns: 3,
+});
+
+function baseOpts(onEvent: (e: CodingEvent) => void = () => {}) {
+  return { prompt: "implement it", cwd: "/tmp/wt", model: "opus", onEvent };
+}
+
+describe("runCodingAgent", () => {
+  it("builds write-capable streaming argv without session persistence opt-out", async () => {
+    const { child, spawnImpl, calls } = fakeSpawn();
+    const promise = runCodingAgent(
+      { ...baseOpts(), sessionId: "22222222-2222-4222-8222-222222222222", systemPrompt: "sys" },
+      spawnImpl,
+    );
+    child.stdout.emit("data", Buffer.from(`${initLine}\n${okResultLine}\n`));
+    child.emit("close", 0);
+    await promise;
+
+    const { args, opts } = calls[0];
+    const joined = args.join(" ");
+    expect(joined).toContain("--output-format stream-json");
+    expect(args).toContain("--verbose");
+    // --tools keeps the bare names; --allowedTools scopes the write tools to the
+    // run root and drops the bare Edit/Write (#196, L1 confinement).
+    expect(joined).toContain("--tools Read,Grep,Glob,Edit,Write,Bash,WebFetch,WebSearch");
+    const allowed = args[args.indexOf("--allowedTools") + 1].split(",");
+    expect(allowed).toContain("Edit(//tmp/wt/**)");
+    expect(allowed).toContain("Write(//tmp/wt/**)");
+    expect(allowed).not.toContain("Edit");
+    expect(allowed).not.toContain("Write");
+    expect(joined).toContain("--session-id 22222222-2222-4222-8222-222222222222");
+    expect(joined).toContain("--system-prompt sys");
+    expect(args).not.toContain("--no-session-persistence");
+    expect(args).not.toContain("--resume");
+    expect(opts.cwd).toBe("/tmp/wt");
+    expect(child.stdin.written).toBe("implement it");
+    expect(child.stdin.end).toHaveBeenCalled();
+  });
+
+  it("adds the guard hook + confined env when confinement carries a CLI bundle (#196)", async () => {
+    const { child, spawnImpl, calls } = fakeSpawn();
+    const promise = runCodingAgent(
+      {
+        ...baseOpts(),
+        sessionId: "22222222-2222-4222-8222-222222222222",
+        confinement: {
+          runRoot: "/tmp/wt",
+          denyRoots: ["/home/me/repo"],
+          cliBundlePath: "/app/skipper.bundle.cjs",
+        },
+      },
+      spawnImpl,
+    );
+    child.stdout.emit("data", Buffer.from(`${initLine}\n${okResultLine}\n`));
+    child.emit("close", 0);
+    await promise;
+
+    const { args, opts } = calls[0];
+    const settings = JSON.parse(args[args.indexOf("--settings") + 1]);
+    expect(settings.hooks.PreToolUse.map((h: { matcher: string }) => h.matcher)).toEqual([
+      "Edit|Write",
+      "Bash",
+    ]);
+    expect(settings.hooks.PreToolUse[0].hooks[0].command).toContain("guard");
+    expect((opts.env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE).toBe("1");
+  });
+
+  it("scopes writes but adds no guard hook when confinement has no CLI bundle (#196)", async () => {
+    const { child, spawnImpl, calls } = fakeSpawn();
+    const promise = runCodingAgent(
+      { ...baseOpts(), confinement: { runRoot: "/tmp/wt", denyRoots: ["/home/me/repo"] } },
+      spawnImpl,
+    );
+    child.stdout.emit("data", Buffer.from(`${okResultLine}\n`));
+    child.emit("close", 0);
+    await promise;
+
+    const { args } = calls[0];
+    expect(args).not.toContain("--settings");
+    const allowed = args[args.indexOf("--allowedTools") + 1].split(",");
+    expect(allowed).toContain("Write(//tmp/wt/**)");
+  });
+
+  it("uses --resume for re-entry", async () => {
+    const { child, spawnImpl, calls } = fakeSpawn();
+    const promise = runCodingAgent(
+      { ...baseOpts(), resumeSessionId: "33333333-3333-4333-8333-333333333333" },
+      spawnImpl,
+    );
+    child.stdout.emit("data", Buffer.from(`${okResultLine}\n`));
+    child.emit("close", 0);
+    await promise;
+    const joined = calls[0].args.join(" ");
+    expect(joined).toContain("--resume 33333333-3333-4333-8333-333333333333");
+    expect(joined).not.toContain("--session-id");
+  });
+
+  it("forwards events and resolves with the result + init session id", async () => {
+    const events: CodingEvent[] = [];
+    const { child, spawnImpl } = fakeSpawn();
+    const promise = runCodingAgent(baseOpts((e) => events.push(e)), spawnImpl);
+    child.stdout.emit("data", Buffer.from(`${initLine}\n`));
+    child.stdout.emit("data", Buffer.from(`${okResultLine}\n`));
+    child.emit("close", 0);
+    const result = await promise;
+    expect(events.map((e) => e.kind)).toEqual(["agent-init", "result"]);
+    expect(result).toEqual({
+      ok: true,
+      summary: "done",
+      resultText: "done",
+      sessionId: "11111111-1111-4111-8111-111111111111",
+      turns: 3,
+      subtype: "success",
+    });
+  });
+
+  it("captures the full result text while summary stays truncated (#146)", async () => {
+    const big = "x".repeat(3000);
+    const bigResultLine = JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: big,
+      num_turns: 1,
+    });
+    const { child, spawnImpl } = fakeSpawn();
+    const promise = runCodingAgent(baseOpts(), spawnImpl);
+    child.stdout.emit("data", Buffer.from(`${initLine}\n${bigResultLine}\n`));
+    child.emit("close", 0);
+    const result = await promise;
+    expect(result.resultText).toBe(big);
+    expect(result.resultText!.length).toBe(3000);
+    expect(result.summary.length).toBe(2000);
+  });
+
+  it("rejects on nonzero exit without a result", async () => {
+    const { child, spawnImpl } = fakeSpawn();
+    const promise = runCodingAgent(baseOpts(), spawnImpl);
+    child.stderr.emit("data", Buffer.from("boom"));
+    child.emit("close", 1);
+    await expect(promise).rejects.toThrow(/exited with code 1.*boom/s);
+  });
+
+  it("abort kills the child and rejects with CodingAbortError", async () => {
+    const { child, spawnImpl } = fakeSpawn();
+    const controller = new AbortController();
+    const promise = runCodingAgent({ ...baseOpts(), signal: controller.signal }, spawnImpl);
+    controller.abort();
+    await expect(promise).rejects.toBeInstanceOf(CodingAbortError);
+    expect(child.killed).toContain("SIGTERM");
+  });
+
+  it("kills a silent agent on inactivity timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const { child, spawnImpl } = fakeSpawn();
+      const promise = runCodingAgent({ ...baseOpts(), inactivityTimeoutMs: 1000 }, spawnImpl);
+      const assertion = expect(promise).rejects.toThrow(/no output/);
+      vi.advanceTimersByTime(1001);
+      await assertion;
+      expect(child.killed).toContain("SIGTERM");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects a silent agent with CodingTimeoutError kind inactivity (#194)", async () => {
+    vi.useFakeTimers();
+    try {
+      const { child, spawnImpl } = fakeSpawn();
+      const promise = runCodingAgent({ ...baseOpts(), inactivityTimeoutMs: 1000 }, spawnImpl);
+      const assertion = promise.catch((e) => e);
+      vi.advanceTimersByTime(1001);
+      const err = await assertion;
+      expect(err).toBeInstanceOf(CodingTimeoutError);
+      expect((err as CodingTimeoutError).kind).toBe("inactivity");
+      expect((err as CodingTimeoutError).limitMs).toBe(1000);
+      expect(child.killed).toContain("SIGTERM");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("kills a run past the hard timeout even when streaming", async () => {
+    vi.useFakeTimers();
+    try {
+      const { child, spawnImpl } = fakeSpawn();
+      const promise = runCodingAgent(
+        { ...baseOpts(), inactivityTimeoutMs: 60_000, hardTimeoutMs: 2000 },
+        spawnImpl,
+      );
+      const assertion = expect(promise).rejects.toThrow(/hard time limit/);
+      vi.advanceTimersByTime(1500);
+      child.stdout.emit("data", Buffer.from(`${initLine}\n`)); // keeps inactivity fresh
+      vi.advanceTimersByTime(600);
+      await assertion;
+      expect(child.killed).toContain("SIGTERM");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects a hard-timeout kill with CodingTimeoutError kind hard_timeout (#194)", async () => {
+    vi.useFakeTimers();
+    try {
+      const { child, spawnImpl } = fakeSpawn();
+      const promise = runCodingAgent(
+        { ...baseOpts(), inactivityTimeoutMs: 60_000, hardTimeoutMs: 2000 },
+        spawnImpl,
+      );
+      const assertion = promise.catch((e) => e);
+      vi.advanceTimersByTime(1500);
+      child.stdout.emit("data", Buffer.from(`${initLine}\n`)); // keeps inactivity fresh
+      vi.advanceTimersByTime(600);
+      const err = await assertion;
+      expect(err).toBeInstanceOf(CodingTimeoutError);
+      expect((err as CodingTimeoutError).kind).toBe("hard_timeout");
+      expect((err as CodingTimeoutError).limitMs).toBe(2000);
+      expect(child.killed).toContain("SIGTERM");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("resolves a max-turns death as a non-ok result carrying the subtype (#194)", async () => {
+    const errorResultLine = JSON.stringify({
+      type: "result",
+      subtype: "error_max_turns",
+      is_error: true,
+      num_turns: 300,
+    });
+    const { child, spawnImpl } = fakeSpawn();
+    const promise = runCodingAgent(baseOpts(), spawnImpl);
+    child.stdout.emit("data", Buffer.from(`${initLine}\n${errorResultLine}\n`));
+    child.emit("close", 0);
+    const result = await promise;
+    expect(result.ok).toBe(false);
+    expect(result.subtype).toBe("error_max_turns");
+    expect(result.sessionId).toBe("11111111-1111-4111-8111-111111111111");
+  });
+});

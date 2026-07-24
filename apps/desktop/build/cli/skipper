@@ -1,0 +1,43 @@
+#!/bin/sh
+# `skipper` CLI shell wrapper bundled with Skipper.app.
+# Lives at <App>/Contents/Resources/cli/skipper after packaging.
+# Resolves the bundled JS via a path relative to itself so the app can be
+# moved anywhere and the install-on-PATH symlink (/usr/local/bin/skipper)
+# still works.
+
+# Follow symlinks portably (no readlink -f dependency — macOS BSD readlink
+# didn't ship it until Monterey, and we want this to also work on older
+# Linux/BSD).
+src="$0"
+while [ -h "$src" ]; do
+  target=$(readlink "$src")
+  case "$target" in
+    /*) src="$target" ;;
+    *)  src="$(cd -P "$(dirname "$src")" && pwd)/$target" ;;
+  esac
+done
+script_dir="$(cd -P "$(dirname "$src")" && pwd)"
+
+# Candidate locations for the bundle, in priority order:
+#   1. Packaged layout: <resources>/cli/ + <resources>/cli-runtime/
+#   2. Dev layout:      <repo>/apps/desktop/build/cli/ +
+#                       <repo>/packages/cli/dist/ (workspace node_modules
+#                       resolves the embedder deps in dev)
+# Resolve the first one that exists, error out if neither does.
+candidates="
+  $script_dir/../cli-runtime/skipper.bundle.cjs
+  $script_dir/../../../../packages/cli/dist/skipper.bundle.cjs
+"
+bundle=""
+for c in $candidates; do
+  if [ -f "$c" ]; then
+    bundle="$c"
+    break
+  fi
+done
+if [ -z "$bundle" ]; then
+  echo "skipper: cannot locate the CLI bundle. Was Skipper.app moved? Re-install the CLI from Settings → Command line." >&2
+  exit 127
+fi
+
+exec node "$bundle" "$@"

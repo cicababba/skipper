@@ -1,31 +1,62 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Dark theme (default) */
 .dark {
-  --background: #0a0a0a;
-  --foreground: #e8e8e8;
-  --muted: #888888;
-  --border: #2a2a2a;
-  --card: #141414;
-  --card-hover: #1a1a1a;
-  --accent: #6c9cfc;
-  --accent-hover: #8bb4ff;
-  --sidebar: #111111;
-  --sidebar-border: #1e1e1e;
+  --background: #0B0E13;
+  --foreground: #E6EAF0;
+  --muted: #8B95A3;
+  --border: #29303B;
+  --card: #131820;
+  --card-hover: #1A202A;
+  --accent: #6C9CFC;
+  --accent-hover: #8BB4FF;
+  --sidebar: #0F131A;
+  --sidebar-border: #232A34;
+  --terminal-bg: #0F131A;
+  --code-bg: #0E1116;
+
+  --success: #46D49E;
+  --warning: #F2C14E;
+  --danger:  #F4776F;
+  --signal:  #FF9457;
+  --merged:  #B49CF8;
+  --info:    #6C9CFC;
+
+  --success-bg: color-mix(in srgb, var(--success) 14%, transparent);
+  --warning-bg: color-mix(in srgb, var(--warning) 14%, transparent);
+  --danger-bg:  color-mix(in srgb, var(--danger) 14%, transparent);
+  --signal-bg:  color-mix(in srgb, var(--signal) 14%, transparent);
+  --merged-bg:  color-mix(in srgb, var(--merged) 14%, transparent);
+  --info-bg:    color-mix(in srgb, var(--info) 14%, transparent);
 }
 
 /* Light theme */
 .light {
-  --background: #ffffff;
-  --foreground: #111418;
-  --muted: #515a67;
-  --border: #d3d8e0;
-  --card: #f4f6f9;
-  --card-hover: #e9edf3;
-  --accent: #3b6ce0;
-  --accent-hover: #2d59c4;
-  --sidebar: #eef1f5;
-  --sidebar-border: #d3d8e0;
+  --background: #EEF1F5;
+  --foreground: #131A23;
+  --muted: #5A6575;
+  --border: #CDD5DE;
+  --card: #FFFFFF;
+  --card-hover: #F7F9FB;
+  --accent: #2F5FD7;
+  --accent-hover: #264FB8;
+  --sidebar: #E5E9EF;
+  --sidebar-border: #CDD5DE;
+  --terminal-bg: #C4CDD9;
+  --code-bg: #F6F8FA;
+
+  --success: #0E7A55;  --success-bg: #D8F3E6;
+  --warning: #8F5F00;  --warning-bg: #FCF3D6;
+  --danger:  #B42318;  --danger-bg:  #FDE2E0;
+  --signal:  #B04400;  --signal-bg:  #FFECDE;
+  --merged:  #6941C6;  --merged-bg:  #EDE6FB;
+  --info:    #2C5CD4;  --info-bg:    #DFE9FC;
+}
+
+@theme {
+  --breakpoint-wide: 1080px;
 }
 
 @theme inline {
@@ -39,6 +70,13 @@
   --color-accent-hover: var(--accent-hover);
   --color-sidebar: var(--sidebar);
   --color-sidebar-border: var(--sidebar-border);
+  --color-code-bg: var(--code-bg);
+  --color-success: var(--success);   --color-success-bg: var(--success-bg);
+  --color-warning: var(--warning);   --color-warning-bg: var(--warning-bg);
+  --color-danger: var(--danger);     --color-danger-bg: var(--danger-bg);
+  --color-signal: var(--signal);     --color-signal-bg: var(--signal-bg);
+  --color-merged: var(--merged);     --color-merged-bg: var(--merged-bg);
+  --color-info: var(--info);         --color-info-bg: var(--info-bg);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

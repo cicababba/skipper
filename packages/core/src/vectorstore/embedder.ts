@@ -2,6 +2,11 @@
 // loader so Turbopack doesn't try to statically bundle @huggingface/transformers.
 // The app uses `createRequire + /* turbopackIgnore */` to load the CJS entry
 // (the ESM entry has an interop issue with onnxruntime-common).
+// The model backing every persisted index; its name is stamped into
+// vector-index.json. Bumping the model must bump this name so old indexes fail
+// validation on load and get reindexed rather than scored against a new model.
+export const EMBEDDING_MODEL = "all-MiniLM-L6-v2";
+
 type TransformersModule = {
   pipeline: (
     task: string,
@@ -38,7 +43,7 @@ async function getEmbedder() {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(
-          `Embedding model unavailable (${msg}). NestBrain downloads the embedding model ` +
+          `Embedding model unavailable (${msg}). Skipper downloads the embedding model ` +
             `(Xenova/all-MiniLM-L6-v2, ~30 MB) once from huggingface.co on first use — ` +
             `check your network/proxy/antivirus and retry the ingest.`,
         );
@@ -69,6 +74,9 @@ export async function embed(texts: string[]): Promise<number[][]> {
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {
+  // Mismatched widths (an index built by a different model) would read past one
+  // vector's end and yield NaN — treat as incomparable rather than poison scores.
+  if (a.length !== b.length) return 0;
   let dot = 0,
     normA = 0,
     normB = 0;
@@ -77,5 +85,8 @@ export function cosineSimilarity(a: number[], b: number[]): number {
     normA += a[i] * a[i];
     normB += b[i] * b[i];
   }
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  // A zero vector (empty/failed embedding) makes denom 0 → NaN, which sorts
+  // unpredictably and can bury real hits. Score it as "no similarity".
+  return denom === 0 ? 0 : dot / denom;
 }

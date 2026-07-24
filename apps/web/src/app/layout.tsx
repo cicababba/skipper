@@ -4,19 +4,17 @@ import { Sidebar } from "@/components/sidebar";
 import { TerminalPanel } from "@/components/terminal-panel";
 import { StatusBar } from "@/components/status-bar";
 import { Topbar } from "@/components/topbar";
-import { CompileProvider } from "@/lib/compile-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import { TerminalProvider } from "@/lib/terminal-context";
 import { AuthProvider } from "@/lib/auth-context";
-import { SyncProvider } from "@/lib/sync-context";
+import { OrchestratorProvider } from "@/lib/orchestrator-context";
 import { GitStatusProvider } from "@/lib/git-status-context";
 import { EditorTabsProvider } from "@/lib/editor-tabs-context";
 import { OnboardingGate } from "@/lib/onboarding-gate";
-import { ModulesProvider } from "@/lib/modules-context";
 import { AppLangProvider } from "@/lib/app-i18n";
 import { UpdateToast } from "@/components/update-toast";
-import { TeamWelcome } from "@/components/team-welcome";
 import { AboutModal } from "@/components/about-modal";
+import { ResumeRiteModal } from "@/components/resume-rite-modal";
 import "./globals.css";
 
 const inter = Inter({
@@ -30,8 +28,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NestBrain",
-  description: "LLM-powered personal knowledge base",
+  title: "Skipper",
+  description: "Issue inbox + orchestration layer on top of coding agents",
 };
 
 export default function RootLayout({
@@ -48,10 +46,8 @@ export default function RootLayout({
       <body className="h-screen overflow-hidden flex bg-background text-foreground">
         <ThemeProvider>
          <AppLangProvider>
-         <ModulesProvider>
           <AuthProvider>
-           <SyncProvider>
-            <CompileProvider>
+            <OrchestratorProvider>
               <TerminalProvider>
                 <GitStatusProvider>
                  <EditorTabsProvider>
@@ -66,16 +62,14 @@ export default function RootLayout({
                       <StatusBar />
                     </div>
                     <UpdateToast />
-                    <TeamWelcome />
                     <AboutModal />
+                    <ResumeRiteModal />
                   </OnboardingGate>
                  </EditorTabsProvider>
                 </GitStatusProvider>
               </TerminalProvider>
-            </CompileProvider>
-           </SyncProvider>
+            </OrchestratorProvider>
           </AuthProvider>
-         </ModulesProvider>
          </AppLangProvider>
         </ThemeProvider>
       </body>

@@ -1,7 +1,6 @@
-// Sync-engine internal types.
-// The user-facing SyncPreferences / SyncState / SyncProgress / SyncStatus
-// types live in @nestbrain/shared because both desktop main and renderer
-// consume them.
+// Manifest types — the local per-device record of file state between sync
+// cycles. Kept as an orchestrator seam (#2); the Drive-specific fields date
+// from the retired Drive engine and will evolve with the new backends.
 
 export interface ManifestFileEntry {
   /**
@@ -25,7 +24,7 @@ export interface Manifest {
   deviceId: string;
   /** Human-readable label (os.hostname() at creation time). */
   deviceName: string;
-  /** Drive folder id of the NestBrain-Sync root. */
+  /** Drive folder id of the Skipper-Sync root. */
   rootFolderDriveId?: string;
   /** Map of relative folder path → Drive folder id. Root has key "". */
   folders: Record<string, string>;
@@ -41,13 +40,4 @@ export interface Manifest {
    * fall back to a full walk on the next "invalid token" error.
    */
   driveChangesPageToken?: string;
-}
-
-export interface WalkEntry {
-  /** POSIX-style relative path from workspace root. */
-  relPath: string;
-  /** Absolute path on disk. */
-  absPath: string;
-  size: number;
-  mtime: number;
 }
