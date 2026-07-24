@@ -759,10 +759,6 @@ describe("reviewer provider selection (#59)", () => {
     ]);
   });
 
-  it("reviews through ollama when it is selected", async () => {
-    expect(await reviewWith({ provider: "ollama", ollamaModel: "llama3" })).toEqual(["ollama"]);
-  });
-
   // The pre-#59 cache keyed on the model alone, so switching provider in Settings
   // kept serving the previous provider until restart.
   it("rebuilds the provider when the setting changes mid-session", async () => {
@@ -778,11 +774,11 @@ describe("reviewer provider selection (#59)", () => {
     pokeReviewer();
     await settle();
 
-    llm = { provider: "ollama", ollamaModel: "llama3" };
+    llm = { provider: "openai", openaiModel: "gpt-4o", openaiApiKey: "sk-test" };
     h.items.set("github:1", makeItem("agent-review"));
     pokeReviewer();
     await settle();
 
-    expect(seen).toEqual(["claude-cli", "ollama"]);
+    expect(seen).toEqual(["claude-cli", "openai"]);
   });
 });

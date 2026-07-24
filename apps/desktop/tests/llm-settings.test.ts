@@ -1,13 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_LLM_SETTINGS, type LlmSettings } from "@skipper/shared";
+import type { LLMProviderInterface } from "@skipper/core";
 import {
   readLlmSettings,
   readLlmSettingsSync,
   modelForRole,
   providerCacheKey,
+  buildLlm,
+  injectedBundle,
 } from "../src/llm-settings";
 
 async function tempDir(): Promise<string> {
@@ -40,7 +43,7 @@ describe("readLlmSettings (#59)", () => {
     );
     const s = await readLlmSettings(dir);
     expect(s.claudeModel).toBe("haiku");
-    expect(s.ollamaModel).toBe(DEFAULT_LLM_SETTINGS.ollamaModel);
+    expect(s.openaiModel).toBe(DEFAULT_LLM_SETTINGS.openaiModel);
   });
 
   it("reads the model written by the web layer", async () => {
@@ -56,11 +59,11 @@ describe("readLlmSettings (#59)", () => {
   // Settings dropped the provider picker: a settings.json written before the
   // pin would otherwise park every item in needs-input, with no UI left to
   // change the provider back.
-  it.each(["openai", "ollama"])("coerces a stale %s provider to claude-cli", async (stale) => {
+  it.each(["openai"])("coerces a stale %s provider to claude-cli", async (stale) => {
     const dir = await tempDir();
     await writeFile(
       join(dir, "settings.json"),
-      JSON.stringify({ llm: settings({ provider: stale as "openai" | "ollama", claudeModel: "haiku" }) }),
+      JSON.stringify({ llm: settings({ provider: stale as "openai", claudeModel: "haiku" }) }),
       "utf-8",
     );
     const read = await readLlmSettings(dir);
@@ -108,10 +111,6 @@ describe("modelForRole (#59)", () => {
     // Regression guard: passing "opus" to the OpenAI API would 400.
     expect(modelForRole(settings({ provider: "openai", openaiModel: "gpt-4o" }), "opus")).toBe("gpt-4o");
   });
-
-  it("ignores the per-role model for ollama", () => {
-    expect(modelForRole(settings({ provider: "ollama", ollamaModel: "llama3" }), "opus")).toBe("llama3");
-  });
 });
 
 describe("providerCacheKey (#59)", () => {
@@ -119,7 +118,7 @@ describe("providerCacheKey (#59)", () => {
     // The pre-#59 cache keyed on model only, so a provider switch kept serving
     // the previous provider until restart.
     const a = providerCacheKey(settings({ provider: "claude-cli" }), "opus");
-    const b = providerCacheKey(settings({ provider: "ollama" }), "opus");
+    const b = providerCacheKey(settings({ provider: "openai" }), "opus");
     expect(a).not.toBe(b);
   });
 
@@ -135,5 +134,70 @@ describe("providerCacheKey (#59)", () => {
 
   it("is stable for identical settings", () => {
     expect(providerCacheKey(settings(), "opus")).toBe(providerCacheKey(settings(), "opus"));
+  });
+});
+
+describe("buildLlm (#238)", () => {
+  it("builds a claude-cli provider with a resume-capable runtime", () => {
+    const b = buildLlm(settings({ provider: "claude-cli" }), "opus", 5);
+    expect(b.llm.name).toBe("claude-cli");
+    expect(b.model).toBe("opus");
+    expect(b.runtime).toBeDefined();
+    expect(b.runtime!.id).toBe("claude-cli");
+    expect(b.runtime!.capabilities.resume).toBe(true);
+  });
+
+  it("builds an openai provider with no runtime (completions-only)", () => {
+    const b = buildLlm(
+      settings({ provider: "openai", openaiModel: "gpt-4o", openaiApiKey: "sk-test" }),
+      "opus",
+      5,
+    );
+    expect(b.llm.name).toBe("openai");
+    // openai ignores the per-role model — it keys off settings.openaiModel.
+    expect(b.model).toBe("gpt-4o");
+    expect(b.runtime).toBeUndefined();
+  });
+});
+
+describe("injectedBundle (#238)", () => {
+  function fakeProvider(name: string, withAgent: boolean) {
+    const agent = vi.fn(async () => ({ text: "agented" }));
+    const provider = {
+      name,
+      ask: vi.fn(),
+      askStructured: vi.fn(),
+      ...(withAgent ? { agent } : {}),
+    } as unknown as LLMProviderInterface;
+    return { provider, agent };
+  }
+
+  it("wraps a claude-cli provider into a resume-capable runtime", () => {
+    const { provider } = fakeProvider("claude-cli", true);
+    const b = injectedBundle(provider, "opus");
+    expect(b.llm).toBe(provider);
+    expect(b.model).toBe("opus");
+    expect(b.runtime).toBeDefined();
+    expect(b.runtime!.capabilities.resume).toBe(true);
+  });
+
+  it("marks a non-claude-cli provider's runtime as non-resumable", () => {
+    const { provider } = fakeProvider("openai", true);
+    const b = injectedBundle(provider, "opus");
+    expect(b.runtime).toBeDefined();
+    expect(b.runtime!.capabilities.resume).toBe(false);
+  });
+
+  it("returns no runtime for a provider without agent()", () => {
+    const { provider } = fakeProvider("openai", false);
+    expect(injectedBundle(provider, "opus").runtime).toBeUndefined();
+  });
+
+  it("delegates runtime.agent to the injected provider's agent", async () => {
+    const { provider, agent } = fakeProvider("claude-cli", true);
+    const b = injectedBundle(provider, "opus");
+    const out = await b.runtime!.agent("hi", { cwd: "/x" });
+    expect(agent).toHaveBeenCalledWith("hi", { cwd: "/x" });
+    expect(out).toEqual({ text: "agented" });
   });
 });

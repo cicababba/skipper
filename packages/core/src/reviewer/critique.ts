@@ -1,5 +1,6 @@
 import { displayKey, type CoderReport, type CriticSignal, type PlanAcceptance } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm";
+import type { AgentRuntime } from "../runtime/types";
 import type { PlanIssueInput } from "../planner";
 import { runCritic, type CriticPriorRound } from "../confidence";
 
@@ -46,6 +47,7 @@ export interface CritiqueDiffArgs {
 export async function critiqueDiff(
   args: CritiqueDiffArgs,
   llm: LLMProviderInterface,
+  runtime?: AgentRuntime,
 ): Promise<CriticSignal> {
   const { issue, acceptance } = args;
   const body =
@@ -83,6 +85,9 @@ export async function critiqueDiff(
     .filter((l) => l !== "")
     .join("\n");
 
+  // Repo-inspecting critic only when a session is minted AND a runtime can host
+  // the tools-enabled call (#238); otherwise the plain diff critic.
+  const inspect = args.session !== undefined && runtime !== undefined;
   return runCritic(
     {
       artifactKind: "diff",
@@ -90,11 +95,11 @@ export async function critiqueDiff(
       artifact: truncateDiff(args.diff).text,
       context,
       ...(args.prior ? { prior: args.prior } : {}),
-      ...(args.session ? { canInspectRepo: true } : {}),
+      ...(inspect ? { canInspectRepo: true } : {}),
     },
     llm,
-    args.session
-      ? { cwd: args.session.cwd, sessionId: args.session.id, tools: "Read,Grep,Glob", maxTurns: 8 }
+    inspect
+      ? { runtime, cwd: args.session!.cwd, sessionId: args.session!.id, tools: "Read,Grep,Glob", maxTurns: 8 }
       : undefined,
   );
 }

@@ -82,12 +82,11 @@ export default function SettingsPage() {
             {t.settings.llm.title}
           </h2>
 
-          {/* No provider picker: claude-cli is the only backend whose agent()
-              drives the planner, and the coder spawns `claude` regardless of
-              this setting. OpenAI parked every planned item in needs-input;
-              ollama planned but could never reach a PR. The other providers,
-              their API routes and their i18n strings are still in the tree —
-              this is a UI-level pin, not a removal. */}
+          {/* No provider picker: the claude-cli runtime is the only backend that
+              drives the planner, and the coder spawns `claude` regardless of this
+              setting. OpenAI has no agent runtime, so it parked every planned item
+              in needs-input. The OpenAI provider, its API routes and its i18n
+              strings are still in the tree — this is a UI-level pin, not a removal. */}
 
           {/* Claude settings */}
           <div className="space-y-4 p-5 rounded-xl bg-card border border-border">

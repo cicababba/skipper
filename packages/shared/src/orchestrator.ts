@@ -11,7 +11,7 @@ import {
 } from "./confidence";
 import type { CodeHostId, Issue, IssueSourceId, PullRequest, RepoRef, SourceRef } from "./inbox";
 import type { StoredPlan } from "./plan";
-import { DEFAULT_LLM_SETTINGS } from "./types";
+import { DEFAULT_LLM_SETTINGS, type AgentRuntimeId } from "./types";
 
 export type AgentReviewOutcome = CriticVerdict | "skipped" | "unavailable";
 
@@ -41,6 +41,8 @@ export interface AgentReview {
   pendingObjections?: CriticObjection[];
   /** Last critic round's Claude session, cwd-scoped to worktree.path, overwritten each round (#111). */
   sessionId?: string;
+  /** Runtime that minted sessionId (#238) — a mismatch with the active runtime = no resume. */
+  sessionRuntime?: AgentRuntimeId;
   /** Prior review records snapshotted before overwrite (#205), oldest-first. */
   history?: ReviewRound[];
   at: string; // ISO 8601
@@ -323,14 +325,22 @@ export interface TrackedItem {
    *  reconcile never re-parks for these; a newly appearing dep still blocks. */
   blockedByWaived?: SourceRef[];
   /** Plan + confidence seam (#7/#8). sessionId is the last plan run's Claude session,
-   *  cwd-scoped to worktree.path, overwritten each run (#111). */
-  plan?: { confidence?: number; ref?: string; sessionId?: string; rescoring?: boolean };
+   *  cwd-scoped to worktree.path, overwritten each run (#111). sessionRuntime is the
+   *  runtime that minted it (#238). */
+  plan?: {
+    confidence?: number;
+    ref?: string;
+    sessionId?: string;
+    sessionRuntime?: AgentRuntimeId;
+    rescoring?: boolean;
+  };
   /** Structured coder report (#146). ref into plansDir; overwritten each run,
    *  deleted when a run degrades to a prose summary. */
   coderReport?: { ref: string };
   /** Shared worktree, created at planning (#110) and reused for coding/review (#9).
-   *  sessionId is cwd-scoped: only resumable from the same worktree path. */
-  worktree?: { path: string; branch: string; sessionId?: string };
+   *  sessionId is cwd-scoped: only resumable from the same worktree path.
+   *  sessionRuntime is the runtime that minted it (#238). */
+  worktree?: { path: string; branch: string; sessionId?: string; sessionRuntime?: AgentRuntimeId };
   /** Agent review overlay (#10). Written only via completeReview; the prior record is
    *  snapshotted onto review.history before overwrite (#205). */
   review?: AgentReview;

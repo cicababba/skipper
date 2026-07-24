@@ -2,8 +2,23 @@
 // Skipper — Shared Types
 // ============================================================
 
-/** LLM provider configuration */
-export type LLMProvider = "claude-cli" | "openai" | "ollama";
+/** LLM provider configuration — the completions backend the runtime wraps. */
+export type LLMProvider = "claude-cli" | "openai";
+
+/** The agent runtime that owns the write-capable coding run + the read-leaning
+ *  agent/tools paths (#238). Today only the claude-cli runtime exists; a second
+ *  (Codex/Gemini CLI) joins the union under #236. */
+export type AgentRuntimeId = "claude-cli";
+
+/**
+ * The runtime that minted a persisted session (#238). Legacy manifests predate
+ * the field, so an absent stamp reads as "claude-cli" (the only runtime before
+ * this seam). A session whose minting runtime differs from the active one is not
+ * resumable — the caller falls back to a fresh run.
+ */
+export function sessionRuntimeOf(rec?: { sessionRuntime?: AgentRuntimeId } | null): AgentRuntimeId {
+  return rec?.sessionRuntime ?? "claude-cli";
+}
 
 /** The `llm` block of settings.json — written by the web layer, read by main and the CLI. */
 export interface LlmSettings {
@@ -11,7 +26,6 @@ export interface LlmSettings {
   openaiApiKey: string;
   openaiModel: string;
   claudeModel: string;
-  ollamaModel: string;
 }
 
 export const DEFAULT_LLM_SETTINGS: LlmSettings = {
@@ -19,7 +33,6 @@ export const DEFAULT_LLM_SETTINGS: LlmSettings = {
   openaiApiKey: "",
   openaiModel: "gpt-4o",
   claudeModel: "sonnet",
-  ollamaModel: "",
 };
 
 // ============================================================

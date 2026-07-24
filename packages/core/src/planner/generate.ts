@@ -2,6 +2,7 @@ import { AGENT_MAX_TURNS_BACKSTOP, type CodingEvent, type IssuePlan } from "@ski
 import type { IssueComment } from "../adapters/types";
 import type { LLMProviderInterface, LLMResponse } from "../llm/provider";
 import { AgentAbortError } from "../llm/provider";
+import type { AgentRuntime } from "../runtime/types";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import { renderGraphifySection, type GraphifyContext } from "../llm/graphify-mcp";
 import type { RunConfinement } from "../llm/confinement";
@@ -35,6 +36,9 @@ export interface GeneratePlanOptions {
   issue: PlanIssueInput;
   /** Local checkout the agent explores (cwd). */
   repoPath: string;
+  /** Agentic runtime that runs the exploration (#238). */
+  runtime: AgentRuntime;
+  /** Completions provider for the cheap askStructured repair round. */
   llm: LLMProviderInterface;
   maxTurns?: number;
   /** Wall-clock budget for the primary run (#194); on expiry the salvage path
@@ -125,11 +129,6 @@ export async function validatePlanReply(
  * N times — #8's convergence signal builds on that.
  */
 export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan> {
-  if (!opts.llm.agent) {
-    throw new PlanGenerationError(
-      `planning needs a provider with agent mode (claude-cli or ollama) — "${opts.llm.name}" has none. Pick one in Settings.`,
-    );
-  }
   if (opts.signal?.aborted) throw new AgentAbortError();
   const schema = planJsonSchema();
   const systemPrompt =
@@ -137,7 +136,7 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
     (opts.graphify ? `\n\n${renderGraphifySection(opts.graphify)}` : "");
   let reply: LLMResponse;
   try {
-    reply = await opts.llm.agent(buildPlannerPrompt(opts.issue, schema, opts.preexistingChanges), {
+    reply = await opts.runtime.agent(buildPlannerPrompt(opts.issue, schema, opts.preexistingChanges), {
       systemPrompt,
       cwd: opts.repoPath,
       maxTurns: opts.maxTurns ?? AGENT_MAX_TURNS_BACKSTOP,
@@ -157,7 +156,7 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
       throw err;
     }
     try {
-      reply = await opts.llm.agent(buildSalvagePrompt(schema), {
+      reply = await opts.runtime.agent(buildSalvagePrompt(schema), {
         systemPrompt,
         cwd: opts.repoPath,
         maxTurns: SALVAGE_MAX_TURNS,

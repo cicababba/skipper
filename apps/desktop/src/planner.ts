@@ -1,7 +1,6 @@
 import {
   AgentAbortError,
   computeConfidence,
-  createProvider,
   generatePlan,
   type GraphifyContext,
   type IssueComment,
@@ -13,6 +12,7 @@ import {
 import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
 import {
   latestPlanningTransitionAt,
+  type AgentRuntimeId,
   type CodingEvent,
   type ConfidenceReport,
   type Issue,
@@ -25,7 +25,7 @@ import {
   type TransitionActor,
 } from "@skipper/shared";
 import { randomUUID } from "node:crypto";
-import { modelForRole, providerCacheKey } from "./llm-settings";
+import { buildLlm, injectedBundle, modelForRole, providerCacheKey, type LlmBundle } from "./llm-settings";
 import { planFileName, writeStoredPlan } from "./plan-store";
 
 // Eager planner loop (issue #7): watches the orchestrator manifest for triage
@@ -71,8 +71,8 @@ export interface PlannerDeps {
   prepareWorktree: (item: TrackedItem) => Promise<{ path: string; branch: string }>;
   /** Persists the worktree record without a transition (#110). */
   setWorktree: (itemId: string, worktree: { path: string; branch: string }) => Promise<void>;
-  /** Records the plan run's Claude session id without a transition (#111). */
-  setPlanSessionId: (itemId: string, sessionId: string) => Promise<void>;
+  /** Records the plan run's Claude session id + the runtime that minted it (#111/#238). */
+  setPlanSessionId: (itemId: string, sessionId: string, sessionRuntime?: AgentRuntimeId) => Promise<void>;
   /** Live orchestrator settings — planner model + confidence knobs. */
   getSettings: () => OrchestratorSettings;
   /** settings.json llm block (#59) — which provider the planner runs on. */
@@ -90,9 +90,10 @@ export interface PlannerDeps {
 const PLANNING_CONCURRENCY = 2;
 
 let deps: PlannerDeps | null = null;
-let llm: LLMProviderInterface | null = null;
-let llmKey: string | null = null;
-let llmInjected = false;
+let injected = false;
+let injectedProvider: LLMProviderInterface | null = null;
+let bundle: LlmBundle | null = null;
+let bundleKey: string | null = null;
 const queue: string[] = [];
 const queued = new Set<string>();
 const inFlight = new Map<string, AbortController>();
@@ -101,9 +102,10 @@ let scanScheduled = false;
 
 export function initPlanner(plannerDeps: PlannerDeps, provider?: LLMProviderInterface): void {
   deps = plannerDeps;
-  llmInjected = provider !== undefined;
-  llm = provider ?? null;
-  llmKey = null;
+  injected = provider !== undefined;
+  injectedProvider = provider ?? null;
+  bundle = null;
+  bundleKey = null;
   // Fresh init (tests / re-init) starts with a clean queue. `active` is left
   // alone — it self-balances via the finally block of any in-flight run.
   inFlight.clear();
@@ -123,25 +125,20 @@ export function killAllPlanningRuns(): void {
 }
 
 /**
- * Injected provider (tests) wins; otherwise the provider picked in Settings (#59),
- * cached per provider+model. The role model only applies to claude-cli — the other
- * providers carry their own model in settings.json.
+ * Injected provider (tests) wins; otherwise the bundle (provider + runtime) built
+ * from Settings (#59/#238), cached per provider+model. The role model only applies
+ * to claude-cli — openai carries its own model in settings.json.
  */
-async function resolveProvider(roleModel: string): Promise<{ llm: LLMProviderInterface; model: string }> {
-  if (llmInjected && llm) return { llm, model: roleModel };
+async function resolveBundle(roleModel: string): Promise<LlmBundle> {
+  if (injected && injectedProvider) return injectedBundle(injectedProvider, roleModel);
   const settings = await deps!.getLlmSettings();
   const model = modelForRole(settings, roleModel);
   const key = providerCacheKey(settings, model);
-  if (!llm || llmKey !== key) {
-    llm = createProvider({
-      provider: settings.provider,
-      model,
-      maxTurns: 5,
-      apiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
-    });
-    llmKey = key;
+  if (!bundle || bundleKey !== key) {
+    bundle = buildLlm(settings, roleModel, 5);
+    bundleKey = key;
   }
-  return { llm, model };
+  return bundle;
 }
 
 /** Coalesced re-scan — fired after polls and transitions. */
@@ -272,15 +269,26 @@ async function run(itemId: string): Promise<void> {
     // fetch can be slow — re-check the item wasn't cancelled/moved meanwhile.
     if (!live()) return;
     const settings = deps.getSettings();
-    const { llm: provider, model } = await resolveProvider(
+    const { llm: provider, runtime, model } = await resolveBundle(
       deps.getRepoSettings(item.repo).plannerModel,
     );
-    // Persist a session only when planning ran in the worktree — a session recorded
-    // against the shared clone would violate the cwd-scoped invalidation rule (#111).
-    // Persist-before-run so a crashed run still leaves a resumable pointer.
+    // No agent runtime (openai, #238) — planning cannot explore the repo. Park it
+    // where the old generatePlan throw used to, so the user can switch providers.
+    if (!runtime) {
+      const reason = 'planning needs an agent runtime (claude-cli) — the selected provider has none. Pick one in Settings.';
+      deps.emitEvent(itemId, { kind: "error", message: reason });
+      await deps
+        .requestTransition(itemId, "needs-input", "planner", reason, "planning")
+        .catch(() => {});
+      return;
+    }
+    // Persist a session only when the runtime can resume AND planning ran in the
+    // worktree — a session recorded against the shared clone would violate the
+    // cwd-scoped invalidation rule (#111). Persist-before-run so a crashed run
+    // still leaves a resumable pointer.
     const planSessionId =
-      provider.name === "claude-cli" && inWorktree ? randomUUID() : undefined;
-    if (planSessionId) await deps.setPlanSessionId(itemId, planSessionId);
+      runtime.capabilities.resume && inWorktree ? randomUUID() : undefined;
+    if (planSessionId) await deps.setPlanSessionId(itemId, planSessionId, runtime.id);
     const cached = deps.getIssue(item);
     let comments: IssueComment[] = [];
     if (deps.fetchIssueComments) {
@@ -339,6 +347,7 @@ async function run(itemId: string): Promise<void> {
       issue,
       repoPath: cwd,
       llm: provider,
+      runtime,
       hardTimeoutMs: settings.plannerTimeBudgetMin * 60_000,
       ...(repoInstructions ? { repoInstructions } : {}),
       ...(graphify ? { graphify } : {}),
@@ -346,7 +355,7 @@ async function run(itemId: string): Promise<void> {
         // The minted id is authoritative; if the CLI reports a different session
         // in its init line, reconcile to the real on-disk id (#111).
         if (event.kind === "agent-init" && planSessionId && event.sessionId !== planSessionId) {
-          void deps?.setPlanSessionId(itemId, event.sessionId).catch(() => {});
+          void deps?.setPlanSessionId(itemId, event.sessionId, runtime.id).catch(() => {});
         }
         deps?.emitEvent(itemId, event);
       },
@@ -389,6 +398,7 @@ async function run(itemId: string): Promise<void> {
         issue,
         repoPath: cwd,
         llm: provider,
+        runtime,
         extraPlanRuns: settings.confidence.extraPlanRuns,
         thresholds: { high: settings.confidence.high, low: settings.confidence.low },
         // #62: score for the gate that will actually run — under on/off the

@@ -1,4 +1,4 @@
-import type { LLMProviderInterface } from "../llm/provider";
+import type { AgentRuntime } from "../runtime/types";
 
 // Agentic generation of a repo's agent-instructions doc (#227), used when the
 // repo has no CLAUDE.md to seed from. Read-only exploration modeled on the
@@ -38,7 +38,9 @@ export function buildInstructionsPrompt(): string {
 export interface GenerateRepoInstructionsOptions {
   /** Local checkout the agent explores (cwd). */
   repoPath: string;
-  llm: LLMProviderInterface;
+  /** Agentic runtime that runs the exploration (#238); the caller gates on its
+   *  existence (openai has none) before calling. */
+  runtime: AgentRuntime;
   maxTurns?: number;
   /** Wall-clock budget for the run. */
   hardTimeoutMs?: number;
@@ -47,18 +49,13 @@ export interface GenerateRepoInstructionsOptions {
 
 /**
  * Generate the conventions document for a repo by letting the agent explore it.
- * Throws when the provider has no agent mode (openai) or the reply is empty, so
- * the caller can land the doc as "failed" and let planning proceed without it.
+ * Throws when the reply is empty, so the caller can land the doc as "failed" and
+ * let planning proceed without it.
  */
 export async function generateRepoInstructions(
   opts: GenerateRepoInstructionsOptions,
 ): Promise<string> {
-  if (!opts.llm.agent) {
-    throw new Error(
-      `generating repository conventions needs a provider with agent mode (claude-cli) — "${opts.llm.name}" has none.`,
-    );
-  }
-  const reply = await opts.llm.agent(buildInstructionsPrompt(), {
+  const reply = await opts.runtime.agent(buildInstructionsPrompt(), {
     systemPrompt: INSTRUCTIONS_SYSTEM_PROMPT,
     cwd: opts.repoPath,
     maxTurns: opts.maxTurns ?? DEFAULT_MAX_TURNS,

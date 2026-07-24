@@ -9,6 +9,24 @@ import type {
   StructuredOptions,
 } from "./provider";
 import { AgentAbortError } from "./provider";
+
+/**
+ * The claude-cli provider's structured-call options (#238): the wide fields
+ * (session persistence, cwd, multi-turn tool use) the narrowed StructuredOptions
+ * dropped. Reached via the runtime's structured() call, not the plain provider
+ * interface — those extras only mean something to the CLI.
+ */
+export interface ClaudeStructuredOptions extends StructuredOptions {
+  /** Working directory the structured call runs in (so the on-disk session lands there). */
+  cwd?: string;
+  /** Persist under this session id (drops --no-session-persistence). */
+  sessionId?: string;
+  /** Comma-separated CLI tool list; enables multi-turn tool use for this call
+   *  (the reply is still the final JSON). */
+  tools?: string;
+  /** Turn budget when tools are enabled. */
+  maxTurns?: number;
+}
 import { parseJsonReply } from "./json";
 import { createStreamJsonParser } from "./stream";
 import { MEMORY_TOOLS } from "./memory-mcp";
@@ -483,7 +501,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
   async askStructured<T>(
     prompt: string,
     schema: Record<string, unknown>,
-    opts?: StructuredOptions,
+    opts?: ClaudeStructuredOptions,
   ): Promise<T> {
     const toolsEnabled = typeof opts?.tools === "string" && opts.tools.length > 0;
     const args = [

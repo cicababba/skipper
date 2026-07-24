@@ -1,13 +1,14 @@
 import type { CodingEvent } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
+import type { AgentRuntime } from "../runtime/types";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import type { RunConfinement } from "../llm/confinement";
 
-// Generic agent-discussion dispatch (#170): the shared llm.agent(...) call that
-// the coder and reviewer chats build their prompts for. Mirrors the dispatch in
-// planner/chat.ts (discussPlan) without folding the plan-specific Apply path in.
-// Resume path requires an agent-capable provider; the fresh path uses agent()
-// when available, else falls back to a single-turn ask().
+// Generic agent-discussion dispatch (#170): the shared runtime.agent(...) call
+// that the coder and reviewer chats build their prompts for. Mirrors the dispatch
+// in planner/chat.ts (discussPlan) without folding the plan-specific Apply path in.
+// Resume path requires a runtime; the fresh path uses runtime.agent() when
+// available, else falls back to a single-turn ask() on the completions provider.
 
 export const DEFAULT_AGENT_CHAT_MAX_TURNS = 12;
 /** Wall-clock cap for a chat turn (#194): a dead chat surfaces as a panel error the
@@ -16,6 +17,8 @@ export const AGENT_CHAT_HARD_TIMEOUT_MS = 3 * 60_000;
 
 export interface RunAgentDiscussionOptions {
   llm: LLMProviderInterface;
+  /** Agentic runtime for the resume/fresh-agent paths (#238); absent = ask() only. */
+  runtime?: AgentRuntime;
   cwd: string;
   systemPrompt: string;
   prompt: string;
@@ -34,12 +37,12 @@ export interface RunAgentDiscussionOptions {
 export async function runAgentDiscussion(
   opts: RunAgentDiscussionOptions,
 ): Promise<{ reply: string; sessionId?: string }> {
-  const { llm, cwd, systemPrompt, prompt } = opts;
+  const { llm, runtime, cwd, systemPrompt, prompt } = opts;
   const maxTurns = opts.maxTurns ?? DEFAULT_AGENT_CHAT_MAX_TURNS;
 
   if (opts.resumeSessionId) {
-    if (!llm.agent) throw new Error("resuming an agent session needs an agent-capable provider");
-    const reply = await llm.agent(prompt, {
+    if (!runtime) throw new Error("resuming an agent session needs an agent-capable runtime");
+    const reply = await runtime.agent(prompt, {
       systemPrompt,
       cwd,
       maxTurns,
@@ -53,8 +56,8 @@ export async function runAgentDiscussion(
     return { reply: reply.text, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
   }
 
-  if (llm.agent) {
-    const reply = await llm.agent(prompt, {
+  if (runtime) {
+    const reply = await runtime.agent(prompt, {
       systemPrompt,
       cwd,
       maxTurns,

@@ -12,7 +12,11 @@ export {
   confinementEnv,
 } from "./llm";
 export type { RunConfinement } from "./llm";
-export { OLLAMA_DEFAULT_HOST, ollamaHost } from "./llm";
+export type { ClaudeStructuredOptions } from "./llm";
+
+// Agent runtime seam (#238) — the capability-gated home of every agentic path.
+export { createRuntime, ClaudeCliRuntime, CLAUDE_CLI_CAPABILITIES } from "./runtime";
+export type { AgentRuntime, RuntimeCapabilities, RuntimeStructuredOptions } from "./runtime";
 
 export { VectorStore } from "./vectorstore";
 

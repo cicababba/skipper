@@ -7,6 +7,7 @@ import {
   type IssuePlan,
 } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm";
+import type { AgentRuntime } from "../runtime/types";
 import type { PlanIssueInput } from "../planner";
 
 // Adversarial critic primitive (issue #8). Artifact-agnostic on purpose:
@@ -147,11 +148,31 @@ function mapResolvedLabels(labels: string[], prior: CriticObjection[]): CriticOb
 export async function runCritic(
   input: CriticInput,
   llm: LLMProviderInterface,
-  opts?: { cwd?: string; sessionId?: string; signal?: AbortSignal; tools?: string; maxTurns?: number },
+  opts?: {
+    cwd?: string;
+    sessionId?: string;
+    signal?: AbortSignal;
+    tools?: string;
+    maxTurns?: number;
+    runtime?: AgentRuntime;
+  },
 ): Promise<CriticSignal> {
+  // Tools mode (a repo-inspecting critic) needs the runtime's structured call;
+  // the plain plan critic uses the completions provider (#238). Either way the
+  // reply is the final verdict JSON.
+  const ask = <T>(prompt: string, schema: Record<string, unknown>): Promise<T> =>
+    opts?.runtime && opts.tools
+      ? opts.runtime.structured<T>(prompt, schema, {
+          tools: opts.tools,
+          ...(opts.cwd ? { cwd: opts.cwd } : {}),
+          ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
+          ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}),
+          ...(opts.signal ? { signal: opts.signal } : {}),
+        })
+      : llm.askStructured<T>(prompt, schema, opts?.signal ? { signal: opts.signal } : undefined);
   if (input.prior) {
     const schema = z.toJSONSchema(CriticContinuityVerdictSchema) as Record<string, unknown>;
-    const reply = await llm.askStructured<unknown>(buildCriticPrompt(input), schema, opts);
+    const reply = await ask<unknown>(buildCriticPrompt(input), schema);
     const parsed = CriticContinuityVerdictSchema.safeParse(reply);
     if (!parsed.success) {
       throw new CriticError(`critic returned an invalid verdict: ${parsed.error.message}`, reply);
@@ -162,7 +183,7 @@ export async function runCritic(
     return { score, verdict, objections, resolved: mapResolvedLabels(resolved, input.prior.objections) };
   }
   const schema = z.toJSONSchema(CriticVerdictSchema) as Record<string, unknown>;
-  const reply = await llm.askStructured<unknown>(buildCriticPrompt(input), schema, opts);
+  const reply = await ask<unknown>(buildCriticPrompt(input), schema);
   const parsed = CriticVerdictSchema.safeParse(reply);
   if (!parsed.success) {
     throw new CriticError(`critic returned an invalid verdict: ${parsed.error.message}`, reply);
