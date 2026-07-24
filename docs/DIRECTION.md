@@ -328,6 +328,28 @@ La forma della memoria v2 è fissata nell'epic #41. In sintesi:
 - **Superficie dettaglio repo.** I repo diventano first-class nella navigazione; alle
   impostazioni di intake si aggiunge un override del WIP per-repo.
 
+### Knowledge esterna (server MCP) — epic #235
+
+La memoria locale non è l'unica knowledge utile al planning: le aziende hanno wiki
+interne, doc di architettura, runbook. Skipper può collegarsi a un **server di
+knowledge esterno**, e il planner lo consulta mentre raffina il piano. Forma decisa:
+
+- **Via MCP, non API custom** — stesso pattern agent-pull della decisione #19: il
+  planner cerca da sé quando capisce cosa gli serve, niente pre-iniezione; l'uso si
+  deriva dagli eventi di tool-use e potrà alimentare la confidence. Il CLI `claude`
+  supporta nativamente server MCP remoti: lato Skipper è una entry nel `--mcp-config`
+  già costruito per `skipper-memory`, zero client HTTP da scrivere. E un server MCP
+  aziendale serve qualsiasi client MCP, non solo Skipper — più facile da giustificare
+  in azienda.
+- **Opt-in: definizione a livello app, attach per-repo** — il server si definisce una
+  volta (nome, URL, auth) e si collega ai repo che ne beneficiano; i repo senza
+  server collegati si comportano esattamente come oggi.
+- **Nessuna tensione con la decisione #4**: Skipper resta un client senza backend —
+  il server lo ospita l'azienda, come "i server sono le piattaforme" per i tracker.
+- I knowledge atoms locali restano un canale separato (#41), ma il seam generalizza:
+  quando avranno una API di ricerca, `skipper knowledge serve` può diventare il
+  reference server che un'azienda ospita.
+
 ---
 
 ## Decisioni prese
@@ -357,6 +379,7 @@ La forma della memoria v2 è fissata nell'epic #41. In sintesi:
 | 21 | **Read-only v1 verso i tracker** | Nessun write-back (transizioni, stato, commenti): si commenta aprendo l'issue nel browser. Tiene bassi lo scope e gli scope OAuth di scrittura. |
 | 22 | **Mapping project→repo in settings; Bitbucket solo CodeHost** | Mapping una tantum, deterministico, non rompe l'auto-coding sopra `confidence.high`; l'ammissione scarta i progetti non mappati. Bitbucket Issues fuori scope: il suo valore è completare la storia Jira. |
 | 23 | **`repoKey` ancorata al repo, mai al tracker** | È l'asse di partizione della memoria delle soluzioni; ancorarla al progetto Jira spartirebbe la memoria nel modo sbagliato. |
+| 24 | **Knowledge esterna via server MCP, opt-in per repo** — epic #235 | Agent-pull coerente con la #19 (niente pre-iniezione, uso derivato dal tool-use); entry nel `--mcp-config` esistente, zero client HTTP; il server lo ospita l'azienda (nessun backend Skipper, coerente con la #4). Definizione a livello app, attach per-repo: i repo senza server si comportano come oggi. |
 
 ---
 
