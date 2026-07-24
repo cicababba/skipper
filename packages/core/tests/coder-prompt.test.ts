@@ -141,6 +141,14 @@ describe("buildFixPrompt", () => {
     expect(prompt).toContain("- (risk) FOUC possible");
     expect(prompt).toMatch(/no git commit\/push\/branch/);
   });
+
+  // #226: a factually wrong objection can be disputed instead of blindly obeyed.
+  it("tells the coder to dispute a wrong objection in the report's open array", () => {
+    const prompt = buildFixPrompt(issue, [{ kind: "risk", detail: "x", blocking: false }]);
+    expect(prompt).toContain("Verify each objection against the working tree before acting on it.");
+    expect(prompt).toContain("do not comply blindly");
+    expect(prompt).toContain('record the evidence in the report\'s "open" array');
+  });
 });
 
 describe("buildPrFixPrompt", () => {

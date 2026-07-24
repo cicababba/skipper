@@ -117,6 +117,43 @@ describe("runCritic / critiquePlan", () => {
   });
 });
 
+// #226: ground objections in what is shown, raise a blocking flag only for a
+// concrete failure, and re-verify priors against the current context.
+describe("critic grounding & blocking bar (#226)", () => {
+  const base = {
+    artifactKind: "diff" as const,
+    artifactLabel: "diff for PR #7",
+    artifact: "--- a/x.ts\n+++ b/x.ts",
+    context: "Issue #7: fix x",
+  };
+
+  it("instructs the critic to ground objections and gate blocking on a concrete failure", () => {
+    const prompt = buildCriticPrompt(base);
+    expect(prompt).toContain("Ground every objection in what is verifiable");
+    expect(prompt).toContain("must be raised as a non-blocking question, never as blocking");
+    expect(prompt).toContain("Mark blocking only when the objection names the concrete failure");
+    expect(prompt).toContain('"Suspicious styling" or a convention hunch does not clear that bar');
+  });
+
+  it("adds the re-verify sentence on a continuity round", () => {
+    const prompt = buildCriticPrompt({
+      ...base,
+      prior: { objections: [{ kind: "risk", detail: "P-one", blocking: true }], deliveredToCoder: true },
+    });
+    expect(prompt).toContain("Re-verify each persisting objection against the current artifact");
+    expect(prompt).toContain("drop a prior the provided context refutes rather than escalating it");
+  });
+
+  it("adds the inspect-repo instruction only when canInspectRepo is set", () => {
+    expect(buildCriticPrompt(base)).not.toContain(
+      "You have Read, Grep and Glob over the working tree.",
+    );
+    expect(buildCriticPrompt({ ...base, canInspectRepo: true })).toContain(
+      "You have Read, Grep and Glob over the working tree.",
+    );
+  });
+});
+
 // #205: a continuity round classifies its objections against the prior round.
 describe("runCritic continuity (#205)", () => {
   const priorObjections: CriticObjection[] = [

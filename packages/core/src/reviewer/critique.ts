@@ -7,7 +7,8 @@ import { runCritic, type CriticPriorRound } from "../confidence";
 // component, artifactKind "diff". Core stays git-free — the diff arrives
 // as a string; capture lives in the desktop layer.
 
-/** askStructured is single-turn — bound the prompt. ~30k tokens. */
+/** Bound the prompt even though the diff reviewer runs askStructured in
+ *  bounded-tools mode (Read/Grep/Glob) — the diff itself is the artifact. ~30k tokens. */
 export const DIFF_CHAR_BUDGET = 120_000;
 
 const MAX_BODY_CHARS = 20_000;
@@ -37,6 +38,9 @@ export interface CritiqueDiffArgs {
   session?: { id: string; cwd: string };
   /** Prior review round for continuity classification (#205). */
   prior?: CriticPriorRound;
+  /** The planner's verified repo facts (IssuePlan.context) — grounds the reviewer
+   *  so it trusts these over its own assumptions (#226). */
+  planContext?: string[];
 }
 
 export async function critiqueDiff(
@@ -68,6 +72,11 @@ export async function critiqueDiff(
     acceptance.length > 0
       ? `Acceptance criteria:\n${acceptance.map((a) => `- ${a.criterion}`).join("\n")}`
       : `(No explicit acceptance criteria — review strictly against the issue body.)`,
+    args.planContext && args.planContext.length > 0
+      ? `Verified repo facts from the planner (trust these over your own assumptions):\n${args.planContext
+          .map((c) => `- ${c}`)
+          .join("\n")}`
+      : "",
     deviationsBlock,
     verificationBlock,
   ]
@@ -81,8 +90,11 @@ export async function critiqueDiff(
       artifact: truncateDiff(args.diff).text,
       context,
       ...(args.prior ? { prior: args.prior } : {}),
+      ...(args.session ? { canInspectRepo: true } : {}),
     },
     llm,
-    args.session ? { cwd: args.session.cwd, sessionId: args.session.id } : undefined,
+    args.session
+      ? { cwd: args.session.cwd, sessionId: args.session.id, tools: "Read,Grep,Glob", maxTurns: 8 }
+      : undefined,
   );
 }

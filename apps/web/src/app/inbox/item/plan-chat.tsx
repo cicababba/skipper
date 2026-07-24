@@ -165,6 +165,7 @@ export function PlanChatPanel({
             getEvents={window.skipper!.planning.getEvents}
             onEvent={window.skipper!.planning.onEvent}
             collapsible
+            defaultOpen={false}
             title={chat.activity}
           />
         )}

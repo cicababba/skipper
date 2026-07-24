@@ -5,7 +5,7 @@ import { reportContractBlock } from "./report";
 
 const MAX_BODY_CHARS = 20_000;
 
-export const CODER_SYSTEM_PROMPT = `You are a senior software engineer implementing a GitHub issue in the repository at your current working directory. The directory is an isolated git worktree with the correct feature branch already checked out.
+export const CODER_SYSTEM_PROMPT = `You are a senior software engineer implementing an issue in the repository at your current working directory. The directory is an isolated git worktree with the correct feature branch already checked out.
 
 Implement the provided plan. Follow the repository's existing conventions (naming, formatting, error handling, test style). Where the plan cites files and symbols, ground your changes in them; if reality diverges from the plan, adapt and note the deviation in your final message.
 
@@ -34,7 +34,7 @@ function issueHeader(issue: PlanIssueInput): string[] {
 
 export function buildCoderPrompt(issue: PlanIssueInput, plan: IssuePlan): string {
   const lines = [
-    `Implement this GitHub issue following the plan below.`,
+    `Implement this issue following the plan below.`,
     ``,
     ...issueHeader(issue),
     ``,
@@ -100,6 +100,8 @@ export function buildFixPrompt(issue: PlanIssueInput, objections: CriticObjectio
     `--- End objections ---`,
     ``,
     `Inspect the working tree (git status, git diff) to see the current implementation, then fix. The same rules apply: no git commit/push/branch operations.`,
+    ``,
+    `Verify each objection against the working tree before acting on it. If an objection is factually wrong — it misreads the code or asserts a repo fact that isn't true — do not comply blindly: leave the code as is and record the evidence in the report's "open" array so the next review round sees the dispute.`,
     ``,
     reportContractBlock(),
   ]

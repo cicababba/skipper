@@ -259,6 +259,7 @@ async function run(itemId: string): Promise<void> {
           ...(storedReport ? { report: storedReport.report } : {}),
           ...(sessionId ? { session: { id: sessionId, cwd: wtPath! } } : {}),
           ...(prior ? { prior } : {}),
+          ...(stored?.plan.context?.length ? { planContext: stored.plan.context } : {}),
         },
         provider,
       );
