@@ -181,6 +181,39 @@ registro `PROVIDERS` in `apps/desktop/src/auth/`.
 
 ---
 
+## Runtime degli agenti: il terzo asse (multi-CLI) — epic #236
+
+La decisione #1 (orchestrare, non costruire un agente proprio) resta; quello che
+cambia è che "l'agente" smette di essere per forza Claude Code. Il modello di
+prodotto — si spawna la CLI che l'utente già possiede, si usa il suo abbonamento,
+zero API key — generalizza: Codex CLI, Copilot CLI e Gemini CLI hanno tutte una
+modalità headless con la stessa forma (print mode, stream di eventi JSON, resume
+delle sessioni, gating dei tool, MCP). E mescolare i vendor per ruolo — pianificare
+con Claude, scrivere codice con Codex, review con Copilot — è un differenziatore che
+nessun tool single-vendor può offrire.
+
+Le decisioni fissate in #236:
+
+- **Contratto `AgentRuntime` con capability matrix esplicita**
+  (`streaming / resume / confinement / mcp`) al posto dei commenti "claude-cli only".
+  L'orchestratore degrada in modo deliberato su una capability assente: senza
+  `resume` → sessione fresca + recap dal transcript che Skipper già possiede negli
+  eventi; senza `mcp` → run senza memoria delle soluzioni.
+- **Le sessioni non si trasferiscono tra runtime.** Coder e rientro-shepherd sono lo
+  stesso runtime per costruzione; il record di sessione porta il runtime che l'ha
+  creata, e un cambio a metà vita degrada a recap invece di resume.
+- **La selezione per-ruolo riusa il pattern dei modelli**: `plannerRuntime` /
+  `coderRuntime` / `reviewerRuntime` accanto ai campi `*Model`, stessa scala
+  per-repo → globale → default.
+- **Primo secondo runtime: Codex CLI** — parità di capability più alta (exec
+  headless, stream JSON, resume, sandbox nativo `workspace-write` che *semplifica*
+  il confinement invece di complicarlo).
+- Gli eventi si normalizzano nello schema `CodingEvent` esistente via parser di
+  stream per-runtime; le instructions per-repo (#227) sono già agnostiche (testo nel
+  system prompt, doc Skipper-owned).
+
+---
+
 ## Il punteggio di confidence (il differenziatore)
 
 Non è l'LLM che dice "sono sicuro al 90%". È un punteggio **composto e verificabile**,
@@ -380,6 +413,7 @@ knowledge esterno**, e il planner lo consulta mentre raffina il piano. Forma dec
 | 22 | **Mapping project→repo in settings; Bitbucket solo CodeHost** | Mapping una tantum, deterministico, non rompe l'auto-coding sopra `confidence.high`; l'ammissione scarta i progetti non mappati. Bitbucket Issues fuori scope: il suo valore è completare la storia Jira. |
 | 23 | **`repoKey` ancorata al repo, mai al tracker** | È l'asse di partizione della memoria delle soluzioni; ancorarla al progetto Jira spartirebbe la memoria nel modo sbagliato. |
 | 24 | **Knowledge esterna via server MCP, opt-in per repo** — epic #235 | Agent-pull coerente con la #19 (niente pre-iniezione, uso derivato dal tool-use); entry nel `--mcp-config` esistente, zero client HTTP; il server lo ospita l'azienda (nessun backend Skipper, coerente con la #4). Definizione a livello app, attach per-repo: i repo senza server si comportano come oggi. |
+| 25 | **Runtime degli agenti multi-CLI dietro il contratto `AgentRuntime`** — epic #236 | Estende la #1: si orchestra sempre, ma la CLI non è per forza Claude Code (Codex, Copilot, Gemini). Capability matrix esplicita con degradazione deliberata (no resume → recap; no MCP → senza memoria); selezione per-ruolo col pattern dei modelli; primo adapter: Codex CLI. I token restano dell'utente, qualunque sia il vendor. |
 
 ---
 
