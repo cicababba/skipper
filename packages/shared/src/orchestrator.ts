@@ -638,11 +638,17 @@ export interface RepoSettingsRow {
 }
 
 // Per-repo agent instructions (#227): a Skipper-owned conventions doc, seeded
-// from the repo's CLAUDE.md or generated at link, editable in repo settings,
+// from existing agent instructions in the repo (#241 ladder) or generated at
+// link, editable in repo settings,
 // injected into the planner/coder system prompts. Stored in userData, never
 // committed.
 
-export type RepoInstructionsSource = "claude-md" | "generated" | "edited";
+export type RepoInstructionsSource =
+  | "claude-md"
+  | "agents-md"
+  | "copilot-instructions"
+  | "generated"
+  | "edited";
 export type RepoInstructionsStatus = "ready" | "generating" | "failed";
 
 export interface RepoInstructionsDoc {

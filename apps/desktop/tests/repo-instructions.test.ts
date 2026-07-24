@@ -19,10 +19,19 @@ async function tempDir(prefix: string): Promise<string> {
   return mkdtemp(join(tmpdir(), prefix));
 }
 
-/** A repoPath with or without a CLAUDE.md. */
-async function repoWith(claudeMd?: string): Promise<string> {
+/**
+ * A repoPath seeded with arbitrary instructions files. A string is shorthand for
+ * a CLAUDE.md; a record maps repo-relative paths (e.g. ".github/copilot-instructions.md")
+ * to their contents.
+ */
+async function repoWith(files?: string | Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "repo-instr-repo-"));
-  if (claudeMd !== undefined) await writeFile(join(dir, "CLAUDE.md"), claudeMd, "utf-8");
+  const entries = files === undefined ? {} : typeof files === "string" ? { "CLAUDE.md": files } : files;
+  for (const [rel, content] of Object.entries(entries)) {
+    const path = join(dir, rel);
+    await mkdir(join(path, ".."), { recursive: true });
+    await writeFile(path, content, "utf-8");
+  }
   return dir;
 }
 
@@ -74,6 +83,79 @@ describe("seedRepoInstructions — CLAUDE.md present", () => {
     expect(doc?.content).toBe("# Conventions\nUse pnpm.");
     expect(generate).not.toHaveBeenCalled();
     expect(isInstructionsGenerating(REPO_KEY)).toBe(false);
+  });
+});
+
+describe("seedRepoInstructions — seed ladder", () => {
+  it("CLAUDE.md wins over AGENTS.md and ignores its content", async () => {
+    const dir = await tempDir("repo-instr-ladder-claude-");
+    const repoPath = await repoWith({ "CLAUDE.md": "claude wins", "AGENTS.md": "agents loses" });
+    const generate = vi.fn<() => Promise<string>>();
+    await seedRepoInstructions({ dir, repoKey: REPO_KEY, repoPath, generate });
+    const doc = await loadRepoInstructions(dir, REPO_KEY);
+    expect(doc?.source).toBe("claude-md");
+    expect(doc?.content).toBe("claude wins");
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("seeds AGENTS.md as source agents-md when it is the only file", async () => {
+    const dir = await tempDir("repo-instr-ladder-agents-");
+    const repoPath = await repoWith({ "AGENTS.md": "# Agents\nRun tests." });
+    const generate = vi.fn<() => Promise<string>>();
+    await seedRepoInstructions({ dir, repoKey: REPO_KEY, repoPath, generate });
+    const doc = await loadRepoInstructions(dir, REPO_KEY);
+    expect(doc?.status).toBe("ready");
+    expect(doc?.source).toBe("agents-md");
+    expect(doc?.content).toBe("# Agents\nRun tests.");
+    expect(generate).not.toHaveBeenCalled();
+    expect(isInstructionsGenerating(REPO_KEY)).toBe(false);
+  });
+
+  it("seeds .github/copilot-instructions.md as source copilot-instructions", async () => {
+    const dir = await tempDir("repo-instr-ladder-copilot-");
+    const repoPath = await repoWith({ ".github/copilot-instructions.md": "copilot conventions" });
+    const generate = vi.fn<() => Promise<string>>();
+    await seedRepoInstructions({ dir, repoKey: REPO_KEY, repoPath, generate });
+    const doc = await loadRepoInstructions(dir, REPO_KEY);
+    expect(doc?.status).toBe("ready");
+    expect(doc?.source).toBe("copilot-instructions");
+    expect(doc?.content).toBe("copilot conventions");
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("skips a whitespace-only CLAUDE.md and falls through to AGENTS.md", async () => {
+    const dir = await tempDir("repo-instr-ladder-blank-");
+    const repoPath = await repoWith({ "CLAUDE.md": "   \n\t\n", "AGENTS.md": "real agents doc" });
+    const generate = vi.fn<() => Promise<string>>();
+    await seedRepoInstructions({ dir, repoKey: REPO_KEY, repoPath, generate });
+    const doc = await loadRepoInstructions(dir, REPO_KEY);
+    expect(doc?.source).toBe("agents-md");
+    expect(doc?.content).toBe("real agents doc");
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("falls through to generation when every rung is whitespace-only", async () => {
+    const dir = await tempDir("repo-instr-ladder-allblank-");
+    const repoPath = await repoWith({
+      "CLAUDE.md": "  ",
+      "AGENTS.md": "\n\n",
+      ".github/copilot-instructions.md": "\t",
+    });
+    const settled = deferred<void>();
+    const generate = vi.fn(async () => "generated fallback");
+    await seedRepoInstructions({
+      dir,
+      repoKey: REPO_KEY,
+      repoPath,
+      generate,
+      onSettled: () => settled.resolve(),
+    });
+    expect(generate).toHaveBeenCalledOnce();
+    await settled.promise;
+    const doc = await loadRepoInstructions(dir, REPO_KEY);
+    expect(doc?.status).toBe("ready");
+    expect(doc?.source).toBe("generated");
+    expect(doc?.content).toBe("generated fallback");
   });
 });
 
