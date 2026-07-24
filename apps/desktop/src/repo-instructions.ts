@@ -1,13 +1,14 @@
 // Per-repo agent-instructions docs (#227), one JSON file per repo under
 // <userData>/repo-instructions/. Skipper-owned conventions the planner/coder are
-// prompted with; seeded from the repo's CLAUDE.md at link, else generated. Pure
+// prompted with; seeded from the repo's existing agent instructions at link
+// (#241 ladder), else generated. Pure
 // Node module (no electron import) so it stays unit-testable; callers inject the
 // directory and the generation function. Mirrors plan-store's per-entity JSON
 // pattern (sanitized filename + tmp+rename + save queue).
 
 import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { RepoInstructionsDoc } from "@skipper/shared";
+import type { RepoInstructionsDoc, RepoInstructionsSource } from "@skipper/shared";
 
 /** repoKey contains "/" which is illegal on Windows filenames. */
 export function instructionsFileName(repoKey: string): string {
@@ -77,20 +78,37 @@ export function isInstructionsGenerating(repoKey: string): boolean {
   return generating.has(repoKey);
 }
 
-async function readClaudeMd(repoPath: string): Promise<string | null> {
-  try {
-    return await readFile(join(repoPath, "CLAUDE.md"), "utf-8");
-  } catch {
-    return null;
+// Ordered lookup of existing agent-instructions files in a linked repo (#241).
+// First non-blank hit wins; generation is only the last resort. A whitespace-only
+// file is a miss (an empty doc is useless — mirrors the generate path rejecting
+// empty output), so the ladder falls through to the next candidate.
+const SEED_LADDER: Array<{ file: string; source: RepoInstructionsSource }> = [
+  { file: "CLAUDE.md", source: "claude-md" },
+  { file: "AGENTS.md", source: "agents-md" },
+  { file: join(".github", "copilot-instructions.md"), source: "copilot-instructions" },
+];
+
+async function readSeedFile(
+  repoPath: string,
+): Promise<{ content: string; source: RepoInstructionsSource } | null> {
+  for (const { file, source } of SEED_LADDER) {
+    let content: string;
+    try {
+      content = await readFile(join(repoPath, file), "utf-8");
+    } catch {
+      continue;
+    }
+    if (content.trim()) return { content, source };
   }
+  return null;
 }
 
 export interface SeedRepoInstructionsArgs {
   dir: string;
   repoKey: string;
-  /** Local checkout to seed from (CLAUDE.md) / generate against. */
+  /** Local checkout to seed from (instructions ladder) / generate against. */
   repoPath: string;
-  /** Agentic generation, called only when there is no CLAUDE.md. */
+  /** Agentic generation, called only when the seed ladder finds nothing. */
   generate: () => Promise<string>;
   /** Fired once generation settles (resolve or reject) — the driver poke. */
   onSettled?: () => void;
@@ -100,13 +118,14 @@ export interface SeedRepoInstructionsArgs {
 
 /**
  * Seed (or regenerate) a repo's instructions doc. Awaits only the synchronous
- * part — CLAUDE.md copy, or the "generating" placeholder write — so the caller
- * can gate auto-planning before generation finishes. Generation runs
+ * part — the seed-file copy, or the "generating" placeholder write — so the
+ * caller can gate auto-planning before generation finishes. Generation runs
  * fire-and-forget; never throws (a generation failure lands as a "failed" doc so
  * planning proceeds without it).
  *
  * - Existing ready doc + no force: left untouched (relink preserves user edits).
- * - CLAUDE.md present: copied as source "claude-md", status "ready".
+ * - Seed ladder hit (CLAUDE.md → AGENTS.md → .github/copilot-instructions.md,
+ *   first non-blank wins): copied with the matching source, status "ready".
  * - Otherwise: "generating" placeholder, then generate() in the background. On
  *   resolve/reject the write is guarded on the on-disk generationStartedAt still
  *   matching this run, so a concurrent user edit wins.
@@ -116,13 +135,13 @@ export async function seedRepoInstructions(args: SeedRepoInstructionsArgs): Prom
   const existing = await loadRepoInstructions(dir, repoKey);
   if (!force && existing?.status === "ready") return;
 
-  const claudeMd = await readClaudeMd(repoPath);
-  if (claudeMd !== null) {
+  const seed = await readSeedFile(repoPath);
+  if (seed !== null) {
     await saveRepoInstructions(dir, repoKey, {
       version: 1,
-      content: claudeMd,
+      content: seed.content,
       updatedAt: new Date().toISOString(),
-      source: "claude-md",
+      source: seed.source,
       status: "ready",
     });
     return;

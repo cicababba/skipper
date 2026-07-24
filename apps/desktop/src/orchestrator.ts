@@ -379,7 +379,7 @@ function repoOrch(repo: RepoRef): ResolvedRepoOrchestratorSettings {
 
 /**
  * Seed (or regenerate, force=true) a repo's agent-instructions doc (#227). Only
- * the synchronous part is awaited (CLAUDE.md copy or the "generating"
+ * the synchronous part is awaited (seed-file copy or the "generating"
  * placeholder); agentic generation runs in the background and pokes the planner
  * when it settles so a gated auto-plan resumes. Never throws.
  */
