@@ -196,6 +196,7 @@ export function AgentChatPanel({
             getEvents={stream.getEvents}
             onEvent={stream.onEvent}
             collapsible
+            defaultOpen={false}
             title={chat.activity}
           />
         )}

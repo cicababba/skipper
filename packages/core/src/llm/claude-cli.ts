@@ -479,6 +479,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
     schema: Record<string, unknown>,
     opts?: StructuredOptions,
   ): Promise<T> {
+    const toolsEnabled = typeof opts?.tools === "string" && opts.tools.length > 0;
     const args = [
       "-p",
       "-",
@@ -487,11 +488,12 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       "--model",
       this.model,
       "--max-turns",
-      "1",
+      toolsEnabled ? String(opts?.maxTurns ?? 8) : "1",
       ...(opts?.sessionId ? ["--session-id", opts.sessionId] : ["--no-session-persistence"]),
       "--disable-slash-commands",
-      "--tools",
-      "",
+      ...(toolsEnabled
+        ? ["--tools", opts!.tools!, "--allowedTools", opts!.tools!]
+        : ["--tools", ""]),
       "--setting-sources",
       "",
     ];

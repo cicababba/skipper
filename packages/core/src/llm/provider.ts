@@ -59,6 +59,11 @@ export interface StructuredOptions {
   sessionId?: string;
   /** Abort the call; rejects with AgentAbortError. claude-cli only (#159). */
   signal?: AbortSignal;
+  /** Comma-separated CLI tool list; enables multi-turn tool use for this call
+   *  (the reply is still the final JSON). claude-cli only; other providers ignore. */
+  tools?: string;
+  /** Turn budget when tools are enabled. claude-cli only. */
+  maxTurns?: number;
 }
 
 export interface LLMProviderInterface {

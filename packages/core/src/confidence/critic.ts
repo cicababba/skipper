@@ -32,6 +32,9 @@ export interface CriticInput {
   context: string;
   /** Prior review round (#205); its presence switches on the continuity schema. */
   prior?: CriticPriorRound;
+  /** True when the critic has repo-inspection tools + a worktree cwd (#226) —
+   *  switches on the verify-against-the-tree instruction. */
+  canInspectRepo?: boolean;
 }
 
 const CriticObjectionSchema = z.object({
@@ -76,9 +79,13 @@ const VERDICT_SCORE: Record<CriticVerdict, number> = {
 };
 const BLOCKING_PENALTY = 0.1;
 
-const BASE_VERDICT_INSTRUCTION = `Raise an objection ONLY for real, defensible problems; mark it blocking only when shipping as-is would be wrong. Verdict: "approve" if you failed to demolish it, "concerns" for non-blocking problems, "reject" if it is fundamentally flawed.`;
+const BASE_VERDICT_INSTRUCTION = `Raise an objection ONLY for real, defensible problems; mark it blocking only when shipping as-is would be wrong. Verdict: "approve" if you failed to demolish it, "concerns" for non-blocking problems, "reject" if it is fundamentally flawed.
 
-const CONTINUITY_INSTRUCTION = `For each objection you raise, set status: "persisting" when it re-raises one of the P1..Pn above that the current artifact still exhibits, otherwise "new". In "resolved", list the labels (e.g. "P2") of previous objections the current artifact genuinely fixed — not merely reworded. Never both resolve and re-raise the same prior objection, and do not re-raise a resolved objection just to acknowledge it.`;
+Ground every objection in what is verifiable from the provided context and artifact. An objection that depends on a repo fact you were not shown — a theme token, a config value, a project convention — must be raised as a non-blocking question, never as blocking. Mark blocking only when the objection names the concrete failure: a command that would fail, a user-visible break, or a violated acceptance criterion. "Suspicious styling" or a convention hunch does not clear that bar.`;
+
+const CONTINUITY_INSTRUCTION = `For each objection you raise, set status: "persisting" when it re-raises one of the P1..Pn above that the current artifact still exhibits, otherwise "new". In "resolved", list the labels (e.g. "P2") of previous objections the current artifact genuinely fixed — not merely reworded. Never both resolve and re-raise the same prior objection, and do not re-raise a resolved objection just to acknowledge it. Re-verify each persisting objection against the current artifact and context; drop a prior the provided context refutes rather than escalating it.`;
+
+const INSPECT_REPO_INSTRUCTION = `You have Read, Grep and Glob over the working tree. Verify any repo-fact claim — a convention, a theme token, an existing pattern — against the tree before raising it; a claim you could not verify stays non-blocking.`;
 
 function priorSection(prior: CriticPriorRound): string[] {
   const lines = [
@@ -114,6 +121,7 @@ export function buildCriticPrompt(input: CriticInput): string {
     input.artifact,
     `--- End ${input.artifactKind} ---`,
     ``,
+    ...(input.canInspectRepo ? [INSPECT_REPO_INSTRUCTION, ``] : []),
     input.prior
       ? `${BASE_VERDICT_INSTRUCTION}\n\n${CONTINUITY_INSTRUCTION}`
       : BASE_VERDICT_INSTRUCTION,
@@ -139,7 +147,7 @@ function mapResolvedLabels(labels: string[], prior: CriticObjection[]): CriticOb
 export async function runCritic(
   input: CriticInput,
   llm: LLMProviderInterface,
-  opts?: { cwd?: string; sessionId?: string; signal?: AbortSignal },
+  opts?: { cwd?: string; sessionId?: string; signal?: AbortSignal; tools?: string; maxTurns?: number },
 ): Promise<CriticSignal> {
   if (input.prior) {
     const schema = z.toJSONSchema(CriticContinuityVerdictSchema) as Record<string, unknown>;

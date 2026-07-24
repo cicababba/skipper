@@ -659,6 +659,50 @@ describe("reviewer coder report threading (#146)", () => {
   });
 });
 
+// #226: the planner's verified repo facts thread into the critic to ground it.
+describe("reviewer plan-context threading (#226)", () => {
+  function capturingCritic() {
+    let seen: { planContext?: string[] } | undefined;
+    const critic = vi.fn(async (args: { planContext?: string[] }) => {
+      seen = args;
+      return { score: 1, verdict: "approve" as const, objections: [] };
+    }) as unknown as typeof critiqueDiff;
+    return { critic, get: () => seen };
+  }
+
+  it("passes the stored plan's context to the critic as planContext", async () => {
+    const h = makeHarness({
+      getPlan: async (item) =>
+        ({
+          version: 2,
+          itemId: item.id,
+          repo: item.repo,
+          issueNumber: item.number,
+          generatedAt: "2026-07-13T00:00:00.000Z",
+          model: "opus",
+          plan: { ...plan, context: ["src/a.ts:1 exports foo", "no shadcn tokens here"] },
+        }) as StoredPlan,
+    });
+    const { critic, get } = capturingCritic();
+    initReviewer(h.deps, critic);
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+    expect(get()?.planContext).toEqual(["src/a.ts:1 exports foo", "no shadcn tokens here"]);
+  });
+
+  it("omits planContext when the stored plan has no context", async () => {
+    const h = makeHarness();
+    const { critic, get } = capturingCritic();
+    initReviewer(h.deps, critic);
+    h.items.set("github:1", makeItem("agent-review"));
+    pokeReviewer();
+    await settle();
+    expect(get()).toBeDefined();
+    expect(get()?.planContext).toBeUndefined();
+  });
+});
+
 // #113: the reviewer streams coarse lifecycle beats over its own event channel.
 describe("reviewer event emission (#113)", () => {
   it("emits fetching → agent-init → result in order for an approve round", async () => {

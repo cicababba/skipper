@@ -87,21 +87,71 @@ describe("critiqueDiff", () => {
     expect(prompt).toContain("[diff truncated");
   });
 
-  // #111: the reviewer persists a per-round session; the bundled cwd+id must
-  // reach askStructured so the run lands on disk resumable from the worktree.
-  it("forwards the session as askStructured opts (cwd + sessionId)", async () => {
+  // #111 + #226: the reviewer persists a per-round session; the bundled cwd+id must
+  // reach askStructured, and a session also unlocks the read-only inspection toolset.
+  it("forwards the session as askStructured opts (cwd, sessionId, inspection tools)", async () => {
     const { llm, askStructured } = fakeLLM();
     await critiqueDiff(
       { diff: "+1", issue, acceptance: [], session: { id: "sid-1", cwd: "/wt/issue-1" } },
       llm,
     );
-    expect(askStructured.mock.calls[0][2]).toEqual({ cwd: "/wt/issue-1", sessionId: "sid-1" });
+    expect(askStructured.mock.calls[0][2]).toEqual({
+      cwd: "/wt/issue-1",
+      sessionId: "sid-1",
+      tools: "Read,Grep,Glob",
+      maxTurns: 8,
+    });
   });
 
-  it("passes no opts when session is absent", async () => {
+  // #226: with a session the reviewer can inspect the tree — the prompt tells it to.
+  it("adds the inspect-repo instruction when a session is present", async () => {
+    const { llm, askStructured } = fakeLLM();
+    await critiqueDiff(
+      { diff: "+1", issue, acceptance: [], session: { id: "sid-1", cwd: "/wt/issue-1" } },
+      llm,
+    );
+    const prompt = askStructured.mock.calls[0][0] as string;
+    expect(prompt).toContain("You have Read, Grep and Glob over the working tree.");
+  });
+
+  it("passes no opts and no inspect-repo instruction when session is absent", async () => {
     const { llm, askStructured } = fakeLLM();
     await critiqueDiff({ diff: "+1", issue, acceptance: [] }, llm);
     expect(askStructured.mock.calls[0][2]).toBeUndefined();
+    const prompt = askStructured.mock.calls[0][0] as string;
+    expect(prompt).not.toContain("You have Read, Grep and Glob over the working tree.");
+  });
+
+  // #226: the planner's verified facts ground the reviewer against its own guesses.
+  it("renders the planner's verified-facts block when planContext is set", async () => {
+    const { llm, askStructured } = fakeLLM();
+    await critiqueDiff(
+      {
+        diff: "+1",
+        issue,
+        acceptance: [],
+        planContext: ["src/theme.ts:3 uses a ThemeContext", "no shadcn tokens in this repo"],
+      },
+      llm,
+    );
+    const prompt = askStructured.mock.calls[0][0] as string;
+    expect(prompt).toContain(
+      "Verified repo facts from the planner (trust these over your own assumptions):",
+    );
+    expect(prompt).toContain("- src/theme.ts:3 uses a ThemeContext");
+    expect(prompt).toContain("- no shadcn tokens in this repo");
+  });
+
+  it("omits the verified-facts block when planContext is absent or empty", async () => {
+    const { llm, askStructured } = fakeLLM();
+    await critiqueDiff({ diff: "+1", issue, acceptance: [], planContext: [] }, llm);
+    expect(askStructured.mock.calls[0][0] as string).not.toContain(
+      "Verified repo facts from the planner",
+    );
+
+    const { llm: llm2, askStructured: ask2 } = fakeLLM();
+    await critiqueDiff({ diff: "+1", issue, acceptance: [] }, llm2);
+    expect(ask2.mock.calls[0][0] as string).not.toContain("Verified repo facts from the planner");
   });
 
   // #146: the coder report threads deviations + verification into the critic

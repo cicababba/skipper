@@ -64,7 +64,7 @@ export function renderDirtyFilesBlock(files: string[] | undefined): string | und
   ].join("\n");
 }
 
-export const PLANNER_SYSTEM_PROMPT = `You are a senior software engineer preparing an implementation plan for a GitHub issue in the repository at your current working directory.
+export const PLANNER_SYSTEM_PROMPT = `You are a senior software engineer preparing an implementation plan for an issue in the repository at your current working directory.
 
 Operate ONLY inside your current working directory and never modify any files anywhere, including via Bash — even if the issue mentions absolute paths elsewhere on this machine. You are only writing a plan, not code.
 
@@ -100,7 +100,7 @@ export function buildPlannerPrompt(
       ? `${issue.body.slice(0, MAX_BODY_CHARS)}\n[... issue body truncated ...]`
       : issue.body;
   const lines = [
-    `Plan the implementation of this GitHub issue.`,
+    `Plan the implementation of this issue.`,
     ``,
     `Issue ${displayKey(issue.key)}: ${issue.title}`,
     `URL: ${issue.url}`,

@@ -276,4 +276,34 @@ describe("ClaudeCLIProvider.askStructured", () => {
     expect(argv()).not.toContain("--no-session-persistence");
     expect(spawnOpts().cwd).toBe("/wt/issue-1");
   });
+
+  const flagValue = (a: string[], flag: string) => a[a.indexOf(flag) + 1];
+
+  it("stays tool-less and single-turn without a tools opt", async () => {
+    const { child, argv } = arm();
+    const promise = new ClaudeCLIProvider("sonnet").askStructured("q", schema);
+    child.stdout.emit("data", Buffer.from(reply));
+    child.emit("close", 0);
+    await promise;
+
+    expect(flagValue(argv(), "--tools")).toBe("");
+    expect(flagValue(argv(), "--max-turns")).toBe("1");
+    expect(argv()).not.toContain("--allowedTools");
+  });
+
+  // #226: the diff reviewer runs askStructured with read-only tools over multiple turns.
+  it("enables the read-only toolset and a turn budget with a tools opt", async () => {
+    const { child, argv } = arm();
+    const promise = new ClaudeCLIProvider("sonnet").askStructured("q", schema, {
+      tools: "Read,Grep,Glob",
+      maxTurns: 8,
+    });
+    child.stdout.emit("data", Buffer.from(reply));
+    child.emit("close", 0);
+    await promise;
+
+    expect(flagValue(argv(), "--tools")).toBe("Read,Grep,Glob");
+    expect(flagValue(argv(), "--allowedTools")).toBe("Read,Grep,Glob");
+    expect(flagValue(argv(), "--max-turns")).toBe("8");
+  });
 });
