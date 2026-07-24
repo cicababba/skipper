@@ -58,6 +58,8 @@ import type {
   GetRepoInstructionsResult,
   SetRepoInstructionsResult,
   RegenerateRepoInstructionsResult,
+  GetRepoGraphifyResult,
+  ReindexRepoGraphifyResult,
   RepoIntakeSettings,
   RepoRef,
   RepoSettingsRow,
@@ -105,6 +107,12 @@ import {
   saveRepoInstructions,
   seedRepoInstructions,
 } from "./repo-instructions";
+import {
+  isGraphifyRunning,
+  loadGraphifyDoc,
+  markStaleGraphifyRuns,
+} from "./graphify-store";
+import { ensureGraphIndexed, graphifyForPlanning, type GraphifyDeps } from "./graphify";
 import { readStoredPlan, updateStoredPlan } from "./plan-store";
 import { readStoredCoderReport } from "./report-store";
 import {
@@ -165,6 +173,12 @@ export interface OrchestratorDeps {
   memoryDir: string;
   /** Per-repo agent-instructions docs (#227), one JSON per linked repo. */
   repoInstructionsDir: string;
+  /** Per-repo Graphify index state + graphs (#233), one dir per linked repo. */
+  graphsDir: string;
+  /** uv-managed runtime root for the Graphify install (#233). */
+  toolsDir: string;
+  /** uv binary — "uv" from PATH in dev, an absolute packaged path in production (#233). */
+  uvBin: string;
   /** userData root — settings.json lives here (#59: planner/reviewer provider). */
   dataDir: string;
   /** Absolute path to the CLI bundle for the skipper-memory MCP server (#45),
@@ -392,6 +406,29 @@ async function seedInstructions(repo: RepoRef, localPath: string, force = false)
     },
     force,
   });
+}
+
+/** Graphify driver deps for a repo (#233), or undefined when it isn't linked
+ *  (extract needs a local checkout). */
+function graphifyDepsFor(repo: RepoRef): GraphifyDeps | undefined {
+  if (!deps) return undefined;
+  const link = repoLinks?.repos[repoKey(repo)];
+  if (!link?.localPath) return undefined;
+  return {
+    graphsDir: deps.graphsDir,
+    runtime: { uvBin: deps.uvBin, toolsDir: deps.toolsDir },
+    repo,
+    repoPath: link.localPath,
+    ...(link.baseBranch ? { baseBranch: link.baseBranch } : {}),
+    withRepoGitLock,
+    onStatus: broadcast,
+  };
+}
+
+/** Fire-and-forget a Graphify index run for a repo, if it is linked (#233). */
+function kickGraphify(repo: RepoRef): void {
+  const d = graphifyDepsFor(repo);
+  if (d) void ensureGraphIndexed(d);
 }
 
 /** Accounts whose auth provider backs an issue source (identity-only providers filtered out). */
@@ -910,6 +947,8 @@ export function initOrchestrator(
   // so any doc left "generating" by a crash would gate planning forever. Flip
   // them to "failed" before anything reads a doc.
   void markStaleGenerations(orchestratorDeps.repoInstructionsDir);
+  // Same crash safety for Graphify (#233): a doc left installing/indexing gates a repo.
+  void markStaleGraphifyRuns(orchestratorDeps.graphsDir);
 
   ipcMain.handle("skipper:orchestrator:getState", async () => {
     await ensureManifest();
@@ -968,10 +1007,15 @@ export function initOrchestrator(
       const m = await ensureManifest();
       const key = repoKey({ owner, name });
       const followedBefore = resolveRepoIntakeSettings(m.repoSettings[key]).followed;
+      const graphifyBefore = resolveRepoIntakeSettings(m.repoSettings[key]).graphify;
       const merged = applyRepoSettingsPatch(m.repoSettings[key], patch);
       if (Object.keys(merged).length === 0) delete m.repoSettings[key];
       else m.repoSettings[key] = merged;
       await saveOrchestratorManifest(deps!.manifestFilePath, m);
+      // Turned on: kick a first index so the graph is ready before the next plan (#233).
+      if (!graphifyBefore && resolveRepoIntakeSettings(m.repoSettings[key]).graphify) {
+        kickGraphify({ owner, name });
+      }
       if (!followedBefore && resolveRepoIntakeSettings(m.repoSettings[key]).followed) {
         // Re-followed: cached issues admit retroactively, like a fresh repo link.
         await reconcileFromCache();
@@ -1481,6 +1525,36 @@ export function initOrchestrator(
     },
   );
   ipcMain.handle(
+    "skipper:orchestrator:getRepoGraphify",
+    async (_e, owner: string, name: string): Promise<GetRepoGraphifyResult> => {
+      try {
+        const doc = await loadGraphifyDoc(deps!.graphsDir, repoKey({ owner, name }));
+        return { ok: true, doc };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
+  ipcMain.handle(
+    "skipper:orchestrator:reindexRepoGraphify",
+    async (_e, owner: string, name: string): Promise<ReindexRepoGraphifyResult> => {
+      try {
+        const key = repoKey({ owner, name });
+        const links = await ensureRepoLinks();
+        if (!links.repos[key]?.localPath) return { ok: false, error: "repo not linked" };
+        const m = await ensureManifest();
+        if (!resolveRepoIntakeSettings(m.repoSettings[key]).graphify) {
+          return { ok: false, error: "Graphify is off for this repo" };
+        }
+        if (isGraphifyRunning(key)) return { ok: false, error: "indexing already running" };
+        kickGraphify({ owner, name });
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
+  ipcMain.handle(
     "skipper:orchestrator:listRepoBranches",
     async (_e, owner: string, name: string): Promise<ListRepoBranchesResult> => {
       try {
@@ -1823,6 +1897,11 @@ export function initOrchestrator(
       orchestratorDeps.cliBundlePath
         ? { cliBundlePath: orchestratorDeps.cliBundlePath, repo: item.repo }
         : undefined,
+    getGraphify: (item) => {
+      if (!repoOrch(item.repo).graphify) return undefined;
+      const d = graphifyDepsFor(item.repo);
+      return d ? graphifyForPlanning(d) : undefined;
+    },
   });
 
   initPlanChat({

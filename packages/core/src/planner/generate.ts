@@ -3,6 +3,7 @@ import type { IssueComment } from "../adapters/types";
 import type { LLMProviderInterface, LLMResponse } from "../llm/provider";
 import { AgentAbortError } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
+import { renderGraphifySection, type GraphifyContext } from "../llm/graphify-mcp";
 import type { RunConfinement } from "../llm/confinement";
 import { isSalvageableDeath } from "../llm/claude-cli";
 import { withRepoConventions } from "../instructions";
@@ -56,6 +57,9 @@ export interface GeneratePlanOptions {
   /** The repo's Skipper-owned agent-instructions doc content (#227), appended to
    *  the planner system prompt as a "Repository conventions" section. */
   repoInstructions?: string;
+  /** The repo's Graphify knowledge-graph index (#233): attaches the graphify MCP
+   *  server and appends a section declaring the graph exists. */
+  graphify?: GraphifyContext;
 }
 
 export class PlanGenerationError extends Error {
@@ -128,7 +132,9 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
   }
   if (opts.signal?.aborted) throw new AgentAbortError();
   const schema = planJsonSchema();
-  const systemPrompt = withRepoConventions(PLANNER_SYSTEM_PROMPT, opts.repoInstructions);
+  const systemPrompt =
+    withRepoConventions(PLANNER_SYSTEM_PROMPT, opts.repoInstructions) +
+    (opts.graphify ? `\n\n${renderGraphifySection(opts.graphify)}` : "");
   let reply: LLMResponse;
   try {
     reply = await opts.llm.agent(buildPlannerPrompt(opts.issue, schema, opts.preexistingChanges), {
@@ -138,6 +144,7 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
       ...(opts.hardTimeoutMs !== undefined ? { hardTimeoutMs: opts.hardTimeoutMs } : {}),
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
+      ...(opts.graphify ? { graph: opts.graphify.mcp } : {}),
       ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
       ...(opts.confinement ? { confinement: opts.confinement } : {}),

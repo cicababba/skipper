@@ -3,6 +3,7 @@ import {
   computeConfidence,
   createProvider,
   generatePlan,
+  type GraphifyContext,
   type IssueComment,
   type LLMProviderInterface,
   type MemoryMcp,
@@ -81,6 +82,9 @@ export interface PlannerDeps {
   plansDir: string;
   /** skipper-memory MCP for this item's repo (#45); undefined = no CLI bundle. */
   getMemoryMcp?: (item: TrackedItem) => MemoryMcp | undefined;
+  /** The repo's Graphify knowledge-graph context (#233); undefined = toggle off,
+   *  unlinked, or no graph yet. May reject — the run degrades to no graph. */
+  getGraphify?: (item: TrackedItem) => Promise<GraphifyContext | undefined> | undefined;
 }
 
 const PLANNING_CONCURRENCY = 2;
@@ -320,12 +324,24 @@ async function run(itemId: string): Promise<void> {
     // #227: the repo's conventions doc, injected into the planner + convergence
     // system prompts. Best-effort — a read failure never blocks planning.
     const repoInstructions = await deps.getRepoInstructions(item.repo).catch(() => undefined);
+    // #233: the repo's knowledge-graph context — attaches the graphify MCP server
+    // and a prompt section. Best-effort; a reject/absence just runs without it.
+    const graphify = await deps.getGraphify?.(item)?.catch(() => undefined);
+    if (graphify) {
+      const shas = `graph @ ${graphify.indexedSha.slice(0, 7)}`;
+      const detail =
+        graphify.currentBaseSha && graphify.currentBaseSha !== graphify.indexedSha
+          ? `${shas} (stale, base @ ${graphify.currentBaseSha.slice(0, 7)})`
+          : shas;
+      deps.emitEvent(itemId, { kind: "status", phase: "graphify", detail });
+    }
     const plan = await generatePlan({
       issue,
       repoPath: cwd,
       llm: provider,
       hardTimeoutMs: settings.plannerTimeBudgetMin * 60_000,
       ...(repoInstructions ? { repoInstructions } : {}),
+      ...(graphify ? { graphify } : {}),
       onEvent: (event) => {
         // The minted id is authoritative; if the CLI reports a different session
         // in its init line, reconcile to the real on-disk id (#111).
@@ -381,6 +397,7 @@ async function run(itemId: string): Promise<void> {
         signal: controller.signal,
         ...(confinement ? { confinement } : {}),
         ...(repoInstructions ? { repoInstructions } : {}),
+        ...(graphify ? { graphify } : {}),
       });
       if (Object.keys(report.signals).length === 0) report = undefined;
     } catch {

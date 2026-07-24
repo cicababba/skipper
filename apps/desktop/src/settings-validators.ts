@@ -50,6 +50,7 @@ export const REPO_SETTINGS_VALIDATORS: {
   plannerModel: nonEmptyString,
   coderModel: nonEmptyString,
   reviewerModel: nonEmptyString,
+  graphify: asBool,
 };
 
 /**

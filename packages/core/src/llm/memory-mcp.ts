@@ -1,4 +1,5 @@
 import { repoKey, type RepoRef } from "@skipper/shared";
+import { buildMcpConfigArgs } from "./mcp-config";
 
 // Solutions-memory MCP wiring (#45). Every planner/coder run passes
 // --setting-sources "" so no user/project MCP config loads — the
@@ -18,22 +19,27 @@ export const MEMORY_TOOLS =
   "mcp__skipper-memory__search_memory,mcp__skipper-memory__get_memory";
 
 /**
+ * The skipper-memory stdio server entry. `process.execPath` +
+ * ELECTRON_RUN_AS_NODE=1 is the same node-under-Electron trick `resolveClaude()`
+ * uses: no assumption that `node` or `skipper` is on PATH, Windows-safe.
+ */
+export function memoryServerConfig(mem: MemoryMcp): {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+} {
+  return {
+    command: process.execPath,
+    args: [mem.cliBundlePath, "memory", "serve", "--repo", repoKey(mem.repo)],
+    env: { ELECTRON_RUN_AS_NODE: "1" },
+  };
+}
+
+/**
  * The `--mcp-config` (+ `--strict-mcp-config`) flags that launch the
- * skipper-memory stdio server. `process.execPath` + ELECTRON_RUN_AS_NODE=1 is
- * the same node-under-Electron trick `resolveClaude()` uses: no assumption that
- * `node` or `skipper` is on PATH, Windows-safe. The tool names still have to be
- * added to both --tools and --allowedTools by the caller (headless -p
- * auto-denies otherwise).
+ * skipper-memory stdio server. The tool names still have to be added to both
+ * --tools and --allowedTools by the caller (headless -p auto-denies otherwise).
  */
 export function buildMemoryMcpArgs(mem: MemoryMcp): string[] {
-  const config = {
-    mcpServers: {
-      "skipper-memory": {
-        command: process.execPath,
-        args: [mem.cliBundlePath, "memory", "serve", "--repo", repoKey(mem.repo)],
-        env: { ELECTRON_RUN_AS_NODE: "1" },
-      },
-    },
-  };
-  return ["--mcp-config", JSON.stringify(config), "--strict-mcp-config"];
+  return buildMcpConfigArgs(mem);
 }

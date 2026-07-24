@@ -13,6 +13,7 @@ import { RepoIntakeControls } from "./repo-intake-controls";
 import { RepoModelControls } from "./repo-model-controls";
 import { RepoBaseBranchControl } from "./repo-base-branch-control";
 import { RepoInstructionsControl } from "./repo-instructions-control";
+import { RepoGraphifyControl } from "./repo-graphify-control";
 
 export function RepoSettingsView() {
   const { t } = useT();
@@ -80,6 +81,17 @@ export function RepoSettingsView() {
           {row.linked && (
             <Section title={rp.baseBranch} editable={false} editing={false}>
               <RepoBaseBranchControl owner={owner} name={name} repoKey={key} />
+            </Section>
+          )}
+          {row.linked && (
+            <Section title={rp.graphify.title} editable={false} editing={false}>
+              <RepoGraphifyControl
+                owner={owner}
+                name={name}
+                enabled={row.settings.graphify === true}
+                busy={busy}
+                onToggle={(v) => void patch({ graphify: v ? true : undefined })}
+              />
             </Section>
           )}
           {row.linked && (

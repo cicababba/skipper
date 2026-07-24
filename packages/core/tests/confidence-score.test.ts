@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ConfidenceReport, IssuePlan } from "@skipper/shared";
 import type { LLMProviderInterface, LLMResponse } from "../src/llm/provider";
+import type { GraphifyContext } from "../src/llm/graphify-mcp";
 import type { PlanIssueInput } from "../src/planner";
 import {
   computeConfidence,
@@ -317,5 +318,47 @@ describe("computeConfidence — adaptive convergence (#50)", () => {
       }),
     ).rejects.toThrow();
     expect(generatePlan).not.toHaveBeenCalled();
+  });
+});
+
+describe("computeConfidence — Graphify threading (#233)", () => {
+  const GRAPHIFY: GraphifyContext = {
+    mcp: {
+      mcpBinPath: "/data/tools/bin/graphify-mcp",
+      graphPath: "/data/graphs/o_r/graphify-out/graph.json",
+    },
+    indexedSha: "abc1234def",
+  };
+
+  it("threads the graphify context into every convergence extra run", async () => {
+    const generatePlan = vi.fn(async () => plan());
+    await computeConfidence({
+      plan: plan(),
+      issue: ISSUE,
+      repoPath: repo,
+      llm: fakeLLM(APPROVE),
+      extraPlanRuns: 2,
+      graphify: GRAPHIFY,
+      deps: { generatePlan },
+    });
+    expect(generatePlan).toHaveBeenCalledTimes(2);
+    for (const call of generatePlan.mock.calls) {
+      expect((call[0] as { graphify?: GraphifyContext }).graphify).toBe(GRAPHIFY);
+    }
+  });
+
+  it("passes no graphify key to the extra runs when absent", async () => {
+    const generatePlan = vi.fn(async () => plan());
+    await computeConfidence({
+      plan: plan(),
+      issue: ISSUE,
+      repoPath: repo,
+      llm: fakeLLM(APPROVE),
+      extraPlanRuns: 2,
+      deps: { generatePlan },
+    });
+    for (const call of generatePlan.mock.calls) {
+      expect("graphify" in (call[0] as object)).toBe(false);
+    }
   });
 });

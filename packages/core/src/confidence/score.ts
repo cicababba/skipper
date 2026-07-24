@@ -6,7 +6,12 @@ import {
   type GateMode,
   type IssuePlan,
 } from "@skipper/shared";
-import { AgentAbortError, type LLMProviderInterface, type RunConfinement } from "../llm";
+import {
+  AgentAbortError,
+  type GraphifyContext,
+  type LLMProviderInterface,
+  type RunConfinement,
+} from "../llm";
 import { generatePlan as realGeneratePlan, type PlanIssueInput } from "../planner";
 import { scoreClarity } from "./clarity";
 import { scoreConvergence } from "./convergence";
@@ -54,6 +59,10 @@ export interface ComputeConfidenceOptions {
    *  primary plan — otherwise convergence compares plans under different prompts
    *  and depresses the signal. */
   repoInstructions?: string;
+  /** The repo's Graphify index (#233), threaded into the convergence extra plan
+   *  runs so they explore under the same graph as the primary plan. Reaches only
+   *  the extra runs — critiquePlan uses askStructured, which has no MCP path. */
+  graphify?: GraphifyContext;
   deps?: { generatePlan?: typeof realGeneratePlan };
 }
 
@@ -143,6 +152,7 @@ export async function computeConfidence(
           repoPath: opts.repoPath,
           llm: opts.llm,
           ...(opts.repoInstructions ? { repoInstructions: opts.repoInstructions } : {}),
+          ...(opts.graphify ? { graphify: opts.graphify } : {}),
           ...(opts.signal ? { signal: opts.signal } : {}),
           ...(opts.confinement ? { confinement: opts.confinement } : {}),
         }),

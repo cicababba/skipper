@@ -1,5 +1,6 @@
 import type { CodingEvent, LLMProvider } from "@skipper/shared";
 import type { MemoryMcp } from "./memory-mcp";
+import type { GraphifyMcp } from "./graphify-mcp";
 import type { RunConfinement } from "./confinement";
 import { ClaudeCLIProvider } from "./claude-cli";
 import { OpenAIProvider } from "./openai";
@@ -23,6 +24,9 @@ export interface AgentOptions {
   onEvent?: (event: CodingEvent) => void;
   /** Inject the skipper-memory MCP server, scoped to this repo (#45). */
   memory?: MemoryMcp;
+  /** Inject the graphify knowledge-graph MCP server, scoped to this repo (#233).
+   *  Planner-only by construction; claude-cli only. */
+  graph?: GraphifyMcp;
   /** Persist the run under this session id (drops --no-session-persistence) so it
    *  can be resumed later; cwd-scoped, claude-cli only (#111). */
   sessionId?: string;

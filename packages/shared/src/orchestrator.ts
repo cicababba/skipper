@@ -220,6 +220,8 @@ export interface RepoIntakeSettings {
   plannerModel?: string;
   coderModel?: string;
   reviewerModel?: string;
+  /** #233 opt-in per-repo Graphify knowledge-graph index. Absent = off. */
+  graphify?: boolean;
 }
 
 export const DEFAULT_AUTO_PLAN_LABEL = "ai-ready";
@@ -229,6 +231,7 @@ export interface ResolvedRepoIntakeSettings {
   priority: RepoPriority;
   autoPlan: AutoPlanMode;
   autoPlanLabel: string;
+  graphify: boolean;
 }
 
 export function resolveRepoIntakeSettings(s?: RepoIntakeSettings): ResolvedRepoIntakeSettings {
@@ -237,6 +240,7 @@ export function resolveRepoIntakeSettings(s?: RepoIntakeSettings): ResolvedRepoI
     priority: s?.priority ?? "normal",
     autoPlan: s?.autoPlan ?? "on",
     autoPlanLabel: s?.autoPlanLabel?.trim() || DEFAULT_AUTO_PLAN_LABEL,
+    graphify: s?.graphify === true,
   };
 }
 
@@ -654,6 +658,33 @@ export type SetRepoInstructionsResult =
   | { ok: false; error: string };
 
 export type RegenerateRepoInstructionsResult = { ok: true } | { ok: false; error: string };
+
+// Per-repo Graphify knowledge-graph index (#233): an opt-in, fully local
+// tree-sitter AST index of the repo at its resolved base ref, extracted into a
+// throwaway worktree and queried by the planner via the graphify-mcp server.
+// Stored in userData, keyed by repoKey, never committed.
+
+export type GraphifyStatus = "installing" | "indexing" | "ready" | "failed";
+
+export interface GraphifyDoc {
+  version: 1;
+  status: GraphifyStatus;
+  /** Base SHA the on-disk graph was extracted at. Presence + graph.json on disk
+   *  is the last-good-graph signal (status gates only the UI). */
+  indexedSha?: string;
+  /** ISO 8601 — UI "last updated". */
+  updatedAt: string;
+  /** Set when status === "failed". */
+  error?: string;
+  /** Anti-clobber guard: a stale run's final save is dropped if this moved on. */
+  runStartedAt?: string;
+}
+
+export type GetRepoGraphifyResult =
+  | { ok: true; doc: GraphifyDoc | null }
+  | { ok: false; error: string };
+
+export type ReindexRepoGraphifyResult = { ok: true } | { ok: false; error: string };
 
 export interface FollowCandidate {
   repo: RepoRef;

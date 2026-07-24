@@ -17,7 +17,8 @@ skipper/
 │   │   ├── src/terminal.ts     # PTY session manager (public core, #18)
 │   │   ├── src/auth/           # Multi-provider OAuth desktop flow (Google, GitHub, GitLab, Jira, Bitbucket; loopback)
 │   │   ├── src/orchestrator.ts # Issue-orchestration loop (+ planner, coder, reviewer, shepherd,
-│   │   │                       #   plan-store, worktrees, repo-links, inbox-cursor-store, updater)
+│   │   │                       #   plan-store, worktrees, repo-links, inbox-cursor-store, updater,
+│   │   │                       #   graphify: per-repo knowledge-graph index, #233)
 │   │   ├── src/preload.ts      # Renderer-safe IPC bridge
 │   │   └── build/              # electron-builder hooks, icons, NSIS installer
 │   └── web/                    # Next.js 16 + React 19 UI (runs as standalone inside Electron)
@@ -45,6 +46,7 @@ skipper/
 - **CLI**: `commander`
 - **LLM providers** (`packages/core/src/llm/`): `claude-cli` (default — spawns the user's `claude` CLI), `openai`, `ollama`
 - **Embeddings**: `@huggingface/transformers` running ONNX locally (`Xenova/all-MiniLM-L6-v2`), in `packages/core/src/vectorstore`
+- **Knowledge graph** (#233, opt-in per repo): [Graphify](https://github.com/Graphify-Labs/graphify) — tree-sitter AST index of the linked repo, extracted code-only (no LLM, no API key) from a throwaway worktree at the base ref. The planner queries it via the `graphify-mcp` stdio server (7 local graph tools allowlisted; coder excluded by construction). Python runtime isolated in `<userData>/tools` via a bundled `uv` binary — two pins to maintain: `UV_VERSION` in `apps/desktop/build/prepare-uv.mjs` and `GRAPHIFY_PIP_SPEC` in `apps/desktop/src/graphify-runtime.ts`
 - **Auth**: multi-provider multi-account OAuth desktop flow (loopback redirect) behind a `ProviderConfig` registry in `apps/desktop/src/auth/` — registered providers: `google`, `github`, `gitlab`, `jira`, `bitbucket`. Google: PKCE, identity-only scopes — proves the email for the supporter update entitlement (`getIdToken`, Google-only path). GitHub: GitHub App user-to-server flow, fixed loopback ports 8127–8129, expiring tokens with refresh rotation — feeds the orchestrator (#5+). GitLab/Jira/Bitbucket feed the tracker/code-host adapters in `packages/core/src/adapters`. Accounts + tokens live in one `auth.enc` (v2 multi-account format, legacy single-session migrated on load) encrypted via Electron `safeStorage`.
 - **Testing**: Vitest (configured at root). Coverage is solid where it counts: `packages/core/tests/` (~43 files, incl. a 54-case reconcile suite), every desktop driver loop (planner/coder/reviewer/shepherd/rescore/plan-chat via injected deps), the pure stores (worktrees, plan-store, repo-links), and `apps/web/src/lib/inbox/*` (11 pure modules, 1:1 tests). Known holes: `apps/desktop/src/orchestrator.ts` wiring (zero tests), `packages/core/src/adapters/*` (zero tests), most of the Electron shell (`main.ts`, `auth/`). Test-writing and failure-triage rules live in [`.claude/rules/testing.md`](.claude/rules/testing.md).
 - **Lint/format**: ESLint 9 + Prettier 3
@@ -71,7 +73,7 @@ pnpm desktop:package:mac           # DMG into apps/desktop/release/
 pnpm desktop:package:win           # NSIS .exe into apps/desktop/release/
 ```
 
-`desktop:build` builds the web UI as a Next.js static export (`apps/web/out`, served in the app over the `app://skipper` protocol) and runs `apps/desktop/build/prepare-cli-runtime.mjs`, which assembles `build/cli-runtime/` — the `skipper` CLI bundle plus its native embedder deps copied as real files (zero symlinks, so the Windows NSIS installer can't drop them).
+`desktop:build` builds the web UI as a Next.js static export (`apps/web/out`, served in the app over the `app://skipper` protocol) and runs `apps/desktop/build/prepare-cli-runtime.mjs`, which assembles `build/cli-runtime/` — the `skipper` CLI bundle plus its native embedder deps copied as real files (zero symlinks, so the Windows NSIS installer can't drop them). It also runs `prepare-uv.mjs`, which downloads the pinned `uv` binaries (mac arm64 + win x64) into `build/uv/` for `extraResources`; `after-pack.cjs` keeps only the target platform's binary.
 
 ### CLI (after `pnpm build`)
 
@@ -102,7 +104,7 @@ Gitflow: `main` is release-only (**every push to `main` fires `.github/workflows
 
 ## Important Notes
 
-- **No workspace folder** (removed with #39): all app state lives in Electron `userData` (`~/.config/Skipper` on Linux, `%APPDATA%/Skipper` on Windows, `~/Library/Application Support/Skipper` on macOS) — `settings.json`, `knowledge/{pending,rejected,accepted}`, plus the orchestrator files (manifest, plans/, worktrees/, memory/). `<userData>/knowledge/` holds captured knowledge atoms — user data, never modify or delete it. The CLI resolves the same directory itself (no anchor file).
+- **No workspace folder** (removed with #39): all app state lives in Electron `userData` (`~/.config/Skipper` on Linux, `%APPDATA%/Skipper` on Windows, `~/Library/Application Support/Skipper` on macOS) — `settings.json`, `knowledge/{pending,rejected,accepted}`, plus the orchestrator files (manifest, plans/, worktrees/, memory/, graphs/ — per-repo Graphify indexes, tools/ — the uv-managed Python runtime, #233). `<userData>/knowledge/` holds captured knowledge atoms — user data, never modify or delete it. The CLI resolves the same directory itself (no anchor file).
 - LLM credentials come from the user's `claude` CLI auth (default) or the OpenAI key in Settings. Never hardcode keys, never log them.
 - The Electron main on macOS does **not** inherit the user's shell PATH — `apps/desktop/src/main.ts` runs an inline `fix-path` equivalent so that spawning `claude` works regardless of where it's installed. Don't remove it.
 - `node-pty` is loaded with a `try/catch require` because a native-binding load failure must not crash the app — the terminal is optional.
