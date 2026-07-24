@@ -16,6 +16,7 @@ import { useT } from "@/lib/app-i18n";
 import { pct, bandClasses } from "@/components/confidence-popover";
 import { CloseItemDialog } from "@/components/close-item-dialog";
 import { actionsFor } from "@/lib/inbox/actions";
+import { actionLabel } from "@/lib/inbox/action-label";
 import { nowSentence, railPrimary } from "@/lib/inbox/now";
 import { formatDuration } from "@/lib/inbox/timeline";
 import { ResumeSessionButton } from "./resume-session";
@@ -134,7 +135,7 @@ export function NowRail({
                 className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50"
               >
                 {busyAction === "openPr" && <Loader2 size={11} className="animate-spin" />}
-                {t.inbox.actions.openPr}
+                {actionLabel(primary.action, t)}
               </button>
               <button
                 onClick={() => setCloseOpen(true)}

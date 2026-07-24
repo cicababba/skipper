@@ -45,6 +45,25 @@ describe("actionsFor", () => {
     }
   });
 
+  it("omits prNumber on a human-review item without a PR (#225)", () => {
+    const actions = actionsFor(item({ state: "human-review" }));
+    expect(actions[0]).toEqual({ id: "openPr", kind: "openPr" });
+    expect(actions[0]).not.toHaveProperty("prNumber");
+  });
+
+  it("carries the PR number when the item re-enters human-review with a PR (#225)", () => {
+    const actions = actionsFor(
+      item({
+        state: "human-review",
+        pr: { id: "PR_1", number: 42, url: "https://github.com/octo/repo/pull/42" },
+      }),
+    );
+    // Same id/kind (the IPC call is unchanged) and the same ordering — only the
+    // extra field for the label differs.
+    expect(actions[0]).toEqual({ id: "openPr", kind: "openPr", prNumber: 42 });
+    expect(actions.map((a) => a.id)).toEqual(["openPr", "close", "untrack"]);
+  });
+
   it("untrack is appended in every state, including the otherwise-empty ones (#120)", () => {
     for (const state of ALL_STATES) {
       const actions = actionsFor(item({ state }));

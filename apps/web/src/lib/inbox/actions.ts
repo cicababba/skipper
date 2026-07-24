@@ -16,7 +16,9 @@ export type ItemActionId =
 
 export type ItemAction =
   | { id: ItemActionId; kind: "transition"; to: LifecycleState }
-  | { id: "openPr"; kind: "openPr" }
+  // prNumber is presentation only (#225): the id stays "openPr" and the IPC call is
+  // unchanged — it just lets the label say "Push to PR #N" on a fix round.
+  | { id: "openPr"; kind: "openPr"; prNumber?: number }
   | { id: "pin" | "unpin"; kind: "pin"; pinned: boolean }
   | { id: "archive"; kind: "archive" }
   | { id: "untrack"; kind: "untrack" }
@@ -42,7 +44,13 @@ function baseActionsFor(item: TrackedItem): ItemAction[] {
         ...transition("park", item, "needs-input"),
       ];
     case "human-review":
-      return [{ id: "openPr", kind: "openPr" }, ...close];
+      // An item that already carries a PR is re-entering human-review after a fix
+      // round (#225): openOrPushPr repushes onto it instead of opening a new one, so
+      // carry the number and let the renderer say so.
+      return [
+        { id: "openPr", kind: "openPr", ...(item.pr ? { prNumber: item.pr.number } : {}) },
+        ...close,
+      ];
     case "needs-input":
     case "blocked": {
       const to =
