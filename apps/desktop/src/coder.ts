@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import {
-  runCodingAgent,
   buildCoderPrompt,
   buildCoderSalvagePrompt,
   buildFixPrompt,
@@ -10,10 +9,10 @@ import {
   CodingAbortError,
   CodingTimeoutError,
   compareQueueCandidates,
-  createProvider,
   withRepoConventions,
   tryParseCoderReport,
   repairCoderReport,
+  type AgentRuntime,
   type CodingRunResult,
   type IssueComment,
   type LLMProviderInterface,
@@ -23,8 +22,9 @@ import {
   type RunConfinement,
 } from "@skipper/core";
 import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
-import { AGENT_MAX_TURNS_BACKSTOP, latestCodingTransitionAt } from "@skipper/shared";
+import { AGENT_MAX_TURNS_BACKSTOP, latestCodingTransitionAt, sessionRuntimeOf } from "@skipper/shared";
 import type {
+  AgentRuntimeId,
   CoderReport,
   CodingEvent,
   Issue,
@@ -37,7 +37,7 @@ import type {
   TrackedItem,
   TransitionActor,
 } from "@skipper/shared";
-import { modelForRole, providerCacheKey } from "./llm-settings";
+import { buildLlm, injectedBundle, modelForRole, providerCacheKey, type LlmBundle } from "./llm-settings";
 import { reportFileName, writeStoredCoderReport } from "./report-store";
 
 // Coding runner loop (issue #9): consumes "queued" items — the approval gate's
@@ -81,10 +81,10 @@ export interface CoderDeps {
     reason: string,
     expectedCodingAt?: string,
   ) => Promise<void>;
-  /** Persists item.worktree (path/branch/sessionId) without a transition. */
+  /** Persists item.worktree (path/branch/sessionId/sessionRuntime) without a transition. */
   setWorktree: (
     itemId: string,
-    worktree: { path: string; branch: string; sessionId?: string },
+    worktree: { path: string; branch: string; sessionId?: string; sessionRuntime?: AgentRuntimeId },
   ) => Promise<void>;
   /** Fetch + resolve base + ensure worktree; composed in orchestrator.ts. */
   prepareWorktree: (item: TrackedItem) => Promise<{ path: string; branch: string }>;
@@ -108,46 +108,50 @@ export interface CoderDeps {
 }
 
 let deps: CoderDeps | null = null;
-let runner: typeof runCodingAgent = runCodingAgent;
-let llm: LLMProviderInterface | null = null;
-let llmKey: string | null = null;
-let llmInjected = false;
+let runtimeInjected = false;
+let injectedRuntime: AgentRuntime | null = null;
+let providerInjected = false;
+let injectedProvider: LLMProviderInterface | null = null;
+let bundle: LlmBundle | null = null;
+let bundleKey: string | null = null;
 const inFlight = new Map<string, AbortController>();
 const activeRepos = new Map<string, number>();
 let scanScheduled = false;
 
 export function initCoder(
   coderDeps: CoderDeps,
-  runnerImpl?: typeof runCodingAgent,
+  runtimeImpl?: AgentRuntime,
   provider?: LLMProviderInterface,
 ): void {
   deps = coderDeps;
-  runner = runnerImpl ?? runCodingAgent;
-  llmInjected = provider !== undefined;
-  llm = provider ?? null;
-  llmKey = null;
+  runtimeInjected = runtimeImpl !== undefined;
+  injectedRuntime = runtimeImpl ?? null;
+  providerInjected = provider !== undefined;
+  injectedProvider = provider ?? null;
+  bundle = null;
+  bundleKey = null;
   inFlight.clear();
   activeRepos.clear();
 }
 
-/** Injected provider (tests) wins; otherwise the provider picked in Settings
- *  (#59), cached per provider+model. Only the report repair path constructs it
- *  (#146). Mirrors reviewer.ts. */
-async function resolveProvider(roleModel: string): Promise<LLMProviderInterface> {
-  if (llmInjected && llm) return llm;
+/** Injected runtime/provider (tests) win; otherwise the bundle built from Settings
+ *  (#59/#238), cached per provider+model. The runtime drives the coding run; the
+ *  provider is used only for the report repair (#146). Mirrors reviewer.ts. */
+async function resolveBundle(roleModel: string): Promise<LlmBundle> {
+  if (runtimeInjected || providerInjected) {
+    const base = injectedProvider
+      ? injectedBundle(injectedProvider, roleModel)
+      : ({ llm: undefined as unknown as LLMProviderInterface, model: roleModel } as LlmBundle);
+    return { ...base, ...(runtimeInjected ? { runtime: injectedRuntime ?? undefined } : {}) };
+  }
   const settings = await deps!.getLlmSettings();
   const model = modelForRole(settings, roleModel);
   const key = providerCacheKey(settings, model);
-  if (!llm || llmKey !== key) {
-    llm = createProvider({
-      provider: settings.provider,
-      model,
-      maxTurns: 5,
-      apiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
-    });
-    llmKey = key;
+  if (!bundle || bundleKey !== key) {
+    bundle = buildLlm(settings, roleModel, 5);
+    bundleKey = key;
   }
-  return llm;
+  return bundle;
 }
 
 /** Coalesced re-scan — fired after polls, transitions and completed runs. */
@@ -284,13 +288,32 @@ async function run(itemId: string, repoKey: string): Promise<void> {
     repoPath = deps.getRepoPath(item.repo);
     checkoutBefore = repoPath ? await deps.checkoutDirtyPaths(repoPath) : null;
 
+    const coderModel = deps.getRepoSettings(item.repo).coderModel;
+    const { llm: repairProvider, runtime } = await resolveBundle(coderModel);
+    // No agent runtime (openai, #238) — the coder cannot run. Park it for a
+    // provider switch rather than crash the loop.
+    if (!runtime) {
+      await fail(
+        itemId,
+        "needs-input",
+        "coding needs an agent runtime (claude-cli) — the selected provider has none",
+        "queued",
+      );
+      return;
+    }
+
+    // Resume only when the runtime can, its session was minted by this same runtime
+    // (#238), and it belongs to this worktree path (cwd-scoped, #159).
     const resume =
-      item.worktree?.sessionId !== undefined && item.worktree.path === worktree.path
+      runtime.capabilities.resume &&
+      sessionRuntimeOf(item.worktree) === runtime.id &&
+      item.worktree?.sessionId !== undefined &&
+      item.worktree.path === worktree.path
         ? item.worktree.sessionId
         : undefined;
     const sessionId = resume ?? randomUUID();
     // Persist before the long run — crash recovery resumes from this record.
-    await deps.setWorktree(itemId, { ...worktree, sessionId });
+    await deps.setWorktree(itemId, { ...worktree, sessionId, sessionRuntime: runtime.id });
 
     const cached = deps.getIssue(item);
     let comments: IssueComment[] = [];
@@ -352,7 +375,7 @@ async function run(itemId: string, repoKey: string): Promise<void> {
     const baseOptions = {
       systemPrompt: withRepoConventions(CODER_SYSTEM_PROMPT, repoInstructions),
       cwd: worktree.path,
-      model: deps.getRepoSettings(item.repo).coderModel,
+      model: coderModel,
       hardTimeoutMs: settings.coderTimeBudgetMin * 60_000,
       onEvent: (event: CodingEvent) => deps?.emitEvent(itemId, event),
       signal: controller.signal,
@@ -373,7 +396,7 @@ async function run(itemId: string, repoKey: string): Promise<void> {
     // parked as "no result". null = the run finished (ok or a normal failure).
     let death: { kind: "hard_timeout" | "inactivity" | "max_turns" } | null = null;
     try {
-      result = await runner({
+      result = await runtime.runCoding({
         ...baseOptions,
         onEvent: trackFirstEvent,
         ...(resume
@@ -392,9 +415,9 @@ async function run(itemId: string, repoKey: string): Promise<void> {
       } else {
         const freshId = randomUUID();
         runSessionId = freshId;
-        await deps.setWorktree(itemId, { ...worktree, sessionId: freshId });
+        await deps.setWorktree(itemId, { ...worktree, sessionId: freshId, sessionRuntime: runtime.id });
         try {
-          result = await runner({
+          result = await runtime.runCoding({
             ...baseOptions,
             sessionId: freshId,
             prompt: freshPrompt,
@@ -413,30 +436,36 @@ async function run(itemId: string, repoKey: string): Promise<void> {
     }
 
     // Salvage runs BEFORE the live()/tripwire checks below, so the one escape check
-    // covers both the primary run's and the salvage run's dirt (#196).
+    // covers both the primary run's and the salvage run's dirt (#196). The wrap-up
+    // resumes the dead session, so a runtime without resume goes straight to the
+    // honest failure result (#238; dormant — claude-cli resumes).
     if (death) {
       if (!live()) return;
-      deps.emitEvent(itemId, {
-        kind: "status",
-        phase: "resuming",
-        detail: "budget hit — salvaging final report",
-      });
-      try {
-        result = await runner({
-          ...baseOptions,
-          resumeSessionId: runSessionId,
-          prompt: buildCoderSalvagePrompt(),
-          maxTurns: CODER_SALVAGE_MAX_TURNS,
-          hardTimeoutMs: CODER_SALVAGE_HARD_TIMEOUT_MS,
-        });
-        // Salvage ran but the wrap-up itself failed — surface the honest reason.
-        if (!result.ok) result = { ...result, summary: deathReason(death, settings) };
-      } catch (err) {
-        // Zombie rule (#159): a cancel during salvage dies silently.
-        if (err instanceof CodingAbortError) throw err;
-        // Salvage --resume fell over (e.g. no session on disk from a fresh run
-        // killed before its init event) — fail honestly, never "no result".
+      if (!runtime.capabilities.resume) {
         result = { ok: false, summary: deathReason(death, settings), sessionId: runSessionId };
+      } else {
+        deps.emitEvent(itemId, {
+          kind: "status",
+          phase: "resuming",
+          detail: "budget hit — salvaging final report",
+        });
+        try {
+          result = await runtime.runCoding({
+            ...baseOptions,
+            resumeSessionId: runSessionId,
+            prompt: buildCoderSalvagePrompt(),
+            maxTurns: CODER_SALVAGE_MAX_TURNS,
+            hardTimeoutMs: CODER_SALVAGE_HARD_TIMEOUT_MS,
+          });
+          // Salvage ran but the wrap-up itself failed — surface the honest reason.
+          if (!result.ok) result = { ...result, summary: deathReason(death, settings) };
+        } catch (err) {
+          // Zombie rule (#159): a cancel during salvage dies silently.
+          if (err instanceof CodingAbortError) throw err;
+          // Salvage --resume fell over (e.g. no session on disk from a fresh run
+          // killed before its init event) — fail honestly, never "no result".
+          result = { ok: false, summary: deathReason(death, settings), sessionId: runSessionId };
+        }
       }
     }
 
@@ -458,19 +487,21 @@ async function run(itemId: string, repoKey: string): Promise<void> {
       return;
     }
     if (result.sessionId && result.sessionId !== sessionId) {
-      await deps.setWorktree(itemId, { ...worktree, sessionId: result.sessionId });
+      await deps.setWorktree(itemId, {
+        ...worktree,
+        sessionId: result.sessionId,
+        sessionRuntime: runtime.id,
+      });
     }
     if (result.ok) {
-      const coderModel = deps.getRepoSettings(item.repo).coderModel;
       const raw = result.resultText ?? result.summary;
       let report: CoderReport | null = null;
       try {
         const first = tryParseCoderReport(raw);
         if (first.ok) {
           report = first.report;
-        } else {
-          const provider = await resolveProvider(coderModel);
-          report = await repairCoderReport(provider, raw, first.error);
+        } else if (repairProvider) {
+          report = await repairCoderReport(repairProvider, raw, first.error);
           // Repair awaited — the item may have moved or been superseded.
           if (!live()) return;
         }

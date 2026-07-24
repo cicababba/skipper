@@ -12,6 +12,7 @@ import {
   type LLMProviderInterface,
   type RunConfinement,
 } from "../llm";
+import type { AgentRuntime } from "../runtime/types";
 import { generatePlan as realGeneratePlan, type PlanIssueInput } from "../planner";
 import { scoreClarity } from "./clarity";
 import { scoreConvergence } from "./convergence";
@@ -31,6 +32,10 @@ export interface ComputeConfidenceOptions {
   issue: PlanIssueInput;
   repoPath: string;
   llm: LLMProviderInterface;
+  /** Agentic runtime feeding the convergence extra plan runs (#238). Optional:
+   *  the critic (askStructured) needs only llm, so a score with convergence
+   *  skipped/disabled runs without it. */
+  runtime?: AgentRuntime;
   /** Extra generatePlan runs feeding convergence (N total = 1 + this). */
   extraPlanRuns?: number;
   /** Gate bands used to decide whether the extra runs can change the outcome. */
@@ -144,12 +149,19 @@ export async function computeConfidence(
     opts.skipConvergence ?? shouldSkipConvergence(report.signals, extraRuns, thresholds, autoCoding);
   if (skip) {
     report.convergenceSkipped = skip;
+  } else if (!opts.runtime && !opts.deps?.generatePlan) {
+    // No runtime to run the extra plans and no injected generator (#238): record
+    // the miss as an error rather than throwing — convergence just goes unscored.
+    report.errors.push("convergence: no agent runtime available");
   } else {
     const settled = await Promise.allSettled(
       Array.from({ length: extraRuns }, () =>
         generate({
           issue: opts.issue,
           repoPath: opts.repoPath,
+          // Guarded above: opts.runtime is present, or deps.generatePlan is the
+          // injected fake that ignores it.
+          runtime: opts.runtime!,
           llm: opts.llm,
           ...(opts.repoInstructions ? { repoInstructions: opts.repoInstructions } : {}),
           ...(opts.graphify ? { graphify: opts.graphify } : {}),

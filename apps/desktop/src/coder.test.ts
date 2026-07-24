@@ -16,6 +16,7 @@ import {
   type TransitionActor,
 } from "@skipper/shared";
 import type {
+  AgentRuntime,
   RunCodingAgentOptions,
   CodingRunResult,
   LLMProviderInterface,
@@ -23,6 +24,20 @@ import type {
 } from "@skipper/core";
 import { DEFAULT_ORCHESTRATOR_SETTINGS, CodingAbortError, CodingTimeoutError } from "@skipper/core";
 import { initCoder, pokeCoder, cancelCodingRun, type CoderDeps } from "./coder";
+
+/** The coding run moved behind AgentRuntime (#238): wrap the fake runner so its
+ *  .mock stays the assertion surface. Claude-cli capabilities keep resume/salvage on. */
+function runtimeOf(
+  runCoding: (opts: RunCodingAgentOptions) => Promise<CodingRunResult>,
+): AgentRuntime {
+  return {
+    id: "claude-cli",
+    capabilities: { streaming: true, resume: true, confinement: "rules", mcp: true },
+    runCoding,
+    agent: vi.fn(),
+    structured: vi.fn(),
+  } as unknown as AgentRuntime;
+}
 import { reportFileName } from "./report-store";
 
 const validReport: CoderReport = {
@@ -201,7 +216,7 @@ describe("coder driver", () => {
   it("runs a queued item through coding to agent-review", async () => {
     const h = makeHarness();
     const runner = okRunner();
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     h.items.set("github:1", makeItem(1, "queued"));
 
     pokeCoder();
@@ -225,7 +240,7 @@ describe("coder driver", () => {
   it("hands the runner the default model when nothing overrides coderModel", async () => {
     const h = makeHarness();
     const runner = okRunner();
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     h.items.set("github:1", makeItem(1, "queued"));
 
     pokeCoder();
@@ -241,7 +256,7 @@ describe("coder driver", () => {
         ({ ...DEFAULT_ORCHESTRATOR_SETTINGS, coderModel: "sonnet" }) as OrchestratorSettings,
     });
     const runner = okRunner();
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     h.items.set("github:1", makeItem(1, "queued"));
 
     pokeCoder();
@@ -259,7 +274,7 @@ describe("coder driver", () => {
       { coderModel: "haiku" },
     );
     const runner = okRunner();
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     h.items.set("github:1", makeItem(1, "queued"));
 
     pokeCoder();
@@ -278,7 +293,7 @@ describe("coder driver", () => {
       await gate;
       return okReport(opts);
     });
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     h.items.set("github:2", makeItem(2, "queued"));
     h.items.set("github:1", makeItem(1, "queued"));
     h.items.set("github:3", makeItem(3, "queued", "other"));
@@ -304,11 +319,11 @@ describe("coder driver", () => {
     const gate = new Promise<void>(() => {});
     initCoder(
       h.deps,
-      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      runtimeOf(vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
         order.push(opts.cwd);
         await gate;
         return okReport(opts);
-      }),
+      })),
     );
     h.items.set("github:1", makeItem(1, "queued"));
     h.items.set("github:2", makeItem(2, "queued"));
@@ -328,11 +343,11 @@ describe("coder driver", () => {
     const gate = new Promise<void>(() => {});
     initCoder(
       h.deps,
-      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      runtimeOf(vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
         order.push(opts.cwd);
         await gate;
         return okReport(opts);
-      }),
+      })),
     );
     h.items.set("github:1", makeItem(1, "queued")); // older queued time
     h.items.set("github:2", { ...makeItem(2, "queued"), pinned: true });
@@ -351,10 +366,10 @@ describe("coder driver", () => {
     const order: string[] = [];
     initCoder(
       h.deps,
-      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      runtimeOf(vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
         order.push(opts.cwd);
         return okReport(opts);
-      }),
+      })),
     );
     h.items.set("github:1", makeItem(1, "queued")); // older, normal-priority repo
     h.items.set("github:2", makeItem(2, "queued", "important"));
@@ -371,11 +386,11 @@ describe("coder driver", () => {
     const gate = new Promise<void>(() => {});
     initCoder(
       h.deps,
-      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      runtimeOf(vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
         order.push(opts.cwd);
         await gate;
         return okReport(opts);
-      }),
+      })),
     );
     h.items.set("github:1", makeItem(1, "queued")); // queued earlier than the re-entry
     h.items.set("github:2", {
@@ -393,7 +408,7 @@ describe("coder driver", () => {
 
   it("missing plan lands on needs-input", async () => {
     const h = makeHarness({ getPlan: async () => null });
-    initCoder(h.deps, okRunner());
+    initCoder(h.deps, runtimeOf(okRunner()));
     h.items.set("github:1", makeItem(1, "queued"));
     pokeCoder();
     await settle();
@@ -408,7 +423,7 @@ describe("coder driver", () => {
         throw new Error("branch checked out elsewhere");
       },
     });
-    initCoder(h.deps, okRunner());
+    initCoder(h.deps, runtimeOf(okRunner()));
     h.items.set("github:1", makeItem(1, "queued"));
     pokeCoder();
     await settle();
@@ -421,9 +436,9 @@ describe("coder driver", () => {
     const h = makeHarness();
     initCoder(
       h.deps,
-      vi.fn(async () => {
+      runtimeOf(vi.fn(async () => {
         throw new Error("agent exploded");
-      }),
+      })),
     );
     h.items.set("github:1", makeItem(1, "queued"));
     pokeCoder();
@@ -439,7 +454,7 @@ describe("coder driver", () => {
       summary: "hit max turns",
       sessionId: opts.sessionId ?? "",
     }));
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     h.items.set("github:1", makeItem(1, "queued"));
     pokeCoder();
     await settle();
@@ -452,7 +467,7 @@ describe("coder driver", () => {
   it("passes the coder time budget as hardTimeoutMs and no maxTurns (#194)", async () => {
     const h = makeHarness();
     const runner = okRunner();
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     h.items.set("github:1", makeItem(1, "queued"));
     pokeCoder();
     await settle();
@@ -470,7 +485,7 @@ describe("coder driver", () => {
       }
       throw new CodingTimeoutError("hard time limit — killed", "hard_timeout", 3_600_000);
     });
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     h.items.set("github:1", makeItem(1, "queued"));
     pokeCoder();
     await settle();
@@ -493,7 +508,7 @@ describe("coder driver", () => {
       }
       return { ok: false, summary: "", subtype: "error_max_turns", sessionId: opts.sessionId ?? "" };
     });
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     h.items.set("github:1", makeItem(1, "queued"));
     pokeCoder();
     await settle();
@@ -508,9 +523,9 @@ describe("coder driver", () => {
     const h = makeHarness();
     initCoder(
       h.deps,
-      vi.fn(async (): Promise<CodingRunResult> => {
+      runtimeOf(vi.fn(async (): Promise<CodingRunResult> => {
         throw new CodingTimeoutError("hard time limit — killed", "hard_timeout", 3_600_000);
-      }),
+      })),
     );
     h.items.set("github:1", makeItem(1, "queued"));
     pokeCoder();
@@ -525,10 +540,10 @@ describe("coder driver", () => {
     const h = makeHarness();
     initCoder(
       h.deps,
-      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      runtimeOf(vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
         if (opts.resumeSessionId) throw new Error("no session on disk");
         return { ok: false, summary: "", subtype: "error_max_turns", sessionId: opts.sessionId ?? "" };
-      }),
+      })),
     );
     h.items.set("github:1", makeItem(1, "queued"));
     pokeCoder();
@@ -541,10 +556,10 @@ describe("coder driver", () => {
     const h = makeHarness();
     initCoder(
       h.deps,
-      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      runtimeOf(vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
         if (opts.resumeSessionId) throw new Error("no session on disk");
         throw new CodingTimeoutError("no output — killed as hung", "inactivity", 600_000);
-      }),
+      })),
     );
     h.items.set("github:1", makeItem(1, "queued"));
     pokeCoder();
@@ -557,10 +572,10 @@ describe("coder driver", () => {
     const h = makeHarness();
     initCoder(
       h.deps,
-      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      runtimeOf(vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
         if (opts.resumeSessionId) throw new CodingAbortError();
         throw new CodingTimeoutError("hard time limit — killed", "hard_timeout", 3_600_000);
-      }),
+      })),
     );
     h.items.set("github:1", makeItem(1, "queued"));
     pokeCoder();
@@ -575,10 +590,10 @@ describe("coder driver", () => {
     const gate = new Promise<void>((r) => (release = r));
     initCoder(
       h.deps,
-      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      runtimeOf(vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
         await gate;
         return okReport(opts);
-      }),
+      })),
     );
     h.items.set("github:1", makeItem(1, "queued"));
     pokeCoder();
@@ -597,11 +612,11 @@ describe("coder driver", () => {
     const h = makeHarness();
     initCoder(
       h.deps,
-      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      runtimeOf(vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
         return new Promise((_res, rej) => {
           opts.signal?.addEventListener("abort", () => rej(new CodingAbortError()));
         });
-      }),
+      })),
     );
     h.items.set("github:1", makeItem(1, "queued"));
     pokeCoder();
@@ -615,7 +630,7 @@ describe("coder driver", () => {
   it("crash recovery resumes a coding item with its persisted session", async () => {
     const h = makeHarness();
     const runner = okRunner();
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     const item = makeItem(1, "coding");
     h.items.set("github:1", {
       ...item,
@@ -640,7 +655,7 @@ describe("coder driver", () => {
         opts.onEvent({ kind: "result", ok: true, summary: REPORT_JSON });
         return okReport(opts);
       });
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     const item = makeItem(1, "coding");
     h.items.set("github:1", {
       ...item,
@@ -661,7 +676,7 @@ describe("coder driver", () => {
   it("fix round uses the fix prompt on a resumed session", async () => {
     const h = makeHarness();
     const runner = okRunner();
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     const item = makeItem(1, "coding");
     h.items.set("github:1", {
       ...item,
@@ -689,7 +704,7 @@ describe("coder driver", () => {
   it("PR fix round (#11) uses the PR fix prompt and outranks stale critic objections", async () => {
     const h = makeHarness();
     const runner = okRunner();
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     const item = makeItem(1, "coding");
     h.items.set("github:1", {
       ...item,
@@ -726,7 +741,7 @@ describe("coder driver", () => {
       await gate;
       return okReport(opts);
     });
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     // Re-entered item occupies the repo's single slot...
     h.items.set("github:1", {
       ...makeItem(1, "coding"),
@@ -752,7 +767,7 @@ describe("coder driver", () => {
       if (opts.resumeSessionId) throw new Error("No conversation found");
       return okReport(opts);
     });
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     const item = makeItem(1, "coding");
     h.items.set("github:1", {
       ...item,
@@ -782,7 +797,7 @@ describe("coder driver", () => {
 describe("structured coder report (#146)", () => {
   it("persists a parsed report and derives the reason from it", async () => {
     const h = makeHarness();
-    initCoder(h.deps, okRunner());
+    initCoder(h.deps, runtimeOf(okRunner()));
     h.items.set("github:1", makeItem(1, "queued"));
 
     pokeCoder();
@@ -800,7 +815,7 @@ describe("structured coder report (#146)", () => {
   it("folds the first deviation into the transition reason", async () => {
     const withDeviation: CoderReport = { ...validReport, deviations: ["renamed foo to bar"] };
     const h = makeHarness();
-    initCoder(h.deps, okRunner(JSON.stringify(withDeviation)));
+    initCoder(h.deps, runtimeOf(okRunner(JSON.stringify(withDeviation))));
     h.items.set("github:1", makeItem(1, "queued"));
 
     pokeCoder();
@@ -827,7 +842,7 @@ describe("structured coder report (#146)", () => {
         throw new Error("repair failed");
       }),
     } as unknown as LLMProviderInterface;
-    initCoder(h.deps, runner, rejectingProvider);
+    initCoder(h.deps, runtimeOf(runner), rejectingProvider);
     h.items.set("github:1", makeItem(1, "queued"));
 
     pokeCoder();
@@ -842,7 +857,7 @@ describe("structured coder report (#146)", () => {
 
   it("writes a report on a fix round too", async () => {
     const h = makeHarness();
-    initCoder(h.deps, okRunner());
+    initCoder(h.deps, runtimeOf(okRunner()));
     h.items.set("github:1", {
       ...makeItem(1, "coding"),
       worktree: { path: "/wt/repo/issue-1", branch: "feature/issue-1", sessionId: "old-session" },
@@ -876,10 +891,10 @@ describe("coder stale-run token + WIP reservation (#178)", () => {
     let call = 0;
     initCoder(
       h.deps,
-      vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      runtimeOf(vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
         await (++call === 1 ? gate1 : gate2);
         return okReport(opts);
-      }),
+      })),
     );
     // In coding, with a coding transition that is this run's token.
     h.items.set("github:1", {
@@ -927,7 +942,7 @@ describe("coder stale-run token + WIP reservation (#178)", () => {
       await held;
       return okReport(opts);
     });
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     h.items.set("github:1", makeItem(1, "queued"));
     h.items.set("github:2", makeItem(2, "queued")); // same repo
 
@@ -953,7 +968,7 @@ describe("coder confinement tripwire (#196)", () => {
   it("hands the runner a confinement scoped to the worktree with the checkout denied", async () => {
     const h = makeHarness();
     const runner = okRunner();
-    initCoder(h.deps, runner);
+    initCoder(h.deps, runtimeOf(runner));
     h.items.set("github:1", makeItem(1, "queued"));
 
     pokeCoder();
@@ -969,7 +984,7 @@ describe("coder confinement tripwire (#196)", () => {
     const h = makeHarness({
       checkoutDirtyPaths: async () => (calls++ === 0 ? [] : ["?? stray.ts"]),
     });
-    initCoder(h.deps, okRunner());
+    initCoder(h.deps, runtimeOf(okRunner()));
     h.items.set("github:1", makeItem(1, "queued"));
 
     pokeCoder();
@@ -983,7 +998,7 @@ describe("coder confinement tripwire (#196)", () => {
 
   it("does not trip on pre-existing checkout dirt the run didn't grow", async () => {
     const h = makeHarness({ checkoutDirtyPaths: async () => [" M existing.ts"] });
-    initCoder(h.deps, okRunner());
+    initCoder(h.deps, runtimeOf(okRunner()));
     h.items.set("github:1", makeItem(1, "queued"));
 
     pokeCoder();

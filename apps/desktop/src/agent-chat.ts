@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
   AgentAbortError,
-  createProvider,
   discussCoder,
   discussReviewer,
   distillCoderChatInstructions,
@@ -16,8 +15,10 @@ import {
 import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
 import {
   CODER_CHAT_APPLY_STATES,
+  sessionRuntimeOf,
   type AgentChatKind,
   type AgentReview,
+  type AgentRuntimeId,
   type CodingEvent,
   type Issue,
   type LlmSettings,
@@ -30,7 +31,7 @@ import {
   type TrackedItem,
   type TransitionActor,
 } from "@skipper/shared";
-import { modelForRole, providerCacheKey } from "./llm-settings";
+import { buildLlm, injectedBundle, modelForRole, providerCacheKey, type LlmBundle } from "./llm-settings";
 import {
   appendAgentChatExchange,
   readAgentChat,
@@ -81,6 +82,8 @@ interface KindConfig {
   available: (item: TrackedItem) => boolean;
   /** Turn-1 resume source — the agent's own session (never the chat's). */
   turn1Source: (item: TrackedItem) => string | undefined;
+  /** Runtime that minted the turn-1 resume source (#238). */
+  turn1Runtime: (item: TrackedItem) => AgentRuntimeId;
   /** Supersession binding; undefined = no transcript yet. */
   binding: (item: TrackedItem) => string | undefined;
   roleModel: (settings: ResolvedRepoOrchestratorSettings) => string;
@@ -93,6 +96,7 @@ const CONFIGS: Record<AgentChatKind, KindConfig> = {
   coder: {
     available: (item) => !!item.worktree?.path && item.state !== "coding",
     turn1Source: (item) => item.worktree?.sessionId,
+    turn1Runtime: (item) => sessionRuntimeOf(item.worktree),
     binding: (item) => item.worktree?.path,
     roleModel: (s) => s.coderModel,
     repoCwdFallback: false,
@@ -101,6 +105,7 @@ const CONFIGS: Record<AgentChatKind, KindConfig> = {
   reviewer: {
     available: (item) => item.review != null && item.state !== "agent-review",
     turn1Source: (item) => item.review?.sessionId,
+    turn1Runtime: (item) => sessionRuntimeOf(item.review),
     binding: (item) => item.review?.at,
     roleModel: (s) => s.reviewerModel,
     repoCwdFallback: true,
@@ -111,7 +116,7 @@ const CONFIGS: Record<AgentChatKind, KindConfig> = {
 let deps: AgentChatDeps | null = null;
 let injected = false;
 let injectedProvider: LLMProviderInterface | null = null;
-const providers = new Map<string, LLMProviderInterface>();
+const bundles = new Map<string, LlmBundle>();
 const inFlight = new Map<string, AbortController>();
 
 function flightKey(kind: AgentChatKind, itemId: string): string {
@@ -122,26 +127,21 @@ export function initAgentChat(agentChatDeps: AgentChatDeps, provider?: LLMProvid
   deps = agentChatDeps;
   injected = provider !== undefined;
   injectedProvider = provider ?? null;
-  providers.clear();
+  bundles.clear();
   inFlight.clear();
 }
 
-async function resolveProvider(roleModel: string): Promise<LLMProviderInterface> {
-  if (injected && injectedProvider) return injectedProvider;
+async function resolveBundle(roleModel: string): Promise<LlmBundle> {
+  if (injected && injectedProvider) return injectedBundle(injectedProvider, roleModel);
   const settings = await deps!.getLlmSettings();
   const model = modelForRole(settings, roleModel);
   const key = providerCacheKey(settings, model);
-  let provider = providers.get(key);
-  if (!provider) {
-    provider = createProvider({
-      provider: settings.provider,
-      model,
-      maxTurns: 5,
-      apiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
-    });
-    providers.set(key, provider);
+  let bundle = bundles.get(key);
+  if (!bundle) {
+    bundle = buildLlm(settings, roleModel, 5);
+    bundles.set(key, bundle);
   }
-  return provider;
+  return bundle;
 }
 
 function toPlanIssue(item: TrackedItem, cached: Issue | undefined): PlanIssueInput {
@@ -242,7 +242,7 @@ export async function sendAgentChatMessage(
     const repoPath = deps.getRepoPath(item.repo);
     const checkoutBefore = repoPath ? await deps.checkoutDirtyPaths(repoPath) : null;
 
-    const provider = await resolveProvider(cfg.roleModel(deps.getRepoSettings(item.repo)));
+    const { llm: provider, runtime } = await resolveBundle(cfg.roleModel(deps.getRepoSettings(item.repo)));
     const memory = deps.getMemoryMcp?.(item);
     // Confinement (#196): only when the chat runs IN the worktree; the tripwire
     // below guards the checkout in every case (including the reviewer's fallback).
@@ -259,14 +259,20 @@ export async function sendAgentChatMessage(
     // The chat owns its session lineage (D1): turn 1 resumes the agent's session
     // (worktree/review sessionId), later turns resume the chat store's own id.
     const chat = await readAgentChat(deps.plansDir, kind, itemId);
-    const storeSessionId = chat && chat.binding === binding ? chat.sessionId : undefined;
-    const resumeSessionId = storeSessionId ?? cfg.turn1Source(item);
+    const storeMatch = chat && chat.binding === binding ? chat : undefined;
+    const resumeSessionId = storeMatch?.sessionId ?? cfg.turn1Source(item);
+    const resumeRuntimeId = storeMatch?.sessionId
+      ? sessionRuntimeOf(storeMatch)
+      : cfg.turn1Runtime(item);
     const resumable =
-      provider.name === "claude-cli" && !!resumeSessionId && !!item.worktree?.path;
+      !!runtime?.capabilities.resume &&
+      resumeRuntimeId === runtime.id &&
+      !!resumeSessionId &&
+      !!item.worktree?.path;
 
     // Mint a persist-before-run session for any fresh (fallback / dead-resume) run.
     const fallbackSessionId =
-      provider.name === "claude-cli" && item.worktree?.path ? randomUUID() : undefined;
+      runtime?.capabilities.resume && item.worktree?.path ? randomUUID() : undefined;
 
     deps.emitEvent(kind, itemId, { kind: "status", phase: "resuming", detail: cfg.detail });
 
@@ -287,13 +293,14 @@ export async function sendAgentChatMessage(
       // Persist-before-run so a crash still leaves a resumable pointer, and make
       // the minted id the one we persist post-turn (the resume source is dead here).
       if (fallbackSessionId) {
-        await setAgentChatSessionId(deps!.plansDir, kind, itemId, binding, fallbackSessionId);
+        await setAgentChatSessionId(deps!.plansDir, kind, itemId, binding, fallbackSessionId, runtime?.id);
         sessionToPersist = fallbackSessionId;
       }
       const context = await buildContext(kind, item, history);
       const common = {
         message,
         llm: provider,
+        ...(runtime ? { runtime } : {}),
         cwd,
         onEvent,
         ...(fallbackSessionId ? { sessionId: fallbackSessionId } : {}),
@@ -314,6 +321,7 @@ export async function sendAgentChatMessage(
       const common = {
         message,
         llm: provider,
+        ...(runtime ? { runtime } : {}),
         cwd,
         resumeSessionId: resumeSessionId!,
         onEvent,
@@ -368,7 +376,7 @@ export async function sendAgentChatMessage(
     // Persist the chat's own session lineage last, so the transcript append never
     // clobbers a drifted id (both write the same file).
     if (sessionToPersist) {
-      await setAgentChatSessionId(deps.plansDir, kind, itemId, binding, sessionToPersist);
+      await setAgentChatSessionId(deps.plansDir, kind, itemId, binding, sessionToPersist, runtime?.id);
     }
     return { ok: true, reply: reply.reply, mode };
   } catch (err) {
@@ -414,7 +422,7 @@ export async function prepareCoderChatApply(itemId: string): Promise<PrepareCode
     const repoPath = deps.getRepoPath(item.repo);
     const checkoutBefore = repoPath ? await deps.checkoutDirtyPaths(repoPath) : null;
 
-    const provider = await resolveProvider(cfg.roleModel(deps.getRepoSettings(item.repo)));
+    const { llm: provider, runtime } = await resolveBundle(cfg.roleModel(deps.getRepoSettings(item.repo)));
     const memory = deps.getMemoryMcp?.(item);
     // Confinement (#196): the distillation runs in the worktree (cwd = worktree).
     const confinement: RunConfinement | undefined = repoPath
@@ -428,12 +436,18 @@ export async function prepareCoderChatApply(itemId: string): Promise<PrepareCode
     // Session lineage mirrors the send path (D1): the chat store's own id when it
     // exists, else the coder's worktree session for turn 1.
     const chat = await readAgentChat(deps.plansDir, "coder", itemId);
-    const storeSessionId = chat && chat.binding === binding ? chat.sessionId : undefined;
-    const resumeSessionId = storeSessionId ?? cfg.turn1Source(item);
+    const storeMatch = chat && chat.binding === binding ? chat : undefined;
+    const resumeSessionId = storeMatch?.sessionId ?? cfg.turn1Source(item);
+    const resumeRuntimeId = storeMatch?.sessionId
+      ? sessionRuntimeOf(storeMatch)
+      : cfg.turn1Runtime(item);
     const resumable =
-      provider.name === "claude-cli" && !!resumeSessionId && !!item.worktree?.path;
+      !!runtime?.capabilities.resume &&
+      resumeRuntimeId === runtime.id &&
+      !!resumeSessionId &&
+      !!item.worktree?.path;
     const fallbackSessionId =
-      provider.name === "claude-cli" && item.worktree?.path ? randomUUID() : undefined;
+      runtime?.capabilities.resume && item.worktree?.path ? randomUUID() : undefined;
 
     deps.emitEvent("coder", itemId, { kind: "status", phase: "resuming", detail: "apply coder chat" });
 
@@ -447,12 +461,13 @@ export async function prepareCoderChatApply(itemId: string): Promise<PrepareCode
 
     const runFallback = async () => {
       if (fallbackSessionId) {
-        await setAgentChatSessionId(deps!.plansDir, "coder", itemId, binding, fallbackSessionId);
+        await setAgentChatSessionId(deps!.plansDir, "coder", itemId, binding, fallbackSessionId, runtime?.id);
         sessionToPersist = fallbackSessionId;
       }
       const context = (await buildContext("coder", item, history)) as CoderChatContext;
       return distillCoderChatInstructions({
         llm: provider,
+        ...(runtime ? { runtime } : {}),
         cwd,
         context,
         onEvent,
@@ -466,6 +481,7 @@ export async function prepareCoderChatApply(itemId: string): Promise<PrepareCode
     const runResume = async () =>
       distillCoderChatInstructions({
         llm: provider,
+        ...(runtime ? { runtime } : {}),
         cwd,
         resumeSessionId: resumeSessionId!,
         onEvent,
@@ -507,7 +523,7 @@ export async function prepareCoderChatApply(itemId: string): Promise<PrepareCode
 
     // Persist the chat's own session lineage (never a transcript append — apply doesn't).
     if (sessionToPersist) {
-      await setAgentChatSessionId(deps.plansDir, "coder", itemId, binding, sessionToPersist);
+      await setAgentChatSessionId(deps.plansDir, "coder", itemId, binding, sessionToPersist, runtime?.id);
     }
     const instructions: PrReviewComment[] = result.instructions.map((i) => ({
       author: "coder-chat",

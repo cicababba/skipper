@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { LLMProviderInterface } from "../src/llm";
+import type { AgentRuntime } from "../src/runtime";
 import { critiqueDiff, truncateDiff, DIFF_CHAR_BUDGET } from "../src/reviewer";
 
 const issue = {
@@ -20,6 +21,13 @@ function fakeLLM(reply: unknown = approveReply) {
     askStructured,
   } as unknown as LLMProviderInterface;
   return { llm, askStructured };
+}
+
+/** The tools-enabled (repo-inspecting) critic runs through runtime.structured (#238). */
+function fakeRuntime(reply: unknown = approveReply) {
+  const structured = vi.fn(async () => reply);
+  const runtime = { id: "claude-cli", structured } as unknown as AgentRuntime;
+  return { runtime, structured };
 }
 
 describe("truncateDiff", () => {
@@ -89,13 +97,15 @@ describe("critiqueDiff", () => {
 
   // #111 + #226: the reviewer persists a per-round session; the bundled cwd+id must
   // reach askStructured, and a session also unlocks the read-only inspection toolset.
-  it("forwards the session as askStructured opts (cwd, sessionId, inspection tools)", async () => {
-    const { llm, askStructured } = fakeLLM();
+  it("forwards the session as runtime.structured opts (cwd, sessionId, inspection tools)", async () => {
+    const { llm } = fakeLLM();
+    const { runtime, structured } = fakeRuntime();
     await critiqueDiff(
       { diff: "+1", issue, acceptance: [], session: { id: "sid-1", cwd: "/wt/issue-1" } },
       llm,
+      runtime,
     );
-    expect(askStructured.mock.calls[0][2]).toEqual({
+    expect(structured.mock.calls[0][2]).toEqual({
       cwd: "/wt/issue-1",
       sessionId: "sid-1",
       tools: "Read,Grep,Glob",
@@ -105,12 +115,14 @@ describe("critiqueDiff", () => {
 
   // #226: with a session the reviewer can inspect the tree — the prompt tells it to.
   it("adds the inspect-repo instruction when a session is present", async () => {
-    const { llm, askStructured } = fakeLLM();
+    const { llm } = fakeLLM();
+    const { runtime, structured } = fakeRuntime();
     await critiqueDiff(
       { diff: "+1", issue, acceptance: [], session: { id: "sid-1", cwd: "/wt/issue-1" } },
       llm,
+      runtime,
     );
-    const prompt = askStructured.mock.calls[0][0] as string;
+    const prompt = structured.mock.calls[0][0] as string;
     expect(prompt).toContain("You have Read, Grep and Glob over the working tree.");
   });
 

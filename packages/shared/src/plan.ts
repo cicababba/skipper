@@ -4,6 +4,7 @@
 
 import type { ConfidenceReport } from "./confidence";
 import type { RepoRef } from "./inbox";
+import type { AgentRuntimeId } from "./types";
 
 export interface PlanFileRef {
   /** Repo-relative path. */
@@ -94,6 +95,8 @@ export interface StoredAgentChat {
   binding: string;
   /** Chat's own session lineage — never item.worktree/review.sessionId (D1). */
   sessionId?: string;
+  /** Runtime that minted sessionId (#238) — a mismatch = no resume. */
+  sessionRuntime?: AgentRuntimeId;
   messages: PlanChatMessage[];
 }
 

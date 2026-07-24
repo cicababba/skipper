@@ -8,6 +8,7 @@ import type {
   PlanChatMessage,
 } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
+import type { AgentRuntime } from "../runtime/types";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import type { RunConfinement } from "../llm/confinement";
 import type { PlanIssueInput } from "../planner/generate";
@@ -47,6 +48,8 @@ export interface CoderChatContext {
 export interface DiscussCoderOptions {
   message: string;
   llm: LLMProviderInterface;
+  /** Agentic runtime for the resume/fresh-agent paths (#238); absent = ask() only. */
+  runtime?: AgentRuntime;
   cwd: string;
   /** Resume the coding session (claude-cli); the model already holds its work. */
   resumeSessionId?: string;
@@ -203,6 +206,7 @@ export async function discussCoder(
 
   return runAgentDiscussion({
     llm,
+    ...(opts.runtime ? { runtime: opts.runtime } : {}),
     cwd,
     systemPrompt: CODER_CHAT_SYSTEM_PROMPT,
     prompt,
@@ -230,6 +234,8 @@ export interface CoderChatInstruction {
 
 export interface DistillCoderChatOptions {
   llm: LLMProviderInterface;
+  /** Agentic runtime for the resume/fresh-agent paths (#238); absent = askStructured only. */
+  runtime?: AgentRuntime;
   cwd: string;
   /** Resume the coding/chat session (claude-cli); the model already holds the discussion. */
   resumeSessionId?: string;
@@ -386,7 +392,7 @@ async function validateInstructionsReply(
 export async function distillCoderChatInstructions(
   opts: DistillCoderChatOptions,
 ): Promise<{ instructions: CoderChatInstruction[]; sessionId?: string }> {
-  const { llm, cwd } = opts;
+  const { llm, runtime, cwd } = opts;
   const maxTurns = opts.maxTurns ?? DEFAULT_DISTILL_MAX_TURNS;
   const prompt = opts.resumeSessionId
     ? buildDistillResumePrompt()
@@ -396,8 +402,8 @@ export async function distillCoderChatInstructions(
   if (prompt === undefined) throw new Error("distillCoderChatInstructions without a session needs context");
 
   if (opts.resumeSessionId) {
-    if (!llm.agent) throw new Error("resuming a coder session needs an agent-capable provider");
-    const reply = await llm.agent(prompt, {
+    if (!runtime) throw new Error("resuming a coder session needs an agent-capable runtime");
+    const reply = await runtime.agent(prompt, {
       systemPrompt: CODER_CHAT_SYSTEM_PROMPT,
       cwd,
       maxTurns,
@@ -412,8 +418,8 @@ export async function distillCoderChatInstructions(
     return { instructions, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
   }
 
-  if (llm.agent) {
-    const reply = await llm.agent(prompt, {
+  if (runtime) {
+    const reply = await runtime.agent(prompt, {
       systemPrompt: CODER_CHAT_SYSTEM_PROMPT,
       cwd,
       maxTurns,

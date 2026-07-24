@@ -9,6 +9,7 @@ import { stdin as input, stdout as output } from "node:process";
 import { createRequire } from "node:module";
 import {
   createProvider,
+  createRuntime,
   extractFromCommit,
   reconcileMemoryIndex,
   registerTransformersLoader,
@@ -24,7 +25,7 @@ import {
   getHookStatus,
   slugify,
 } from "@skipper/core";
-import type { LLMProviderInterface } from "@skipper/core";
+import type { AgentRuntime, LLMProviderInterface } from "@skipper/core";
 import { displayKey } from "@skipper/shared";
 import { readFile } from "node:fs/promises";
 import { saveSession, resumeSession } from "./session.js";
@@ -95,11 +96,10 @@ function parseRepoRef(value: string): { owner: string; name: string } {
 
 interface SkipperSettings {
   llm?: {
-    provider?: "claude-cli" | "openai" | "ollama";
+    provider?: "claude-cli" | "openai";
     openaiApiKey?: string;
     openaiModel?: string;
     claudeModel?: string;
-    ollamaModel?: string;
   };
   autoExtractAtoms?: boolean;
 }
@@ -116,16 +116,22 @@ function loadSettings(): SkipperSettings | null {
 }
 
 // Resolve the LLM from the app Settings. Settings no longer offers a provider
-// picker — claude-cli is the only backend whose agent() drives the planner — so
-// the saved provider is ignored: a settings.json written before that pin can
-// still say "openai"/"ollama", and honouring it here would leave the CLI on a
-// provider the app itself no longer runs.
+// picker — the claude-cli runtime is the only backend that drives the planner —
+// so the saved provider is ignored: a settings.json written before that pin can
+// still say "openai", and honouring it here would leave the CLI on a provider
+// the app itself no longer runs.
+function cliModel(): string {
+  return loadSettings()?.llm?.claudeModel || process.env.SKIPPER_MODEL || "sonnet";
+}
+
 function getLLM(): LLMProviderInterface {
-  return createProvider({
-    provider: "claude-cli",
-    model: loadSettings()?.llm?.claudeModel || process.env.SKIPPER_MODEL || "sonnet",
-    maxTurns: 5,
-  });
+  return createProvider({ provider: "claude-cli", model: cliModel(), maxTurns: 5 });
+}
+
+/** The agent runtime backing the session commands (#238). claude-cli always has
+ *  one — the non-null assertion is safe. */
+function getRuntime(): AgentRuntime {
+  return createRuntime({ provider: "claude-cli", model: cliModel(), maxTurns: 5 })!;
 }
 
 program
@@ -535,8 +541,11 @@ session
   .action(async (options) => {
     try {
       const dir = resolve(options.project);
-      const llm = getLLM();
-      const path = await saveSession(dir, { llm, log: (m) => console.log(m) });
+      const path = await saveSession(dir, {
+        llm: getLLM(),
+        runtime: getRuntime(),
+        log: (m) => console.log(m),
+      });
       console.log(`\n✔ Session summary saved → ${path}`);
     } catch (e) {
       console.error(e instanceof Error ? e.message : String(e));
@@ -551,9 +560,12 @@ session
   .action(async (options) => {
     try {
       const dir = resolve(options.project);
-      const llm = getLLM();
       // Progress goes to stderr so stdout is a clean briefing the caller can pipe.
-      const briefing = await resumeSession(dir, { llm, log: (m) => console.error(m) });
+      const briefing = await resumeSession(dir, {
+        llm: getLLM(),
+        runtime: getRuntime(),
+        log: (m) => console.error(m),
+      });
       console.log(briefing);
     } catch (e) {
       console.error(e instanceof Error ? e.message : String(e));

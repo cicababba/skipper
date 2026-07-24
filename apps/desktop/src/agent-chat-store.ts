@@ -6,7 +6,7 @@
 
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AgentChatKind, PlanChatMessage, StoredAgentChat } from "@skipper/shared";
+import type { AgentChatKind, AgentRuntimeId, PlanChatMessage, StoredAgentChat } from "@skipper/shared";
 
 const CHAT_DIR = "chat";
 
@@ -90,13 +90,18 @@ export async function setAgentChatSessionId(
   itemId: string,
   binding: string,
   sessionId: string,
+  sessionRuntime?: AgentRuntimeId,
 ): Promise<void> {
   const existing = await readAgentChat(plansDir, kind, itemId);
   const base: StoredAgentChat =
     existing && existing.binding === binding
       ? existing
       : { version: 1, itemId, kind, binding, messages: [] };
-  await writeAgentChat(plansDir, kind, itemId, { ...base, sessionId });
+  await writeAgentChat(plansDir, kind, itemId, {
+    ...base,
+    sessionId,
+    ...(sessionRuntime ? { sessionRuntime } : {}),
+  });
 }
 
 export async function deleteAgentChat(

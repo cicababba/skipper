@@ -6,6 +6,7 @@ import type {
   PlanChatMessage,
 } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
+import type { AgentRuntime } from "../runtime/types";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import type { RunConfinement } from "../llm/confinement";
 import { planJsonSchema } from "./schema";
@@ -37,6 +38,8 @@ export interface PlanChatContext {
 export interface DiscussPlanOptions {
   message: string;
   llm: LLMProviderInterface;
+  /** Agentic runtime for the resume/fresh-agent paths (#238); absent = ask() only. */
+  runtime?: AgentRuntime;
   cwd: string;
   /** Resume the plan session (claude-cli); the model already holds the plan + repo. */
   resumeSessionId?: string;
@@ -59,6 +62,8 @@ export interface DiscussPlanOptions {
 
 export interface ApplyPlanFromDiscussionOptions {
   llm: LLMProviderInterface;
+  /** Agentic runtime for the resume/fresh-agent paths (#238); absent = askStructured only. */
+  runtime?: AgentRuntime;
   cwd: string;
   /** The CURRENT stored plan — always embedded: the session's memory is stale after inline edits. */
   plan: IssuePlan;
@@ -271,12 +276,12 @@ function buildApplyFallbackPrompt(
 export async function discussPlan(
   opts: DiscussPlanOptions,
 ): Promise<{ reply: string; sessionId?: string }> {
-  const { llm, cwd, message } = opts;
+  const { llm, runtime, cwd, message } = opts;
   const maxTurns = opts.maxTurns ?? DEFAULT_CHAT_MAX_TURNS;
 
   if (opts.resumeSessionId) {
-    if (!llm.agent) throw new Error("resuming a plan session needs an agent-capable provider");
-    const reply = await llm.agent(buildDiscussResumePrompt(message, opts.confidence), {
+    if (!runtime) throw new Error("resuming a plan session needs an agent-capable runtime");
+    const reply = await runtime.agent(buildDiscussResumePrompt(message, opts.confidence), {
       systemPrompt: PLAN_CHAT_SYSTEM_PROMPT,
       cwd,
       maxTurns,
@@ -292,8 +297,8 @@ export async function discussPlan(
 
   if (!opts.context) throw new Error("discussPlan without a session needs context");
   const prompt = buildDiscussFallbackPrompt(opts.context, message);
-  if (llm.agent) {
-    const reply = await llm.agent(prompt, {
+  if (runtime) {
+    const reply = await runtime.agent(prompt, {
       systemPrompt: PLAN_CHAT_SYSTEM_PROMPT,
       cwd,
       maxTurns,
@@ -319,13 +324,13 @@ export async function discussPlan(
 export async function applyPlanFromDiscussion(
   opts: ApplyPlanFromDiscussionOptions,
 ): Promise<{ plan: IssuePlan; sessionId?: string }> {
-  const { llm, cwd, plan } = opts;
+  const { llm, runtime, cwd, plan } = opts;
   const schema = planJsonSchema();
   const maxTurns = opts.maxTurns ?? DEFAULT_CHAT_MAX_TURNS;
 
   if (opts.resumeSessionId) {
-    if (!llm.agent) throw new Error("resuming a plan session needs an agent-capable provider");
-    const reply = await llm.agent(buildApplyResumePrompt(plan, schema, opts.confidence), {
+    if (!runtime) throw new Error("resuming a plan session needs an agent-capable runtime");
+    const reply = await runtime.agent(buildApplyResumePrompt(plan, schema, opts.confidence), {
       systemPrompt: PLAN_CHAT_SYSTEM_PROMPT,
       cwd,
       maxTurns,
@@ -344,8 +349,8 @@ export async function applyPlanFromDiscussion(
     throw new Error("applyPlanFromDiscussion without a session needs issue + history");
   }
   const prompt = buildApplyFallbackPrompt(plan, schema, opts.issue, opts.history, opts.confidence);
-  if (llm.agent) {
-    const reply = await llm.agent(prompt, {
+  if (runtime) {
+    const reply = await runtime.agent(prompt, {
       systemPrompt: PLAN_CHAT_SYSTEM_PROMPT,
       cwd,
       maxTurns,

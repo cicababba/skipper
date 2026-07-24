@@ -16,7 +16,7 @@ import { execFileSync } from "node:child_process";
 import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, basename, resolve, dirname } from "node:path";
-import type { LLMProviderInterface } from "@skipper/core";
+import type { AgentRuntime, LLMProviderInterface } from "@skipper/core";
 
 const SUMMARY_REL = "session-summary.md";
 const LEGACY_REL = join(".nest", "session-summary.md");
@@ -141,23 +141,28 @@ const SYS_SAVE =
 
 export interface SessionDeps {
   llm: LLMProviderInterface;
+  /** Agent runtime (#238); when present the model reads the real code in `cwd`. */
+  runtime?: AgentRuntime;
   log: (m: string) => void;
 }
 
 /** Prefer the agentic path (the model reads the real code in `cwd`); fall back
- *  to a single-turn completion for providers without tools. */
+ *  to a single-turn completion when there is no runtime. */
 async function complete(
   llm: LLMProviderInterface,
+  runtime: AgentRuntime | undefined,
   prompt: string,
   opts: { cwd: string; system: string; turns?: number },
 ): Promise<string> {
-  if (typeof llm.agent === "function") {
-    return (await llm.agent(prompt, { cwd: opts.cwd, systemPrompt: opts.system, maxTurns: opts.turns ?? 40 })).text.trim();
+  if (runtime) {
+    return (
+      await runtime.agent(prompt, { cwd: opts.cwd, systemPrompt: opts.system, maxTurns: opts.turns ?? 40 })
+    ).text.trim();
   }
   return (await llm.ask(prompt, opts.system)).text.trim();
 }
 
-export async function saveSession(projectDir: string, { llm, log }: SessionDeps): Promise<string> {
+export async function saveSession(projectDir: string, { llm, runtime, log }: SessionDeps): Promise<string> {
   const dir = resolve(projectDir);
   const name = basename(dir);
   const path = join(dir, SUMMARY_REL); // always write to the synced root file
@@ -178,7 +183,7 @@ export async function saveSession(projectDir: string, { llm, log }: SessionDeps)
       `it's built from the actual code, don't guess.\n\n` +
       (recent ? `Recent commits for context:\n${recent}\n\n` : "") +
       `Output ONLY the brief body (markdown), no preamble — it becomes the durable "## Project Brief" section.`;
-    let brief = await complete(llm, prompt, { cwd: dir, system: SYS_SAVE });
+    let brief = await complete(llm, runtime, prompt, { cwd: dir, system: SYS_SAVE });
     // Drop any chain-of-thought preamble before the first heading, and a
     // leading "Project Brief" heading (we add our own).
     brief = (brief.replace(/^[\s\S]*?(?=^#{1,6}\s)/m, "").trim() || brief.trim())
@@ -205,7 +210,7 @@ export async function saveSession(projectDir: string, { llm, log }: SessionDeps)
       `## Project Brief — kept CURRENT and just as detailed as before (fold in anything the changes altered; keep WHAT THE APP DOES, build/run, architecture with file paths, state, gotchas, next steps).\n` +
       `## Session Log — keep all prior entries verbatim, and PREPEND one new entry dated ${nowISO()} that COMPRESSES what changed this session (the essence of the new work, decisions, and where it leaves off).\n` +
       `Be concrete and dense. Do not invent changes that aren't in the delta or the code.`;
-    body = await complete(llm, prompt, { cwd: dir, system: SYS_SAVE });
+    body = await complete(llm, runtime, prompt, { cwd: dir, system: SYS_SAVE });
     body = body.replace(/^[\s\S]*?(?=^#{1,6}\s)/m, "").trim() || body.trim();
   }
 
@@ -228,7 +233,7 @@ const SYS_RESUME =
   "how to build/run it, the current state, what was in progress, the EXACT next steps, the key files to open (with paths), and " +
   "the gotchas — so they continue as if they never left. No preamble. Markdown.";
 
-export async function resumeSession(projectDir: string, { llm }: SessionDeps): Promise<string> {
+export async function resumeSession(projectDir: string, { llm, runtime }: SessionDeps): Promise<string> {
   const dir = resolve(projectDir);
   const path = existingSummaryPath(dir);
   if (!path) {
@@ -249,7 +254,7 @@ export async function resumeSession(projectDir: string, { llm }: SessionDeps): P
         (localChanges ? `Local commits not reflected in the summary:\n${localChanges}\n\n` : `\n`)
       : `The local checkout matches the summary's commit.\n\n`) +
     `Verify the key claims against the current code in this directory, then produce the resumption briefing.`;
-  return await complete(llm, prompt, { cwd: dir, system: SYS_RESUME, turns: 30 });
+  return await complete(llm, runtime, prompt, { cwd: dir, system: SYS_RESUME, turns: 30 });
 }
 
 export function sessionSummaryPath(projectDir: string): string {

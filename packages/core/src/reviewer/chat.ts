@@ -6,6 +6,7 @@ import type {
   PlanChatMessage,
 } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
+import type { AgentRuntime } from "../runtime/types";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import type { RunConfinement } from "../llm/confinement";
 import type { PlanIssueInput } from "../planner/generate";
@@ -37,6 +38,8 @@ export interface ReviewerChatContext extends CoderChatContext {
 export interface DiscussReviewerOptions {
   message: string;
   llm: LLMProviderInterface;
+  /** Agentic runtime for the resume/fresh-agent paths (#238); absent = ask() only. */
+  runtime?: AgentRuntime;
   cwd: string;
   /** Resume the last critic round's session (claude-cli). */
   resumeSessionId?: string;
@@ -139,6 +142,7 @@ export async function discussReviewer(
 
   return runAgentDiscussion({
     llm,
+    ...(opts.runtime ? { runtime: opts.runtime } : {}),
     cwd,
     systemPrompt: REVIEWER_CHAT_SYSTEM_PROMPT,
     prompt,

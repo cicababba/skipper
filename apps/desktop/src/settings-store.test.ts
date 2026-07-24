@@ -9,7 +9,6 @@ function base(): AppSettings {
       openaiApiKey: "sk-realkey1234",
       openaiModel: "gpt-4o",
       claudeModel: "sonnet",
-      ollamaModel: "",
     },
     autoExtractAtoms: true,
     onboardingCompleted: true,

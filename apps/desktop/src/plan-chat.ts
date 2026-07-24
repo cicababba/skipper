@@ -3,7 +3,6 @@ import {
   AgentAbortError,
   PlanGenerationError,
   applyPlanFromDiscussion,
-  createProvider,
   discussPlan,
   type LLMProviderInterface,
   type MemoryMcp,
@@ -11,8 +10,9 @@ import {
   type RunConfinement,
 } from "@skipper/core";
 import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
-import { diffCount, diffPlans, isPlanChatText } from "@skipper/shared";
+import { diffCount, diffPlans, isPlanChatText, sessionRuntimeOf } from "@skipper/shared";
 import type {
+  AgentRuntimeId,
   CodingEvent,
   Issue,
   IssuePlan,
@@ -23,7 +23,7 @@ import type {
   StoredPlan,
   TrackedItem,
 } from "@skipper/shared";
-import { modelForRole, providerCacheKey } from "./llm-settings";
+import { buildLlm, injectedBundle, modelForRole, providerCacheKey, type LlmBundle } from "./llm-settings";
 import {
   appendPlanChatApplied,
   appendPlanChatExchange,
@@ -48,7 +48,7 @@ export interface PlanChatDeps {
   getStoredPlan: (item: TrackedItem) => Promise<StoredPlan | null>;
   /** Overwrite the stored plan, stamping editedAt (updateStoredPlan wrapper). */
   updatePlan: (item: TrackedItem, plan: IssuePlan) => Promise<StoredPlan | null>;
-  setPlanSessionId: (itemId: string, sessionId: string) => Promise<void>;
+  setPlanSessionId: (itemId: string, sessionId: string, sessionRuntime?: AgentRuntimeId) => Promise<void>;
   getLlmSettings: () => Promise<LlmSettings>;
   /** Planner console stream (= emitPlanningEvent); resuming/CLI events only, never agent-start. */
   emitEvent: (itemId: string, event: CodingEvent) => void;
@@ -66,34 +66,31 @@ export type ApplyPlanChatResult =
 
 let deps: PlanChatDeps | null = null;
 let injected = false;
-let llm: LLMProviderInterface | null = null;
-let llmKey: string | null = null;
+let injectedProvider: LLMProviderInterface | null = null;
+let bundle: LlmBundle | null = null;
+let bundleKey: string | null = null;
 const inFlight = new Map<string, AbortController>();
 
 export function initPlanChat(planChatDeps: PlanChatDeps, provider?: LLMProviderInterface): void {
   deps = planChatDeps;
   injected = provider !== undefined;
-  llm = provider ?? null;
-  llmKey = null;
+  injectedProvider = provider ?? null;
+  bundle = null;
+  bundleKey = null;
   inFlight.clear();
 }
 
-/** Provider resolution mirrors the planner (role = plannerModel). */
-async function resolveProvider(roleModel: string): Promise<LLMProviderInterface> {
-  if (injected && llm) return llm;
+/** Bundle resolution mirrors the planner (role = plannerModel). */
+async function resolveBundle(roleModel: string): Promise<LlmBundle> {
+  if (injected && injectedProvider) return injectedBundle(injectedProvider, roleModel);
   const settings = await deps!.getLlmSettings();
   const model = modelForRole(settings, roleModel);
   const key = providerCacheKey(settings, model);
-  if (!llm || llmKey !== key) {
-    llm = createProvider({
-      provider: settings.provider,
-      model,
-      maxTurns: 5,
-      apiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
-    });
-    llmKey = key;
+  if (!bundle || bundleKey !== key) {
+    bundle = buildLlm(settings, roleModel, 5);
+    bundleKey = key;
   }
-  return llm;
+  return bundle;
 }
 
 function toPlanIssue(item: TrackedItem, cached: Issue | undefined): PlanIssueInput {
@@ -154,9 +151,12 @@ export async function sendPlanChatMessage(itemId: string, text: string): Promise
     const repoPath = deps.getRepoPath(item.repo);
     const checkoutBefore = repoPath ? await deps.checkoutDirtyPaths(repoPath) : null;
 
-    const provider = await resolveProvider(deps.getRepoSettings(item.repo).plannerModel);
+    const { llm: provider, runtime } = await resolveBundle(deps.getRepoSettings(item.repo).plannerModel);
     const resumable =
-      provider.name === "claude-cli" && !!item.plan?.sessionId && !!item.worktree?.path;
+      !!runtime?.capabilities.resume &&
+      sessionRuntimeOf(item.plan) === runtime.id &&
+      !!item.plan?.sessionId &&
+      !!item.worktree?.path;
 
     const issue = toPlanIssue(item, deps.getIssue(item));
     const history = await historyFor(itemId, stored.generatedAt);
@@ -174,7 +174,7 @@ export async function sendPlanChatMessage(itemId: string, text: string): Promise
     // Mint a persist-before-run session for any fresh (fallback / dead-resume)
     // run so a crash still leaves a resumable pointer (planner.ts rationale).
     const fallbackSessionId =
-      provider.name === "claude-cli" && item.worktree?.path ? randomUUID() : undefined;
+      runtime?.capabilities.resume && item.worktree?.path ? randomUUID() : undefined;
 
     deps.emitEvent(itemId, { kind: "status", phase: "resuming", detail: "plan chat" });
 
@@ -184,19 +184,20 @@ export async function sendPlanChatMessage(itemId: string, text: string): Promise
       sawEvent = true;
       if (event.kind === "agent-init" && persistedSessionId && event.sessionId !== persistedSessionId) {
         persistedSessionId = event.sessionId;
-        void deps?.setPlanSessionId(itemId, event.sessionId).catch(() => {});
+        void deps?.setPlanSessionId(itemId, event.sessionId, runtime?.id).catch(() => {});
       }
       deps?.emitEvent(itemId, event);
     };
 
     const runFallback = async () => {
       if (fallbackSessionId) {
-        await deps!.setPlanSessionId(itemId, fallbackSessionId);
+        await deps!.setPlanSessionId(itemId, fallbackSessionId, runtime?.id);
         persistedSessionId = fallbackSessionId;
       }
       return discussPlan({
         message,
         llm: provider,
+        ...(runtime ? { runtime } : {}),
         cwd,
         context: {
           issue,
@@ -218,6 +219,7 @@ export async function sendPlanChatMessage(itemId: string, text: string): Promise
         ? await discussPlan({
             message,
             llm: provider,
+            ...(runtime ? { runtime } : {}),
             cwd,
             resumeSessionId: item.plan!.sessionId!,
             // The resumed session persists its context across turns, so inject
@@ -286,9 +288,12 @@ export async function applyPlanChatUpdate(itemId: string): Promise<ApplyPlanChat
     const repoPath = deps.getRepoPath(item.repo);
     const checkoutBefore = repoPath ? await deps.checkoutDirtyPaths(repoPath) : null;
 
-    const provider = await resolveProvider(deps.getRepoSettings(item.repo).plannerModel);
+    const { llm: provider, runtime } = await resolveBundle(deps.getRepoSettings(item.repo).plannerModel);
     const resumable =
-      provider.name === "claude-cli" && !!item.plan?.sessionId && !!item.worktree?.path;
+      !!runtime?.capabilities.resume &&
+      sessionRuntimeOf(item.plan) === runtime.id &&
+      !!item.plan?.sessionId &&
+      !!item.worktree?.path;
 
     const issue = toPlanIssue(item, deps.getIssue(item));
     const memory = deps.getMemoryMcp?.(item);
@@ -301,7 +306,7 @@ export async function applyPlanChatUpdate(itemId: string): Promise<ApplyPlanChat
           }
         : undefined;
     const fallbackSessionId =
-      provider.name === "claude-cli" && item.worktree?.path ? randomUUID() : undefined;
+      runtime?.capabilities.resume && item.worktree?.path ? randomUUID() : undefined;
 
     deps.emitEvent(itemId, { kind: "status", phase: "resuming", detail: "apply plan changes" });
 
@@ -311,18 +316,19 @@ export async function applyPlanChatUpdate(itemId: string): Promise<ApplyPlanChat
       sawEvent = true;
       if (event.kind === "agent-init" && persistedSessionId && event.sessionId !== persistedSessionId) {
         persistedSessionId = event.sessionId;
-        void deps?.setPlanSessionId(itemId, event.sessionId).catch(() => {});
+        void deps?.setPlanSessionId(itemId, event.sessionId, runtime?.id).catch(() => {});
       }
       deps?.emitEvent(itemId, event);
     };
 
     const runFallback = async () => {
       if (fallbackSessionId) {
-        await deps!.setPlanSessionId(itemId, fallbackSessionId);
+        await deps!.setPlanSessionId(itemId, fallbackSessionId, runtime?.id);
         persistedSessionId = fallbackSessionId;
       }
       return applyPlanFromDiscussion({
         llm: provider,
+        ...(runtime ? { runtime } : {}),
         cwd,
         plan: stored.plan,
         issue,
@@ -341,6 +347,7 @@ export async function applyPlanChatUpdate(itemId: string): Promise<ApplyPlanChat
       result = resumable
         ? await applyPlanFromDiscussion({
             llm: provider,
+            ...(runtime ? { runtime } : {}),
             cwd,
             plan: stored.plan,
             resumeSessionId: item.plan!.sessionId!,

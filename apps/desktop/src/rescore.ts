@@ -1,9 +1,7 @@
 import {
   AgentAbortError,
   computeConfidence as realComputeConfidence,
-  createProvider,
   type IssueComment,
-  type LLMProviderInterface,
   type OrchestratorSettings,
   type RunConfinement,
 } from "@skipper/core";
@@ -18,7 +16,7 @@ import type {
   StoredPlan,
   TrackedItem,
 } from "@skipper/shared";
-import { modelForRole, providerCacheKey } from "./llm-settings";
+import { buildLlm, modelForRole, providerCacheKey, type LlmBundle } from "./llm-settings";
 import { readStoredPlan, writeStoredPlan } from "./plan-store";
 
 // Re-score confidence after a plan-chat Apply (#164): Apply re-emits the plan
@@ -51,32 +49,28 @@ export interface RescoreDeps {
 }
 
 let deps: RescoreDeps | null = null;
-let llm: LLMProviderInterface | null = null;
-let llmKey: string | null = null;
+let bundle: LlmBundle | null = null;
+let bundleKey: string | null = null;
 const inFlight = new Map<string, AbortController>();
 
 export function initRescore(rescoreDeps: RescoreDeps): void {
   deps = rescoreDeps;
-  llm = null;
-  llmKey = null;
+  bundle = null;
+  bundleKey = null;
   inFlight.clear();
 }
 
-/** Provider resolution mirrors the planner (role = plannerModel). */
-async function resolveProvider(roleModel: string): Promise<LLMProviderInterface> {
+/** Bundle resolution mirrors the planner (role = plannerModel). Convergence is
+ *  always skipped on a rescore, so the runtime only rides along for parity (#238). */
+async function resolveBundle(roleModel: string): Promise<LlmBundle> {
   const settings = await deps!.getLlmSettings();
   const model = modelForRole(settings, roleModel);
   const key = providerCacheKey(settings, model);
-  if (!llm || llmKey !== key) {
-    llm = createProvider({
-      provider: settings.provider,
-      model,
-      maxTurns: 5,
-      apiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
-    });
-    llmKey = key;
+  if (!bundle || bundleKey !== key) {
+    bundle = buildLlm(settings, roleModel, 5);
+    bundleKey = key;
   }
-  return llm;
+  return bundle;
 }
 
 /** Abort a live rescore (inline edit, leaving plan-gate, untrack). */
@@ -116,7 +110,7 @@ async function run(itemId: string, applied: StoredPlan, controller: AbortControl
     const checkoutBefore = repoPath ? await d.checkoutDirtyPaths(repoPath) : null;
     const confinement: RunConfinement | undefined =
       item.worktree?.path && repoPath ? { runRoot: cwd, denyRoots: [repoPath] } : undefined;
-    const provider = await resolveProvider(d.getRepoSettings(item.repo).plannerModel);
+    const { llm: provider, runtime } = await resolveBundle(d.getRepoSettings(item.repo).plannerModel);
 
     let comments: IssueComment[] = [];
     if (d.fetchIssueComments) {
@@ -141,6 +135,7 @@ async function run(itemId: string, applied: StoredPlan, controller: AbortControl
       issue,
       repoPath: cwd,
       llm: provider,
+      ...(runtime ? { runtime } : {}),
       thresholds: { high: settings.confidence.high, low: settings.confidence.low },
       autoCoding: d.getRepoSettings(item.repo).autoCoding,
       signal: controller.signal,

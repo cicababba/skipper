@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { CoderReport, IssuePlan, PlanChatMessage } from "@skipper/shared";
 import type { AgentOptions, LLMProviderInterface, LLMResponse } from "../src/llm/provider";
+import type { AgentRuntime } from "../src/runtime";
 import {
   discussCoder,
   distillCoderChatInstructions,
@@ -45,11 +46,13 @@ const INSTRUCTIONS = { instructions: [{ path: "src/poller.ts", body: "raise the 
 interface FakeOpts {
   agentReply?: string;
   structuredReply?: unknown;
+  /** Omit the runtime — no agentic path, distill degrades to askStructured (#238). */
   noAgent?: boolean;
 }
 
 function fakeLLM(opts: FakeOpts): {
   llm: LLMProviderInterface;
+  runtime: AgentRuntime | undefined;
   agent: ReturnType<typeof vi.fn>;
   askStructured: ReturnType<typeof vi.fn>;
 } {
@@ -64,16 +67,17 @@ function fakeLLM(opts: FakeOpts): {
     name: "claude-cli",
     ask: vi.fn(async (): Promise<LLMResponse> => ({ text: "" })),
     askStructured,
-    ...(opts.noAgent ? {} : { agent }),
   } as unknown as LLMProviderInterface;
-  return { llm, agent, askStructured };
+  const runtime = opts.noAgent ? undefined : ({ id: "claude-cli", agent } as unknown as AgentRuntime);
+  return { llm, runtime, agent, askStructured };
 }
 
 describe("distillCoderChatInstructions", () => {
   it("resume path: prompt demands JSON + schema, carries no issue/plan, threads resumeSessionId", async () => {
-    const { llm, agent, askStructured } = fakeLLM({ agentReply: JSON.stringify(INSTRUCTIONS) });
+    const { llm, runtime, agent, askStructured } = fakeLLM({ agentReply: JSON.stringify(INSTRUCTIONS) });
     const res = await distillCoderChatInstructions({
       llm,
+      runtime,
       cwd: "/wt",
       resumeSessionId: "sess-1",
     });
@@ -90,9 +94,10 @@ describe("distillCoderChatInstructions", () => {
   });
 
   it("fallback path: prompt embeds the issue, plan JSON, report and history + the JSON demand", async () => {
-    const { llm, agent } = fakeLLM({ agentReply: JSON.stringify(INSTRUCTIONS) });
+    const { llm, runtime, agent } = fakeLLM({ agentReply: JSON.stringify(INSTRUCTIONS) });
     await distillCoderChatInstructions({
       llm,
+      runtime,
       cwd: "/wt",
       sessionId: "mint-1",
       context: { issue: ISSUE, plan: PLAN, report: REPORT, history: HISTORY },
@@ -108,41 +113,42 @@ describe("distillCoderChatInstructions", () => {
   });
 
   it("spends the repair round when the agent reply is not valid instructions JSON", async () => {
-    const { llm, agent, askStructured } = fakeLLM({
+    const { llm, runtime, agent, askStructured } = fakeLLM({
       agentReply: "here you go: not json at all",
       structuredReply: { instructions: [{ body: "repaired instruction" }] },
     });
-    const res = await distillCoderChatInstructions({ llm, cwd: "/wt", resumeSessionId: "sess-1" });
+    const res = await distillCoderChatInstructions({ llm, runtime, cwd: "/wt", resumeSessionId: "sess-1" });
     expect(res.instructions).toEqual([{ body: "repaired instruction" }]);
     expect(agent).toHaveBeenCalledOnce();
     expect(askStructured).toHaveBeenCalledOnce();
   });
 
   it("throws when the repair round also fails validation", async () => {
-    const { llm } = fakeLLM({
+    const { llm, runtime } = fakeLLM({
       agentReply: "garbage",
       structuredReply: { instructions: [] }, // empty array is invalid
     });
     await expect(
-      distillCoderChatInstructions({ llm, cwd: "/wt", resumeSessionId: "sess-1" }),
+      distillCoderChatInstructions({ llm, runtime, cwd: "/wt", resumeSessionId: "sess-1" }),
     ).rejects.toThrow(/failed validation/);
   });
 
   it("drops blank paths so an unscoped instruction carries no path", async () => {
-    const { llm } = fakeLLM({
+    const { llm, runtime } = fakeLLM({
       agentReply: JSON.stringify({ instructions: [{ path: "  ", body: "do a thing" }] }),
     });
-    const res = await distillCoderChatInstructions({ llm, cwd: "/wt", resumeSessionId: "sess-1" });
+    const res = await distillCoderChatInstructions({ llm, runtime, cwd: "/wt", resumeSessionId: "sess-1" });
     expect(res.instructions).toEqual([{ body: "do a thing" }]);
   });
 
-  it("degrades to askStructured when the provider has no agent mode", async () => {
-    const { llm, askStructured } = fakeLLM({
+  it("degrades to askStructured when there is no runtime", async () => {
+    const { llm, runtime, askStructured } = fakeLLM({
       noAgent: true,
       structuredReply: { instructions: [{ body: "from structured" }] },
     });
     const res = await distillCoderChatInstructions({
       llm,
+      runtime,
       cwd: "/wt",
       context: { issue: ISSUE, plan: PLAN, history: HISTORY },
     });
@@ -157,18 +163,20 @@ describe("distillCoderChatInstructions", () => {
 
   // #205: the distill fallback also carries the review block.
   it("distill fallback embeds the review block only when context.review is set", async () => {
-    const { llm, agent } = fakeLLM({ agentReply: JSON.stringify(INSTRUCTIONS) });
+    const { llm, runtime, agent } = fakeLLM({ agentReply: JSON.stringify(INSTRUCTIONS) });
     await distillCoderChatInstructions({
       llm,
+      runtime,
       cwd: "/wt",
       sessionId: "mint-1",
       context: { issue: ISSUE, plan: PLAN, review: REVIEW, history: HISTORY },
     });
     expect(agent.mock.calls[0][0] as string).toContain("--- Review (round 2, reject) ---");
 
-    const { llm: llm2, agent: agent2 } = fakeLLM({ agentReply: JSON.stringify(INSTRUCTIONS) });
+    const { llm: llm2, runtime: runtime2, agent: agent2 } = fakeLLM({ agentReply: JSON.stringify(INSTRUCTIONS) });
     await distillCoderChatInstructions({
       llm: llm2,
+      runtime: runtime2,
       cwd: "/wt",
       sessionId: "mint-1",
       context: { issue: ISSUE, plan: PLAN, history: HISTORY },
@@ -217,30 +225,32 @@ describe("renderReviewBlock", () => {
 
 describe("discussCoder review injection (#203)", () => {
   it("resume path injects the review block only when resumeReview is given", async () => {
-    const { llm, agent } = fakeLLM({ agentReply: "an answer" });
-    await discussCoder({ llm, cwd: "/wt", message: "fix point 1", resumeSessionId: "s", resumeReview: REVIEW });
+    const { llm, runtime, agent } = fakeLLM({ agentReply: "an answer" });
+    await discussCoder({ llm, runtime, cwd: "/wt", message: "fix point 1", resumeSessionId: "s", resumeReview: REVIEW });
     const prompt = agent.mock.calls[0][0] as string;
     expect(prompt).toContain("An independent reviewer has reviewed your changes");
     expect(prompt).toContain("--- Review (round 2, reject) ---");
 
-    const { llm: llm2, agent: agent2 } = fakeLLM({ agentReply: "an answer" });
-    await discussCoder({ llm: llm2, cwd: "/wt", message: "fix point 1", resumeSessionId: "s" });
+    const { llm: llm2, runtime: runtime2, agent: agent2 } = fakeLLM({ agentReply: "an answer" });
+    await discussCoder({ llm: llm2, runtime: runtime2, cwd: "/wt", message: "fix point 1", resumeSessionId: "s" });
     expect(agent2.mock.calls[0][0] as string).not.toContain("--- Review (");
   });
 
   it("fallback path embeds the review block only when context.review is set", async () => {
-    const { llm, agent } = fakeLLM({ agentReply: "an answer" });
+    const { llm, runtime, agent } = fakeLLM({ agentReply: "an answer" });
     await discussCoder({
       llm,
+      runtime,
       cwd: "/wt",
       message: "why?",
       context: { issue: ISSUE, plan: PLAN, review: REVIEW, history: HISTORY },
     });
     expect(agent.mock.calls[0][0] as string).toContain("--- Review (round 2, reject) ---");
 
-    const { llm: llm2, agent: agent2 } = fakeLLM({ agentReply: "an answer" });
+    const { llm: llm2, runtime: runtime2, agent: agent2 } = fakeLLM({ agentReply: "an answer" });
     await discussCoder({
       llm: llm2,
+      runtime: runtime2,
       cwd: "/wt",
       message: "why?",
       context: { issue: ISSUE, plan: PLAN, history: HISTORY },

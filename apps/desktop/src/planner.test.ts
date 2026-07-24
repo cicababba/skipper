@@ -185,16 +185,16 @@ describe("planner provider selection (#59)", () => {
     return { deps, transitions, events };
   }
 
-  it("parks the item in needs-input when the provider has no agent mode", async () => {
+  it("parks the item in needs-input when the provider has no agent runtime", async () => {
     const h = makeProviderHarness({ provider: "openai", openaiModel: "gpt-4o", openaiApiKey: "sk-test" });
     initPlanner(h.deps);
     pokePlanner();
     await settle();
     expect(h.transitions).toEqual([
-      { to: "needs-input", reason: expect.stringContaining("planning needs a provider with agent mode") },
+      { to: "needs-input", reason: expect.stringContaining("planning needs an agent runtime") },
     ]);
     // The message has to stand alone — it is what the user reads on the item.
-    expect(h.events.some((e) => e.kind === "error" && /claude-cli or ollama/.test(e.message))).toBe(true);
+    expect(h.events.some((e) => e.kind === "error" && /claude-cli/.test(e.message))).toBe(true);
   });
 
   it("surfaces a missing OpenAI key rather than hanging", async () => {

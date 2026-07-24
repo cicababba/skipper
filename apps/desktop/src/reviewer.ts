@@ -1,5 +1,4 @@
 import {
-  createProvider,
   critiqueDiff,
   resolveReviewMode,
   type LLMProviderInterface,
@@ -7,6 +6,7 @@ import {
 } from "@skipper/core";
 import type {
   AgentReview,
+  AgentRuntimeId,
   CodingEvent,
   Issue,
   LifecycleState,
@@ -18,7 +18,7 @@ import type {
   TrackedItem,
 } from "@skipper/shared";
 import { randomUUID } from "node:crypto";
-import { modelForRole, providerCacheKey } from "./llm-settings";
+import { buildLlm, modelForRole, providerCacheKey, type LlmBundle } from "./llm-settings";
 import type { WorktreeDiff } from "./worktrees";
 
 // Agent review loop (issue #10): consumes "agent-review" items (the #9 coder's
@@ -56,8 +56,8 @@ export interface ReviewerDeps {
   getRepoSettings: (repo: RepoRef) => ResolvedRepoOrchestratorSettings;
   /** settings.json llm block (#59) — which provider the reviewer runs on. */
   getLlmSettings: () => Promise<LlmSettings>;
-  /** Records the critic round's Claude session id without a transition (#111). */
-  setReviewSessionId: (itemId: string, sessionId: string) => Promise<void>;
+  /** Records the critic round's Claude session id + minting runtime without a transition (#111/#238). */
+  setReviewSessionId: (itemId: string, sessionId: string, sessionRuntime?: AgentRuntimeId) => Promise<void>;
   /** Coarse lifecycle beats over the review console channel (#113). */
   emitEvent: (itemId: string, event: CodingEvent) => void;
 }
@@ -66,8 +66,8 @@ const REVIEW_CONCURRENCY = 2;
 
 let deps: ReviewerDeps | null = null;
 let critic: typeof critiqueDiff = critiqueDiff;
-let llm: LLMProviderInterface | null = null;
-let llmKey: string | null = null;
+let bundle: LlmBundle | null = null;
+let bundleKey: string | null = null;
 const queue: string[] = [];
 const queued = new Set<string>();
 const inFlight = new Set<string>();
@@ -77,30 +77,25 @@ let scanScheduled = false;
 export function initReviewer(reviewerDeps: ReviewerDeps, criticImpl?: typeof critiqueDiff): void {
   deps = reviewerDeps;
   critic = criticImpl ?? critiqueDiff;
-  llm = null;
-  llmKey = null;
+  bundle = null;
+  bundleKey = null;
   queue.length = 0;
   queued.clear();
   inFlight.clear();
   active = 0;
 }
 
-/** The provider picked in Settings (#59), cached per provider+model. The role model
- *  only applies to claude-cli — see modelForRole. */
-async function resolveProvider(roleModel: string): Promise<LLMProviderInterface> {
+/** The bundle (provider + runtime) built from Settings (#59/#238), cached per
+ *  provider+model. The role model only applies to claude-cli — see modelForRole. */
+async function resolveBundle(roleModel: string): Promise<LlmBundle> {
   const settings = await deps!.getLlmSettings();
   const model = modelForRole(settings, roleModel);
   const key = providerCacheKey(settings, model);
-  if (!llm || llmKey !== key) {
-    llm = createProvider({
-      provider: settings.provider,
-      model,
-      maxTurns: 5,
-      apiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
-    });
-    llmKey = key;
+  if (!bundle || bundleKey !== key) {
+    bundle = buildLlm(settings, roleModel, 5);
+    bundleKey = key;
   }
-  return llm;
+  return bundle;
 }
 
 /** Coalesced re-scan — fired after polls and transitions. */
@@ -242,13 +237,14 @@ async function run(itemId: string): Promise<void> {
     // rather than escaping run() as an unhandled rejection.
     let sessionId: string | undefined;
     try {
-      const provider = await resolveProvider(repoSettings.reviewerModel);
+      const { llm: provider, runtime } = await resolveBundle(repoSettings.reviewerModel);
       if (deps.getItem(itemId)?.state !== "agent-review") return;
       // Persist a fresh session per round so the human can resume the critic run from
-      // the worktree later (#111). cwd-scoped, claude-cli only; persist-before-run.
+      // the worktree later (#111). cwd-scoped, needs a resume-capable runtime;
+      // persist-before-run. A session also unlocks the repo-inspecting critic (#226).
       const wtPath = item.worktree?.path;
-      sessionId = provider.name === "claude-cli" && wtPath ? randomUUID() : undefined;
-      if (sessionId) await deps.setReviewSessionId(itemId, sessionId);
+      sessionId = runtime?.capabilities.resume && wtPath ? randomUUID() : undefined;
+      if (sessionId) await deps.setReviewSessionId(itemId, sessionId, runtime!.id);
       emit(itemId, { kind: "status", phase: "agent-start", detail: `round ${round}` });
       if (sessionId) emit(itemId, { kind: "agent-init", sessionId });
       signal = await critic(
@@ -262,6 +258,7 @@ async function run(itemId: string): Promise<void> {
           ...(stored?.plan.context?.length ? { planContext: stored.plan.context } : {}),
         },
         provider,
+        runtime,
       );
     } catch (err) {
       if (deps.getItem(itemId)?.state !== "agent-review") return;

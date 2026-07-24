@@ -4,6 +4,7 @@ import {
   latestCodingTransitionAt,
   latestPlanningTransitionAt,
   type AgentReview,
+  type AgentRuntimeId,
   type ConfidenceReport,
   type LifecycleState,
   type PrReviewComment,
@@ -200,10 +201,10 @@ export function makeManifestWriters(d: ManifestWriterDeps) {
     d.broadcast();
   }
 
-  /** Persists the coding worktree record (path/branch/sessionId) without a transition (#9). */
+  /** Persists the coding worktree record (path/branch/sessionId/sessionRuntime) without a transition (#9). */
   async function setWorktree(
     itemId: string,
-    worktree: { path: string; branch: string; sessionId?: string },
+    worktree: { path: string; branch: string; sessionId?: string; sessionRuntime?: AgentRuntimeId },
   ): Promise<void> {
     const m = await d.ensureManifest();
     const item = m.items[itemId];
@@ -213,15 +214,20 @@ export function makeManifestWriters(d: ManifestWriterDeps) {
     d.broadcast();
   }
 
-  /** Records the plan run's Claude session id without a transition (#111). Overwritten
-   *  each plan run; cwd-scoped to worktree.path. completePlan preserves it via spread. */
-  async function setPlanSessionId(itemId: string, sessionId: string): Promise<void> {
+  /** Records the plan run's Claude session id + minting runtime without a transition
+   *  (#111/#238). Overwritten each plan run; cwd-scoped to worktree.path. completePlan
+   *  preserves it via spread. */
+  async function setPlanSessionId(
+    itemId: string,
+    sessionId: string,
+    sessionRuntime?: AgentRuntimeId,
+  ): Promise<void> {
     const m = await d.ensureManifest();
     const item = m.items[itemId];
     if (!item) throw new Error(`unknown item ${itemId}`);
     m.items[itemId] = {
       ...item,
-      plan: { ...item.plan, sessionId },
+      plan: { ...item.plan, sessionId, ...(sessionRuntime ? { sessionRuntime } : {}) },
       updatedAt: new Date().toISOString(),
     };
     await d.saveManifest(m);
@@ -265,17 +271,22 @@ export function makeManifestWriters(d: ManifestWriterDeps) {
    *  round 1 (no review yet) it seeds a stub review the reviewer/UI already handle;
    *  completeReview replaces it wholesale. The chained-round check reads only
    *  pendingObjections (absent here, preserved by spread) — unaffected. */
-  async function setReviewSessionId(itemId: string, sessionId: string): Promise<void> {
+  async function setReviewSessionId(
+    itemId: string,
+    sessionId: string,
+    sessionRuntime?: AgentRuntimeId,
+  ): Promise<void> {
     const m = await d.ensureManifest();
     const item = m.items[itemId];
     if (!item) throw new Error(`unknown item ${itemId}`);
     const review: AgentReview = item.review
-      ? { ...item.review, sessionId }
+      ? { ...item.review, sessionId, ...(sessionRuntime ? { sessionRuntime } : {}) }
       : {
           rounds: 0,
           outcome: "unavailable",
           reason: "review in progress",
           sessionId,
+          ...(sessionRuntime ? { sessionRuntime } : {}),
           at: new Date().toISOString(),
         };
     m.items[itemId] = { ...item, review, updatedAt: new Date().toISOString() };

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { ConfidenceReport, IssuePlan, PlanChatMessage } from "@skipper/shared";
 import type { AgentOptions, LLMProviderInterface, LLMResponse } from "../src/llm/provider";
+import type { AgentRuntime } from "../src/runtime";
 import {
   discussPlan,
   applyPlanFromDiscussion,
@@ -75,11 +76,13 @@ interface FakeOpts {
   agentReply?: string;
   structuredReply?: unknown;
   askReply?: string;
+  /** Omit the runtime — no agentic path, discuss degrades to ask() (#238). */
   noAgent?: boolean;
 }
 
 function fakeLLM(opts: FakeOpts): {
   llm: LLMProviderInterface;
+  runtime: AgentRuntime | undefined;
   agent: ReturnType<typeof vi.fn>;
   ask: ReturnType<typeof vi.fn>;
   askStructured: ReturnType<typeof vi.fn>;
@@ -96,9 +99,9 @@ function fakeLLM(opts: FakeOpts): {
     name: "claude-cli",
     ask,
     askStructured,
-    ...(opts.noAgent ? {} : { agent }),
   } as unknown as LLMProviderInterface;
-  return { llm, agent, ask, askStructured };
+  const runtime = opts.noAgent ? undefined : ({ id: "claude-cli", agent } as unknown as AgentRuntime);
+  return { llm, runtime, agent, ask, askStructured };
 }
 
 describe("renderConfidenceBlock", () => {
@@ -138,10 +141,11 @@ describe("renderConfidenceBlock", () => {
 
 describe("discussPlan", () => {
   it("resume path: prompt carries the message, no plan JSON, and resumeSessionId is threaded", async () => {
-    const { llm, agent } = fakeLLM({ agentReply: "Because 429 means back off." });
+    const { llm, runtime, agent } = fakeLLM({ agentReply: "Because 429 means back off." });
     const res = await discussPlan({
       message: "Why backoff?",
       llm,
+      runtime,
       cwd: "/wt",
       resumeSessionId: "sess-1",
     });
@@ -155,10 +159,11 @@ describe("discussPlan", () => {
   });
 
   it("fallback path: prompt embeds the issue, plan JSON and history", async () => {
-    const { llm, agent } = fakeLLM({ agentReply: "answer" });
+    const { llm, runtime, agent } = fakeLLM({ agentReply: "answer" });
     await discussPlan({
       message: "Is the scheduler affected?",
       llm,
+      runtime,
       cwd: "/wt",
       sessionId: "mint-1",
       context: { issue: ISSUE, plan: PLAN, history: HISTORY },
@@ -173,10 +178,11 @@ describe("discussPlan", () => {
   });
 
   it("fallback path: injects the confidence block when context.confidence is set", async () => {
-    const { llm, agent } = fakeLLM({ agentReply: "answer" });
+    const { llm, runtime, agent } = fakeLLM({ agentReply: "answer" });
     await discussPlan({
       message: "why is the score so low?",
       llm,
+      runtime,
       cwd: "/wt",
       context: { issue: ISSUE, plan: PLAN, history: [], confidence: REPORT },
     });
@@ -186,10 +192,11 @@ describe("discussPlan", () => {
   });
 
   it("fallback path: no confidence block when context.confidence is absent", async () => {
-    const { llm, agent } = fakeLLM({ agentReply: "answer" });
+    const { llm, runtime, agent } = fakeLLM({ agentReply: "answer" });
     await discussPlan({
       message: "q",
       llm,
+      runtime,
       cwd: "/wt",
       context: { issue: ISSUE, plan: PLAN, history: [] },
     });
@@ -198,10 +205,11 @@ describe("discussPlan", () => {
   });
 
   it("resume path: injects the confidence block when confidence is set", async () => {
-    const { llm, agent } = fakeLLM({ agentReply: "answer" });
+    const { llm, runtime, agent } = fakeLLM({ agentReply: "answer" });
     await discussPlan({
       message: "why so low?",
       llm,
+      runtime,
       cwd: "/wt",
       resumeSessionId: "sess-1",
       confidence: REPORT,
@@ -211,11 +219,12 @@ describe("discussPlan", () => {
     expect(prompt).toContain('verdict "concerns"');
   });
 
-  it("degrades to ask() when the provider has no agent mode", async () => {
-    const { llm, ask } = fakeLLM({ noAgent: true, askReply: "degraded answer" });
+  it("degrades to ask() when there is no runtime", async () => {
+    const { llm, runtime, ask } = fakeLLM({ noAgent: true, askReply: "degraded answer" });
     const res = await discussPlan({
       message: "q",
       llm,
+      runtime,
       cwd: "/wt",
       context: { issue: ISSUE, plan: PLAN, history: [] },
     });
@@ -233,9 +242,10 @@ describe("discussPlan", () => {
 describe("applyPlanFromDiscussion", () => {
   it("resume path: embeds the current plan JSON + schema and validates the reply", async () => {
     const amended = { ...PLAN, summary: "Add retry with jittered backoff" };
-    const { llm, agent, askStructured } = fakeLLM({ agentReply: JSON.stringify(amended) });
+    const { llm, runtime, agent, askStructured } = fakeLLM({ agentReply: JSON.stringify(amended) });
     const res = await applyPlanFromDiscussion({
       llm,
+      runtime,
       cwd: "/wt",
       plan: PLAN,
       resumeSessionId: "sess-1",
@@ -250,12 +260,13 @@ describe("applyPlanFromDiscussion", () => {
 
   it("resume path: spends the repair round when the agent reply is schema-invalid", async () => {
     const amended = { ...PLAN, summary: "repaired" };
-    const { llm, askStructured } = fakeLLM({
+    const { llm, runtime, askStructured } = fakeLLM({
       agentReply: JSON.stringify({ ...amended, steps: [] }),
       structuredReply: amended,
     });
     const res = await applyPlanFromDiscussion({
       llm,
+      runtime,
       cwd: "/wt",
       plan: PLAN,
       resumeSessionId: "sess-1",

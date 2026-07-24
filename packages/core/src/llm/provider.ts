@@ -4,7 +4,6 @@ import type { GraphifyMcp } from "./graphify-mcp";
 import type { RunConfinement } from "./confinement";
 import { ClaudeCLIProvider } from "./claude-cli";
 import { OpenAIProvider } from "./openai";
-import { OllamaProvider } from "./ollama";
 
 export interface LLMResponse {
   text: string;
@@ -25,25 +24,25 @@ export interface AgentOptions {
   /** Inject the skipper-memory MCP server, scoped to this repo (#45). */
   memory?: MemoryMcp;
   /** Inject the graphify knowledge-graph MCP server, scoped to this repo (#233).
-   *  Planner-only by construction; claude-cli only. */
+   *  Planner-only by construction; the claude-cli runtime only. */
   graph?: GraphifyMcp;
   /** Persist the run under this session id (drops --no-session-persistence) so it
-   *  can be resumed later; cwd-scoped, claude-cli only (#111). */
+   *  can be resumed later; cwd-scoped, the claude-cli runtime only (#111). */
   sessionId?: string;
   /** Resume an existing on-disk session (--resume); mutually exclusive with
-   *  sessionId, cwd must match the session's origin; claude-cli only (#145). */
+   *  sessionId, cwd must match the session's origin; the claude-cli runtime only (#145). */
   resumeSessionId?: string;
-  /** Abort the run; rejects with AgentAbortError. claude-cli only (#145). */
+  /** Abort the run; rejects with AgentAbortError. the claude-cli runtime only (#145). */
   signal?: AbortSignal;
   /** Keep the run inside its cwd (#196): adds the Bash guard hook + confined env.
-   *  claude-cli only; the read-leaning agent toolset has no Edit/Write to scope. */
+   *  the claude-cli runtime only; the read-leaning agent toolset has no Edit/Write to scope. */
   confinement?: RunConfinement;
   /** Wall-clock cap for the run; on expiry the process is killed and a typed
-   *  ClaudeCliError (subtype "error_hard_timeout") rejects. claude-cli only (#194). */
+   *  ClaudeCliError (subtype "error_hard_timeout") rejects. the claude-cli runtime only (#194). */
   hardTimeoutMs?: number;
   /** Kill the run when it produces no stdout for this long; rejects with a typed
    *  ClaudeCliError (subtype "error_inactivity"). Streaming agent path only, since
-   *  non-streaming json buffers until the end. claude-cli only (#194). */
+   *  non-streaming json buffers until the end. the claude-cli runtime only (#194). */
   inactivityTimeoutMs?: number;
 }
 
@@ -55,21 +54,20 @@ export class AgentAbortError extends Error {
   }
 }
 
-/** Opt-in persistence + cwd for a single structured call (#111). */
+/** Options for a plain (single-turn) structured call — the completions surface
+ *  every provider shares. Tools/session persistence live on the runtime's
+ *  structured call (RuntimeStructuredOptions) instead (#238). */
 export interface StructuredOptions {
-  /** Working directory the structured call runs in (so the on-disk session lands there). */
-  cwd?: string;
-  /** Persist under this session id (drops --no-session-persistence); claude-cli only. */
-  sessionId?: string;
-  /** Abort the call; rejects with AgentAbortError. claude-cli only (#159). */
+  /** Abort the call; rejects with AgentAbortError. Runtimes without an abort
+   *  capability ignore it. */
   signal?: AbortSignal;
-  /** Comma-separated CLI tool list; enables multi-turn tool use for this call
-   *  (the reply is still the final JSON). claude-cli only; other providers ignore. */
-  tools?: string;
-  /** Turn budget when tools are enabled. claude-cli only. */
-  maxTurns?: number;
 }
 
+/**
+ * Completions-only LLM provider (#238): plain text and single-turn structured
+ * replies. The agentic surface (multi-turn tool use, the coding run) moved
+ * behind AgentRuntime — see runtime/types.ts.
+ */
 export interface LLMProviderInterface {
   readonly name: LLMProvider;
   ask(prompt: string, systemPrompt?: string): Promise<LLMResponse>;
@@ -78,13 +76,6 @@ export interface LLMProviderInterface {
     schema: Record<string, unknown>,
     opts?: StructuredOptions,
   ): Promise<T>;
-  /**
-   * Agentic completion: the model may use tools (read files, search/fetch the
-   * web, run commands) across multiple turns before producing its answer.
-   * Optional — only providers that wrap a tool-capable runtime implement it
-   * (today: claude-cli and ollama). Callers should fall back to `ask` when absent.
-   */
-  agent?(prompt: string, opts?: AgentOptions): Promise<LLMResponse>;
 }
 
 export function createProvider(config: {
@@ -98,8 +89,6 @@ export function createProvider(config: {
       return new ClaudeCLIProvider(config.model, config.maxTurns);
     case "openai":
       return new OpenAIProvider(config.model, config.apiKey);
-    case "ollama":
-      return new OllamaProvider(config.model);
     default:
       throw new Error(`Unknown provider: ${config.provider}`);
   }

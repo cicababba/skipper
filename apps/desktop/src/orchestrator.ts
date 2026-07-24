@@ -16,7 +16,6 @@ import {
   codeHostFor,
   codeHostForProvider,
   resolveGate,
-  createProvider,
   generateRepoInstructions,
   DEFAULT_ORCHESTRATOR_SETTINGS,
   IssuePlanSchema,
@@ -98,7 +97,7 @@ import { shouldSkipPoll, selectPollCursor, pollFailurePatch } from "./poll-polic
 import { makeManifestWriters } from "./manifest-writers";
 import { registerMemoryHandlers } from "./memory-ipc";
 import { registerWorktreeDiffHandlers } from "./worktree-diff-ipc";
-import { readLlmSettings, readLlmSettingsSync, modelForRole } from "./llm-settings";
+import { readLlmSettings, readLlmSettingsSync, buildLlm } from "./llm-settings";
 import {
   isInstructionsGenerating,
   loadRepoInstructions,
@@ -391,14 +390,15 @@ async function seedInstructions(repo: RepoRef, localPath: string, force = false)
     repoPath: localPath,
     generate: async () => {
       const settings = await readLlmSettings(deps!.dataDir);
-      const model = modelForRole(settings, repoOrch(repo).plannerModel);
-      const llm = createProvider({
-        provider: settings.provider,
-        model,
-        maxTurns: 16,
-        apiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
-      });
-      return generateRepoInstructions({ repoPath: localPath, llm, hardTimeoutMs: 10 * 60_000 });
+      const { runtime } = buildLlm(settings, repoOrch(repo).plannerModel, 16);
+      // The old generateRepoInstructions threw on a runtime-less provider (#238) —
+      // that guard moved here so the seam takes an already-checked runtime.
+      if (!runtime) {
+        throw new Error(
+          "generating repository conventions needs an agent runtime (claude-cli) — the selected provider has none",
+        );
+      }
+      return generateRepoInstructions({ repoPath: localPath, runtime, hardTimeoutMs: 10 * 60_000 });
     },
     onSettled: () => {
       broadcast();
