@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import type { IssuePlan } from "@skipper/shared";
 import type { AgentOptions, LLMProviderInterface, LLMResponse } from "../src/llm/provider";
 import { ClaudeCliError } from "../src/llm";
+import type { GraphifyContext } from "../src/llm/graphify-mcp";
 import {
   generatePlan,
   IssuePlanSchema,
@@ -262,6 +263,52 @@ describe("generatePlan — repo conventions injection (#227)", () => {
     const [, salvageOpts] = agent.mock.calls[1] as [string, AgentOptions];
     expect(salvageOpts.systemPrompt).toContain("## Repository conventions");
     expect(salvageOpts.systemPrompt).toContain("Repo convention: use tabs.");
+  });
+});
+
+describe("generatePlan — Graphify knowledge graph (#233)", () => {
+  const GRAPHIFY: GraphifyContext = {
+    mcp: {
+      mcpBinPath: "/data/tools/bin/graphify-mcp",
+      graphPath: "/data/graphs/o_r/graphify-out/graph.json",
+    },
+    indexedSha: "abc1234def",
+  };
+
+  it("attaches the graph server and appends the section with the indexed SHA", async () => {
+    const { llm, agent } = fakeLLM({ agentReply: JSON.stringify(VALID_PLAN) });
+    await generatePlan({ issue: ISSUE, repoPath: "/repo", llm, graphify: GRAPHIFY });
+    const [, agentOpts] = agent.mock.calls[0] as [string, AgentOptions];
+    expect(agentOpts.graph).toBe(GRAPHIFY.mcp);
+    expect(agentOpts.systemPrompt).toContain("## Repository knowledge graph");
+    expect(agentOpts.systemPrompt).toContain("`abc1234def`");
+  });
+
+  it("leaves the prompt clean and passes no graph when absent", async () => {
+    const { llm, agent } = fakeLLM({ agentReply: JSON.stringify(VALID_PLAN) });
+    await generatePlan({ issue: ISSUE, repoPath: "/repo", llm });
+    const [, agentOpts] = agent.mock.calls[0] as [string, AgentOptions];
+    expect("graph" in agentOpts).toBe(false);
+    expect(agentOpts.systemPrompt).toBe(PLANNER_SYSTEM_PROMPT);
+  });
+
+  it("does not attach the graph to the salvage run", async () => {
+    const SESSION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const agent = vi.fn(async (_prompt: string, opts: AgentOptions = {}): Promise<LLMResponse> => {
+      if (opts.resumeSessionId) return { text: JSON.stringify(VALID_PLAN) };
+      throw new ClaudeCliError("agent hit the max-turns limit", "error_max_turns", 41);
+    });
+    const llm = {
+      name: "claude-cli",
+      ask: async (): Promise<LLMResponse> => ({ text: "" }),
+      askStructured: vi.fn(),
+      agent,
+    } as unknown as LLMProviderInterface;
+    await generatePlan({ issue: ISSUE, repoPath: "/repo", llm, sessionId: SESSION, graphify: GRAPHIFY });
+    const [, primaryOpts] = agent.mock.calls[0] as [string, AgentOptions];
+    const [, salvageOpts] = agent.mock.calls[1] as [string, AgentOptions];
+    expect(primaryOpts.graph).toBe(GRAPHIFY.mcp);
+    expect("graph" in salvageOpts).toBe(false);
   });
 });
 

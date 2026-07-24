@@ -11,7 +11,9 @@ import type {
 import { AgentAbortError } from "./provider";
 import { parseJsonReply } from "./json";
 import { createStreamJsonParser } from "./stream";
-import { MEMORY_TOOLS, buildMemoryMcpArgs } from "./memory-mcp";
+import { MEMORY_TOOLS } from "./memory-mcp";
+import { GRAPHIFY_TOOLS } from "./graphify-mcp";
+import { buildMcpConfigArgs } from "./mcp-config";
 import {
   buildConfinementSettingsArgs,
   confinementEnv,
@@ -352,7 +354,11 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
     // Solutions-memory MCP is opt-in (#45): the planner passes opts.memory, the
     // reviewer / wiki-edit callers don't — so their tool surface is unchanged.
     const baseTools = "Read,Grep,Glob,WebFetch,WebSearch,Bash";
-    const tools = opts.memory ? `${baseTools},${MEMORY_TOOLS}` : baseTools;
+    const tools = [
+      baseTools,
+      ...(opts.memory ? [MEMORY_TOOLS] : []),
+      ...(opts.graph ? [GRAPHIFY_TOOLS] : []),
+    ].join(",");
     const args = [
       "-p",
       "-",
@@ -382,7 +388,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       tools,
       "--setting-sources",
       "",
-      ...(opts.memory ? buildMemoryMcpArgs(opts.memory) : []),
+      ...buildMcpConfigArgs(opts.memory, opts.graph),
       ...(opts.confinement ? buildConfinementSettingsArgs(opts.confinement) : []),
     ];
 

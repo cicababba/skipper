@@ -12,7 +12,7 @@ import type {
   TransitionActor,
 } from "@skipper/shared";
 import { AGENT_MAX_TURNS_BACKSTOP, DEFAULT_LLM_SETTINGS, resolveRepoOrchestratorSettings } from "@skipper/shared";
-import type { OrchestratorSettings } from "@skipper/core";
+import type { GraphifyContext, OrchestratorSettings } from "@skipper/core";
 import { AgentAbortError, DEFAULT_ORCHESTRATOR_SETTINGS } from "@skipper/core";
 import {
   initPlanner,
@@ -533,6 +533,61 @@ describe("planner worktree at planning (#110)", () => {
     await h.done;
     expect(h.cwds.every((c) => c === "/repo")).toBe(true);
     expect(prompts[0]).not.toContain("Pre-existing uncommitted changes");
+  });
+
+  // #233: the repo's knowledge-graph context is threaded into the agent run and
+  // announced on the console; a getGraphify failure degrades to no graph.
+  function captureGraphs(provider: unknown): unknown[] {
+    const graphs: unknown[] = [];
+    const p = provider as {
+      agent: (prompt: string, o: Record<string, unknown>) => Promise<{ text: string }>;
+    };
+    const inner = p.agent.bind(p);
+    p.agent = async (prompt, o) => {
+      graphs.push(o.graph);
+      return inner(prompt, o);
+    };
+    return graphs;
+  }
+
+  it("threads getGraphify into the agent and emits a graphify status event (#233)", async () => {
+    const h = makeRunHarness({
+      item: makeItem("planning"),
+      prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+    });
+    const graphify: GraphifyContext = {
+      mcp: { mcpBinPath: "/tools/bin/graphify-mcp", graphPath: "/g/graph.json" },
+      indexedSha: "abc1234def",
+    };
+    (h.deps as { getGraphify: PlannerDeps["getGraphify"] }).getGraphify = async () => graphify;
+    const events: CodingEvent[] = [];
+    (h.deps as { emitEvent: PlannerDeps["emitEvent"] }).emitEvent = (_id, e) => void events.push(e);
+    const graphs = captureGraphs(h.provider);
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await h.done;
+    expect(graphs[0]).toBe(graphify.mcp);
+    expect(
+      events.some(
+        (e) => e.kind === "status" && e.phase === "graphify" && /abc1234/.test(e.detail ?? ""),
+      ),
+    ).toBe(true);
+  });
+
+  it("a rejecting getGraphify does not block the run (#233)", async () => {
+    const h = makeRunHarness({
+      item: makeItem("planning"),
+      prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+    });
+    (h.deps as { getGraphify: PlannerDeps["getGraphify"] }).getGraphify = async () => {
+      throw new Error("graph offline");
+    };
+    const graphs = captureGraphs(h.provider);
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await h.done; // completes despite the rejection
+    expect(graphs[0]).toBeUndefined();
+    expect(h.transitions).toEqual([]);
   });
 });
 

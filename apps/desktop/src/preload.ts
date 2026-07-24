@@ -38,6 +38,8 @@ import type {
   GetRepoInstructionsResult,
   SetRepoInstructionsResult,
   RegenerateRepoInstructionsResult,
+  GetRepoGraphifyResult,
+  ReindexRepoGraphifyResult,
   SolutionRecord,
   StoredCoderReport,
   StoredPlan,
@@ -225,6 +227,10 @@ const api = {
       name: string,
     ): Promise<RegenerateRepoInstructionsResult> =>
       ipcRenderer.invoke("skipper:orchestrator:regenerateRepoInstructions", owner, name),
+    getRepoGraphify: (owner: string, name: string): Promise<GetRepoGraphifyResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:getRepoGraphify", owner, name),
+    reindexRepoGraphify: (owner: string, name: string): Promise<ReindexRepoGraphifyResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:reindexRepoGraphify", owner, name),
     listRepos: (): Promise<ListReposResult> =>
       ipcRenderer.invoke("skipper:orchestrator:listRepos"),
     listRepoBranches: (owner: string, name: string): Promise<ListRepoBranchesResult> =>

@@ -6,7 +6,7 @@
 export type CodingEvent =
   | {
       kind: "status";
-      phase: "fetching" | "worktree" | "agent-start" | "resuming" | "scoring";
+      phase: "fetching" | "worktree" | "agent-start" | "resuming" | "scoring" | "graphify";
       detail?: string;
     }
   | { kind: "agent-init"; sessionId: string; model?: string; tools?: string[] }

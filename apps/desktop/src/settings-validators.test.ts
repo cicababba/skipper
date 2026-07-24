@@ -148,4 +148,14 @@ describe("applyRepoSettingsPatch", () => {
     const merged = applyRepoSettingsPatch(undefined, { followed: true });
     expect(merged).toEqual({ followed: true });
   });
+
+  it("keeps a boolean graphify toggle and drops a non-bool (#233)", () => {
+    expect(applyRepoSettingsPatch(undefined, { graphify: true })).toEqual({ graphify: true });
+    // A non-bool is rejected, never coerced.
+    expect(
+      applyRepoSettingsPatch(undefined, { graphify: "yes" as unknown as boolean }),
+    ).toEqual({});
+    // undefined clears the toggle back to off (its absence).
+    expect(applyRepoSettingsPatch({ graphify: true }, { graphify: undefined })).toEqual({});
+  });
 });

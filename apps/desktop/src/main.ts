@@ -993,6 +993,11 @@ app.whenReady().then(async () => {
         worktreesDir: join(app.getPath("userData"), "worktrees"),
         memoryDir: join(app.getPath("userData"), "memory"),
         repoInstructionsDir: join(app.getPath("userData"), "repo-instructions"),
+        graphsDir: join(app.getPath("userData"), "graphs"),
+        toolsDir: join(app.getPath("userData"), "tools"),
+        uvBin: app.isPackaged
+          ? join(process.resourcesPath, "uv", process.platform === "win32" ? "uv.exe" : "uv")
+          : "uv",
         dataDir: getLlmSettingsDir(),
         cliBundlePath: cliBundlePath(),
       });

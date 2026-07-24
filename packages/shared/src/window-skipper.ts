@@ -12,6 +12,8 @@ import type {
   OrchestratorTransitionResult,
   PrReviewComment,
   RegenerateRepoInstructionsResult,
+  GetRepoGraphifyResult,
+  ReindexRepoGraphifyResult,
   RepoIntakeSettings,
   RepoLinkResult,
   RepoSettingsRow,
@@ -277,6 +279,9 @@ export interface WindowSkipper {
       owner: string,
       name: string,
     ) => Promise<RegenerateRepoInstructionsResult>;
+    /** Per-repo Graphify knowledge-graph index (#233). */
+    getRepoGraphify: (owner: string, name: string) => Promise<GetRepoGraphifyResult>;
+    reindexRepoGraphify: (owner: string, name: string) => Promise<ReindexRepoGraphifyResult>;
     listRepos: () => Promise<ListReposResult>;
     listRepoBranches: (owner: string, name: string) => Promise<ListRepoBranchesResult>;
     getPlan: (itemId: string) => Promise<StoredPlan | null>;

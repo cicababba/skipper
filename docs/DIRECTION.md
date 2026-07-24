@@ -383,6 +383,27 @@ knowledge esterno**, e il planner lo consulta mentre raffina il piano. Forma dec
   quando avranno una API di ricerca, `skipper knowledge serve` può diventare il
   reference server che un'azienda ospita.
 
+### Indice del codice (Graphify) — issue #233
+
+Il planner esplora un repo che non conosce: grep trova testo, non struttura. Con la
+#233 ogni repo può avere (opt-in, toggle nelle impostazioni repo) un **indice
+knowledge-graph locale** costruito da [Graphify](https://github.com/Graphify-Labs/graphify)
+— parsing AST tree-sitter, deterministico, nessun LLM e nessuna API key
+(`extract --code-only`). Scelte chiave:
+
+- **Accesso via MCP** (`graphify-mcp`, allowlist dei soli 7 tool locali sul grafo),
+  terza incarnazione del pattern agent-pull delle decisioni #19/#24 — stessa entry
+  nel `--mcp-config` già costruito per `skipper-memory`.
+- **Planner-only, by construction**: il server non è attaccato alle run del coder —
+  il grafo riflette il base branch e diventerebbe falso rispetto alle sue modifiche.
+- **Estrazione da un worktree usa-e-getta al base ref risolto**, mai dal checkout
+  dell'utente (che può essere sporco o su un altro branch); output solo in userData.
+- **Re-index lazy su SHA e mai bloccante**: il grafo stale si usa dichiarando i due
+  SHA nel prompt ("è una mappa, verifica sul codice"); nessun grafo → si pianifica
+  senza. Il piano eager resta il valore, il grafo è un aiuto.
+- **Runtime Python isolato via uv** in userData (binario uv in `extraResources`,
+  `graphifyy[mcp]` pinnata): nessuna dipendenza dal Python di sistema.
+
 ---
 
 ## Decisioni prese
@@ -414,6 +435,7 @@ knowledge esterno**, e il planner lo consulta mentre raffina il piano. Forma dec
 | 23 | **`repoKey` ancorata al repo, mai al tracker** | È l'asse di partizione della memoria delle soluzioni; ancorarla al progetto Jira spartirebbe la memoria nel modo sbagliato. |
 | 24 | **Knowledge esterna via server MCP, opt-in per repo** — epic #235 | Agent-pull coerente con la #19 (niente pre-iniezione, uso derivato dal tool-use); entry nel `--mcp-config` esistente, zero client HTTP; il server lo ospita l'azienda (nessun backend Skipper, coerente con la #4). Definizione a livello app, attach per-repo: i repo senza server si comportano come oggi. |
 | 25 | **Runtime degli agenti multi-CLI dietro il contratto `AgentRuntime`** — epic #236 | Estende la #1: si orchestra sempre, ma la CLI non è per forza Claude Code (Codex, Copilot, Gemini). Capability matrix esplicita con degradazione deliberata (no resume → recap; no MCP → senza memoria); selezione per-ruolo col pattern dei modelli; primo adapter: Codex CLI. I token restano dell'utente, qualunque sia il vendor. |
+| 26 | **Indice knowledge-graph locale (Graphify) opt-in per repo, planner-only** — issue #233 | Grep trova testo, non struttura: il grafo (tree-sitter, locale, no LLM) dà al planner una mappa del repo → piani eager e confidence migliori. Accesso via MCP (pattern #19/#24, allowlist dei 7 tool locali); il coder è escluso by construction (grafo = base branch, andrebbe stale sulle sue modifiche). Estrazione da worktree effimero al base ref, re-index lazy su SHA, mai bloccante (stale dichiarato nel prompt). Runtime uv isolato in userData, pin `graphifyy[mcp]`. |
 
 ---
 

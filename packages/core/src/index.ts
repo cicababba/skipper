@@ -3,6 +3,8 @@ export { createProvider, ClaudeCLIProvider, ClaudeCliError, AgentAbortError, isS
 export { PROMPTS } from "./llm";
 export { MEMORY_TOOLS, buildMemoryMcpArgs } from "./llm";
 export type { MemoryMcp } from "./llm";
+export { GRAPHIFY_TOOLS, renderGraphifySection, graphifyServerConfig, buildMcpConfigArgs } from "./llm";
+export type { GraphifyMcp, GraphifyContext } from "./llm";
 export {
   toClaudePathRoot,
   scopedWriteRules,

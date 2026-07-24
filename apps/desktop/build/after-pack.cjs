@@ -7,7 +7,7 @@
 //      information, or similar detritus not allowed".
 const { execSync } = require("node:child_process");
 const { rmSync, renameSync, existsSync, statSync, readdirSync } = require("node:fs");
-const { join } = require("node:path");
+const { join, dirname } = require("node:path");
 
 // Measure a directory tree (bytes) for nice log output.
 function dirSize(p) {
@@ -75,6 +75,46 @@ function pruneOnnxPrebuilds(platformName, cliRuntimeDir) {
   return pruned;
 }
 
+/**
+ * uv is staged as resources/uv/<platform>-<arch>/uv(.exe) for every target
+ * (#233). Keep only the packaged platform's binary and flatten it to
+ * resources/uv/uv(.exe) — the exact path main.ts resolves — dropping the rest.
+ * uv is a single self-contained exe, so the NSIS no-symlink constraint is moot.
+ */
+function pruneUvBinaries(platformName, resourcesDir) {
+  const uvRoot = join(resourcesDir, "uv");
+  if (!existsSync(uvRoot)) {
+    console.warn(`  • afterPack: resources/uv dir not found at ${uvRoot}`);
+    return 0;
+  }
+  const keep =
+    platformName === "darwin"
+      ? { dir: "darwin-arm64", bin: "uv" }
+      : platformName === "win32"
+        ? { dir: "win32-x64", bin: "uv.exe" }
+        : null;
+  if (!keep) {
+    console.warn(`  • afterPack: unknown platform ${platformName}, skipping uv prune`);
+    return 0;
+  }
+
+  const staged = join(uvRoot, keep.dir, keep.bin);
+  if (!existsSync(staged)) {
+    console.warn(`  • afterPack: staged uv binary not found at ${staged}`);
+    return 0;
+  }
+  let pruned = 0;
+  // Move the target binary to the flat path, then delete every staging subdir.
+  const flat = join(uvRoot, keep.bin);
+  renameSync(staged, flat);
+  for (const entry of readdirSync(uvRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    pruned += rmIfExists(join(uvRoot, entry.name), `uv ${entry.name}`);
+  }
+  console.log(`  • afterPack: uv flattened to resources/uv/${keep.bin}`);
+  return pruned;
+}
+
 exports.default = async function afterPack(context) {
   const { appOutDir, electronPlatformName, packager } = context;
 
@@ -102,6 +142,9 @@ exports.default = async function afterPack(context) {
   } else {
     console.warn(`  • afterPack: resources/cli-runtime dir not found at ${cliRuntimeDir}`);
   }
+
+  // 1b) Flatten the staged uv binaries to the single one main.ts resolves (#233).
+  pruneUvBinaries(electronPlatformName, dirname(cliRuntimeDir));
 
   // 2) macOS xattr sanitization (pre-existing behavior).
   if (electronPlatformName === "darwin") {

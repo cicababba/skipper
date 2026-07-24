@@ -68,6 +68,10 @@
       {
         "from": "build/cli",
         "to": "cli"
+      },
+      {
+        "from": "build/uv",
+        "to": "uv"
       }
     ],
     "publish": {

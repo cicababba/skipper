@@ -629,6 +629,39 @@ export function checkoutEscapeReason(paths: string[]): string {
 }
 
 /**
+ * Add a detached, throwaway worktree at a resolved ref (#233 Graphify extract):
+ * no branch, force-checkout, prune first so a leftover registration from a crash
+ * doesn't block the add. Distinct from ensureWorktree — this one is never reused.
+ */
+export async function addDetachedWorktree(
+  repoPath: string,
+  worktreePath: string,
+  ref: string,
+): Promise<void> {
+  await runGit(repoPath, ["worktree", "prune"]);
+  const r = await runGit(
+    repoPath,
+    ["worktree", "add", "--detach", "--force", worktreePath, ref],
+    120_000,
+  );
+  if (r.code !== 0) {
+    throw new Error(`git worktree add --detach failed: ${r.stderr.trim() || `exit ${r.code}`}`);
+  }
+}
+
+/**
+ * Remove a detached Graphify worktree (#233): force-remove tolerating an
+ * already-gone dir, then prune the registration.
+ */
+export async function removeDetachedWorktree(
+  repoPath: string,
+  worktreePath: string,
+): Promise<void> {
+  await runGit(repoPath, ["worktree", "remove", "--force", worktreePath]);
+  await runGit(repoPath, ["worktree", "prune"]);
+}
+
+/**
  * Tear down a parked planning worktree (#110): remove it (tolerating an
  * already-deleted dir), prune, then drop the branch only when baseRef is known
  * and the branch has no unique commits.
