@@ -113,7 +113,7 @@ const api = {
       ipcRenderer.invoke("skipper:auth:getState"),
     getProviders: (): Promise<AuthProviderMeta[]> =>
       ipcRenderer.invoke("skipper:auth:getProviders"),
-    signIn: (provider: AuthProviderId, options?: { baseUrl?: string }): Promise<void> =>
+    signIn: (provider: AuthProviderId, options?: { baseUrl?: string; clientId?: string }): Promise<void> =>
       ipcRenderer.invoke(`skipper:auth:${provider}:signIn`, options),
     signInWithPat: (provider: AuthProviderId, pat: string, options?: { baseUrl?: string }): Promise<void> =>
       ipcRenderer.invoke(`skipper:auth:${provider}:signInWithPat`, pat, options),

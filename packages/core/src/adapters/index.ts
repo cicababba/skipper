@@ -3,6 +3,7 @@ import { bitbucketCodeHost } from "./bitbucket";
 import { githubCodeHost, githubIssueSource } from "./github";
 import { gitlabCodeHost, gitlabIssueSource } from "./gitlab";
 import { jiraIssueSource } from "./jira";
+import { openprojectIssueSource } from "./openproject";
 import type { CodeHost, IssueSource } from "./types";
 
 // `satisfies` keeps this exhaustive as the IssueSourceId axis widens — a new id
@@ -13,6 +14,7 @@ export const issueSources = {
   github: githubIssueSource,
   gitlab: gitlabIssueSource,
   jira: jiraIssueSource,
+  openproject: openprojectIssueSource,
 } satisfies Record<IssueSourceId, IssueSource>;
 
 export function issueSourceFor(source: IssueSourceId): IssueSource {
@@ -49,3 +51,4 @@ export * from "./github";
 export * from "./gitlab";
 export * from "./bitbucket";
 export * from "./jira";
+export * from "./openproject";

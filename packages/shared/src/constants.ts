@@ -138,3 +138,23 @@ export const BITBUCKET_OAUTH_ENDPOINTS = {
   scopes: ["repository", "pullrequest:write", "account"],
   redirectPorts: [8134],
 } as const;
+
+// ============================================================
+// OpenProject OAuth (Doorkeeper — self-hosted, per-user client)
+// ============================================================
+//
+// OpenProject is nearly always self-hosted, so there is no centralized OAuth
+// client: every endpoint is a function of the instance base URL, and the user
+// registers a public client (PKCE) on their own instance (Administration →
+// Authentication → OAuth applications) and pastes its Client ID at connect time
+// (clientIdFromUser). The `api_v3` scope covers the work-package REST API. As a
+// simpler alternative the PAT fallback authenticates via HTTP Basic with the
+// username `apikey` and the token as the password.
+
+export const OPENPROJECT_OAUTH_ENDPOINTS = {
+  authEndpoint: (base: string) => `${base}/oauth/authorize`,
+  tokenEndpoint: (base: string) => `${base}/oauth/token`,
+  meEndpoint: (base: string) => `${base}/api/v3/users/me`,
+  scopes: ["api_v3"],
+  redirectPorts: [8135, 8136, 8137],
+} as const;

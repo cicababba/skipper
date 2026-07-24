@@ -163,7 +163,7 @@ export interface WindowSkipper {
   auth: {
     getState: () => Promise<AuthState>;
     getProviders: () => Promise<AuthProviderMeta[]>;
-    signIn: (provider: AuthProviderId, options?: { baseUrl?: string }) => Promise<void>;
+    signIn: (provider: AuthProviderId, options?: { baseUrl?: string; clientId?: string }) => Promise<void>;
     signInWithPat: (
       provider: AuthProviderId,
       pat: string,

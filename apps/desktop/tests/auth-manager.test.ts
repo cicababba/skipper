@@ -104,6 +104,7 @@ describe("AuthManager host-scoped identity (#101)", () => {
       gitlab: fakeProvider("gitlab"),
       jira: fakeProvider("jira"),
       bitbucket: fakeProvider("bitbucket"),
+      openproject: fakeProvider("openproject"),
     });
     await manager.init();
   });
@@ -150,6 +151,7 @@ function makeManager(jira: ProviderConfig): AuthManager {
     gitlab: fakeProvider("gitlab"),
     jira,
     bitbucket: fakeProvider("bitbucket"),
+    openproject: fakeProvider("openproject"),
   });
 }
 
@@ -277,6 +279,7 @@ describe("AuthManager token refresh dedup + failure classification (B1/B2)", () 
       gitlab: fakeProvider("gitlab"),
       jira: fakeProvider("jira"),
       bitbucket: fakeProvider("bitbucket"),
+      openproject: fakeProvider("openproject"),
     });
     await manager.init();
   });
@@ -333,5 +336,109 @@ describe("AuthManager token refresh dedup + failure classification (B1/B2)", () 
     refreshMock.mockRejectedValue(new OAuthError("fetch failed"));
     expect(await manager.getAccessToken("github:1")).toBeNull();
     expect(manager.getState().accounts).toHaveLength(1);
+  });
+});
+
+// OpenProject ships an empty clientId and collects it from the user at connect
+// time (clientIdFromUser). The manager must not treat that as "unconfigured",
+// must require the id on OAuth sign-in, and must thread it through refresh.
+function opProvider(): ProviderConfig {
+  return {
+    ...fakeProvider("openproject"),
+    clientId: "",
+    clientIdFromUser: true,
+    requiresBaseUrl: true,
+    rotatesRefreshToken: true,
+    mapUser: async () => ({ provider: "openproject", id: "op-1" }),
+  };
+}
+
+function makeOpManager(): AuthManager {
+  return new AuthManager({
+    google: fakeProvider("google"),
+    github: fakeProvider("github"),
+    gitlab: fakeProvider("gitlab"),
+    jira: fakeProvider("jira"),
+    bitbucket: fakeProvider("bitbucket"),
+    openproject: opProvider(),
+  });
+}
+
+describe("AuthManager clientIdFromUser (#230)", () => {
+  const OP_BASE = "https://op.example.com";
+
+  beforeEach(() => {
+    storeState.current = { version: 2, accounts: {} };
+    runOAuthFlowMock.mockReset();
+    runOAuthFlowMock.mockResolvedValue({
+      accessToken: "op-access",
+      refreshToken: "op-refresh",
+      expiresAt: Date.now() + 1_000_000_000,
+      scope: "",
+      tokenType: "bearer",
+    });
+    refreshMock.mockReset();
+  });
+
+  it("does not flag the provider unconfigured despite an empty clientId", async () => {
+    const manager = makeOpManager();
+    await manager.init();
+    expect(manager.getState().flows.openproject).toBeUndefined();
+  });
+
+  it("errors and skips the OAuth flow when no clientId is supplied", async () => {
+    const manager = makeOpManager();
+    await manager.init();
+    await manager.signIn("openproject", { baseUrl: OP_BASE });
+    expect(manager.getState().flows.openproject?.status).toBe("error");
+    expect(runOAuthFlowMock).not.toHaveBeenCalled();
+    expect(manager.getState().accounts).toHaveLength(0);
+  });
+
+  it("threads the supplied clientId into the flow and persists it on the account", async () => {
+    const manager = makeOpManager();
+    await manager.init();
+    await manager.signIn("openproject", { baseUrl: OP_BASE, clientId: "user-client-xyz" });
+
+    expect(runOAuthFlowMock).toHaveBeenCalledTimes(1);
+    const effectiveConfig = runOAuthFlowMock.mock.calls[0][0] as ProviderConfig;
+    expect(effectiveConfig.clientId).toBe("user-client-xyz");
+
+    const accounts = manager.getState().accounts;
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0].clientId).toBe("user-client-xyz");
+    expect(accounts[0].baseUrl).toBe(OP_BASE);
+  });
+
+  it("rebuilds the effective config from the stored clientId on refresh", async () => {
+    const key = "openproject:op.example.com:op-1";
+    storeState.current = {
+      version: 2,
+      accounts: {
+        [key]: {
+          account: {
+            provider: "openproject",
+            key,
+            id: "op-1",
+            baseUrl: OP_BASE,
+            clientId: "stored-client",
+            authMethod: "oauth",
+          },
+          tokens: { accessToken: "stale", refreshToken: "r0", expiresAt: Date.now(), scope: "", tokenType: "bearer" },
+          signedInAt: 100,
+        },
+      },
+    };
+    refreshMock.mockResolvedValue({
+      accessToken: "fresh",
+      expiresAt: Date.now() + 1_000_000_000,
+      refreshToken: "r1",
+    });
+    const manager = makeOpManager();
+    await manager.init();
+
+    expect(await manager.getAccessToken(key)).toBe("fresh");
+    const configArg = refreshMock.mock.calls[0][0] as ProviderConfig;
+    expect(configArg.clientId).toBe("stored-client");
   });
 });

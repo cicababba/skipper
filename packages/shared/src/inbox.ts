@@ -3,7 +3,7 @@
 // ============================================================
 
 /** Where the work item is tracked (issue-tracker axis, epic #68). */
-export type IssueSourceId = "github" | "gitlab" | "jira";
+export type IssueSourceId = "github" | "gitlab" | "jira" | "openproject";
 
 /** Where the code lives (git-host axis, epic #68). */
 export type CodeHostId = "github" | "gitlab" | "bitbucket";

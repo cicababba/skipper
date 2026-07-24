@@ -58,6 +58,18 @@
 //      (non-confidential desktop) secret is required; token endpoint takes it
 //      via HTTP Basic. Bitbucket Data Center (self-hosted) is not covered.
 //
+// OpenProject (issue orchestration — self-hosted; Doorkeeper OAuth or API key):
+//   No entry below — OpenProject is self-hosted, so there is no shipped OAuth
+//   client. You register one on your own instance and paste its Client ID into
+//   the app at connect time:
+//   1. Administration → Authentication → OAuth applications → Add.
+//   2. Redirect URIs (add all three): http://127.0.0.1:8135/callback,
+//      http://127.0.0.1:8136/callback, http://127.0.0.1:8137/callback.
+//   3. Enable "Confidential" OFF (public client — PKCE secures the flow) and the
+//      `api_v3` scope. Copy the Client ID and paste it in Settings → OpenProject.
+//   As a simpler alternative, sign in with an API key (My account → Access
+//      tokens → API) — Skipper sends it via HTTP Basic as username `apikey`.
+//
 // For Google's "Desktop app" client type the secret is *non-confidential* —
 // it ships in the distributed binary, and security is provided by PKCE, not
 // by the secret. GitHub Apps don't support PKCE, but the same reasoning
