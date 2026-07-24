@@ -1,4 +1,4 @@
-# Skipper *(working title)*
+# Skipper
 
 **One inbox for every issue assigned to you — across GitHub, Bitbucket, Jira, Linear — where each issue arrives already planned, scored with a verifiable confidence, and one click away from becoming a draft PR that gets shepherded all the way to merge.**
 
