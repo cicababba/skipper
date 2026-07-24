@@ -58,6 +58,18 @@ describe("railPrimary", () => {
     expect(primary).toEqual({ kind: "action", action: { id: "openPr", kind: "openPr" } });
   });
 
+  it("carries the PR number when the item already has a PR (#225)", () => {
+    const primary = railPrimary(
+      item("human-review", {
+        pr: { id: "PR_1", number: 42, url: "https://github.com/octo/repo/pull/42" },
+      }),
+    );
+    expect(primary).toEqual({
+      kind: "action",
+      action: { id: "openPr", kind: "openPr", prNumber: 42 },
+    });
+  });
+
   it("offers a plan link at the gate", () => {
     expect(railPrimary(item("plan-gate"))).toEqual({ kind: "plan-link" });
   });

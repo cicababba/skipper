@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, MoreHorizontal } from "lucide-react";
 import type { ItemAction } from "@/lib/inbox/actions";
+import { actionLabel } from "@/lib/inbox/action-label";
 import { useT } from "@/lib/app-i18n";
 
 const MENU_WIDTH = 200;
@@ -159,7 +160,7 @@ export function ActionMenu({
         danger ? "text-danger/90 hover:bg-danger/10" : "text-foreground hover:bg-accent/10"
       }`}
     >
-      {t.inbox.actions[action.id]}
+      {actionLabel(action, t)}
     </button>
   );
 

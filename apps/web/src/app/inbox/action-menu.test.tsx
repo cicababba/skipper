@@ -78,6 +78,18 @@ describe("ActionMenu", () => {
     ]);
   });
 
+  it("labels the openPr entry 'Open PR' while the item has no PR (#225)", () => {
+    setup({ actions: [{ id: "openPr", kind: "openPr" }], destructive: [] });
+    openMenu();
+    expect(screen.getByRole("menuitem").textContent).toBe("Open PR");
+  });
+
+  it("labels the openPr entry with the PR number on a fix round (#225)", () => {
+    setup({ actions: [{ id: "openPr", kind: "openPr", prNumber: 42 }], destructive: [] });
+    openMenu();
+    expect(screen.getByRole("menuitem").textContent).toBe("Push to PR #42");
+  });
+
   it("does not navigate into the item when the kebab is clicked", () => {
     const { onRowClick } = setup();
     openMenu();
