@@ -78,8 +78,20 @@ export function RepoInstructionsControl({ owner, name }: { owner: string; name: 
     }
   };
 
-  const sourceLabel = (d: RepoInstructionsDoc): string =>
-    d.source === "claude-md" ? ri.sourceClaudeMd : d.source === "edited" ? ri.sourceEdited : ri.sourceGenerated;
+  const sourceLabel = (d: RepoInstructionsDoc): string => {
+    switch (d.source) {
+      case "claude-md":
+        return ri.sourceClaudeMd;
+      case "agents-md":
+        return ri.sourceAgentsMd;
+      case "copilot-instructions":
+        return ri.sourceCopilot;
+      case "edited":
+        return ri.sourceEdited;
+      default:
+        return ri.sourceGenerated;
+    }
+  };
 
   // Pre-#227 repos: no doc yet. Empty state + Generate.
   if (doc === null) {
