@@ -2,7 +2,13 @@ import { describe, it, expect, vi } from "vitest";
 import type { IssuePlan } from "@skipper/shared";
 import type { AgentOptions, LLMProviderInterface, LLMResponse } from "../src/llm/provider";
 import { ClaudeCliError } from "../src/llm";
-import { generatePlan, IssuePlanSchema, PlanGenerationError, type PlanIssueInput } from "../src/planner";
+import {
+  generatePlan,
+  IssuePlanSchema,
+  PLANNER_SYSTEM_PROMPT,
+  PlanGenerationError,
+  type PlanIssueInput,
+} from "../src/planner";
 
 const ISSUE: PlanIssueInput = {
   key: "42",
@@ -197,6 +203,65 @@ describe("generatePlan", () => {
     await expect(generatePlan({ issue: ISSUE, repoPath: "/repo", llm })).rejects.toThrow(
       /planning needs a provider with agent mode/,
     );
+  });
+});
+
+describe("generatePlan — repo conventions injection (#227)", () => {
+  it("appends the conventions section to the planner system prompt", async () => {
+    const { llm, agent } = fakeLLM({ agentReply: JSON.stringify(VALID_PLAN) });
+    await generatePlan({
+      issue: ISSUE,
+      repoPath: "/repo",
+      llm,
+      repoInstructions: "Use pnpm. Run `pnpm test`.",
+    });
+    const [, agentOpts] = agent.mock.calls[0] as [string, AgentOptions];
+    expect(agentOpts.systemPrompt).toContain("senior software engineer preparing an implementation plan");
+    expect(agentOpts.systemPrompt).toContain("## Repository conventions");
+    expect(agentOpts.systemPrompt).toContain("Use pnpm. Run `pnpm test`.");
+  });
+
+  it("leaves the system prompt exactly the planner contract when absent", async () => {
+    const { llm, agent } = fakeLLM({ agentReply: JSON.stringify(VALID_PLAN) });
+    await generatePlan({ issue: ISSUE, repoPath: "/repo", llm });
+    const [, agentOpts] = agent.mock.calls[0] as [string, AgentOptions];
+    expect(agentOpts.systemPrompt).toBe(PLANNER_SYSTEM_PROMPT);
+  });
+
+  it("truncates oversized conventions with the marker", async () => {
+    const { llm, agent } = fakeLLM({ agentReply: JSON.stringify(VALID_PLAN) });
+    await generatePlan({
+      issue: ISSUE,
+      repoPath: "/repo",
+      llm,
+      repoInstructions: "z".repeat(20_000),
+    });
+    const [, agentOpts] = agent.mock.calls[0] as [string, AgentOptions];
+    expect(agentOpts.systemPrompt).toContain("[repository conventions truncated");
+  });
+
+  it("hands the salvage run the same composed prompt", async () => {
+    const SESSION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const agent = vi.fn(async (_prompt: string, opts: AgentOptions = {}): Promise<LLMResponse> => {
+      if (opts.resumeSessionId) return { text: JSON.stringify(VALID_PLAN) };
+      throw new ClaudeCliError("agent hit the max-turns limit", "error_max_turns", 41);
+    });
+    const llm = {
+      name: "claude-cli",
+      ask: async (): Promise<LLMResponse> => ({ text: "" }),
+      askStructured: vi.fn(),
+      agent,
+    } as unknown as LLMProviderInterface;
+    await generatePlan({
+      issue: ISSUE,
+      repoPath: "/repo",
+      llm,
+      sessionId: SESSION,
+      repoInstructions: "Repo convention: use tabs.",
+    });
+    const [, salvageOpts] = agent.mock.calls[1] as [string, AgentOptions];
+    expect(salvageOpts.systemPrompt).toContain("## Repository conventions");
+    expect(salvageOpts.systemPrompt).toContain("Repo convention: use tabs.");
   });
 });
 

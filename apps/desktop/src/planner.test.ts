@@ -66,6 +66,8 @@ function makeHarness(
     getRepoPath: () => "/repo",
     checkoutDirtyPaths: async () => null,
     getRepoSettings: () => resolveRepoOrchestratorSettings(repoSettings, getSettings()),
+    instructionsPending: () => false,
+    getRepoInstructions: async () => undefined,
     requestTransition: async (itemId: string, to: LifecycleState, actor: TransitionActor) => {
       transitions.push({ itemId, to, actor });
       // Model the state change so the finally-poke rescan (#159) doesn't re-enqueue
@@ -157,6 +159,8 @@ describe("planner provider selection (#59)", () => {
       getItem: (id: string) => items.find((i) => i.id === id),
       getIssue: () => ({ labels: [] }) as unknown as Issue,
       getRepoPath: () => "/repo",
+      instructionsPending: () => false,
+      getRepoInstructions: async () => undefined,
       checkoutDirtyPaths: async () => null,
       getRepoSettings: () =>
         resolveRepoOrchestratorSettings({}, { ...DEFAULT_ORCHESTRATOR_SETTINGS } as OrchestratorSettings),
@@ -286,6 +290,8 @@ describe("planner worktree at planning (#110)", () => {
       getItem: (id: string) => items.find((i) => i.id === id),
       getIssue: () => ({ labels: [] }) as unknown as Issue,
       getRepoPath: () => "/repo",
+      instructionsPending: () => false,
+      getRepoInstructions: async () => undefined,
       checkoutDirtyPaths: async () => null,
       getRepoSettings: () =>
         resolveRepoOrchestratorSettings({}, { ...DEFAULT_ORCHESTRATOR_SETTINGS } as OrchestratorSettings),
@@ -600,6 +606,8 @@ describe("planner cancellation & zombie protection (#159)", () => {
       getItem: (id: string) => items.find((i) => i.id === id),
       getIssue: () => ({ labels: [] }) as unknown as Issue,
       getRepoPath: () => "/repo",
+      instructionsPending: () => false,
+      getRepoInstructions: async () => undefined,
       checkoutDirtyPaths: async () => null,
       getRepoSettings: () =>
         resolveRepoOrchestratorSettings({}, { ...DEFAULT_ORCHESTRATOR_SETTINGS } as OrchestratorSettings),

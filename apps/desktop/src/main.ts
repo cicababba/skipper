@@ -992,6 +992,7 @@ app.whenReady().then(async () => {
         plansDir: join(app.getPath("userData"), "plans"),
         worktreesDir: join(app.getPath("userData"), "worktrees"),
         memoryDir: join(app.getPath("userData"), "memory"),
+        repoInstructionsDir: join(app.getPath("userData"), "repo-instructions"),
         dataDir: getLlmSettingsDir(),
         cliBundlePath: cliBundlePath(),
       });

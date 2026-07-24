@@ -623,6 +623,38 @@ export interface RepoSettingsRow {
   resolved: ResolvedRepoOrchestratorSettings;
 }
 
+// Per-repo agent instructions (#227): a Skipper-owned conventions doc, seeded
+// from the repo's CLAUDE.md or generated at link, editable in repo settings,
+// injected into the planner/coder system prompts. Stored in userData, never
+// committed.
+
+export type RepoInstructionsSource = "claude-md" | "generated" | "edited";
+export type RepoInstructionsStatus = "ready" | "generating" | "failed";
+
+export interface RepoInstructionsDoc {
+  version: 1;
+  /** "" while generating / failed-with-no-doc. */
+  content: string;
+  /** ISO 8601 — UI "last updated". */
+  updatedAt: string;
+  source: RepoInstructionsSource;
+  status: RepoInstructionsStatus;
+  /** Set when status === "failed". */
+  error?: string;
+  /** Clobber guard: a concurrent user edit mid-generation wins. */
+  generationStartedAt?: string;
+}
+
+export type GetRepoInstructionsResult =
+  | { ok: true; doc: RepoInstructionsDoc | null }
+  | { ok: false; error: string };
+
+export type SetRepoInstructionsResult =
+  | { ok: true; doc: RepoInstructionsDoc }
+  | { ok: false; error: string };
+
+export type RegenerateRepoInstructionsResult = { ok: true } | { ok: false; error: string };
+
 export interface FollowCandidate {
   repo: RepoRef;
   private?: boolean;

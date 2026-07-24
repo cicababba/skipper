@@ -150,6 +150,7 @@ function makeHarness(
     // Same reasoning: resolve against the live global bag, so a test that only
     // overrides getSettings still sees its coderModel (#58).
     getRepoSettings: () => resolveRepoOrchestratorSettings(repoSettings, deps.getSettings()),
+    getRepoInstructions: async () => undefined,
     emitEvent: (itemId, event) => events.push({ itemId, event }),
     getLlmSettings: async () => ({ ...DEFAULT_LLM_SETTINGS }),
     plansDir,

@@ -114,6 +114,17 @@ export type {
   ApplyPlanFromDiscussionOptions,
 } from "./planner";
 
+// Repo agent instructions (issue #227)
+export {
+  REPO_CONVENTIONS_CHAR_BUDGET,
+  renderRepoConventions,
+  withRepoConventions,
+  INSTRUCTIONS_SYSTEM_PROMPT,
+  buildInstructionsPrompt,
+  generateRepoInstructions,
+} from "./instructions";
+export type { GenerateRepoInstructionsOptions } from "./instructions";
+
 // Confidence (issue #8)
 export {
   computeConfidence,

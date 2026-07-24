@@ -46,6 +46,11 @@ export interface PlannerDeps {
   checkoutDirtyPaths: (repoPath: string) => Promise<string[] | null>;
   /** Per-repo settings (#15, #62) — gates auto-plan on admission; carries autoCoding. */
   getRepoSettings: (repo: RepoRef) => ResolvedRepoOrchestratorSettings;
+  /** A repo-instructions generation is in flight for this repo (#227) — auto-plan
+   *  waits for it so the plan runs under the repo's conventions. */
+  instructionsPending: (repo: RepoRef) => boolean;
+  /** The repo's ready agent-instructions doc content (#227), or undefined. */
+  getRepoInstructions: (repo: RepoRef) => Promise<string | undefined>;
   requestTransition: (
     itemId: string,
     to: LifecycleState,
@@ -157,6 +162,9 @@ async function scan(): Promise<void> {
       // has to run, or crash recovery and the user's manual Pianifica would strand.
       if (deps.getSettings().autoPlanPaused) continue;
       if (!deps.getRepoPath(item.repo)) continue;
+      // Wait out an in-flight instructions generation (#227) — the coalesced
+      // rescan on onSettled retries this item once the doc lands.
+      if (deps.instructionsPending(item.repo)) continue;
       const rs = deps.getRepoSettings(item.repo);
       if (rs.autoPlan === "off") continue;
       if (rs.autoPlan === "label") {
@@ -309,11 +317,15 @@ async function run(itemId: string): Promise<void> {
           ...(memory?.cliBundlePath ? { cliBundlePath: memory.cliBundlePath } : {}),
         }
       : undefined;
+    // #227: the repo's conventions doc, injected into the planner + convergence
+    // system prompts. Best-effort — a read failure never blocks planning.
+    const repoInstructions = await deps.getRepoInstructions(item.repo).catch(() => undefined);
     const plan = await generatePlan({
       issue,
       repoPath: cwd,
       llm: provider,
       hardTimeoutMs: settings.plannerTimeBudgetMin * 60_000,
+      ...(repoInstructions ? { repoInstructions } : {}),
       onEvent: (event) => {
         // The minted id is authoritative; if the CLI reports a different session
         // in its init line, reconcile to the real on-disk id (#111).
@@ -368,6 +380,7 @@ async function run(itemId: string): Promise<void> {
         autoCoding: deps.getRepoSettings(item.repo).autoCoding,
         signal: controller.signal,
         ...(confinement ? { confinement } : {}),
+        ...(repoInstructions ? { repoInstructions } : {}),
       });
       if (Object.keys(report.signals).length === 0) report = undefined;
     } catch {

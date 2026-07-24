@@ -11,6 +11,7 @@ import {
   CodingTimeoutError,
   compareQueueCandidates,
   createProvider,
+  withRepoConventions,
   tryParseCoderReport,
   repairCoderReport,
   type CodingRunResult,
@@ -94,6 +95,8 @@ export interface CoderDeps {
   getRepoWipLimit: (repo: RepoRef) => number;
   /** Every per-repo override resolved against the global bag (#58 reads coderModel). */
   getRepoSettings: (repo: RepoRef) => ResolvedRepoOrchestratorSettings;
+  /** The repo's ready agent-instructions doc content (#227), or undefined. */
+  getRepoInstructions: (repo: RepoRef) => Promise<string | undefined>;
   /** Buffer + forward one progress event (orchestrator owns the IPC channel). */
   emitEvent: (itemId: string, event: CodingEvent) => void;
   /** skipper-memory MCP for this item's repo (#45); undefined = no CLI bundle. */
@@ -343,8 +346,11 @@ async function run(itemId: string, repoKey: string): Promise<void> {
       denyRoots: repoPath ? [repoPath] : [],
       ...(memory?.cliBundlePath ? { cliBundlePath: memory.cliBundlePath } : {}),
     };
+    // #227: inject the repo's conventions doc into the coder system prompt.
+    // Best-effort — a read failure never blocks coding.
+    const repoInstructions = await deps.getRepoInstructions(item.repo).catch(() => undefined);
     const baseOptions = {
-      systemPrompt: CODER_SYSTEM_PROMPT,
+      systemPrompt: withRepoConventions(CODER_SYSTEM_PROMPT, repoInstructions),
       cwd: worktree.path,
       model: deps.getRepoSettings(item.repo).coderModel,
       hardTimeoutMs: settings.coderTimeBudgetMin * 60_000,
