@@ -5,6 +5,7 @@ import { AgentAbortError } from "../llm/provider";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import type { RunConfinement } from "../llm/confinement";
 import { isSalvageableDeath } from "../llm/claude-cli";
+import { withRepoConventions } from "../instructions";
 import { parseJsonReply } from "../llm/json";
 import { IssuePlanSchema, planJsonSchema } from "./schema";
 import {
@@ -52,6 +53,9 @@ export interface GeneratePlanOptions {
    *  worktree, left by a prior coding attempt — surfaced in the prompt so the plan
    *  accounts for them (#202). */
   preexistingChanges?: string[];
+  /** The repo's Skipper-owned agent-instructions doc content (#227), appended to
+   *  the planner system prompt as a "Repository conventions" section. */
+  repoInstructions?: string;
 }
 
 export class PlanGenerationError extends Error {
@@ -124,10 +128,11 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
   }
   if (opts.signal?.aborted) throw new AgentAbortError();
   const schema = planJsonSchema();
+  const systemPrompt = withRepoConventions(PLANNER_SYSTEM_PROMPT, opts.repoInstructions);
   let reply: LLMResponse;
   try {
     reply = await opts.llm.agent(buildPlannerPrompt(opts.issue, schema, opts.preexistingChanges), {
-      systemPrompt: PLANNER_SYSTEM_PROMPT,
+      systemPrompt,
       cwd: opts.repoPath,
       maxTurns: opts.maxTurns ?? AGENT_MAX_TURNS_BACKSTOP,
       ...(opts.hardTimeoutMs !== undefined ? { hardTimeoutMs: opts.hardTimeoutMs } : {}),
@@ -146,7 +151,7 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
     }
     try {
       reply = await opts.llm.agent(buildSalvagePrompt(schema), {
-        systemPrompt: PLANNER_SYSTEM_PROMPT,
+        systemPrompt,
         cwd: opts.repoPath,
         maxTurns: SALVAGE_MAX_TURNS,
         hardTimeoutMs: SALVAGE_HARD_TIMEOUT_MS,

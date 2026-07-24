@@ -35,6 +35,9 @@ import type {
   SaveMarkdownResult,
   SaveWorktreeFileResult,
   SetRepoBaseBranchResult,
+  GetRepoInstructionsResult,
+  SetRepoInstructionsResult,
+  RegenerateRepoInstructionsResult,
   SolutionRecord,
   StoredCoderReport,
   StoredPlan,
@@ -209,6 +212,19 @@ const api = {
       baseBranch: string | null,
     ): Promise<SetRepoBaseBranchResult> =>
       ipcRenderer.invoke("skipper:orchestrator:setRepoBaseBranch", owner, name, baseBranch),
+    getRepoInstructions: (owner: string, name: string): Promise<GetRepoInstructionsResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:getRepoInstructions", owner, name),
+    setRepoInstructions: (
+      owner: string,
+      name: string,
+      content: string,
+    ): Promise<SetRepoInstructionsResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:setRepoInstructions", owner, name, content),
+    regenerateRepoInstructions: (
+      owner: string,
+      name: string,
+    ): Promise<RegenerateRepoInstructionsResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:regenerateRepoInstructions", owner, name),
     listRepos: (): Promise<ListReposResult> =>
       ipcRenderer.invoke("skipper:orchestrator:listRepos"),
     listRepoBranches: (owner: string, name: string): Promise<ListRepoBranchesResult> =>

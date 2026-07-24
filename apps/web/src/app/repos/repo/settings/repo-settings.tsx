@@ -12,6 +12,7 @@ import { useRepoParams } from "../use-repo-params";
 import { RepoIntakeControls } from "./repo-intake-controls";
 import { RepoModelControls } from "./repo-model-controls";
 import { RepoBaseBranchControl } from "./repo-base-branch-control";
+import { RepoInstructionsControl } from "./repo-instructions-control";
 
 export function RepoSettingsView() {
   const { t } = useT();
@@ -79,6 +80,11 @@ export function RepoSettingsView() {
           {row.linked && (
             <Section title={rp.baseBranch} editable={false} editing={false}>
               <RepoBaseBranchControl owner={owner} name={name} repoKey={key} />
+            </Section>
+          )}
+          {row.linked && (
+            <Section title={rp.instructions.title} editable={false} editing={false}>
+              <RepoInstructionsControl owner={owner} name={name} />
             </Section>
           )}
         </>

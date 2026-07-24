@@ -49,6 +49,11 @@ export interface ComputeConfidenceOptions {
    * longer describe the work. Bypasses shouldSkipConvergence.
    */
   skipConvergence?: { reason: "rescore"; detail: string };
+  /** The repo's agent-instructions doc content (#227), threaded into the
+   *  convergence extra plan runs so they run under the same system prompt as the
+   *  primary plan — otherwise convergence compares plans under different prompts
+   *  and depresses the signal. */
+  repoInstructions?: string;
   deps?: { generatePlan?: typeof realGeneratePlan };
 }
 
@@ -137,6 +142,7 @@ export async function computeConfidence(
           issue: opts.issue,
           repoPath: opts.repoPath,
           llm: opts.llm,
+          ...(opts.repoInstructions ? { repoInstructions: opts.repoInstructions } : {}),
           ...(opts.signal ? { signal: opts.signal } : {}),
           ...(opts.confinement ? { confinement: opts.confinement } : {}),
         }),

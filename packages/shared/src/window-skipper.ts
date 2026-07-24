@@ -11,6 +11,7 @@ import type {
   OrchestratorState,
   OrchestratorTransitionResult,
   PrReviewComment,
+  RegenerateRepoInstructionsResult,
   RepoIntakeSettings,
   RepoLinkResult,
   RepoSettingsRow,
@@ -18,6 +19,8 @@ import type {
   ResumeRiteAction,
   SaveWorktreeFileResult,
   SetRepoBaseBranchResult,
+  GetRepoInstructionsResult,
+  SetRepoInstructionsResult,
   TrackerProjectsResult,
   UntrackItemResult,
   UpdatePlanResult,
@@ -263,6 +266,17 @@ export interface WindowSkipper {
       name: string,
       baseBranch: string | null,
     ) => Promise<SetRepoBaseBranchResult>;
+    /** Per-repo agent instructions (#227) — Skipper-owned conventions doc. */
+    getRepoInstructions: (owner: string, name: string) => Promise<GetRepoInstructionsResult>;
+    setRepoInstructions: (
+      owner: string,
+      name: string,
+      content: string,
+    ) => Promise<SetRepoInstructionsResult>;
+    regenerateRepoInstructions: (
+      owner: string,
+      name: string,
+    ) => Promise<RegenerateRepoInstructionsResult>;
     listRepos: () => Promise<ListReposResult>;
     listRepoBranches: (owner: string, name: string) => Promise<ListRepoBranchesResult>;
     getPlan: (itemId: string) => Promise<StoredPlan | null>;

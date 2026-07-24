@@ -15,6 +15,8 @@ import {
   codeHostFor,
   codeHostForProvider,
   resolveGate,
+  createProvider,
+  generateRepoInstructions,
   DEFAULT_ORCHESTRATOR_SETTINGS,
   IssuePlanSchema,
   type IssueComment,
@@ -51,6 +53,10 @@ import type {
   OrchestratorState,
   PrReviewComment,
   PullRequest,
+  RepoInstructionsDoc,
+  GetRepoInstructionsResult,
+  SetRepoInstructionsResult,
+  RegenerateRepoInstructionsResult,
   RepoIntakeSettings,
   RepoRef,
   RepoSettingsRow,
@@ -89,7 +95,15 @@ import { shouldSkipPoll, selectPollCursor, pollFailurePatch } from "./poll-polic
 import { makeManifestWriters } from "./manifest-writers";
 import { registerMemoryHandlers } from "./memory-ipc";
 import { registerWorktreeDiffHandlers } from "./worktree-diff-ipc";
-import { readLlmSettings, readLlmSettingsSync } from "./llm-settings";
+import { readLlmSettings, readLlmSettingsSync, modelForRole } from "./llm-settings";
+import {
+  isInstructionsGenerating,
+  loadRepoInstructions,
+  markStaleGenerations,
+  readReadyInstructions,
+  saveRepoInstructions,
+  seedRepoInstructions,
+} from "./repo-instructions";
 import { readStoredPlan, updateStoredPlan } from "./plan-store";
 import { readStoredCoderReport } from "./report-store";
 import {
@@ -148,6 +162,8 @@ export interface OrchestratorDeps {
   plansDir: string;
   worktreesDir: string;
   memoryDir: string;
+  /** Per-repo agent-instructions docs (#227), one JSON per linked repo. */
+  repoInstructionsDir: string;
   /** userData root — settings.json lives here (#59: planner/reviewer provider). */
   dataDir: string;
   /** Absolute path to the CLI bundle for the skipper-memory MCP server (#45),
@@ -344,6 +360,37 @@ function repoOrch(repo: RepoRef): ResolvedRepoOrchestratorSettings {
     manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     deps ? readLlmSettingsSync(deps.dataDir).claudeModel : undefined,
   );
+}
+
+/**
+ * Seed (or regenerate, force=true) a repo's agent-instructions doc (#227). Only
+ * the synchronous part is awaited (CLAUDE.md copy or the "generating"
+ * placeholder); agentic generation runs in the background and pokes the planner
+ * when it settles so a gated auto-plan resumes. Never throws.
+ */
+async function seedInstructions(repo: RepoRef, localPath: string, force = false): Promise<void> {
+  if (!deps) return;
+  await seedRepoInstructions({
+    dir: deps.repoInstructionsDir,
+    repoKey: repoKey(repo),
+    repoPath: localPath,
+    generate: async () => {
+      const settings = await readLlmSettings(deps!.dataDir);
+      const model = modelForRole(settings, repoOrch(repo).plannerModel);
+      const llm = createProvider({
+        provider: settings.provider,
+        model,
+        maxTurns: 16,
+        apiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
+      });
+      return generateRepoInstructions({ repoPath: localPath, llm, hardTimeoutMs: 10 * 60_000 });
+    },
+    onSettled: () => {
+      broadcast();
+      pokePlanner();
+    },
+    force,
+  });
 }
 
 /** Accounts whose auth provider backs an issue source (identity-only providers filtered out). */
@@ -856,6 +903,11 @@ export function initOrchestrator(
   getWindow = windowGetter;
   deps = orchestratorDeps;
 
+  // Crash safety (#227): the in-flight generation set never survives a restart,
+  // so any doc left "generating" by a crash would gate planning forever. Flip
+  // them to "failed" before anything reads a doc.
+  void markStaleGenerations(orchestratorDeps.repoInstructionsDir);
+
   ipcMain.handle("skipper:orchestrator:getState", async () => {
     await ensureManifest();
     return snapshot();
@@ -1137,6 +1189,9 @@ export function initOrchestrator(
           ...(trimmed ? { baseBranch: trimmed } : {}),
         };
         await saveRepoLinks(deps!.repoLinksFilePath, links);
+        // Seed before reconcile so an admitted triage item hits the gate while a
+        // generation is in flight (#227); seeding failure never fails the link.
+        await seedInstructions({ owner, name }, localPath).catch(() => {});
         await reconcileFromCache();
         return { ok: true as const, localPath };
       } catch (err) {
@@ -1184,6 +1239,9 @@ export function initOrchestrator(
           ...(trimmed ? { baseBranch: trimmed } : {}),
         };
         await saveRepoLinks(deps!.repoLinksFilePath, links);
+        // Seed before reconcile so an admitted triage item hits the gate while a
+        // generation is in flight (#227); seeding failure never fails the clone.
+        await seedInstructions({ owner, name }, localPath).catch(() => {});
         await reconcileFromCache();
         return { ok: true as const, localPath };
       } catch (err) {
@@ -1248,6 +1306,8 @@ export function initOrchestrator(
       const links = await ensureRepoLinks();
       delete links.repos[repoKey({ owner, name })];
       await saveRepoLinks(deps!.repoLinksFilePath, links);
+      // Keep the instructions doc (#227): user edits survive unlink→relink, and a
+      // ready doc makes relink skip reseeding.
       return { ok: true as const };
     } catch (err) {
       return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
@@ -1355,6 +1415,56 @@ export function initOrchestrator(
         return { ok: true as const, replan: { replanned, skipped } };
       } catch (err) {
         return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
+  ipcMain.handle(
+    "skipper:orchestrator:getRepoInstructions",
+    async (_e, owner: string, name: string): Promise<GetRepoInstructionsResult> => {
+      try {
+        const doc = await loadRepoInstructions(deps!.repoInstructionsDir, repoKey({ owner, name }));
+        return { ok: true, doc };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
+  ipcMain.handle(
+    "skipper:orchestrator:setRepoInstructions",
+    async (_e, owner: string, name: string, content: string): Promise<SetRepoInstructionsResult> => {
+      try {
+        if (typeof content !== "string") return { ok: false, error: "content must be a string" };
+        const doc: RepoInstructionsDoc = {
+          version: 1,
+          content: content.slice(0, 100_000),
+          updatedAt: new Date().toISOString(),
+          source: "edited",
+          status: "ready",
+        };
+        await saveRepoInstructions(deps!.repoInstructionsDir, repoKey({ owner, name }), doc);
+        broadcast();
+        pokePlanner();
+        return { ok: true, doc };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
+  ipcMain.handle(
+    "skipper:orchestrator:regenerateRepoInstructions",
+    async (_e, owner: string, name: string): Promise<RegenerateRepoInstructionsResult> => {
+      try {
+        const links = await ensureRepoLinks();
+        const link = links.repos[repoKey({ owner, name })];
+        if (!link) return { ok: false, error: "repo not linked" };
+        if (isInstructionsGenerating(repoKey({ owner, name }))) {
+          return { ok: false, error: "generation already running" };
+        }
+        void seedInstructions({ owner, name }, link.localPath, true);
+        broadcast();
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
     },
   );
@@ -1685,6 +1795,9 @@ export function initOrchestrator(
     getRepoPath: repoPathFor,
     checkoutDirtyPaths: worktreeDirtyFiles,
     getRepoSettings: repoOrch,
+    instructionsPending: (repo) => isInstructionsGenerating(repoKey(repo)),
+    getRepoInstructions: (repo) =>
+      readReadyInstructions(orchestratorDeps.repoInstructionsDir, repoKey(repo)),
     requestTransition,
     completePlan,
     prepareWorktree: (item) => prepareWorktreeFor(item),
@@ -1785,6 +1898,8 @@ export function initOrchestrator(
       const ref = item.plan?.ref;
       return ref ? readStoredPlan(orchestratorDeps.plansDir, ref) : null;
     },
+    getRepoInstructions: (repo) =>
+      readReadyInstructions(orchestratorDeps.repoInstructionsDir, repoKey(repo)),
     requestTransition,
     completeCoding,
     setWorktree,
