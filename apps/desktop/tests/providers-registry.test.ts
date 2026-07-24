@@ -63,14 +63,14 @@ describe("provider registry", () => {
     expect(typeof jira.listResources).toBe("function");
   });
 
-  it("configures the bitbucket provider (no PKCE, Basic token auth, rotating refresh, dynamic port)", () => {
+  it("configures the bitbucket provider (no PKCE, Basic token auth, rotating refresh, port 8134)", () => {
     const bitbucket = PROVIDERS.bitbucket;
     expect(bitbucket.usesPkce).toBe(false);
     expect(bitbucket.clientSecret).toBeDefined();
     expect(bitbucket.tokenAuth).toBe("basic");
     expect(bitbucket.rotatesRefreshToken).toBe(true);
     expect(bitbucket.requiresRefreshTokenOnExchange).toBe(true);
-    expect(bitbucket.redirectPorts).toBeUndefined();
+    expect(bitbucket.redirectPorts).toEqual([8134]);
     expect(bitbucket.scopes).toEqual(["repository", "pullrequest:write", "account"]);
     expect(bitbucket.requiresBaseUrl).toBe(false);
     expect(bitbucket.supportsPat).toBe(false);

@@ -2,9 +2,19 @@
 
 **One inbox for every issue assigned to you — across GitHub, Bitbucket, Jira, Linear — where each issue arrives already planned, scored with a verifiable confidence, and one click away from becoming a draft PR that gets shepherded all the way to merge.**
 
-![Status](https://img.shields.io/badge/status-pivot%20in%20progress-orange) ![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue) ![License](https://img.shields.io/badge/license-GPL--3.0-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
+![Status](https://img.shields.io/badge/status-beta-yellow) ![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue) ![License](https://img.shields.io/badge/license-GPL--3.0-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
 
-> 🚧 **This repo is mid-pivot and not usable yet.** It was born as [NestBrain](https://nestbrain.app), an LLM-compiled personal knowledge base, and is being rebuilt into the product described below. The work is public: start from the [v1 epic (#3)](../../issues/3), the full vision and decision log lives in [`docs/DIRECTION.md`](docs/DIRECTION.md) (in Italian). NestBrain itself keeps living — and being sold and maintained — at [nestbrain.app](https://nestbrain.app).
+> **Beta.** The v1 loop is up and running and Skipper is being tried by early testers. It was born as [NestBrain](https://nestbrain.app), an LLM-compiled personal knowledge base, and rebuilt into the product described below. The full vision and decision log lives in [`docs/DIRECTION.md`](docs/DIRECTION.md) (in Italian). NestBrain itself keeps living — and being sold and maintained — at [nestbrain.app](https://nestbrain.app).
+
+---
+
+## Try the beta
+
+Prebuilt (unsigned) binaries for macOS (Apple Silicon) and Windows (x64) are
+published as **pre-releases** on the [Releases page](../../releases). Download the
+latest one and follow **[`docs/SETUP.md`](docs/SETUP.md)** — it covers getting past
+the unsigned-binary warning, installing the `claude` CLI, and linking your
+provider accounts. Betas don't auto-update; re-download each new prerelease.
 
 ---
 

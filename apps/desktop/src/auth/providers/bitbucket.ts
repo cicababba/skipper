@@ -63,8 +63,7 @@ export const bitbucketProvider: ProviderConfig = {
   rotatesRefreshToken: true,
   requiresRefreshTokenOnExchange: true,
   tokenAuth: "basic",
-  // No redirectPorts: Bitbucket prefix-matches the callback URL and ignores
-  // the loopback port (RFC 8252) — any free port works.
+  redirectPorts: BITBUCKET_OAUTH_ENDPOINTS.redirectPorts,
   requiresBaseUrl: false,
   supportsPat: false,
   mapUser: mapBitbucketUser,

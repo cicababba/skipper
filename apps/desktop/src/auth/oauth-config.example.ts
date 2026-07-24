@@ -44,15 +44,17 @@
 //      is required. Jira Data Center (self-hosted) signs in with a personal
 //      access token + instance URL instead.
 //
-// Bitbucket (PR orchestration — Bitbucket Cloud OAuth consumer):
-//   1. bitbucket.org → workspace → Settings → OAuth consumers → Add consumer.
-//   2. Callback URL: http://127.0.0.1/callback — Bitbucket prefix-matches it
-//      and ignores the loopback port at request time (RFC 8252), so one
-//      port-less URL covers whatever free port the app binds.
-//   3. Tick "This is a private consumer" (required for the secret + refresh grant).
-//   4. Permissions: Account → Read (`account`, also covers /user/emails),
-//      Repositories → Read (`repository`), Pull requests → Write (`pullrequest:write`).
-//   5. Copy consumer Key/Secret below. No PKCE support, so the
+// Bitbucket (PR orchestration — Atlassian-managed OAuth client):
+//   1. bitbucket.org → workspace → Settings → OAuth clients (Atlassian's new
+//      client system; secrets are ATOA-prefixed, same infra as Jira) → Create.
+//   2. Authorization: grant types "Authorization code" + "Refresh token".
+//   3. Callback URL: exactly http://127.0.0.1:8134/callback — these clients
+//      enforce an exact match (the classic consumer's prefix-match/any-port
+//      behavior is gone), so the app pins redirect port 8134.
+//   4. Scopes: Account → Email + Read (`account`, covers /user/emails),
+//      Repositories → Read + Write (`repository`), Pull requests → Read +
+//      Write (`pullrequest:write`).
+//   5. Copy client Key/Secret below. No PKCE support, so the
 //      (non-confidential desktop) secret is required; token endpoint takes it
 //      via HTTP Basic. Bitbucket Data Center (self-hosted) is not covered.
 //
