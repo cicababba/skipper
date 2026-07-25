@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_LLM_SETTINGS, type LlmSettings } from "@skipper/shared";
+import { DEFAULT_AGENT_RUNTIME, DEFAULT_LLM_SETTINGS, type LlmSettings } from "@skipper/shared";
 import type { LLMProviderInterface } from "@skipper/core";
 import {
   readLlmSettings,
@@ -135,6 +135,21 @@ describe("providerCacheKey (#59)", () => {
   it("is stable for identical settings", () => {
     expect(providerCacheKey(settings(), "opus")).toBe(providerCacheKey(settings(), "opus"));
   });
+
+  // #240: without the runtime axis a per-role runtime switch keeps serving the
+  // cached wrong-runtime bundle until restart — silently, since provider and
+  // model are unchanged.
+  it("changes when the runtime changes at the same provider and model", () => {
+    const claude = providerCacheKey(settings(), "opus", "claude-cli");
+    const codex = providerCacheKey(settings(), "opus", "codex-cli");
+    expect(claude).not.toBe(codex);
+  });
+
+  it("defaults the runtime axis to the floor", () => {
+    expect(providerCacheKey(settings(), "opus")).toBe(
+      providerCacheKey(settings(), "opus", DEFAULT_AGENT_RUNTIME),
+    );
+  });
 });
 
 describe("buildLlm (#238)", () => {
@@ -145,6 +160,31 @@ describe("buildLlm (#238)", () => {
     expect(b.runtime).toBeDefined();
     expect(b.runtime!.id).toBe("claude-cli");
     expect(b.runtime!.capabilities.resume).toBe(true);
+  });
+
+  // #240: the runtime is an axis of its own — the completions provider stays
+  // claude-cli and keeps the role model, while the agentic runtime becomes codex.
+  it("builds a codex runtime while the provider stays claude-cli", () => {
+    const b = buildLlm(settings({ provider: "claude-cli" }), "opus", 5, "codex-cli");
+    expect(b.llm.name).toBe("claude-cli");
+    expect(b.model).toBe("opus");
+    expect(b.runtime!.id).toBe("codex-cli");
+    expect(b.runtime!.capabilities.confinement).toBe("sandbox");
+  });
+
+  // Role models are Claude aliases (#59), so the codex runtime must be built
+  // model-less and fall through to codex's own default. Read off the runtime's
+  // own field: the observable half of this contract (runCoding never shipping a
+  // Claude alias) is asserted in core's runtime.test.ts.
+  it("hands the codex runtime no model at all", () => {
+    const b = buildLlm(settings({ provider: "claude-cli" }), "opus", 5, "codex-cli");
+    expect((b.runtime as unknown as { model?: string }).model).toBe("");
+  });
+
+  it("defaults to the claude-cli runtime when no role runtime is given", () => {
+    expect(buildLlm(settings({ provider: "claude-cli" }), "opus", 5).runtime!.id).toBe(
+      DEFAULT_AGENT_RUNTIME,
+    );
   });
 
   it("builds an openai provider with no runtime (completions-only)", () => {
@@ -186,6 +226,14 @@ describe("injectedBundle (#238)", () => {
     const b = injectedBundle(provider, "opus");
     expect(b.runtime).toBeDefined();
     expect(b.runtime!.capabilities.resume).toBe(false);
+  });
+
+  // #240: the driver gates resume on runtime.id matching the session's stamp, so
+  // an injected bundle has to be able to impersonate the selected runtime.
+  it("stamps the requested runtime id on the wrapper", () => {
+    const { provider } = fakeProvider("claude-cli", true);
+    expect(injectedBundle(provider, "opus", "codex-cli").runtime!.id).toBe("codex-cli");
+    expect(injectedBundle(provider, "opus").runtime!.id).toBe(DEFAULT_AGENT_RUNTIME);
   });
 
   it("returns no runtime for a provider without agent()", () => {

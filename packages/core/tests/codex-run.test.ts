@@ -86,6 +86,18 @@ describe("runCodexCodingAgent argv", () => {
     expect(child.stdin.end).toHaveBeenCalled();
   });
 
+  // #240: the runtime is constructed without a model when the role's Claude alias
+  // would otherwise leak here — codex then runs on its own configured default.
+  it("omits --model entirely when the caller set none", async () => {
+    const { child, spawnImpl, calls } = fakeSpawn();
+    const promise = runCodexCodingAgent({ ...baseOpts(), model: undefined }, spawnImpl);
+    child.stdout.emit("data", Buffer.from(okStream));
+    child.emit("close", 0);
+    await promise;
+    expect(calls[0].args).not.toContain("--model");
+    expect(calls[0].args).toContain("--sandbox");
+  });
+
   // The on-disk session is the shepherd's re-entry seam (#11) — unlike the
   // agent/structured calls, a coding run must never be ephemeral.
   it("never passes --ephemeral on a coding run", async () => {

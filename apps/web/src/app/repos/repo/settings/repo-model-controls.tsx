@@ -3,6 +3,7 @@
 import type { RepoIntakeSettings, RepoSettingsRow } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { ModelSelect } from "@/components/model-select";
+import { RuntimeSelect } from "@/components/runtime-select";
 import { Row, selectClass } from "./settings-row";
 
 /**
@@ -51,12 +52,45 @@ export function RepoModelControls({
     </Row>
   );
 
+  const runtimeRow = (
+    key: "plannerRuntime" | "coderRuntime" | "reviewerRuntime",
+    label: string,
+  ) => (
+    <Row key={key} label={label} busy={false}>
+      <div className="flex items-center gap-2">
+        <RuntimeSelect
+          value={row.settings[key] ?? row.resolved[key]}
+          disabled={busy}
+          onChange={(rt) => onPatch({ [key]: rt })}
+          className={selectClass}
+        />
+        {row.settings[key] === undefined ? (
+          <span className="text-[11px] text-muted/50">{rp.wipGlobal}</span>
+        ) : (
+          <button
+            onClick={() => onPatch({ [key]: undefined })}
+            disabled={busy}
+            className="text-[11px] text-accent hover:underline disabled:opacity-40"
+          >
+            {rp.wipClear}
+          </button>
+        )}
+      </div>
+    </Row>
+  );
+
   return (
     <div className="space-y-4">
       <p className="text-[11px] text-muted/60 leading-relaxed">{o.modelsDesc}</p>
       {modelRow("plannerModel", o.plannerModel)}
       {modelRow("coderModel", o.coderModel)}
       {modelRow("reviewerModel", o.reviewerModel)}
+      <p className="text-[11px] text-muted/60 leading-relaxed border-t border-border pt-4">
+        {o.runtimesDesc}
+      </p>
+      {runtimeRow("plannerRuntime", o.plannerRuntime)}
+      {runtimeRow("coderRuntime", o.coderRuntime)}
+      {runtimeRow("reviewerRuntime", o.reviewerRuntime)}
     </div>
   );
 }

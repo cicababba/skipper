@@ -390,7 +390,8 @@ async function seedInstructions(repo: RepoRef, localPath: string, force = false)
     repoPath: localPath,
     generate: async () => {
       const settings = await readLlmSettings(deps!.dataDir);
-      const { runtime } = buildLlm(settings, repoOrch(repo).plannerModel, 16);
+      const orch = repoOrch(repo);
+      const { runtime } = buildLlm(settings, orch.plannerModel, 16, orch.plannerRuntime);
       // The old generateRepoInstructions threw on a runtime-less provider (#238) —
       // that guard moved here so the seam takes an already-checked runtime.
       if (!runtime) {
@@ -997,7 +998,8 @@ export function initOrchestrator(
       pokePlanner(); // autoPlanPaused — without this the topbar toggle reads as dead
       pokeCoder(); // codingWipPerRepo, autoCoding
       pokeReviewer(); // review, reviewMaxRounds
-      // The model keys need no poke: each run reads its model at start (#58).
+      // The model and runtime keys need no poke: each run reads both at start
+      // (#58, #240).
       return snapshot();
     },
   );

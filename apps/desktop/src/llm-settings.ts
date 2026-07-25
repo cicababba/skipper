@@ -1,7 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { DEFAULT_LLM_SETTINGS, type LlmSettings } from "@skipper/shared";
+import {
+  DEFAULT_AGENT_RUNTIME,
+  DEFAULT_LLM_SETTINGS,
+  type AgentRuntimeId,
+  type LlmSettings,
+} from "@skipper/shared";
 import {
   createProvider,
   createRuntime,
@@ -58,9 +63,14 @@ export function modelForRole(settings: LlmSettings, roleModel: string): string {
   }
 }
 
-/** Cache key: a provider switch must not hand back the previous provider. */
-export function providerCacheKey(settings: LlmSettings, model: string): string {
-  return `${settings.provider}:${model}:${settings.openaiApiKey ? "k" : ""}`;
+/** Cache key: a provider switch must not hand back the previous provider, and a
+ *  per-role runtime switch (#240) must not hand back the previous runtime. */
+export function providerCacheKey(
+  settings: LlmSettings,
+  model: string,
+  runtime: AgentRuntimeId = DEFAULT_AGENT_RUNTIME,
+): string {
+  return `${settings.provider}:${runtime}:${model}:${settings.openaiApiKey ? "k" : ""}`;
 }
 
 /** The completions provider, its agent runtime (undefined = completions-only,
@@ -72,7 +82,12 @@ export interface LlmBundle {
   model: string;
 }
 
-export function buildLlm(settings: LlmSettings, roleModel: string, maxTurns: number): LlmBundle {
+export function buildLlm(
+  settings: LlmSettings,
+  roleModel: string,
+  maxTurns: number,
+  roleRuntime: AgentRuntimeId = DEFAULT_AGENT_RUNTIME,
+): LlmBundle {
   const model = modelForRole(settings, roleModel);
   const llm = createProvider({
     provider: settings.provider,
@@ -80,7 +95,15 @@ export function buildLlm(settings: LlmSettings, roleModel: string, maxTurns: num
     maxTurns,
     apiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
   });
-  const runtime = createRuntime({ provider: settings.provider, model, maxTurns });
+  // Role models are Claude aliases (#59) — a non-claude runtime gets no model at
+  // all and runs on its own configured default (#240). The completions provider
+  // above keeps the role model: it stays the claude-cli one either way.
+  const runtime = createRuntime({
+    provider: settings.provider,
+    model: roleRuntime === "claude-cli" ? model : "",
+    maxTurns,
+    runtime: roleRuntime,
+  });
   return { llm, runtime, model };
 }
 
@@ -90,14 +113,18 @@ export function buildLlm(settings: LlmSettings, roleModel: string, maxTurns: num
  * resume capability tracks the claude-cli name (the gate the driver checks).
  * Production always goes through buildLlm — this only feeds the driver test seams.
  */
-export function injectedBundle(provider: LLMProviderInterface, roleModel: string): LlmBundle {
+export function injectedBundle(
+  provider: LLMProviderInterface,
+  roleModel: string,
+  runtimeId: AgentRuntimeId = DEFAULT_AGENT_RUNTIME,
+): LlmBundle {
   const p = provider as LLMProviderInterface & {
     agent?: (prompt: string, opts?: unknown) => Promise<unknown>;
   };
   const runtime =
     typeof p.agent === "function"
       ? ({
-          id: "claude-cli",
+          id: runtimeId,
           capabilities: {
             streaming: true,
             resume: provider.name === "claude-cli",

@@ -117,6 +117,31 @@ describe("CodexCliRuntime delegation (#239)", () => {
     expect(out).toBe(result);
     expect(runCodingAgent).not.toHaveBeenCalled();
   });
+
+  // #240: role models are Claude aliases (#59). A driver hands its role model to
+  // every runtime unconditionally, so the guard has to live here — otherwise a
+  // codex role run would ship `codex --model sonnet` and fail.
+  it("runCoding() overrides the caller's model with its own", async () => {
+    vi.mocked(runCodexCodingAgent).mockResolvedValue({ ok: true } as never);
+    const opts = { prompt: "code it", cwd: "/wt", model: "sonnet", onEvent: () => {} };
+    await new CodexCliRuntime("gpt-5-codex").runCoding(opts as never);
+    expect(runCodexCodingAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "gpt-5-codex", prompt: "code it", cwd: "/wt" }),
+    );
+  });
+
+  // buildLlm constructs the codex runtime with an empty model, so the run falls
+  // through to codex's own configured default instead of a Claude alias.
+  it("runCoding() passes no model when the runtime was built without one", async () => {
+    vi.mocked(runCodexCodingAgent).mockResolvedValue({ ok: true } as never);
+    const opts = { prompt: "code it", cwd: "/wt", model: "opus", onEvent: () => {} };
+    await new CodexCliRuntime("").runCoding(opts as never);
+    expect(runCodexCodingAgent).toHaveBeenCalledWith(expect.objectContaining({ model: "" }));
+    await new CodexCliRuntime().runCoding(opts as never);
+    expect(runCodexCodingAgent).toHaveBeenLastCalledWith(
+      expect.objectContaining({ model: undefined }),
+    );
+  });
 });
 
 describe("ClaudeCliRuntime delegation (#238)", () => {

@@ -129,13 +129,13 @@ export function killAllPlanningRuns(): void {
  * from Settings (#59/#238), cached per provider+model. The role model only applies
  * to claude-cli — openai carries its own model in settings.json.
  */
-async function resolveBundle(roleModel: string): Promise<LlmBundle> {
-  if (injected && injectedProvider) return injectedBundle(injectedProvider, roleModel);
+async function resolveBundle(roleModel: string, roleRuntime: AgentRuntimeId): Promise<LlmBundle> {
+  if (injected && injectedProvider) return injectedBundle(injectedProvider, roleModel, roleRuntime);
   const settings = await deps!.getLlmSettings();
   const model = modelForRole(settings, roleModel);
-  const key = providerCacheKey(settings, model);
+  const key = providerCacheKey(settings, model, roleRuntime);
   if (!bundle || bundleKey !== key) {
-    bundle = buildLlm(settings, roleModel, 5);
+    bundle = buildLlm(settings, roleModel, 5, roleRuntime);
     bundleKey = key;
   }
   return bundle;
@@ -269,8 +269,10 @@ async function run(itemId: string): Promise<void> {
     // fetch can be slow — re-check the item wasn't cancelled/moved meanwhile.
     if (!live()) return;
     const settings = deps.getSettings();
+    const repoSettings = deps.getRepoSettings(item.repo);
     const { llm: provider, runtime, model } = await resolveBundle(
-      deps.getRepoSettings(item.repo).plannerModel,
+      repoSettings.plannerModel,
+      repoSettings.plannerRuntime,
     );
     // No agent runtime (openai, #238) — planning cannot explore the repo. Park it
     // where the old generatePlan throw used to, so the user can switch providers.

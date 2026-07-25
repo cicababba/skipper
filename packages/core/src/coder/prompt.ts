@@ -1,4 +1,10 @@
-import { displayKey, type CriticObjection, type IssuePlan, type PrReviewComment } from "@skipper/shared";
+import {
+  displayKey,
+  type CoderReport,
+  type CriticObjection,
+  type IssuePlan,
+  type PrReviewComment,
+} from "@skipper/shared";
 import { renderCommentsBlock } from "../planner/prompt";
 import type { PlanIssueInput } from "../planner/generate";
 import { reportContractBlock } from "./report";
@@ -32,12 +38,8 @@ function issueHeader(issue: PlanIssueInput): string[] {
   ];
 }
 
-export function buildCoderPrompt(issue: PlanIssueInput, plan: IssuePlan): string {
-  const lines = [
-    `Implement this issue following the plan below.`,
-    ``,
-    ...issueHeader(issue),
-    ``,
+function renderPlanBlock(plan: IssuePlan): string[] {
+  return [
     `--- Plan ---`,
     `Summary: ${plan.summary}`,
     ``,
@@ -77,6 +79,16 @@ export function buildCoderPrompt(issue: PlanIssueInput, plan: IssuePlan): string
       ? `Manual checks (for the human reviewer):\n${plan.manualChecks.map((m) => `- ${m}`).join("\n")}`
       : "",
     `--- End plan ---`,
+  ];
+}
+
+export function buildCoderPrompt(issue: PlanIssueInput, plan: IssuePlan): string {
+  const lines = [
+    `Implement this issue following the plan below.`,
+    ``,
+    ...issueHeader(issue),
+    ``,
+    ...renderPlanBlock(plan),
     ``,
     reportContractBlock(),
   ];
@@ -150,6 +162,92 @@ export function buildCoderSalvagePrompt(): string {
     ``,
     reportContractBlock(),
   ].join("\n");
+}
+
+/** Durable prior-work context for a recap re-entry (#240). Every field is
+ *  best-effort: whatever survived on disk, never the lost transcript. */
+export interface CoderRecapInput {
+  plan: IssuePlan;
+  /** Last run's structured report, when one was persisted. */
+  report?: CoderReport;
+  /** Reviewer objections still pending on the item. */
+  objections?: CriticObjection[];
+  /** Human PR feedback still pending — outranks objections, as in the coder driver. */
+  prComments?: PrReviewComment[];
+  /** Uncommitted paths in the worktree — the ground truth about prior work. */
+  dirtyPaths?: string[];
+}
+
+function renderReportBlock(report: CoderReport): string[] {
+  return [
+    `--- Report from the previous session ---`,
+    report.done.length > 0
+      ? `Done:\n${report.done.map((d) => `- ${d.path} — ${d.summary}`).join("\n")}`
+      : `Done: (nothing recorded)`,
+    report.deviations.length > 0
+      ? `Deviations from the plan:\n${report.deviations.map((d) => `- ${d}`).join("\n")}`
+      : "",
+    report.verification.length > 0
+      ? `Verification run:\n${report.verification
+          .map((v) => `- ${v.command} — ${v.passed ? "passed" : "FAILED"}${v.detail ? `: ${v.detail}` : ""}`)
+          .join("\n")}`
+      : "",
+    report.open.length > 0 ? `Left open:\n${report.open.map((o) => `- ${o}`).join("\n")}` : "",
+    `--- End report ---`,
+  ];
+}
+
+/**
+ * Re-entry on a different agent runtime (#240). The previous session belongs to
+ * another CLI and cannot be resumed, so the work already in the worktree is
+ * reconstructed from durable artifacts — the stored report, pending feedback, the
+ * plan and the dirty-file list — instead of being restarted from scratch.
+ */
+export function buildCoderRecapPrompt(issue: PlanIssueInput, recap: CoderRecapInput): string {
+  const feedback =
+    recap.prComments?.length
+      ? [
+          `--- Pending review feedback (address this) ---`,
+          ...recap.prComments.map((c) => {
+            const where = c.path ? ` on ${c.path}${c.line != null ? `:${c.line}` : ""}` : "";
+            return `- ${c.author ?? "reviewer"}${where}: ${c.body}`;
+          }),
+          `--- End review feedback ---`,
+        ]
+      : recap.objections?.length
+        ? [
+            `--- Pending reviewer objections (address the blocking ones) ---`,
+            ...recap.objections.map(
+              (o) => `- ${o.blocking ? "[BLOCKING] " : ""}(${o.kind}) ${o.detail}`,
+            ),
+            `--- End objections ---`,
+          ]
+        : [];
+  return [
+    `Work on this issue is already in progress in your working directory. The previous coding session ran on a different agent and its transcript is unavailable, so the summary below is all that survives of it.`,
+    ``,
+    `Do NOT restart the work from scratch and do NOT revert what is already there. Continue from the current state of the working tree.`,
+    ``,
+    ...issueHeader(issue),
+    ``,
+    ...renderPlanBlock(recap.plan),
+    ``,
+    ...(recap.report ? renderReportBlock(recap.report) : [`No report from the previous session survived.`]),
+    ``,
+    ...feedback,
+    ``,
+    recap.dirtyPaths?.length
+      ? `Files left uncommitted in the working tree by the previous session:\n${recap.dirtyPaths
+          .map((p) => `- ${p}`)
+          .join("\n")}`
+      : `The working tree has no uncommitted changes — the previous session may have left nothing behind.`,
+    ``,
+    `Start by running git status and git diff to see the real state of the tree. Where the tree and the summary above disagree, trust the tree: the summary can be stale or wrong. Then finish the remaining work. The same rules apply: no git commit/push/branch operations.`,
+    ``,
+    reportContractBlock(),
+  ]
+    .filter((l) => l !== "")
+    .join("\n");
 }
 
 /** Re-entry after an interrupted run: the session already carries the plan context. */

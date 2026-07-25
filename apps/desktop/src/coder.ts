@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   buildCoderPrompt,
+  buildCoderRecapPrompt,
   buildCoderSalvagePrompt,
   buildFixPrompt,
   buildPrFixPrompt,
@@ -13,6 +14,7 @@ import {
   tryParseCoderReport,
   repairCoderReport,
   type AgentRuntime,
+  type CoderRecapInput,
   type CodingRunResult,
   type IssueComment,
   type LLMProviderInterface,
@@ -21,13 +23,14 @@ import {
   type QueueCandidate,
   type RunConfinement,
 } from "@skipper/core";
-import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
+import { checkoutEscapeReason, newDirtyPaths, porcelainPaths, worktreeDirtyFiles } from "./worktrees";
 import { AGENT_MAX_TURNS_BACKSTOP, latestCodingTransitionAt, sessionRuntimeOf } from "@skipper/shared";
 import type {
   AgentRuntimeId,
   CoderReport,
   CodingEvent,
   Issue,
+  IssuePlan,
   LifecycleState,
   LlmSettings,
   RepoPriority,
@@ -38,7 +41,7 @@ import type {
   TransitionActor,
 } from "@skipper/shared";
 import { buildLlm, injectedBundle, modelForRole, providerCacheKey, type LlmBundle } from "./llm-settings";
-import { reportFileName, writeStoredCoderReport } from "./report-store";
+import { readStoredCoderReport, reportFileName, writeStoredCoderReport } from "./report-store";
 
 // Coding runner loop (issue #9): consumes "queued" items — the approval gate's
 // output — one at a time per repo. Creates/reuses an isolated git worktree,
@@ -137,18 +140,18 @@ export function initCoder(
 /** Injected runtime/provider (tests) win; otherwise the bundle built from Settings
  *  (#59/#238), cached per provider+model. The runtime drives the coding run; the
  *  provider is used only for the report repair (#146). Mirrors reviewer.ts. */
-async function resolveBundle(roleModel: string): Promise<LlmBundle> {
+async function resolveBundle(roleModel: string, roleRuntime: AgentRuntimeId): Promise<LlmBundle> {
   if (runtimeInjected || providerInjected) {
     const base = injectedProvider
-      ? injectedBundle(injectedProvider, roleModel)
+      ? injectedBundle(injectedProvider, roleModel, roleRuntime)
       : ({ llm: undefined as unknown as LLMProviderInterface, model: roleModel } as LlmBundle);
     return { ...base, ...(runtimeInjected ? { runtime: injectedRuntime ?? undefined } : {}) };
   }
   const settings = await deps!.getLlmSettings();
   const model = modelForRole(settings, roleModel);
-  const key = providerCacheKey(settings, model);
+  const key = providerCacheKey(settings, model, roleRuntime);
   if (!bundle || bundleKey !== key) {
-    bundle = buildLlm(settings, roleModel, 5);
+    bundle = buildLlm(settings, roleModel, 5, roleRuntime);
     bundleKey = key;
   }
   return bundle;
@@ -288,28 +291,35 @@ async function run(itemId: string, repoKey: string): Promise<void> {
     repoPath = deps.getRepoPath(item.repo);
     checkoutBefore = repoPath ? await deps.checkoutDirtyPaths(repoPath) : null;
 
-    const coderModel = deps.getRepoSettings(item.repo).coderModel;
-    const { llm: repairProvider, runtime } = await resolveBundle(coderModel);
+    const repoSettings = deps.getRepoSettings(item.repo);
+    const coderModel = repoSettings.coderModel;
+    const { llm: repairProvider, runtime } = await resolveBundle(
+      coderModel,
+      repoSettings.coderRuntime,
+    );
     // No agent runtime (openai, #238) — the coder cannot run. Park it for a
     // provider switch rather than crash the loop.
     if (!runtime) {
       await fail(
         itemId,
         "needs-input",
-        "coding needs an agent runtime (claude-cli) — the selected provider has none",
+        `coding needs the ${repoSettings.coderRuntime} agent runtime — the selected provider has none`,
         "queued",
       );
       return;
     }
 
+    // A previous run already worked in this worktree — its session may belong to
+    // another runtime (#240), but the work it left on disk is still there.
+    const priorSession =
+      item.worktree?.sessionId !== undefined && item.worktree.path === worktree.path;
     // Resume only when the runtime can, its session was minted by this same runtime
     // (#238), and it belongs to this worktree path (cwd-scoped, #159).
     const resume =
       runtime.capabilities.resume &&
       sessionRuntimeOf(item.worktree) === runtime.id &&
-      item.worktree?.sessionId !== undefined &&
-      item.worktree.path === worktree.path
-        ? item.worktree.sessionId
+      priorSession
+        ? item.worktree!.sessionId
         : undefined;
     const sessionId = resume ?? randomUUID();
     // Persist before the long run — crash recovery resumes from this record.
@@ -359,6 +369,13 @@ async function run(itemId: string, repoKey: string): Promise<void> {
       : fixMode
         ? buildFixPrompt(issue, pending!)
         : buildResumePrompt(issue);
+    // A fresh run over a worktree that already holds prior work (#240: the coder's
+    // runtime changed, or its session died on disk) is seeded with a recap built
+    // from durable artifacts. The fix prompts carry their own context already.
+    const startPrompt = async (): Promise<string> =>
+      prFixMode || fixMode || !priorSession
+        ? freshPrompt
+        : buildCoderRecapPrompt(issue, await collectRecap(item, worktree.path, stored.plan));
 
     const memory = deps.getMemoryMcp?.(item);
     // Confinement (#196): scope writes to the worktree, deny the checkout, and
@@ -401,7 +418,7 @@ async function run(itemId: string, repoKey: string): Promise<void> {
         onEvent: trackFirstEvent,
         ...(resume
           ? { resumeSessionId: resume, prompt: resumePrompt }
-          : { sessionId, prompt: freshPrompt }),
+          : { sessionId, prompt: await startPrompt() }),
       });
     } catch (err) {
       // A guard kill is checked BEFORE the dead-resume retry: it is not a dead
@@ -420,7 +437,7 @@ async function run(itemId: string, repoKey: string): Promise<void> {
           result = await runtime.runCoding({
             ...baseOptions,
             sessionId: freshId,
-            prompt: freshPrompt,
+            prompt: await startPrompt(),
           });
         } catch (retryErr) {
           if (retryErr instanceof CodingTimeoutError) death = { kind: retryErr.kind };
@@ -561,6 +578,31 @@ async function run(itemId: string, repoKey: string): Promise<void> {
     release(repoKey);
     pokeCoder();
   }
+}
+
+/**
+ * Durable prior-work context for a recap run (#240). Every source is best-effort:
+ * the stored report, the pending feedback on the item and the worktree's dirty
+ * set — never the previous run's transcript, which the other runtime owns.
+ */
+async function collectRecap(
+  item: TrackedItem,
+  worktreePath: string,
+  plan: IssuePlan,
+): Promise<CoderRecapInput> {
+  const storedReport = item.coderReport?.ref
+    ? await readStoredCoderReport(deps!.plansDir, item.coderReport.ref)
+    : null;
+  const dirty = await worktreeDirtyFiles(worktreePath).catch(() => null);
+  const prComments = item.shepherd?.pendingReviewComments;
+  const objections = item.review?.pendingObjections;
+  return {
+    plan,
+    ...(storedReport ? { report: storedReport.report } : {}),
+    ...(prComments?.length ? { prComments } : {}),
+    ...(objections?.length ? { objections } : {}),
+    ...(dirty?.length ? { dirtyPaths: porcelainPaths(dirty) } : {}),
+  };
 }
 
 function release(repoKey: string): void {

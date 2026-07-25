@@ -10,6 +10,10 @@ export type LLMProvider = "claude-cli" | "openai";
  *  union under #236. */
 export type AgentRuntimeId = "claude-cli" | "codex-cli";
 
+/** Runtime floor for the per-role selection ladder (#240) — the runtime a role
+ *  runs on when neither the repo nor the global settings override it. */
+export const DEFAULT_AGENT_RUNTIME: AgentRuntimeId = "claude-cli";
+
 /**
  * The runtime that minted a persisted session (#238). Legacy manifests predate
  * the field, so an absent stamp reads as "claude-cli" (the only runtime before

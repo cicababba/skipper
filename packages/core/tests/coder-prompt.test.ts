@@ -3,6 +3,7 @@ import type { IssuePlan } from "@skipper/shared";
 import {
   CODER_SYSTEM_PROMPT,
   buildCoderPrompt,
+  buildCoderRecapPrompt,
   buildCoderSalvagePrompt,
   buildFixPrompt,
   buildPrFixPrompt,
@@ -56,6 +57,7 @@ describe("structured report contract in every builder (#146)", () => {
     fix: () => buildFixPrompt(issue, [{ kind: "risk", detail: "x", blocking: false }]),
     prFix: () => buildPrFixPrompt(issue, [{ body: "please rename" }]),
     resume: () => buildResumePrompt(issue),
+    recap: () => buildCoderRecapPrompt(issue, { plan }),
   };
 
   for (const [name, build] of Object.entries(builders)) {
@@ -206,6 +208,7 @@ describe("issue comments in every builder", () => {
     expect(buildFixPrompt(withComments, objections)).toContain("also support system theme");
     expect(buildPrFixPrompt(withComments, prComments)).toContain("also support system theme");
     expect(buildResumePrompt(withComments)).toContain("also support system theme");
+    expect(buildCoderRecapPrompt(withComments, { plan })).toContain("also support system theme");
   });
 
   it("omits the block when there are no comments", () => {
@@ -213,5 +216,102 @@ describe("issue comments in every builder", () => {
     expect(buildFixPrompt(issue, objections)).not.toContain("Issue comments");
     expect(buildPrFixPrompt(issue, prComments)).not.toContain("Issue comments");
     expect(buildResumePrompt(issue)).not.toContain("Issue comments");
+    expect(buildCoderRecapPrompt(issue, { plan })).not.toContain("Issue comments");
+  });
+});
+
+// #240: a runtime switch mid-issue cannot resume the other CLI's session, so the
+// fresh run is seeded from durable artifacts instead — the stored report, the
+// pending feedback, the plan and the worktree's dirty set.
+describe("buildCoderRecapPrompt (#240)", () => {
+  const report = {
+    done: [{ path: "src/theme.ts", summary: "added the context" }],
+    deviations: ["skipped the toggle"],
+    verification: [{ command: "pnpm test", passed: false, detail: "2 failing" }],
+    open: ["is FOUC acceptable?"],
+  };
+
+  it("forbids restarting the work and renders the issue header and plan", () => {
+    const prompt = buildCoderRecapPrompt(issue, { plan });
+    expect(prompt).toContain("already in progress");
+    expect(prompt).toContain("Do NOT restart the work from scratch");
+    expect(prompt).toContain("Issue #42: Add dark mode");
+    expect(prompt).toContain("Summary: Introduce a theme context and toggle.");
+    expect(prompt).toContain("- src/theme.ts (new) — new theme context");
+  });
+
+  // The transcript belongs to the other runtime; saying so is what stops the
+  // agent from assuming it can recall the session.
+  it("states the previous session's transcript is unavailable", () => {
+    expect(buildCoderRecapPrompt(issue, { plan })).toContain("transcript is unavailable");
+  });
+
+  it("renders every section of the stored report", () => {
+    const prompt = buildCoderRecapPrompt(issue, { plan, report });
+    expect(prompt).toContain("- src/theme.ts — added the context");
+    expect(prompt).toContain("- skipped the toggle");
+    expect(prompt).toContain("- pnpm test — FAILED: 2 failing");
+    expect(prompt).toContain("- is FOUC acceptable?");
+  });
+
+  it("says so when no report survived", () => {
+    const prompt = buildCoderRecapPrompt(issue, { plan });
+    expect(prompt).toContain("No report from the previous session survived.");
+    expect(prompt).not.toContain("Report from the previous session ---");
+  });
+
+  it("marks a passed verification as passed", () => {
+    const prompt = buildCoderRecapPrompt(issue, {
+      plan,
+      report: { ...report, verification: [{ command: "pnpm lint", passed: true }] },
+    });
+    expect(prompt).toContain("- pnpm lint — passed");
+  });
+
+  it("lists the uncommitted paths and tells the agent to trust the tree", () => {
+    const prompt = buildCoderRecapPrompt(issue, { plan, dirtyPaths: ["src/theme.ts", "src/app.tsx"] });
+    expect(prompt).toContain("Files left uncommitted in the working tree");
+    expect(prompt).toContain("- src/theme.ts");
+    expect(prompt).toContain("- src/app.tsx");
+    expect(prompt).toMatch(/git status/);
+    expect(prompt).toContain("trust the tree");
+  });
+
+  it("says the tree is clean when nothing is dirty", () => {
+    const prompt = buildCoderRecapPrompt(issue, { plan });
+    expect(prompt).toContain("no uncommitted changes");
+    expect(prompt).not.toContain("Files left uncommitted in the working tree");
+  });
+
+  // Same precedence as the coder driver: the human's PR feedback is the later
+  // stage, so it outranks the critic's objections.
+  it("renders PR feedback over reviewer objections when both are present", () => {
+    const prompt = buildCoderRecapPrompt(issue, {
+      plan,
+      prComments: [{ author: "rev", path: "src/app.tsx", line: 7, body: "rename this" }],
+      objections: [{ kind: "risk", detail: "stale objection", blocking: false }],
+    });
+    expect(prompt).toContain("- rev on src/app.tsx:7: rename this");
+    expect(prompt).not.toContain("stale objection");
+  });
+
+  it("renders reviewer objections when there is no PR feedback", () => {
+    const prompt = buildCoderRecapPrompt(issue, {
+      plan,
+      objections: [{ kind: "acceptance-gap", detail: "criterion not met", blocking: true }],
+    });
+    expect(prompt).toContain("[BLOCKING] (acceptance-gap) criterion not met");
+  });
+
+  it("carries no feedback block when neither source has anything", () => {
+    const prompt = buildCoderRecapPrompt(issue, { plan, prComments: [], objections: [] });
+    expect(prompt).not.toContain("Pending review feedback");
+    expect(prompt).not.toContain("Pending reviewer objections");
+  });
+
+  it("keeps the no-git-operations rule", () => {
+    expect(buildCoderRecapPrompt(issue, { plan })).toContain(
+      "no git commit/push/branch operations",
+    );
   });
 });

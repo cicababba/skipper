@@ -87,6 +87,7 @@ interface KindConfig {
   /** Supersession binding; undefined = no transcript yet. */
   binding: (item: TrackedItem) => string | undefined;
   roleModel: (settings: ResolvedRepoOrchestratorSettings) => string;
+  roleRuntime: (settings: ResolvedRepoOrchestratorSettings) => AgentRuntimeId;
   /** Reviewer discusses from the repo clone when the worktree is gone. */
   repoCwdFallback: boolean;
   detail: string;
@@ -99,6 +100,7 @@ const CONFIGS: Record<AgentChatKind, KindConfig> = {
     turn1Runtime: (item) => sessionRuntimeOf(item.worktree),
     binding: (item) => item.worktree?.path,
     roleModel: (s) => s.coderModel,
+    roleRuntime: (s) => s.coderRuntime,
     repoCwdFallback: false,
     detail: "coder chat",
   },
@@ -108,6 +110,7 @@ const CONFIGS: Record<AgentChatKind, KindConfig> = {
     turn1Runtime: (item) => sessionRuntimeOf(item.review),
     binding: (item) => item.review?.at,
     roleModel: (s) => s.reviewerModel,
+    roleRuntime: (s) => s.reviewerRuntime,
     repoCwdFallback: true,
     detail: "reviewer chat",
   },
@@ -131,14 +134,14 @@ export function initAgentChat(agentChatDeps: AgentChatDeps, provider?: LLMProvid
   inFlight.clear();
 }
 
-async function resolveBundle(roleModel: string): Promise<LlmBundle> {
-  if (injected && injectedProvider) return injectedBundle(injectedProvider, roleModel);
+async function resolveBundle(roleModel: string, roleRuntime: AgentRuntimeId): Promise<LlmBundle> {
+  if (injected && injectedProvider) return injectedBundle(injectedProvider, roleModel, roleRuntime);
   const settings = await deps!.getLlmSettings();
   const model = modelForRole(settings, roleModel);
-  const key = providerCacheKey(settings, model);
+  const key = providerCacheKey(settings, model, roleRuntime);
   let bundle = bundles.get(key);
   if (!bundle) {
-    bundle = buildLlm(settings, roleModel, 5);
+    bundle = buildLlm(settings, roleModel, 5, roleRuntime);
     bundles.set(key, bundle);
   }
   return bundle;
@@ -242,7 +245,11 @@ export async function sendAgentChatMessage(
     const repoPath = deps.getRepoPath(item.repo);
     const checkoutBefore = repoPath ? await deps.checkoutDirtyPaths(repoPath) : null;
 
-    const { llm: provider, runtime } = await resolveBundle(cfg.roleModel(deps.getRepoSettings(item.repo)));
+    const chatRepoSettings = deps.getRepoSettings(item.repo);
+    const { llm: provider, runtime } = await resolveBundle(
+      cfg.roleModel(chatRepoSettings),
+      cfg.roleRuntime(chatRepoSettings),
+    );
     const memory = deps.getMemoryMcp?.(item);
     // Confinement (#196): only when the chat runs IN the worktree; the tripwire
     // below guards the checkout in every case (including the reviewer's fallback).
@@ -422,7 +429,11 @@ export async function prepareCoderChatApply(itemId: string): Promise<PrepareCode
     const repoPath = deps.getRepoPath(item.repo);
     const checkoutBefore = repoPath ? await deps.checkoutDirtyPaths(repoPath) : null;
 
-    const { llm: provider, runtime } = await resolveBundle(cfg.roleModel(deps.getRepoSettings(item.repo)));
+    const chatRepoSettings = deps.getRepoSettings(item.repo);
+    const { llm: provider, runtime } = await resolveBundle(
+      cfg.roleModel(chatRepoSettings),
+      cfg.roleRuntime(chatRepoSettings),
+    );
     const memory = deps.getMemoryMcp?.(item);
     // Confinement (#196): the distillation runs in the worktree (cwd = worktree).
     const confinement: RunConfinement | undefined = repoPath

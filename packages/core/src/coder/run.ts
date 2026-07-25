@@ -47,7 +47,9 @@ export interface RunCodingAgentOptions {
   systemPrompt?: string;
   /** Worktree path — sessions are cwd-scoped, resume must use the same path. */
   cwd: string;
-  model: string;
+  /** Absent = let the CLI pick its own configured model (#240): role models are
+   *  Claude aliases, so a non-claude runtime must not be handed one. */
+  model?: string;
   maxTurns?: number;
   /** Fresh run: session id to mint the on-disk session under (UUID). */
   sessionId?: string;
@@ -101,8 +103,7 @@ export function runCodingAgent(
       "--output-format",
       "stream-json",
       "--verbose", // stream-json requires it in print mode
-      "--model",
-      opts.model,
+      ...(opts.model ? ["--model", opts.model] : []),
       "--max-turns",
       String(opts.maxTurns ?? AGENT_MAX_TURNS_BACKSTOP),
       "--disable-slash-commands",

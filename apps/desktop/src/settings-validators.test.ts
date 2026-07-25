@@ -111,6 +111,31 @@ describe("applySettingsPatch", () => {
     expect(hi.plannerTimeBudgetMin).toBe(60);
   });
 
+  // #240: the runtime keys are a closed union — an unknown id has no runtime
+  // behind it, so it must be rejected rather than stored and crashed on later.
+  it("stores a valid per-role runtime and drops an invalid one", () => {
+    const s = baseSettings();
+    applySettingsPatch(s, { coderRuntime: "codex-cli" });
+    expect(s.coderRuntime).toBe("codex-cli");
+    applySettingsPatch(s, { coderRuntime: "gemini-cli" as unknown as "codex-cli" });
+    expect(s.coderRuntime).toBe("codex-cli");
+  });
+
+  it("explicit undefined clears a per-role runtime back to the floor", () => {
+    const s = baseSettings();
+    s.plannerRuntime = "codex-cli";
+    applySettingsPatch(s, { plannerRuntime: undefined });
+    expect("plannerRuntime" in s).toBe(false);
+  });
+
+  it("writes each role's runtime independently", () => {
+    const s = baseSettings();
+    applySettingsPatch(s, { plannerRuntime: "claude-cli", reviewerRuntime: "codex-cli" });
+    expect(s.plannerRuntime).toBe("claude-cli");
+    expect(s.reviewerRuntime).toBe("codex-cli");
+    expect("coderRuntime" in s).toBe(false);
+  });
+
   it("no longer writes the retired turn knobs (#194)", () => {
     const s = baseSettings();
     applySettingsPatch(s, {
@@ -147,6 +172,34 @@ describe("applyRepoSettingsPatch", () => {
   it("handles an undefined current record", () => {
     const merged = applyRepoSettingsPatch(undefined, { followed: true });
     expect(merged).toEqual({ followed: true });
+  });
+
+  // #240, per-repo half: same closed union, same clear-to-inherit semantics as
+  // every other override — undefined means "fall back to the global".
+  it("stores a valid per-role runtime override and drops an invalid one", () => {
+    expect(applyRepoSettingsPatch(undefined, { coderRuntime: "codex-cli" })).toEqual({
+      coderRuntime: "codex-cli",
+    });
+    expect(
+      applyRepoSettingsPatch(
+        { coderRuntime: "codex-cli" },
+        { coderRuntime: "gemini-cli" as unknown as "codex-cli" },
+      ),
+    ).toEqual({ coderRuntime: "codex-cli" });
+  });
+
+  it("undefined clears a per-role runtime override back to the global", () => {
+    expect(
+      applyRepoSettingsPatch({ coderRuntime: "codex-cli" }, { coderRuntime: undefined }),
+    ).toEqual({});
+  });
+
+  it("keeps the three role runtimes independent", () => {
+    const merged = applyRepoSettingsPatch(
+      { plannerRuntime: "codex-cli" },
+      { reviewerRuntime: "claude-cli" },
+    );
+    expect(merged).toEqual({ plannerRuntime: "codex-cli", reviewerRuntime: "claude-cli" });
   });
 
   it("keeps a boolean graphify toggle and drops a non-bool (#233)", () => {

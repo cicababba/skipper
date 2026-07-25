@@ -7,6 +7,7 @@ import {
 } from "@skipper/core";
 import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
 import type {
+  AgentRuntimeId,
   CodingEvent,
   ConfidenceReport,
   Issue,
@@ -62,12 +63,12 @@ export function initRescore(rescoreDeps: RescoreDeps): void {
 
 /** Bundle resolution mirrors the planner (role = plannerModel). Convergence is
  *  always skipped on a rescore, so the runtime only rides along for parity (#238). */
-async function resolveBundle(roleModel: string): Promise<LlmBundle> {
+async function resolveBundle(roleModel: string, roleRuntime: AgentRuntimeId): Promise<LlmBundle> {
   const settings = await deps!.getLlmSettings();
   const model = modelForRole(settings, roleModel);
-  const key = providerCacheKey(settings, model);
+  const key = providerCacheKey(settings, model, roleRuntime);
   if (!bundle || bundleKey !== key) {
-    bundle = buildLlm(settings, roleModel, 5);
+    bundle = buildLlm(settings, roleModel, 5, roleRuntime);
     bundleKey = key;
   }
   return bundle;
@@ -110,7 +111,11 @@ async function run(itemId: string, applied: StoredPlan, controller: AbortControl
     const checkoutBefore = repoPath ? await d.checkoutDirtyPaths(repoPath) : null;
     const confinement: RunConfinement | undefined =
       item.worktree?.path && repoPath ? { runRoot: cwd, denyRoots: [repoPath] } : undefined;
-    const { llm: provider, runtime } = await resolveBundle(d.getRepoSettings(item.repo).plannerModel);
+    const rescoreRepoSettings = d.getRepoSettings(item.repo);
+    const { llm: provider, runtime } = await resolveBundle(
+      rescoreRepoSettings.plannerModel,
+      rescoreRepoSettings.plannerRuntime,
+    );
 
     let comments: IssueComment[] = [];
     if (d.fetchIssueComments) {
