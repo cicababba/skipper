@@ -142,7 +142,8 @@ describe("providerCacheKey (#59)", () => {
   it("changes when the runtime changes at the same provider and model", () => {
     const claude = providerCacheKey(settings(), "opus", "claude-cli");
     const codex = providerCacheKey(settings(), "opus", "codex-cli");
-    expect(claude).not.toBe(codex);
+    const copilot = providerCacheKey(settings(), "opus", "copilot-cli");
+    expect(new Set([claude, codex, copilot]).size).toBe(3);
   });
 
   it("defaults the runtime axis to the floor", () => {
@@ -178,6 +179,22 @@ describe("buildLlm (#238)", () => {
   // Claude alias) is asserted in core's runtime.test.ts.
   it("hands the codex runtime no model at all", () => {
     const b = buildLlm(settings({ provider: "claude-cli" }), "opus", 5, "codex-cli");
+    expect((b.runtime as unknown as { model?: string }).model).toBe("");
+  });
+
+  // #242: same axis, third runtime. Copilot confines with rules (path
+  // verification + deny rules), not an OS sandbox.
+  it("builds a copilot runtime while the provider stays claude-cli", () => {
+    const b = buildLlm(settings({ provider: "claude-cli" }), "opus", 5, "copilot-cli");
+    expect(b.llm.name).toBe("claude-cli");
+    expect(b.model).toBe("opus");
+    expect(b.runtime!.id).toBe("copilot-cli");
+    expect(b.runtime!.capabilities.confinement).toBe("rules");
+    expect(b.runtime!.capabilities.resume).toBe(true);
+  });
+
+  it("hands the copilot runtime no model at all", () => {
+    const b = buildLlm(settings({ provider: "claude-cli" }), "opus", 5, "copilot-cli");
     expect((b.runtime as unknown as { model?: string }).model).toBe("");
   });
 

@@ -2,15 +2,19 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { sessionRuntimeOf } from "@skipper/shared";
 import { ClaudeCLIProvider } from "../src/llm/claude-cli";
 import { CodexCli } from "../src/llm/codex-cli";
+import { CopilotCli } from "../src/llm/copilot-cli";
 import {
   createRuntime,
   ClaudeCliRuntime,
   CLAUDE_CLI_CAPABILITIES,
   CodexCliRuntime,
   CODEX_CLI_CAPABILITIES,
+  CopilotCliRuntime,
+  COPILOT_CLI_CAPABILITIES,
 } from "../src/runtime";
 import { runCodingAgent } from "../src/coder/run";
 import { runCodexCodingAgent } from "../src/coder/codex-run";
+import { runCopilotCodingAgent } from "../src/coder/copilot-run";
 
 // The coding run is a direct import; mock the module so runCoding delegation can
 // be asserted without spawning claude. agent()/structured() delegate to the
@@ -23,6 +27,11 @@ vi.mock("../src/coder/run", async (importOriginal) => {
 vi.mock("../src/coder/codex-run", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/coder/codex-run")>();
   return { ...actual, runCodexCodingAgent: vi.fn() };
+});
+
+vi.mock("../src/coder/copilot-run", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/coder/copilot-run")>();
+  return { ...actual, runCopilotCodingAgent: vi.fn() };
 });
 
 describe("createRuntime (#238)", () => {
@@ -82,6 +91,97 @@ describe("createRuntime with runtime: codex-cli (#239)", () => {
       runtime: "codex-cli",
     });
     expect(rt).toBeInstanceOf(CodexCliRuntime);
+  });
+});
+
+describe("createRuntime with runtime: copilot-cli (#242)", () => {
+  it("builds a CopilotCliRuntime with the rules capability matrix", () => {
+    const rt = createRuntime({
+      provider: "claude-cli",
+      model: "",
+      maxTurns: 5,
+      runtime: "copilot-cli",
+    });
+    expect(rt).toBeInstanceOf(CopilotCliRuntime);
+    expect(rt!.id).toBe("copilot-cli");
+    expect(rt!.capabilities).toEqual(COPILOT_CLI_CAPABILITIES);
+    // "rules", not "sandbox": copilot verifies paths in-process and honours tool
+    // deny rules, but runs no OS sandbox (#242 D1).
+    expect(COPILOT_CLI_CAPABILITIES).toEqual({
+      streaming: true,
+      resume: true,
+      confinement: "rules",
+      mcp: true,
+    });
+  });
+
+  it("selects copilot regardless of the completions provider", () => {
+    expect(
+      createRuntime({ provider: "openai", model: "", maxTurns: 5, runtime: "copilot-cli" }),
+    ).toBeInstanceOf(CopilotCliRuntime);
+  });
+});
+
+describe("CopilotCliRuntime delegation (#242)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("agent() delegates to the wrapped CopilotCli with the same args", async () => {
+    const reply = { text: "planned" };
+    const spy = vi.spyOn(CopilotCli.prototype, "agent").mockResolvedValue(reply);
+    const opts = { cwd: "/repo", maxTurns: 12 };
+    const out = await new CopilotCliRuntime("claude-sonnet-4.5").agent("do it", opts);
+    expect(spy).toHaveBeenCalledWith("do it", opts);
+    expect(out).toBe(reply);
+  });
+
+  it("structured() delegates to the wrapped CopilotCli with the same args", async () => {
+    const schema = { type: "object" };
+    const spy = vi.spyOn(CopilotCli.prototype, "structured").mockResolvedValue({ ok: true } as never);
+    const opts = { tools: "Read,Grep,Glob", cwd: "/repo", maxTurns: 8 };
+    const out = await new CopilotCliRuntime("claude-sonnet-4.5").structured(
+      "critique the diff",
+      schema,
+      opts,
+    );
+    expect(spy).toHaveBeenCalledWith("critique the diff", schema, opts);
+    expect(out).toEqual({ ok: true });
+  });
+
+  it("runCoding() delegates to runCopilotCodingAgent, forwarding the options", async () => {
+    const result = { ok: true, summary: "done", sessionId: "sess-copilot" };
+    vi.mocked(runCopilotCodingAgent).mockResolvedValue(result as never);
+    const opts = { prompt: "code it", cwd: "/wt", model: "claude-sonnet-4.5", onEvent: () => {} };
+    const out = await new CopilotCliRuntime("claude-sonnet-4.5").runCoding(opts as never);
+    expect(runCopilotCodingAgent).toHaveBeenCalledWith(opts);
+    expect(out).toBe(result);
+    expect(runCodingAgent).not.toHaveBeenCalled();
+    expect(runCodexCodingAgent).not.toHaveBeenCalled();
+  });
+
+  // #240: role models are Claude aliases (#59), and a driver hands its role model
+  // to every runtime unconditionally — so the guard lives here.
+  it("runCoding() overrides the caller's model with its own", async () => {
+    vi.mocked(runCopilotCodingAgent).mockResolvedValue({ ok: true } as never);
+    const opts = { prompt: "code it", cwd: "/wt", model: "sonnet", onEvent: () => {} };
+    await new CopilotCliRuntime("gpt-5").runCoding(opts as never);
+    expect(runCopilotCodingAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "gpt-5", prompt: "code it", cwd: "/wt" }),
+    );
+  });
+
+  // buildLlm constructs the copilot runtime with an empty model, so the run falls
+  // through to copilot's own configured default instead of a Claude alias.
+  it("runCoding() passes no model when the runtime was built without one", async () => {
+    vi.mocked(runCopilotCodingAgent).mockResolvedValue({ ok: true } as never);
+    const opts = { prompt: "code it", cwd: "/wt", model: "opus", onEvent: () => {} };
+    await new CopilotCliRuntime("").runCoding(opts as never);
+    expect(runCopilotCodingAgent).toHaveBeenCalledWith(expect.objectContaining({ model: "" }));
+    await new CopilotCliRuntime().runCoding(opts as never);
+    expect(runCopilotCodingAgent).toHaveBeenLastCalledWith(
+      expect.objectContaining({ model: undefined }),
+    );
   });
 });
 
@@ -192,5 +292,6 @@ describe("sessionRuntimeOf (#238)", () => {
   it("returns an explicit sessionRuntime as-is", () => {
     expect(sessionRuntimeOf({ sessionRuntime: "claude-cli" })).toBe("claude-cli");
     expect(sessionRuntimeOf({ sessionRuntime: "codex-cli" })).toBe("codex-cli");
+    expect(sessionRuntimeOf({ sessionRuntime: "copilot-cli" })).toBe("copilot-cli");
   });
 });

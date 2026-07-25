@@ -121,6 +121,20 @@ describe("applySettingsPatch", () => {
     expect(s.coderRuntime).toBe("codex-cli");
   });
 
+  // #242: copilot-cli joined the union — every one of the three global keys has
+  // to accept it, or a Copilot selection silently falls back to the floor.
+  it("accepts copilot-cli on each of the three role keys", () => {
+    const s = baseSettings();
+    applySettingsPatch(s, {
+      plannerRuntime: "copilot-cli",
+      coderRuntime: "copilot-cli",
+      reviewerRuntime: "copilot-cli",
+    });
+    expect(s.plannerRuntime).toBe("copilot-cli");
+    expect(s.coderRuntime).toBe("copilot-cli");
+    expect(s.reviewerRuntime).toBe("copilot-cli");
+  });
+
   it("explicit undefined clears a per-role runtime back to the floor", () => {
     const s = baseSettings();
     s.plannerRuntime = "codex-cli";
@@ -186,6 +200,20 @@ describe("applyRepoSettingsPatch", () => {
         { coderRuntime: "gemini-cli" as unknown as "codex-cli" },
       ),
     ).toEqual({ coderRuntime: "codex-cli" });
+  });
+
+  it("accepts copilot-cli on each of the three per-repo role keys (#242)", () => {
+    expect(
+      applyRepoSettingsPatch(undefined, {
+        plannerRuntime: "copilot-cli",
+        coderRuntime: "copilot-cli",
+        reviewerRuntime: "copilot-cli",
+      }),
+    ).toEqual({
+      plannerRuntime: "copilot-cli",
+      coderRuntime: "copilot-cli",
+      reviewerRuntime: "copilot-cli",
+    });
   });
 
   it("undefined clears a per-role runtime override back to the global", () => {
