@@ -2,6 +2,7 @@ import type { AgentRuntimeId, LLMProvider } from "@skipper/shared";
 import type { AgentRuntime } from "./types";
 import { ClaudeCliRuntime } from "./claude-cli-runtime";
 import { CodexCliRuntime } from "./codex-cli-runtime";
+import { CopilotCliRuntime } from "./copilot-cli-runtime";
 
 /**
  * The agent runtime for a provider, or undefined when the provider wraps no
@@ -19,6 +20,7 @@ export function createRuntime(config: {
   runtime?: AgentRuntimeId;
 }): AgentRuntime | undefined {
   if (config.runtime === "codex-cli") return new CodexCliRuntime(config.model);
+  if (config.runtime === "copilot-cli") return new CopilotCliRuntime(config.model);
   switch (config.provider) {
     case "claude-cli":
       return new ClaudeCliRuntime(config.model, config.maxTurns);

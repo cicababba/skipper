@@ -178,6 +178,18 @@ describe("resolveRepoOrchestratorSettings", () => {
       expect(resolved.reviewerRuntime).toBe("codex-cli");
     });
 
+    // #242: the ladder is runtime-agnostic — a third id rides it unchanged, with
+    // a repo-level copilot coder still beating a global codex one.
+    it("carries copilot-cli up the same ladder", () => {
+      const resolved = resolveRepoOrchestratorSettings(
+        { coderRuntime: "copilot-cli" },
+        global({ coderRuntime: "codex-cli", reviewerRuntime: "copilot-cli" }),
+      );
+      expect(resolved.coderRuntime).toBe("copilot-cli");
+      expect(resolved.reviewerRuntime).toBe("copilot-cli");
+      expect(resolved.plannerRuntime).toBe("claude-cli");
+    });
+
     // The runtime keys are deliberately absent from the defaults bag (the model
     // precedent): an absent key is what "inherit" is spelled as.
     it("keeps the runtime keys out of DEFAULT_ORCHESTRATOR_SETTINGS", () => {
