@@ -6,9 +6,9 @@
 export type LLMProvider = "claude-cli" | "openai";
 
 /** The agent runtime that owns the write-capable coding run + the read-leaning
- *  agent/tools paths (#238). Today only the claude-cli runtime exists; a second
- *  (Codex/Gemini CLI) joins the union under #236. */
-export type AgentRuntimeId = "claude-cli";
+ *  agent/tools paths (#238). Further runtimes (Copilot/Gemini CLI) join the
+ *  union under #236. */
+export type AgentRuntimeId = "claude-cli" | "codex-cli";
 
 /**
  * The runtime that minted a persisted session (#238). Legacy manifests predate

@@ -15,7 +15,13 @@ export type { RunConfinement } from "./llm";
 export type { ClaudeStructuredOptions } from "./llm";
 
 // Agent runtime seam (#238) — the capability-gated home of every agentic path.
-export { createRuntime, ClaudeCliRuntime, CLAUDE_CLI_CAPABILITIES } from "./runtime";
+export {
+  createRuntime,
+  ClaudeCliRuntime,
+  CLAUDE_CLI_CAPABILITIES,
+  CodexCliRuntime,
+  CODEX_CLI_CAPABILITIES,
+} from "./runtime";
 export type { AgentRuntime, RuntimeCapabilities, RuntimeStructuredOptions } from "./runtime";
 
 export { VectorStore } from "./vectorstore";
