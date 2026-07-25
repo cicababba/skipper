@@ -6,6 +6,7 @@ import {
   AGENT_MAX_TURNS_BACKSTOP,
   DEFAULT_LLM_SETTINGS,
   resolveRepoOrchestratorSettings,
+  type AgentRuntimeId,
   type CoderReport,
   type CodingEvent,
   type IssuePlan,
@@ -29,16 +30,17 @@ import { initCoder, pokeCoder, cancelCodingRun, type CoderDeps } from "./coder";
  *  .mock stays the assertion surface. Claude-cli capabilities keep resume/salvage on. */
 function runtimeOf(
   runCoding: (opts: RunCodingAgentOptions) => Promise<CodingRunResult>,
+  id: AgentRuntimeId = "claude-cli",
 ): AgentRuntime {
   return {
-    id: "claude-cli",
+    id,
     capabilities: { streaming: true, resume: true, confinement: "rules", mcp: true },
     runCoding,
     agent: vi.fn(),
     structured: vi.fn(),
   } as unknown as AgentRuntime;
 }
-import { reportFileName } from "./report-store";
+import { reportFileName, writeStoredCoderReport } from "./report-store";
 
 const validReport: CoderReport = {
   done: [{ path: "src/a.ts", summary: "did it" }],
@@ -671,6 +673,99 @@ describe("coder driver", () => {
     expect(h.transitions.map((t) => t.to)).toEqual(["agent-review"]);
     // fresh session persisted for the retry
     expect(h.worktreeWrites.at(-1)!.sessionId).toBe(runner.mock.calls[1][0].sessionId);
+  });
+
+  // #240: the session on disk belongs to the runtime that minted it. After a
+  // mid-issue runtime switch there is nothing to resume, but the work is still in
+  // the worktree — so the fresh run is seeded with a recap instead of the plain
+  // "implement this" prompt that would restart from scratch.
+  it("a coder runtime switch starts fresh with a recap, never resuming the other runtime's session", async () => {
+    const h = makeHarness();
+    const runner = okRunner();
+    initCoder(h.deps, runtimeOf(runner, "codex-cli"));
+    const item = makeItem(1, "coding");
+    const ref = reportFileName(item.id);
+    await writeStoredCoderReport(plansDir, ref, {
+      version: 1,
+      itemId: item.id,
+      repo: item.repo,
+      generatedAt: "2026-07-13T00:00:00.000Z",
+      model: "sonnet",
+      report: validReport,
+    });
+    h.items.set("github:1", {
+      ...item,
+      coderReport: { ref },
+      worktree: {
+        path: "/wt/repo/issue-1",
+        branch: "feature/issue-1",
+        sessionId: "claude-session",
+        sessionRuntime: "claude-cli",
+      },
+    });
+
+    pokeCoder();
+    await settle();
+
+    const opts = runner.mock.calls[0][0];
+    expect(opts.resumeSessionId).toBeUndefined();
+    expect(opts.sessionId).toBeTruthy();
+    expect(opts.sessionId).not.toBe("claude-session");
+    expect(opts.prompt).toContain("already in progress");
+    expect(opts.prompt).toContain("Do NOT restart the work from scratch");
+    expect(opts.prompt).not.toMatch(/interrupted/);
+    // The recap is built from durable artifacts — here, the stored report (#146).
+    expect(opts.prompt).toContain("- src/a.ts — did it");
+    // The new session is stamped with the runtime that actually minted it.
+    expect(h.items.get("github:1")!.worktree!.sessionRuntime).toBe("codex-cli");
+    // The feed shows a fresh start, not a resume.
+    const phases = h.events
+      .map((e) => (e.event.kind === "status" ? e.event.phase : undefined))
+      .filter(Boolean);
+    expect(phases).toContain("agent-start");
+    expect(phases).not.toContain("resuming");
+    expect(h.transitions.map((t) => t.to)).toEqual(["agent-review"]);
+  });
+
+  // Control case: no prior work in the worktree means no recap to give — the run
+  // gets the plain plan prompt it always got.
+  it("uses the plain coder prompt when the worktree holds no prior session", async () => {
+    const h = makeHarness();
+    const runner = okRunner();
+    initCoder(h.deps, runtimeOf(runner, "codex-cli"));
+    h.items.set("github:1", makeItem(1, "queued"));
+
+    pokeCoder();
+    await settle();
+
+    const opts = runner.mock.calls[0][0];
+    expect(opts.prompt).toContain("Implement this issue following the plan below.");
+    expect(opts.prompt).not.toContain("already in progress");
+    expect(opts.resumeSessionId).toBeUndefined();
+  });
+
+  // Same reasoning as the switch: once --resume is off the table, the fresh run
+  // must still know that work exists in the worktree.
+  it("a dead --resume retry carries the recap, not the plain prompt", async () => {
+    const h = makeHarness();
+    const runner = vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      if (opts.resumeSessionId) throw new Error("No conversation found");
+      opts.onEvent({ kind: "result", ok: true, summary: REPORT_JSON });
+      return okReport(opts);
+    });
+    initCoder(h.deps, runtimeOf(runner));
+    const item = makeItem(1, "coding");
+    h.items.set("github:1", {
+      ...item,
+      worktree: { path: "/wt/repo/issue-1", branch: "feature/issue-1", sessionId: "dead-session" },
+    });
+
+    pokeCoder();
+    await settle();
+
+    expect(runner).toHaveBeenCalledTimes(2);
+    expect(runner.mock.calls[1][0].prompt).toContain("already in progress");
+    expect(runner.mock.calls[1][0].prompt).toContain("No report from the previous session survived.");
   });
 
   it("fix round uses the fix prompt on a resumed session", async () => {

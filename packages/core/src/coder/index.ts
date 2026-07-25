@@ -3,11 +3,13 @@ export type { RunCodingAgentOptions, CodingRunResult } from "./run";
 export {
   CODER_SYSTEM_PROMPT,
   buildCoderPrompt,
+  buildCoderRecapPrompt,
   buildResumePrompt,
   buildCoderSalvagePrompt,
   buildFixPrompt,
   buildPrFixPrompt,
 } from "./prompt";
+export type { CoderRecapInput } from "./prompt";
 export {
   CoderReportSchema,
   coderReportJsonSchema,

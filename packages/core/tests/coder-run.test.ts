@@ -43,6 +43,23 @@ function baseOpts(onEvent: (e: CodingEvent) => void = () => {}) {
 }
 
 describe("runCodingAgent", () => {
+  // #240: role models are Claude aliases, so a runtime running on something else
+  // is built without one and the flag must disappear rather than ship "--model ".
+  it("passes --model only when the caller set one", async () => {
+    const argvFor = async (extra: Record<string, unknown>) => {
+      const { child, spawnImpl, calls } = fakeSpawn();
+      const promise = runCodingAgent({ ...baseOpts(), ...extra }, spawnImpl);
+      child.stdout.emit("data", Buffer.from(`${initLine}\n${okResultLine}\n`));
+      child.emit("close", 0);
+      await promise;
+      return calls[0].args;
+    };
+    expect((await argvFor({})).join(" ")).toContain("--model opus");
+    const without = await argvFor({ model: undefined });
+    expect(without).not.toContain("--model");
+    expect(without).toContain("--max-turns");
+  });
+
   it("builds write-capable streaming argv without session persistence opt-out", async () => {
     const { child, spawnImpl, calls } = fakeSpawn();
     const promise = runCodingAgent(

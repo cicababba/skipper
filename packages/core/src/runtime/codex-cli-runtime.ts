@@ -29,12 +29,14 @@ export class CodexCliRuntime implements AgentRuntime {
   readonly capabilities = CODEX_CLI_CAPABILITIES;
   private readonly cli: CodexCli;
 
-  constructor(model?: string) {
+  constructor(private readonly model?: string) {
     this.cli = new CodexCli(model);
   }
 
+  /** The caller's model is discarded (#240): role models are Claude aliases, so
+   *  only this runtime's own model — or codex's configured default — may reach it. */
   runCoding(opts: RunCodingAgentOptions): Promise<CodingRunResult> {
-    return runCodexCodingAgent(opts);
+    return runCodexCodingAgent({ ...opts, model: this.model });
   }
 
   agent(prompt: string, opts?: AgentOptions): Promise<LLMResponse> {

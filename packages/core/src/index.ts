@@ -176,6 +176,7 @@ export {
   CodingTimeoutError,
   CODER_SYSTEM_PROMPT,
   buildCoderPrompt,
+  buildCoderRecapPrompt,
   buildResumePrompt,
   buildCoderSalvagePrompt,
   buildFixPrompt,
@@ -189,7 +190,12 @@ export {
   mapStreamLine,
   createStreamJsonParser,
 } from "./coder";
-export type { RunCodingAgentOptions, CodingRunResult, StreamJsonParser } from "./coder";
+export type {
+  RunCodingAgentOptions,
+  CodingRunResult,
+  CoderRecapInput,
+  StreamJsonParser,
+} from "./coder";
 export {
   CODER_CHAT_SYSTEM_PROMPT,
   discussCoder,

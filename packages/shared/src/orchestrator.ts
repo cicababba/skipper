@@ -11,7 +11,7 @@ import {
 } from "./confidence";
 import type { CodeHostId, Issue, IssueSourceId, PullRequest, RepoRef, SourceRef } from "./inbox";
 import type { StoredPlan } from "./plan";
-import { DEFAULT_LLM_SETTINGS, type AgentRuntimeId } from "./types";
+import { DEFAULT_AGENT_RUNTIME, DEFAULT_LLM_SETTINGS, type AgentRuntimeId } from "./types";
 
 export type AgentReviewOutcome = CriticVerdict | "skipped" | "unavailable";
 
@@ -156,6 +156,10 @@ export interface OrchestratorSettings {
   /** Model handed to the planner's LLM provider (also scores confidence, #8).
    *  #125: absent = inherit llm.claudeModel. */
   plannerModel?: string;
+  /** #240 per-role agent runtime. Absent = DEFAULT_AGENT_RUNTIME. */
+  plannerRuntime?: AgentRuntimeId;
+  coderRuntime?: AgentRuntimeId;
+  reviewerRuntime?: AgentRuntimeId;
   /** Gate thresholds + convergence sample count (#8). Hand-editable by design (#62). */
   confidence: ConfidenceThresholds & { extraPlanRuns: number };
   /** Model handed to the coding agent (#9). #125: absent = inherit llm.claudeModel. */
@@ -222,6 +226,10 @@ export interface RepoIntakeSettings {
   plannerModel?: string;
   coderModel?: string;
   reviewerModel?: string;
+  /** #240 per-role runtime overrides. Absent = inherit the global setting. */
+  plannerRuntime?: AgentRuntimeId;
+  coderRuntime?: AgentRuntimeId;
+  reviewerRuntime?: AgentRuntimeId;
   /** #233 opt-in per-repo Graphify knowledge-graph index. Absent = off. */
   graphify?: boolean;
 }
@@ -257,6 +265,10 @@ export interface ResolvedRepoOrchestratorSettings extends ResolvedRepoIntakeSett
   plannerModel: string;
   coderModel: string;
   reviewerModel: string;
+  /** #240 — the agent runtime each role's run drives. */
+  plannerRuntime: AgentRuntimeId;
+  coderRuntime: AgentRuntimeId;
+  reviewerRuntime: AgentRuntimeId;
 }
 
 /**
@@ -285,6 +297,9 @@ export function resolveRepoOrchestratorSettings(
     plannerModel: repo?.plannerModel ?? global.plannerModel ?? dm,
     coderModel: repo?.coderModel ?? global.coderModel ?? dm,
     reviewerModel: repo?.reviewerModel ?? global.reviewerModel ?? dm,
+    plannerRuntime: repo?.plannerRuntime ?? global.plannerRuntime ?? DEFAULT_AGENT_RUNTIME,
+    coderRuntime: repo?.coderRuntime ?? global.coderRuntime ?? DEFAULT_AGENT_RUNTIME,
+    reviewerRuntime: repo?.reviewerRuntime ?? global.reviewerRuntime ?? DEFAULT_AGENT_RUNTIME,
   };
 }
 

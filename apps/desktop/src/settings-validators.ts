@@ -31,6 +31,10 @@ export const SETTINGS_VALIDATORS: {
   plannerModel: nonEmptyString,
   coderModel: nonEmptyString,
   reviewerModel: nonEmptyString,
+  // #240: runtimes are a closed union — an unknown id would break every run.
+  plannerRuntime: oneOf("claude-cli", "codex-cli"),
+  coderRuntime: oneOf("claude-cli", "codex-cli"),
+  reviewerRuntime: oneOf("claude-cli", "codex-cli"),
   coderTimeBudgetMin: clampInt(10, 240),
   plannerTimeBudgetMin: clampInt(5, 60),
 };
@@ -50,14 +54,29 @@ export const REPO_SETTINGS_VALIDATORS: {
   plannerModel: nonEmptyString,
   coderModel: nonEmptyString,
   reviewerModel: nonEmptyString,
+  plannerRuntime: oneOf("claude-cli", "codex-cli"),
+  coderRuntime: oneOf("claude-cli", "codex-cli"),
+  reviewerRuntime: oneOf("claude-cli", "codex-cli"),
   graphify: asBool,
 };
+
+/** The globals an explicit undefined may clear back to their inherited value —
+ *  the per-role models (#125) and the per-role runtimes (#240). */
+const CLEARABLE_SETTINGS_KEYS: readonly (keyof OrchestratorSettings)[] = [
+  "plannerModel",
+  "coderModel",
+  "reviewerModel",
+  "plannerRuntime",
+  "coderRuntime",
+  "reviewerRuntime",
+];
 
 /**
  * Applies a validated settings patch in place (#62). The validator table IS the
  * whitelist: a key absent from it is not writable. `key in patch` (not truthiness)
  * so an absent key is not a clear; explicit undefined clears a per-role model back
- * to inherit llm.claudeModel (#125); an invalid value is dropped, never coerced.
+ * to inherit llm.claudeModel (#125) or a per-role runtime back to the floor (#240);
+ * an invalid value is dropped, never coerced.
  */
 export function applySettingsPatch(
   settings: OrchestratorSettings,
@@ -66,9 +85,8 @@ export function applySettingsPatch(
   for (const key of Object.keys(SETTINGS_VALIDATORS) as (keyof OrchestratorSettings)[]) {
     // `key in patch`, not a truthiness check: an absent key is not a clear.
     if (!patch || !(key in patch)) continue;
-    // #125: explicit undefined clears a per-role model back to inherit llm.claudeModel.
     if ((patch as Record<string, unknown>)[key] === undefined) {
-      if (key === "plannerModel" || key === "coderModel" || key === "reviewerModel")
+      if (CLEARABLE_SETTINGS_KEYS.includes(key))
         delete (settings as unknown as Record<string, unknown>)[key];
       continue;
     }

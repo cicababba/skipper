@@ -1,10 +1,11 @@
 "use client";
 
 import { Minus, Plus, Workflow } from "lucide-react";
-import type { GateMode } from "@skipper/shared";
+import { DEFAULT_AGENT_RUNTIME, type AgentRuntimeId, type GateMode } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { ModelSelect } from "@/components/model-select";
+import { RuntimeSelect } from "@/components/runtime-select";
 
 // Settings → Orchestration (#62): the global defaults for the two gate axes.
 // Confidence thresholds stay hand-edit-only, but "auto" on both axes is decided by
@@ -201,6 +202,44 @@ export function OrchestrationSection({ defaultModel }: { defaultModel: string })
           />
         </div>
 
+        <div className="border-t border-border pt-5 space-y-5">
+          <div>
+            <p className="text-sm font-medium mb-1">{r.runtimes}</p>
+            <p className="text-[11px] text-muted/60 leading-relaxed">{r.runtimesDesc}</p>
+          </div>
+
+          <RuntimeRow
+            label={r.plannerRuntime}
+            hint={r.plannerRuntimeDesc}
+            runtime={s.plannerRuntime}
+            selectClass={selectClass}
+            defaultLabel={r.runtimeDefault}
+            useDefaultLabel={r.modelUseDefault}
+            onChange={(rt) => void updateSettings({ plannerRuntime: rt })}
+            onClear={() => void updateSettings({ plannerRuntime: undefined })}
+          />
+          <RuntimeRow
+            label={r.coderRuntime}
+            hint={r.coderRuntimeDesc}
+            runtime={s.coderRuntime}
+            selectClass={selectClass}
+            defaultLabel={r.runtimeDefault}
+            useDefaultLabel={r.modelUseDefault}
+            onChange={(rt) => void updateSettings({ coderRuntime: rt })}
+            onClear={() => void updateSettings({ coderRuntime: undefined })}
+          />
+          <RuntimeRow
+            label={r.reviewerRuntime}
+            hint={r.reviewerRuntimeDesc}
+            runtime={s.reviewerRuntime}
+            selectClass={selectClass}
+            defaultLabel={r.runtimeDefault}
+            useDefaultLabel={r.modelUseDefault}
+            onChange={(rt) => void updateSettings({ reviewerRuntime: rt })}
+            onClear={() => void updateSettings({ reviewerRuntime: undefined })}
+          />
+        </div>
+
         <p className="text-[11px] text-muted/50 leading-relaxed border-t border-border pt-4">
           {r.floorNote(s.confidence.low.toFixed(2))}
         </p>
@@ -238,6 +277,47 @@ function ModelRow({
       <div className="flex items-center gap-2">
         <ModelSelect value={model ?? inheritModel} onChange={onChange} className={selectClass} />
         {model === undefined ? (
+          <span className="text-[11px] text-muted/50">{defaultLabel}</span>
+        ) : (
+          <button onClick={onClear} className="text-[11px] text-accent hover:underline">
+            {useDefaultLabel}
+          </button>
+        )}
+      </div>
+    </Row>
+  );
+}
+
+// Per-role runtime row (#240), the ModelRow twin. The inherited value is the
+// constant floor, not a setting, so there is no defaultRuntime prop to pass in.
+function RuntimeRow({
+  label,
+  hint,
+  runtime,
+  selectClass,
+  defaultLabel,
+  useDefaultLabel,
+  onChange,
+  onClear,
+}: {
+  label: string;
+  hint: string;
+  runtime: AgentRuntimeId | undefined;
+  selectClass: string;
+  defaultLabel: string;
+  useDefaultLabel: string;
+  onChange: (runtime: AgentRuntimeId) => void;
+  onClear: () => void;
+}) {
+  return (
+    <Row label={label} hint={hint}>
+      <div className="flex items-center gap-2">
+        <RuntimeSelect
+          value={runtime ?? DEFAULT_AGENT_RUNTIME}
+          onChange={onChange}
+          className={selectClass}
+        />
+        {runtime === undefined ? (
           <span className="text-[11px] text-muted/50">{defaultLabel}</span>
         ) : (
           <button onClick={onClear} className="text-[11px] text-accent hover:underline">

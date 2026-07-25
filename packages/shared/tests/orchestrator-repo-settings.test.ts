@@ -5,6 +5,7 @@ import {
   type OrchestratorSettings,
   type RepoIntakeSettings,
 } from "../src/orchestrator";
+import { DEFAULT_AGENT_RUNTIME } from "../src/types";
 
 const global = (overrides: Partial<OrchestratorSettings> = {}): OrchestratorSettings => ({
   ...DEFAULT_ORCHESTRATOR_SETTINGS,
@@ -134,5 +135,55 @@ describe("resolveRepoOrchestratorSettings", () => {
         expect(resolved.reviewerModel).toBe("sonnet");
       },
     );
+  });
+
+  // #240: the per-role runtimes ride the same ladder as the models, except the
+  // floor is the DEFAULT_AGENT_RUNTIME constant — there is no settings.json field
+  // behind it, so resolveRepoOrchestratorSettings keeps its three-arg signature.
+  describe("role runtime inheritance (#240)", () => {
+    it("floors every role to claude-cli when repo and global are absent", () => {
+      const resolved = resolveRepoOrchestratorSettings(undefined, global());
+      expect(resolved.plannerRuntime).toBe(DEFAULT_AGENT_RUNTIME);
+      expect(resolved.coderRuntime).toBe("claude-cli");
+      expect(resolved.reviewerRuntime).toBe("claude-cli");
+    });
+
+    it("lets a global override beat the floor", () => {
+      const resolved = resolveRepoOrchestratorSettings(
+        undefined,
+        global({ coderRuntime: "codex-cli" }),
+      );
+      expect(resolved.coderRuntime).toBe("codex-cli");
+      expect(resolved.plannerRuntime).toBe("claude-cli");
+      expect(resolved.reviewerRuntime).toBe("claude-cli");
+    });
+
+    it("lets a repo override beat both the global and the floor", () => {
+      const resolved = resolveRepoOrchestratorSettings(
+        { coderRuntime: "claude-cli" },
+        global({ coderRuntime: "codex-cli" }),
+      );
+      expect(resolved.coderRuntime).toBe("claude-cli");
+    });
+
+    // The point of per-role selection: a codex coder must not drag the planner
+    // and reviewer along with it.
+    it("resolves each role independently", () => {
+      const resolved = resolveRepoOrchestratorSettings(
+        { reviewerRuntime: "codex-cli" },
+        global({ plannerRuntime: "codex-cli" }),
+      );
+      expect(resolved.plannerRuntime).toBe("codex-cli");
+      expect(resolved.coderRuntime).toBe("claude-cli");
+      expect(resolved.reviewerRuntime).toBe("codex-cli");
+    });
+
+    // The runtime keys are deliberately absent from the defaults bag (the model
+    // precedent): an absent key is what "inherit" is spelled as.
+    it("keeps the runtime keys out of DEFAULT_ORCHESTRATOR_SETTINGS", () => {
+      expect("plannerRuntime" in DEFAULT_ORCHESTRATOR_SETTINGS).toBe(false);
+      expect("coderRuntime" in DEFAULT_ORCHESTRATOR_SETTINGS).toBe(false);
+      expect("reviewerRuntime" in DEFAULT_ORCHESTRATOR_SETTINGS).toBe(false);
+    });
   });
 });

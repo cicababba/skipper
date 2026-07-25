@@ -87,12 +87,12 @@ export function initReviewer(reviewerDeps: ReviewerDeps, criticImpl?: typeof cri
 
 /** The bundle (provider + runtime) built from Settings (#59/#238), cached per
  *  provider+model. The role model only applies to claude-cli — see modelForRole. */
-async function resolveBundle(roleModel: string): Promise<LlmBundle> {
+async function resolveBundle(roleModel: string, roleRuntime: AgentRuntimeId): Promise<LlmBundle> {
   const settings = await deps!.getLlmSettings();
   const model = modelForRole(settings, roleModel);
-  const key = providerCacheKey(settings, model);
+  const key = providerCacheKey(settings, model, roleRuntime);
   if (!bundle || bundleKey !== key) {
-    bundle = buildLlm(settings, roleModel, 5);
+    bundle = buildLlm(settings, roleModel, 5, roleRuntime);
     bundleKey = key;
   }
   return bundle;
@@ -237,7 +237,10 @@ async function run(itemId: string): Promise<void> {
     // rather than escaping run() as an unhandled rejection.
     let sessionId: string | undefined;
     try {
-      const { llm: provider, runtime } = await resolveBundle(repoSettings.reviewerModel);
+      const { llm: provider, runtime } = await resolveBundle(
+        repoSettings.reviewerModel,
+        repoSettings.reviewerRuntime,
+      );
       if (deps.getItem(itemId)?.state !== "agent-review") return;
       // Persist a fresh session per round so the human can resume the critic run from
       // the worktree later (#111). cwd-scoped, needs a resume-capable runtime;

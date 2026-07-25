@@ -81,13 +81,13 @@ export function initPlanChat(planChatDeps: PlanChatDeps, provider?: LLMProviderI
 }
 
 /** Bundle resolution mirrors the planner (role = plannerModel). */
-async function resolveBundle(roleModel: string): Promise<LlmBundle> {
-  if (injected && injectedProvider) return injectedBundle(injectedProvider, roleModel);
+async function resolveBundle(roleModel: string, roleRuntime: AgentRuntimeId): Promise<LlmBundle> {
+  if (injected && injectedProvider) return injectedBundle(injectedProvider, roleModel, roleRuntime);
   const settings = await deps!.getLlmSettings();
   const model = modelForRole(settings, roleModel);
-  const key = providerCacheKey(settings, model);
+  const key = providerCacheKey(settings, model, roleRuntime);
   if (!bundle || bundleKey !== key) {
-    bundle = buildLlm(settings, roleModel, 5);
+    bundle = buildLlm(settings, roleModel, 5, roleRuntime);
     bundleKey = key;
   }
   return bundle;
@@ -151,7 +151,11 @@ export async function sendPlanChatMessage(itemId: string, text: string): Promise
     const repoPath = deps.getRepoPath(item.repo);
     const checkoutBefore = repoPath ? await deps.checkoutDirtyPaths(repoPath) : null;
 
-    const { llm: provider, runtime } = await resolveBundle(deps.getRepoSettings(item.repo).plannerModel);
+    const planRepoSettings = deps.getRepoSettings(item.repo);
+    const { llm: provider, runtime } = await resolveBundle(
+      planRepoSettings.plannerModel,
+      planRepoSettings.plannerRuntime,
+    );
     const resumable =
       !!runtime?.capabilities.resume &&
       sessionRuntimeOf(item.plan) === runtime.id &&
@@ -288,7 +292,11 @@ export async function applyPlanChatUpdate(itemId: string): Promise<ApplyPlanChat
     const repoPath = deps.getRepoPath(item.repo);
     const checkoutBefore = repoPath ? await deps.checkoutDirtyPaths(repoPath) : null;
 
-    const { llm: provider, runtime } = await resolveBundle(deps.getRepoSettings(item.repo).plannerModel);
+    const planRepoSettings = deps.getRepoSettings(item.repo);
+    const { llm: provider, runtime } = await resolveBundle(
+      planRepoSettings.plannerModel,
+      planRepoSettings.plannerRuntime,
+    );
     const resumable =
       !!runtime?.capabilities.resume &&
       sessionRuntimeOf(item.plan) === runtime.id &&
