@@ -76,20 +76,23 @@ function mapAssistantLine(line: Record<string, unknown>): CodingEvent[] {
   return events;
 }
 
+export interface NdjsonFeeder {
+  feed: (chunk: string) => void;
+  flush: () => void;
+}
+
 export interface StreamJsonParser {
   feed: (chunk: string) => void;
   flush: () => void;
 }
 
 /**
- * Stateful NDJSON feeder: buffers partial lines across chunks. `onLine` sees
- * every parsed line raw — mapped events truncate (e.g. result summary), so
- * callers that need the full result text must take it from here.
+ * Stateful NDJSON feeder: buffers partial lines across chunks and hands each
+ * decoded line to `onLine`. Blank lines, unparseable lines and non-object JSON
+ * are dropped — CLI schema drift degrades to fewer lines, never a crash. Shared
+ * by the claude stream parser and the codex accumulator (#239).
  */
-export function createStreamJsonParser(
-  onEvent: (event: CodingEvent) => void,
-  onLine?: (line: Record<string, unknown>) => void,
-): StreamJsonParser {
+export function createNdjsonFeeder(onLine: (line: Record<string, unknown>) => void): NdjsonFeeder {
   let buffer = "";
 
   const emitLine = (raw: string) => {
@@ -101,14 +104,8 @@ export function createStreamJsonParser(
     } catch {
       return;
     }
-    const obj = parsed as Record<string, unknown>;
-    if (typeof obj === "object" && obj !== null) onLine?.(obj);
-    if (obj?.type === "assistant") {
-      for (const event of mapAssistantLine(obj)) onEvent(event);
-      return;
-    }
-    const event = mapStreamLine(parsed);
-    if (event) onEvent(event);
+    if (typeof parsed !== "object" || parsed === null) return;
+    onLine(parsed as Record<string, unknown>);
   };
 
   return {
@@ -126,4 +123,24 @@ export function createStreamJsonParser(
       buffer = "";
     },
   };
+}
+
+/**
+ * The claude CLI's stream-json reader. `onLine` sees every parsed line raw —
+ * mapped events truncate (e.g. result summary), so callers that need the full
+ * result text must take it from here.
+ */
+export function createStreamJsonParser(
+  onEvent: (event: CodingEvent) => void,
+  onLine?: (line: Record<string, unknown>) => void,
+): StreamJsonParser {
+  return createNdjsonFeeder((line) => {
+    onLine?.(line);
+    if (line.type === "assistant") {
+      for (const event of mapAssistantLine(line)) onEvent(event);
+      return;
+    }
+    const event = mapStreamLine(line);
+    if (event) onEvent(event);
+  });
 }
