@@ -7,7 +7,7 @@ export type LLMProvider = "claude-cli" | "openai";
 
 /** The agent runtime that owns the write-capable coding run + the read-leaning
  *  agent/tools paths (#238). */
-export type AgentRuntimeId = "claude-cli" | "codex-cli" | "copilot-cli";
+export type AgentRuntimeId = "claude-cli" | "codex-cli" | "copilot-cli" | "gemini-cli";
 
 /** Runtime floor for the per-role selection ladder (#240) — the runtime a role
  *  runs on when neither the repo nor the global settings override it. */

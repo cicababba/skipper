@@ -190,6 +190,18 @@ describe("resolveRepoOrchestratorSettings", () => {
       expect(resolved.plannerRuntime).toBe("claude-cli");
     });
 
+    // #243: and a fourth id rides it unchanged too — the ladder never enumerates
+    // the union, so each new runtime is a settings-only change.
+    it("carries gemini-cli up the same ladder", () => {
+      const resolved = resolveRepoOrchestratorSettings(
+        { coderRuntime: "gemini-cli" },
+        global({ coderRuntime: "copilot-cli", plannerRuntime: "gemini-cli" }),
+      );
+      expect(resolved.coderRuntime).toBe("gemini-cli");
+      expect(resolved.plannerRuntime).toBe("gemini-cli");
+      expect(resolved.reviewerRuntime).toBe("claude-cli");
+    });
+
     // The runtime keys are deliberately absent from the defaults bag (the model
     // precedent): an absent key is what "inherit" is spelled as.
     it("keeps the runtime keys out of DEFAULT_ORCHESTRATOR_SETTINGS", () => {

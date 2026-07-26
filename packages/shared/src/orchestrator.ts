@@ -662,6 +662,7 @@ export type RepoInstructionsSource =
   | "claude-md"
   | "agents-md"
   | "copilot-instructions"
+  | "gemini-md"
   | "generated"
   | "edited";
 export type RepoInstructionsStatus = "ready" | "generating" | "failed";

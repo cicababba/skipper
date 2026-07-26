@@ -32,9 +32,9 @@ export const SETTINGS_VALIDATORS: {
   coderModel: nonEmptyString,
   reviewerModel: nonEmptyString,
   // #240: runtimes are a closed union — an unknown id would break every run.
-  plannerRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli"),
-  coderRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli"),
-  reviewerRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli"),
+  plannerRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli", "gemini-cli"),
+  coderRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli", "gemini-cli"),
+  reviewerRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli", "gemini-cli"),
   coderTimeBudgetMin: clampInt(10, 240),
   plannerTimeBudgetMin: clampInt(5, 60),
 };
@@ -54,9 +54,9 @@ export const REPO_SETTINGS_VALIDATORS: {
   plannerModel: nonEmptyString,
   coderModel: nonEmptyString,
   reviewerModel: nonEmptyString,
-  plannerRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli"),
-  coderRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli"),
-  reviewerRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli"),
+  plannerRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli", "gemini-cli"),
+  coderRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli", "gemini-cli"),
+  reviewerRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli", "gemini-cli"),
   graphify: asBool,
 };
 

@@ -86,6 +86,8 @@ export function RepoInstructionsControl({ owner, name }: { owner: string; name: 
         return ri.sourceAgentsMd;
       case "copilot-instructions":
         return ri.sourceCopilot;
+      case "gemini-md":
+        return ri.sourceGeminiMd;
       case "edited":
         return ri.sourceEdited;
       default:

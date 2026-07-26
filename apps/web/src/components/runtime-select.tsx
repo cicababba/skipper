@@ -29,6 +29,7 @@ export function RuntimeSelect({
       <option value="claude-cli">{r.runtimeClaude}</option>
       <option value="codex-cli">{r.runtimeCodex}</option>
       <option value="copilot-cli">{r.runtimeCopilot}</option>
+      <option value="gemini-cli">{r.runtimeGemini}</option>
     </select>
   );
 }
