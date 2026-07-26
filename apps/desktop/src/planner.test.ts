@@ -91,10 +91,11 @@ async function settle(): Promise<void> {
   for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
 }
 
-async function waitFor(cond: () => boolean, max = 100): Promise<void> {
-  for (let i = 0; i < max; i++) {
-    if (cond()) return;
-    await new Promise((r) => setImmediate(r));
+async function waitFor(cond: () => boolean, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!cond()) {
+    if (Date.now() > deadline) throw new Error("waitFor: condition not met within timeout");
+    await new Promise((r) => setTimeout(r, 5));
   }
 }
 
