@@ -3,6 +3,7 @@ import { sessionRuntimeOf } from "@skipper/shared";
 import { ClaudeCLIProvider } from "../src/llm/claude-cli";
 import { CodexCli } from "../src/llm/codex-cli";
 import { CopilotCli } from "../src/llm/copilot-cli";
+import { GeminiCli } from "../src/llm/gemini-cli";
 import {
   createRuntime,
   ClaudeCliRuntime,
@@ -11,10 +12,13 @@ import {
   CODEX_CLI_CAPABILITIES,
   CopilotCliRuntime,
   COPILOT_CLI_CAPABILITIES,
+  GeminiCliRuntime,
+  GEMINI_CLI_CAPABILITIES,
 } from "../src/runtime";
 import { runCodingAgent } from "../src/coder/run";
 import { runCodexCodingAgent } from "../src/coder/codex-run";
 import { runCopilotCodingAgent } from "../src/coder/copilot-run";
+import { runGeminiCodingAgent } from "../src/coder/gemini-run";
 
 // The coding run is a direct import; mock the module so runCoding delegation can
 // be asserted without spawning claude. agent()/structured() delegate to the
@@ -32,6 +36,11 @@ vi.mock("../src/coder/codex-run", async (importOriginal) => {
 vi.mock("../src/coder/copilot-run", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/coder/copilot-run")>();
   return { ...actual, runCopilotCodingAgent: vi.fn() };
+});
+
+vi.mock("../src/coder/gemini-run", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/coder/gemini-run")>();
+  return { ...actual, runGeminiCodingAgent: vi.fn() };
 });
 
 describe("createRuntime (#238)", () => {
@@ -119,6 +128,99 @@ describe("createRuntime with runtime: copilot-cli (#242)", () => {
     expect(
       createRuntime({ provider: "openai", model: "", maxTurns: 5, runtime: "copilot-cli" }),
     ).toBeInstanceOf(CopilotCliRuntime);
+  });
+});
+
+describe("createRuntime with runtime: gemini-cli (#243)", () => {
+  it("builds a GeminiCliRuntime that declares no confinement", () => {
+    const rt = createRuntime({
+      provider: "claude-cli",
+      model: "",
+      maxTurns: 5,
+      runtime: "gemini-cli",
+    });
+    expect(rt).toBeInstanceOf(GeminiCliRuntime);
+    expect(rt!.id).toBe("gemini-cli");
+    expect(rt!.capabilities).toEqual(GEMINI_CLI_CAPABILITIES);
+    // "none", not "rules": gemini's approval mode denies a whole tool but cannot
+    // path-scope a write, and its native sandbox needs docker/podman (#243 D4).
+    // The worktree tripwire stays the real guard.
+    expect(GEMINI_CLI_CAPABILITIES).toEqual({
+      streaming: true,
+      resume: true,
+      confinement: "none",
+      mcp: true,
+    });
+  });
+
+  it("selects gemini regardless of the completions provider", () => {
+    expect(
+      createRuntime({ provider: "openai", model: "", maxTurns: 5, runtime: "gemini-cli" }),
+    ).toBeInstanceOf(GeminiCliRuntime);
+  });
+});
+
+describe("GeminiCliRuntime delegation (#243)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("agent() delegates to the wrapped GeminiCli with the same args", async () => {
+    const reply = { text: "planned" };
+    const spy = vi.spyOn(GeminiCli.prototype, "agent").mockResolvedValue(reply);
+    const opts = { cwd: "/repo", maxTurns: 12 };
+    const out = await new GeminiCliRuntime("gemini-2.5-pro").agent("do it", opts);
+    expect(spy).toHaveBeenCalledWith("do it", opts);
+    expect(out).toBe(reply);
+  });
+
+  it("structured() delegates to the wrapped GeminiCli with the same args", async () => {
+    const schema = { type: "object" };
+    const spy = vi.spyOn(GeminiCli.prototype, "structured").mockResolvedValue({ ok: true } as never);
+    const opts = { tools: "Read,Grep,Glob", cwd: "/repo", maxTurns: 8 };
+    const out = await new GeminiCliRuntime("gemini-2.5-pro").structured(
+      "critique the diff",
+      schema,
+      opts,
+    );
+    expect(spy).toHaveBeenCalledWith("critique the diff", schema, opts);
+    expect(out).toEqual({ ok: true });
+  });
+
+  it("runCoding() delegates to runGeminiCodingAgent, forwarding the options", async () => {
+    const result = { ok: true, summary: "done", sessionId: "sess-gemini" };
+    vi.mocked(runGeminiCodingAgent).mockResolvedValue(result as never);
+    const opts = { prompt: "code it", cwd: "/wt", model: "gemini-2.5-pro", onEvent: () => {} };
+    const out = await new GeminiCliRuntime("gemini-2.5-pro").runCoding(opts as never);
+    expect(runGeminiCodingAgent).toHaveBeenCalledWith(opts);
+    expect(out).toBe(result);
+    expect(runCodingAgent).not.toHaveBeenCalled();
+    expect(runCodexCodingAgent).not.toHaveBeenCalled();
+    expect(runCopilotCodingAgent).not.toHaveBeenCalled();
+  });
+
+  // #240: role models are Claude aliases (#59), and a driver hands its role model
+  // to every runtime unconditionally — so the guard lives here.
+  it("runCoding() overrides the caller's model with its own", async () => {
+    vi.mocked(runGeminiCodingAgent).mockResolvedValue({ ok: true } as never);
+    const opts = { prompt: "code it", cwd: "/wt", model: "sonnet", onEvent: () => {} };
+    await new GeminiCliRuntime("gemini-2.5-pro").runCoding(opts as never);
+    expect(runGeminiCodingAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "gemini-2.5-pro", prompt: "code it", cwd: "/wt" }),
+    );
+  });
+
+  // buildLlm constructs the gemini runtime with an empty model, so the run falls
+  // through to gemini's own configured default instead of a Claude alias.
+  it("runCoding() passes no model when the runtime was built without one", async () => {
+    vi.mocked(runGeminiCodingAgent).mockResolvedValue({ ok: true } as never);
+    const opts = { prompt: "code it", cwd: "/wt", model: "opus", onEvent: () => {} };
+    await new GeminiCliRuntime("").runCoding(opts as never);
+    expect(runGeminiCodingAgent).toHaveBeenCalledWith(expect.objectContaining({ model: "" }));
+    await new GeminiCliRuntime().runCoding(opts as never);
+    expect(runGeminiCodingAgent).toHaveBeenLastCalledWith(
+      expect.objectContaining({ model: undefined }),
+    );
   });
 });
 
@@ -293,5 +395,6 @@ describe("sessionRuntimeOf (#238)", () => {
     expect(sessionRuntimeOf({ sessionRuntime: "claude-cli" })).toBe("claude-cli");
     expect(sessionRuntimeOf({ sessionRuntime: "codex-cli" })).toBe("codex-cli");
     expect(sessionRuntimeOf({ sessionRuntime: "copilot-cli" })).toBe("copilot-cli");
+    expect(sessionRuntimeOf({ sessionRuntime: "gemini-cli" })).toBe("gemini-cli");
   });
 });

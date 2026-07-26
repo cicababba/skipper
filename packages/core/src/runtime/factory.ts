@@ -3,6 +3,7 @@ import type { AgentRuntime } from "./types";
 import { ClaudeCliRuntime } from "./claude-cli-runtime";
 import { CodexCliRuntime } from "./codex-cli-runtime";
 import { CopilotCliRuntime } from "./copilot-cli-runtime";
+import { GeminiCliRuntime } from "./gemini-cli-runtime";
 
 /**
  * The agent runtime for a provider, or undefined when the provider wraps no
@@ -21,6 +22,7 @@ export function createRuntime(config: {
 }): AgentRuntime | undefined {
   if (config.runtime === "codex-cli") return new CodexCliRuntime(config.model);
   if (config.runtime === "copilot-cli") return new CopilotCliRuntime(config.model);
+  if (config.runtime === "gemini-cli") return new GeminiCliRuntime(config.model);
   switch (config.provider) {
     case "claude-cli":
       return new ClaudeCliRuntime(config.model, config.maxTurns);

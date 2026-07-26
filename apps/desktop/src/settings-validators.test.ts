@@ -117,7 +117,7 @@ describe("applySettingsPatch", () => {
     const s = baseSettings();
     applySettingsPatch(s, { coderRuntime: "codex-cli" });
     expect(s.coderRuntime).toBe("codex-cli");
-    applySettingsPatch(s, { coderRuntime: "gemini-cli" as unknown as "codex-cli" });
+    applySettingsPatch(s, { coderRuntime: "cursor-cli" as unknown as "codex-cli" });
     expect(s.coderRuntime).toBe("codex-cli");
   });
 
@@ -133,6 +133,20 @@ describe("applySettingsPatch", () => {
     expect(s.plannerRuntime).toBe("copilot-cli");
     expect(s.coderRuntime).toBe("copilot-cli");
     expect(s.reviewerRuntime).toBe("copilot-cli");
+  });
+
+  // #243: gemini-cli joined the union — it was the rejected-value fixture above
+  // until this issue, so every global key has to accept it now.
+  it("accepts gemini-cli on each of the three role keys", () => {
+    const s = baseSettings();
+    applySettingsPatch(s, {
+      plannerRuntime: "gemini-cli",
+      coderRuntime: "gemini-cli",
+      reviewerRuntime: "gemini-cli",
+    });
+    expect(s.plannerRuntime).toBe("gemini-cli");
+    expect(s.coderRuntime).toBe("gemini-cli");
+    expect(s.reviewerRuntime).toBe("gemini-cli");
   });
 
   it("explicit undefined clears a per-role runtime back to the floor", () => {
@@ -197,7 +211,7 @@ describe("applyRepoSettingsPatch", () => {
     expect(
       applyRepoSettingsPatch(
         { coderRuntime: "codex-cli" },
-        { coderRuntime: "gemini-cli" as unknown as "codex-cli" },
+        { coderRuntime: "cursor-cli" as unknown as "codex-cli" },
       ),
     ).toEqual({ coderRuntime: "codex-cli" });
   });
@@ -213,6 +227,20 @@ describe("applyRepoSettingsPatch", () => {
       plannerRuntime: "copilot-cli",
       coderRuntime: "copilot-cli",
       reviewerRuntime: "copilot-cli",
+    });
+  });
+
+  it("accepts gemini-cli on each of the three per-repo role keys (#243)", () => {
+    expect(
+      applyRepoSettingsPatch(undefined, {
+        plannerRuntime: "gemini-cli",
+        coderRuntime: "gemini-cli",
+        reviewerRuntime: "gemini-cli",
+      }),
+    ).toEqual({
+      plannerRuntime: "gemini-cli",
+      coderRuntime: "gemini-cli",
+      reviewerRuntime: "gemini-cli",
     });
   });
 

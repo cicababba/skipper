@@ -86,6 +86,7 @@ const SEED_LADDER: Array<{ file: string; source: RepoInstructionsSource }> = [
   { file: "CLAUDE.md", source: "claude-md" },
   { file: "AGENTS.md", source: "agents-md" },
   { file: join(".github", "copilot-instructions.md"), source: "copilot-instructions" },
+  { file: "GEMINI.md", source: "gemini-md" },
 ];
 
 async function readSeedFile(

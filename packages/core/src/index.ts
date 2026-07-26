@@ -23,6 +23,8 @@ export {
   CODEX_CLI_CAPABILITIES,
   CopilotCliRuntime,
   COPILOT_CLI_CAPABILITIES,
+  GeminiCliRuntime,
+  GEMINI_CLI_CAPABILITIES,
 } from "./runtime";
 export type { AgentRuntime, RuntimeCapabilities, RuntimeStructuredOptions } from "./runtime";
 
