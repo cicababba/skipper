@@ -22,9 +22,9 @@ describe("resolveRepoOrchestratorSettings", () => {
       autoCoding: "off",
       review: "on",
       reviewMaxRounds: 5,
-      plannerModel: "opus",
-      coderModel: "sonnet",
-      reviewerModel: "haiku",
+      plannerAgent: { runtime: "claude-cli", model: "opus" },
+      coderAgent: { runtime: "claude-cli", model: "sonnet" },
+      reviewerAgent: { runtime: "claude-cli", model: "haiku" },
     });
     expect(resolveRepoOrchestratorSettings(undefined, g)).toMatchObject({
       wipLimit: 4,
@@ -51,10 +51,6 @@ describe("resolveRepoOrchestratorSettings", () => {
     ["autoCoding", { autoCoding: "on" }, { autoCoding: "off" }, "on"],
     ["review", { review: "off" }, { review: "on" }, "off"],
     ["reviewMaxRounds", { reviewMaxRounds: 1 }, { reviewMaxRounds: 4 }, 1],
-    // #58 — per-role model overrides.
-    ["plannerModel", { plannerModel: "sonnet" }, { plannerModel: "opus" }, "sonnet"],
-    ["coderModel", { coderModel: "haiku" }, { coderModel: "opus" }, "haiku"],
-    ["reviewerModel", { reviewerModel: "opus" }, { reviewerModel: "haiku" }, "opus"],
   ] as const)("lets a per-repo %s beat the global", (key, repo, overrides, expected) => {
     const resolved = resolve(repo, overrides) as unknown as Record<string, unknown>;
     expect(resolved[key]).toBe(expected);
@@ -67,10 +63,14 @@ describe("resolveRepoOrchestratorSettings", () => {
   });
 
   // #58: each role resolves on its own — overriding one must not disturb the rest.
-  it("overrides one role's model while the others inherit", () => {
+  it("overrides one role's pair while the others inherit", () => {
     const resolved = resolve(
-      { coderModel: "haiku" },
-      { plannerModel: "opus", coderModel: "sonnet", reviewerModel: "sonnet" },
+      { coderAgent: { runtime: "claude-cli", model: "haiku" } },
+      {
+        plannerAgent: { runtime: "claude-cli", model: "opus" },
+        coderAgent: { runtime: "claude-cli", model: "sonnet" },
+        reviewerAgent: { runtime: "claude-cli", model: "sonnet" },
+      },
     );
     expect(resolved.coderModel).toBe("haiku");
     expect(resolved.plannerModel).toBe("opus");
@@ -79,7 +79,9 @@ describe("resolveRepoOrchestratorSettings", () => {
 
   // #58: model strings are opaque CLI aliases — a hand-edited full id resolves as-is.
   it("treats a model string as opaque", () => {
-    expect(resolve({ plannerModel: "claude-opus-4-8" }).plannerModel).toBe("claude-opus-4-8");
+    expect(
+      resolve({ plannerAgent: { runtime: "claude-cli", model: "claude-opus-4-8" } }).plannerModel,
+    ).toBe("claude-opus-4-8");
   });
 
   // #47: the gap resolveRepoIntakeSettings never covered — wipLimit falls back to
@@ -97,33 +99,18 @@ describe("resolveRepoOrchestratorSettings", () => {
     expect(resolved.autoPlan).toBe("on");
   });
 
-  // #125: the per-role globals are optional overrides of llm.claudeModel. Resolution
-  // order per role: repo override → global override → defaultModel → "sonnet" floor.
-  describe("role model inheritance (#125)", () => {
-    it("falls each role back to defaultModel when repo and global are absent", () => {
+  // The (runtime, model) pair is the unit of configuration: it resolves whole, on
+  // one ladder — repo pair → global role pair → defaultAgent → the claude-cli floor
+  // on llm.claudeModel. A pair never mixes with another level's half.
+  describe("agent pair inheritance", () => {
+    it("floors every role to claude-cli on defaultModel when nothing is set", () => {
       const resolved = resolveRepoOrchestratorSettings(undefined, global(), "fable");
+      expect(resolved.plannerRuntime).toBe(DEFAULT_AGENT_RUNTIME);
+      expect(resolved.coderRuntime).toBe("claude-cli");
+      expect(resolved.reviewerRuntime).toBe("claude-cli");
       expect(resolved.plannerModel).toBe("fable");
       expect(resolved.coderModel).toBe("fable");
       expect(resolved.reviewerModel).toBe("fable");
-    });
-
-    it("lets a global override beat defaultModel", () => {
-      const resolved = resolveRepoOrchestratorSettings(
-        undefined,
-        global({ plannerModel: "opus" }),
-        "fable",
-      );
-      expect(resolved.plannerModel).toBe("opus");
-      expect(resolved.coderModel).toBe("fable");
-    });
-
-    it("lets a repo override beat both the global and defaultModel", () => {
-      const resolved = resolveRepoOrchestratorSettings(
-        { plannerModel: "haiku" },
-        global({ plannerModel: "opus" }),
-        "fable",
-      );
-      expect(resolved.plannerModel).toBe("haiku");
     });
 
     it.each([[undefined], [""], ["   "]] as const)(
@@ -135,79 +122,115 @@ describe("resolveRepoOrchestratorSettings", () => {
         expect(resolved.reviewerModel).toBe("sonnet");
       },
     );
-  });
 
-  // #240: the per-role runtimes ride the same ladder as the models, except the
-  // floor is the DEFAULT_AGENT_RUNTIME constant — there is no settings.json field
-  // behind it, so resolveRepoOrchestratorSettings keeps its three-arg signature.
-  describe("role runtime inheritance (#240)", () => {
-    it("floors every role to claude-cli when repo and global are absent", () => {
-      const resolved = resolveRepoOrchestratorSettings(undefined, global());
-      expect(resolved.plannerRuntime).toBe(DEFAULT_AGENT_RUNTIME);
-      expect(resolved.coderRuntime).toBe("claude-cli");
-      expect(resolved.reviewerRuntime).toBe("claude-cli");
-    });
-
-    it("lets a global override beat the floor", () => {
+    it("lets defaultAgent beat the floor for every role", () => {
       const resolved = resolveRepoOrchestratorSettings(
         undefined,
-        global({ coderRuntime: "codex-cli" }),
+        global({ defaultAgent: { runtime: "gemini-cli" } }),
+        "fable",
       );
-      expect(resolved.coderRuntime).toBe("codex-cli");
-      expect(resolved.plannerRuntime).toBe("claude-cli");
-      expect(resolved.reviewerRuntime).toBe("claude-cli");
+      expect(resolved.plannerRuntime).toBe("gemini-cli");
+      expect(resolved.coderRuntime).toBe("gemini-cli");
+      expect(resolved.reviewerRuntime).toBe("gemini-cli");
+      // Non-claude runtimes take no model flag: "" is the CLI-default sentinel, and
+      // defaultModel is a Claude alias that must not leak onto them.
+      expect(resolved.plannerModel).toBe("");
+      expect(resolved.coderModel).toBe("");
+      expect(resolved.reviewerModel).toBe("");
     });
 
-    it("lets a repo override beat both the global and the floor", () => {
+    it("lets a global role pair beat defaultAgent", () => {
       const resolved = resolveRepoOrchestratorSettings(
-        { coderRuntime: "claude-cli" },
-        global({ coderRuntime: "codex-cli" }),
+        undefined,
+        global({
+          defaultAgent: { runtime: "gemini-cli" },
+          plannerAgent: { runtime: "claude-cli", model: "opus" },
+        }),
+        "fable",
       );
-      expect(resolved.coderRuntime).toBe("claude-cli");
+      expect(resolved.plannerRuntime).toBe("claude-cli");
+      expect(resolved.plannerModel).toBe("opus");
+      expect(resolved.coderRuntime).toBe("gemini-cli");
+      expect(resolved.coderModel).toBe("");
+    });
+
+    it("lets a repo pair beat both the global role pair and defaultAgent", () => {
+      const resolved = resolveRepoOrchestratorSettings(
+        { plannerAgent: { runtime: "claude-cli", model: "haiku" } },
+        global({
+          defaultAgent: { runtime: "gemini-cli" },
+          plannerAgent: { runtime: "claude-cli", model: "opus" },
+        }),
+        "fable",
+      );
+      expect(resolved.plannerRuntime).toBe("claude-cli");
+      expect(resolved.plannerModel).toBe("haiku");
+    });
+
+    // The whole point of the pair: the level that wins supplies BOTH halves, so a
+    // codex repo pair can never inherit the global's Claude alias.
+    it("never mixes a repo pair's runtime with a global pair's model", () => {
+      const resolved = resolveRepoOrchestratorSettings(
+        { coderAgent: { runtime: "codex-cli" } },
+        global({ coderAgent: { runtime: "claude-cli", model: "opus" } }),
+        "fable",
+      );
+      expect(resolved.coderRuntime).toBe("codex-cli");
+      expect(resolved.coderModel).toBe("");
+    });
+
+    it("falls a claude pair with no model of its own back to defaultModel", () => {
+      const resolved = resolveRepoOrchestratorSettings(
+        { coderAgent: { runtime: "claude-cli" } },
+        global({ coderAgent: { runtime: "claude-cli", model: "opus" } }),
+        "fable",
+      );
+      expect(resolved.coderModel).toBe("fable");
     });
 
     // The point of per-role selection: a codex coder must not drag the planner
     // and reviewer along with it.
     it("resolves each role independently", () => {
       const resolved = resolveRepoOrchestratorSettings(
-        { reviewerRuntime: "codex-cli" },
-        global({ plannerRuntime: "codex-cli" }),
+        { reviewerAgent: { runtime: "codex-cli" } },
+        global({ plannerAgent: { runtime: "codex-cli" } }),
       );
       expect(resolved.plannerRuntime).toBe("codex-cli");
       expect(resolved.coderRuntime).toBe("claude-cli");
       expect(resolved.reviewerRuntime).toBe("codex-cli");
     });
 
-    // #242: the ladder is runtime-agnostic — a third id rides it unchanged, with
-    // a repo-level copilot coder still beating a global codex one.
-    it("carries copilot-cli up the same ladder", () => {
+    // The ladder never enumerates the union, so every runtime rides it unchanged.
+    it.each(["claude-cli", "codex-cli", "copilot-cli", "gemini-cli"] as const)(
+      "carries %s up the same ladder",
+      (runtime) => {
+        const resolved = resolveRepoOrchestratorSettings(
+          { coderAgent: { runtime } },
+          global({ coderAgent: { runtime: "copilot-cli" } }),
+        );
+        expect(resolved.coderRuntime).toBe(runtime);
+      },
+    );
+
+    // A non-claude CLI can still be pinned to a model of its own — the string is
+    // opaque, and it must survive resolution untouched.
+    it("carries a non-claude pair's own model through", () => {
       const resolved = resolveRepoOrchestratorSettings(
-        { coderRuntime: "copilot-cli" },
-        global({ coderRuntime: "codex-cli", reviewerRuntime: "copilot-cli" }),
+        undefined,
+        global({ coderAgent: { runtime: "codex-cli", model: "gpt-5-codex" } }),
+        "fable",
       );
-      expect(resolved.coderRuntime).toBe("copilot-cli");
-      expect(resolved.reviewerRuntime).toBe("copilot-cli");
-      expect(resolved.plannerRuntime).toBe("claude-cli");
+      expect(resolved.coderRuntime).toBe("codex-cli");
+      expect(resolved.coderModel).toBe("gpt-5-codex");
     });
 
-    // #243: and a fourth id rides it unchanged too — the ladder never enumerates
-    // the union, so each new runtime is a settings-only change.
-    it("carries gemini-cli up the same ladder", () => {
-      const resolved = resolveRepoOrchestratorSettings(
-        { coderRuntime: "gemini-cli" },
-        global({ coderRuntime: "copilot-cli", plannerRuntime: "gemini-cli" }),
-      );
-      expect(resolved.coderRuntime).toBe("gemini-cli");
-      expect(resolved.plannerRuntime).toBe("gemini-cli");
-      expect(resolved.reviewerRuntime).toBe("claude-cli");
-    });
-
-    // The runtime keys are deliberately absent from the defaults bag (the model
-    // precedent): an absent key is what "inherit" is spelled as.
-    it("keeps the runtime keys out of DEFAULT_ORCHESTRATOR_SETTINGS", () => {
-      expect("plannerRuntime" in DEFAULT_ORCHESTRATOR_SETTINGS).toBe(false);
-      expect("coderRuntime" in DEFAULT_ORCHESTRATOR_SETTINGS).toBe(false);
-      expect("reviewerRuntime" in DEFAULT_ORCHESTRATOR_SETTINGS).toBe(false);
+    // The pair keys are deliberately absent from the defaults bag: an absent key
+    // is what "inherit" is spelled as.
+    it("keeps the pair keys out of DEFAULT_ORCHESTRATOR_SETTINGS", () => {
+      expect("defaultAgent" in DEFAULT_ORCHESTRATOR_SETTINGS).toBe(false);
+      expect("plannerAgent" in DEFAULT_ORCHESTRATOR_SETTINGS).toBe(false);
+      expect("coderAgent" in DEFAULT_ORCHESTRATOR_SETTINGS).toBe(false);
+      expect("reviewerAgent" in DEFAULT_ORCHESTRATOR_SETTINGS).toBe(false);
     });
   });
 });

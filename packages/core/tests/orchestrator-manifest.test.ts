@@ -48,7 +48,7 @@ describe("orchestrator manifest", () => {
   it("returns a fresh manifest when the file is missing", async () => {
     const manifest = await loadOrCreateOrchestratorManifest(filePath);
     expect(manifest).toEqual({
-      version: 2,
+      version: 3,
       settings: {
         intakePaused: false,
         autoPlanPaused: false,
@@ -78,10 +78,10 @@ describe("orchestrator manifest", () => {
     const manifest = await loadOrCreateOrchestratorManifest(filePath);
     expect(manifest.settings.intakePaused).toBe(true);
     expect(manifest.settings.autoPlanPaused).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.autoPlanPaused);
-    // #125: the role models are no longer backfilled — absent means inherit llm.claudeModel.
-    expect(manifest.settings.plannerModel).toBeUndefined();
+    // The role pairs are never backfilled — absent means inherit defaultAgent.
+    expect(manifest.settings.plannerAgent).toBeUndefined();
     expect(manifest.settings.confidence).toEqual(DEFAULT_ORCHESTRATOR_SETTINGS.confidence);
-    expect(manifest.settings.coderModel).toBeUndefined();
+    expect(manifest.settings.coderAgent).toBeUndefined();
     expect(manifest.settings.coderTimeBudgetMin).toBe(
       DEFAULT_ORCHESTRATOR_SETTINGS.coderTimeBudgetMin,
     );
@@ -91,7 +91,7 @@ describe("orchestrator manifest", () => {
     expect(manifest.settings.autoCoding).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.autoCoding);
     expect(manifest.settings.review).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.review);
     expect(manifest.settings.reviewMaxRounds).toBe(DEFAULT_ORCHESTRATOR_SETTINGS.reviewMaxRounds);
-    expect(manifest.settings.reviewerModel).toBeUndefined();
+    expect(manifest.settings.reviewerAgent).toBeUndefined();
     expect(manifest.settings.shepherdRepush).toBe("human");
     expect(manifest.settings.codingWipPerRepo).toBe(1);
     expect(manifest.repoSettings).toEqual({});
@@ -247,14 +247,14 @@ describe("orchestrator manifest", () => {
   it("returns a fresh manifest on corrupt JSON", async () => {
     await writeFile(filePath, "{ not json", "utf-8");
     const manifest = await loadOrCreateOrchestratorManifest(filePath);
-    expect(manifest.version).toBe(2);
+    expect(manifest.version).toBe(3);
     expect(manifest.items).toEqual({});
   });
 
   it("returns a fresh manifest on version mismatch", async () => {
-    await writeFile(filePath, JSON.stringify({ version: 3, items: { x: {} } }), "utf-8");
+    await writeFile(filePath, JSON.stringify({ version: 4, items: { x: {} } }), "utf-8");
     const manifest = await loadOrCreateOrchestratorManifest(filePath);
-    expect(manifest.version).toBe(2);
+    expect(manifest.version).toBe(3);
     expect(manifest.items).toEqual({});
   });
 
@@ -278,10 +278,11 @@ describe("orchestrator manifest", () => {
         "utf-8",
       );
       const manifest = await loadOrCreateOrchestratorManifest(filePath);
-      expect(manifest.version).toBe(2);
-      expect(manifest.settings.plannerModel).toBeUndefined();
-      expect(manifest.settings.coderModel).toBeUndefined();
-      expect(manifest.settings.reviewerModel).toBe("haiku");
+      expect(manifest.version).toBe(3);
+      // The stripped roles carry no pair at all — absent is how "inherit" is spelled.
+      expect(manifest.settings.plannerAgent).toBeUndefined();
+      expect(manifest.settings.coderAgent).toBeUndefined();
+      expect(manifest.settings.reviewerAgent).toEqual({ runtime: "claude-cli", model: "haiku" });
     });
 
     it("keeps an explicit opus chosen on a v2 manifest un-stripped across reloads", async () => {
@@ -296,12 +297,132 @@ describe("orchestrator manifest", () => {
         "utf-8",
       );
       const manifest = await loadOrCreateOrchestratorManifest(filePath);
-      expect(manifest.version).toBe(2);
-      expect(manifest.settings.plannerModel).toBe("opus");
+      expect(manifest.version).toBe(3);
+      expect(manifest.settings.plannerAgent).toEqual({ runtime: "claude-cli", model: "opus" });
 
       await saveOrchestratorManifest(filePath, manifest);
       const reloaded = await loadOrCreateOrchestratorManifest(filePath);
-      expect(reloaded.settings.plannerModel).toBe("opus");
+      expect(reloaded.settings.plannerAgent).toEqual({ runtime: "claude-cli", model: "opus" });
+    });
+  });
+
+  // v2 → v3: the flat model/runtime keys become atomic pairs. The legacy model
+  // rides along only onto a claude pair — legacy models were Claude aliases, so
+  // carrying one onto a codex pair would inject a bogus `--model opus`.
+  describe("agent pair migration (v2 → v3)", () => {
+    const writeV2 = (settings: Record<string, unknown>, repoSettings: Record<string, unknown> = {}) =>
+      writeFile(
+        filePath,
+        JSON.stringify({ version: 2, settings, items: {}, parked: {}, repoSettings }),
+        "utf-8",
+      );
+
+    it("pairs a legacy claude runtime with its model", async () => {
+      await writeV2({ intakePaused: false, coderRuntime: "claude-cli", coderModel: "opus" });
+      const manifest = await loadOrCreateOrchestratorManifest(filePath);
+      expect(manifest.version).toBe(3);
+      expect(manifest.settings.coderAgent).toEqual({ runtime: "claude-cli", model: "opus" });
+    });
+
+    it("defaults a model-only legacy role to the claude runtime", async () => {
+      await writeV2({ intakePaused: false, plannerModel: "haiku" });
+      const manifest = await loadOrCreateOrchestratorManifest(filePath);
+      expect(manifest.settings.plannerAgent).toEqual({ runtime: "claude-cli", model: "haiku" });
+    });
+
+    it("drops the legacy model when the pair lands on a non-claude runtime", async () => {
+      await writeV2({ intakePaused: false, coderRuntime: "codex-cli", coderModel: "opus" });
+      const manifest = await loadOrCreateOrchestratorManifest(filePath);
+      expect(manifest.settings.coderAgent).toEqual({ runtime: "codex-cli" });
+    });
+
+    it("leaves a role with neither legacy key without a pair", async () => {
+      await writeV2({ intakePaused: false, coderRuntime: "gemini-cli" });
+      const manifest = await loadOrCreateOrchestratorManifest(filePath);
+      expect(manifest.settings.coderAgent).toEqual({ runtime: "gemini-cli" });
+      expect(manifest.settings.plannerAgent).toBeUndefined();
+      expect(manifest.settings.reviewerAgent).toBeUndefined();
+      expect(manifest.settings.defaultAgent).toBeUndefined();
+    });
+
+    it("migrates every repoSettings entry too", async () => {
+      await writeV2(
+        { intakePaused: false },
+        {
+          "o/r": { followed: true, coderRuntime: "codex-cli", coderModel: "opus" },
+          "o/s": { plannerModel: "sonnet" },
+        },
+      );
+      const manifest = await loadOrCreateOrchestratorManifest(filePath);
+      expect(manifest.repoSettings["o/r"]).toEqual({
+        followed: true,
+        coderAgent: { runtime: "codex-cli" },
+      });
+      expect(manifest.repoSettings["o/s"]).toEqual({
+        plannerAgent: { runtime: "claude-cli", model: "sonnet" },
+      });
+    });
+
+    it("consumes the legacy keys so they cannot mislead a later hand-edit", async () => {
+      await writeV2(
+        { intakePaused: false, coderRuntime: "codex-cli", coderModel: "opus" },
+        { "o/r": { plannerRuntime: "gemini-cli", plannerModel: "opus" } },
+      );
+      const manifest = await loadOrCreateOrchestratorManifest(filePath);
+      await saveOrchestratorManifest(filePath, manifest);
+      const raw = JSON.parse(await readFile(filePath, "utf-8")) as {
+        settings: Record<string, unknown>;
+        repoSettings: Record<string, Record<string, unknown>>;
+      };
+      expect("coderRuntime" in raw.settings).toBe(false);
+      expect("coderModel" in raw.settings).toBe(false);
+      expect("plannerRuntime" in raw.repoSettings["o/r"]).toBe(false);
+      expect("plannerModel" in raw.repoSettings["o/r"]).toBe(false);
+    });
+
+    it("never re-runs on a v3 manifest", async () => {
+      await writeFile(
+        filePath,
+        JSON.stringify({
+          version: 3,
+          settings: { intakePaused: false, coderAgent: { runtime: "gemini-cli" } },
+          items: {},
+          parked: {},
+          repoSettings: {},
+        }),
+        "utf-8",
+      );
+      const manifest = await loadOrCreateOrchestratorManifest(filePath);
+      expect(manifest.version).toBe(3);
+      expect(manifest.settings.coderAgent).toEqual({ runtime: "gemini-cli" });
+
+      await saveOrchestratorManifest(filePath, manifest);
+      const reloaded = await loadOrCreateOrchestratorManifest(filePath);
+      expect(reloaded.settings.coderAgent).toEqual({ runtime: "gemini-cli" });
+    });
+
+    // A v1 manifest walks the whole chain: the opus strip runs first, then the pairs.
+    it("carries a v1 manifest through both steps to v3", async () => {
+      await writeFile(
+        filePath,
+        JSON.stringify({
+          version: 1,
+          settings: {
+            intakePaused: false,
+            coderModel: "opus",
+            reviewerModel: "haiku",
+            reviewerRuntime: "copilot-cli",
+          },
+          items: {},
+          parked: {},
+        }),
+        "utf-8",
+      );
+      const manifest = await loadOrCreateOrchestratorManifest(filePath);
+      expect(manifest.version).toBe(3);
+      // The materialized opus was stripped before pairing, so the coder has no pair.
+      expect(manifest.settings.coderAgent).toBeUndefined();
+      expect(manifest.settings.reviewerAgent).toEqual({ runtime: "copilot-cli" });
     });
   });
 
@@ -418,7 +539,7 @@ describe("orchestrator manifest", () => {
 
   it("serializes concurrent saves — last write wins and the file stays valid", async () => {
     const base: OrchestratorManifest = {
-      version: 2,
+      version: 3,
       settings: structuredClone(DEFAULT_ORCHESTRATOR_SETTINGS),
       items: {},
       parked: {},
@@ -434,7 +555,7 @@ describe("orchestrator manifest", () => {
     await Promise.all(saves);
 
     const raw = JSON.parse(await readFile(filePath, "utf-8")) as OrchestratorManifest;
-    expect(raw.version).toBe(2);
+    expect(raw.version).toBe(3);
     expect(Object.keys(raw.parked)).toEqual(["github:9"]);
   });
 });

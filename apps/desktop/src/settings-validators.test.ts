@@ -6,6 +6,7 @@ import {
   clampInt,
   oneOf,
   nonEmptyString,
+  agentSelection,
   applySettingsPatch,
   applyRepoSettingsPatch,
 } from "./settings-validators";
@@ -42,6 +43,42 @@ describe("combinators", () => {
     expect(nonEmptyString("")).toBeUndefined();
     expect(nonEmptyString(5)).toBeUndefined();
   });
+
+  // The pair is atomic: anything less than a fully valid pair would resolve a role
+  // onto a runtime the user never picked, so the whole write is rejected.
+  it("agentSelection accepts a runtime-only pair", () => {
+    expect(agentSelection({ runtime: "gemini-cli" })).toEqual({ runtime: "gemini-cli" });
+    expect(agentSelection({ runtime: "claude-cli", model: undefined })).toEqual({
+      runtime: "claude-cli",
+    });
+  });
+
+  it("agentSelection accepts a runtime + model pair and trims the model", () => {
+    expect(agentSelection({ runtime: "claude-cli", model: "  opus  " })).toEqual({
+      runtime: "claude-cli",
+      model: "opus",
+    });
+    // Opaque alias: a full model id stays selectable.
+    expect(agentSelection({ runtime: "claude-cli", model: "claude-opus-4-8" })).toEqual({
+      runtime: "claude-cli",
+      model: "claude-opus-4-8",
+    });
+  });
+
+  it("agentSelection rejects an unknown runtime, a blank model and extra keys", () => {
+    expect(agentSelection({ runtime: "cursor-cli" })).toBeUndefined();
+    expect(agentSelection({ model: "opus" })).toBeUndefined();
+    expect(agentSelection({ runtime: "claude-cli", model: "" })).toBeUndefined();
+    expect(agentSelection({ runtime: "claude-cli", model: "   " })).toBeUndefined();
+    expect(agentSelection({ runtime: "claude-cli", model: 5 })).toBeUndefined();
+    expect(agentSelection({ runtime: "claude-cli", extra: true })).toBeUndefined();
+  });
+
+  it("agentSelection rejects non-objects", () => {
+    expect(agentSelection("claude-cli")).toBeUndefined();
+    expect(agentSelection(null)).toBeUndefined();
+    expect(agentSelection([{ runtime: "claude-cli" }])).toBeUndefined();
+  });
 });
 
 function baseSettings(): OrchestratorSettings {
@@ -64,19 +101,26 @@ describe("applySettingsPatch", () => {
 
   it("treats an absent key as no-op, not a clear", () => {
     const s = baseSettings();
-    s.plannerModel = "opus";
+    s.plannerAgent = { runtime: "claude-cli", model: "opus" };
     applySettingsPatch(s, { codingWipPerRepo: 2 });
-    expect(s.plannerModel).toBe("opus");
+    expect(s.plannerAgent).toEqual({ runtime: "claude-cli", model: "opus" });
   });
 
-  it("explicit undefined clears a per-role model back to inherit", () => {
+  it("explicit undefined clears a per-role pair back to inherit", () => {
     const s = baseSettings();
-    s.plannerModel = "opus";
-    applySettingsPatch(s, { plannerModel: undefined });
-    expect("plannerModel" in s).toBe(false);
+    s.plannerAgent = { runtime: "claude-cli", model: "opus" };
+    applySettingsPatch(s, { plannerAgent: undefined });
+    expect("plannerAgent" in s).toBe(false);
   });
 
-  it("explicit undefined on a non-model key clears nothing", () => {
+  it("explicit undefined clears defaultAgent back to the claude floor", () => {
+    const s = baseSettings();
+    s.defaultAgent = { runtime: "gemini-cli" };
+    applySettingsPatch(s, { defaultAgent: undefined });
+    expect("defaultAgent" in s).toBe(false);
+  });
+
+  it("explicit undefined on a non-pair key clears nothing", () => {
     const s = baseSettings();
     const before = s.codingWipPerRepo;
     applySettingsPatch(s, { codingWipPerRepo: undefined });
@@ -111,57 +155,51 @@ describe("applySettingsPatch", () => {
     expect(hi.plannerTimeBudgetMin).toBe(60);
   });
 
-  // #240: the runtime keys are a closed union — an unknown id has no runtime
-  // behind it, so it must be rejected rather than stored and crashed on later.
-  it("stores a valid per-role runtime and drops an invalid one", () => {
+  // The runtime half of a pair is a closed union — an unknown id has no runtime
+  // behind it, so the write must be rejected rather than stored and crashed on later.
+  it("stores a valid per-role pair and drops an invalid one", () => {
     const s = baseSettings();
-    applySettingsPatch(s, { coderRuntime: "codex-cli" });
-    expect(s.coderRuntime).toBe("codex-cli");
-    applySettingsPatch(s, { coderRuntime: "cursor-cli" as unknown as "codex-cli" });
-    expect(s.coderRuntime).toBe("codex-cli");
+    applySettingsPatch(s, { coderAgent: { runtime: "codex-cli" } });
+    expect(s.coderAgent).toEqual({ runtime: "codex-cli" });
+    applySettingsPatch(s, {
+      coderAgent: { runtime: "cursor-cli" } as unknown as { runtime: "codex-cli" },
+    });
+    expect(s.coderAgent).toEqual({ runtime: "codex-cli" });
   });
 
-  // #242: copilot-cli joined the union — every one of the three global keys has
-  // to accept it, or a Copilot selection silently falls back to the floor.
-  it("accepts copilot-cli on each of the three role keys", () => {
+  it("accepts every runtime in the union on each pair key", () => {
+    for (const runtime of ["claude-cli", "codex-cli", "copilot-cli", "gemini-cli"] as const) {
+      const s = baseSettings();
+      applySettingsPatch(s, {
+        defaultAgent: { runtime },
+        plannerAgent: { runtime },
+        coderAgent: { runtime },
+        reviewerAgent: { runtime },
+      });
+      expect(s.defaultAgent).toEqual({ runtime });
+      expect(s.plannerAgent).toEqual({ runtime });
+      expect(s.coderAgent).toEqual({ runtime });
+      expect(s.reviewerAgent).toEqual({ runtime });
+    }
+  });
+
+  it("writes each role's pair independently", () => {
     const s = baseSettings();
     applySettingsPatch(s, {
-      plannerRuntime: "copilot-cli",
-      coderRuntime: "copilot-cli",
-      reviewerRuntime: "copilot-cli",
+      plannerAgent: { runtime: "claude-cli", model: "opus" },
+      reviewerAgent: { runtime: "codex-cli" },
     });
-    expect(s.plannerRuntime).toBe("copilot-cli");
-    expect(s.coderRuntime).toBe("copilot-cli");
-    expect(s.reviewerRuntime).toBe("copilot-cli");
+    expect(s.plannerAgent).toEqual({ runtime: "claude-cli", model: "opus" });
+    expect(s.reviewerAgent).toEqual({ runtime: "codex-cli" });
+    expect("coderAgent" in s).toBe(false);
   });
 
-  // #243: gemini-cli joined the union — it was the rejected-value fixture above
-  // until this issue, so every global key has to accept it now.
-  it("accepts gemini-cli on each of the three role keys", () => {
+  // The pair is atomic on the way in too: a bad model must not land a bare runtime.
+  it("rejects a pair whose model half is invalid, leaving the old pair standing", () => {
     const s = baseSettings();
-    applySettingsPatch(s, {
-      plannerRuntime: "gemini-cli",
-      coderRuntime: "gemini-cli",
-      reviewerRuntime: "gemini-cli",
-    });
-    expect(s.plannerRuntime).toBe("gemini-cli");
-    expect(s.coderRuntime).toBe("gemini-cli");
-    expect(s.reviewerRuntime).toBe("gemini-cli");
-  });
-
-  it("explicit undefined clears a per-role runtime back to the floor", () => {
-    const s = baseSettings();
-    s.plannerRuntime = "codex-cli";
-    applySettingsPatch(s, { plannerRuntime: undefined });
-    expect("plannerRuntime" in s).toBe(false);
-  });
-
-  it("writes each role's runtime independently", () => {
-    const s = baseSettings();
-    applySettingsPatch(s, { plannerRuntime: "claude-cli", reviewerRuntime: "codex-cli" });
-    expect(s.plannerRuntime).toBe("claude-cli");
-    expect(s.reviewerRuntime).toBe("codex-cli");
-    expect("coderRuntime" in s).toBe(false);
+    s.coderAgent = { runtime: "claude-cli", model: "opus" };
+    applySettingsPatch(s, { coderAgent: { runtime: "gemini-cli", model: "" } });
+    expect(s.coderAgent).toEqual({ runtime: "claude-cli", model: "opus" });
   });
 
   it("no longer writes the retired turn knobs (#194)", () => {
@@ -202,60 +240,51 @@ describe("applyRepoSettingsPatch", () => {
     expect(merged).toEqual({ followed: true });
   });
 
-  // #240, per-repo half: same closed union, same clear-to-inherit semantics as
-  // every other override — undefined means "fall back to the global".
-  it("stores a valid per-role runtime override and drops an invalid one", () => {
-    expect(applyRepoSettingsPatch(undefined, { coderRuntime: "codex-cli" })).toEqual({
-      coderRuntime: "codex-cli",
+  // Per-repo half of the pair: same atomic validation, same clear-to-inherit
+  // semantics as every other override — undefined means "fall back to the global".
+  it("stores a valid per-role pair override and drops an invalid one", () => {
+    expect(applyRepoSettingsPatch(undefined, { coderAgent: { runtime: "codex-cli" } })).toEqual({
+      coderAgent: { runtime: "codex-cli" },
     });
     expect(
       applyRepoSettingsPatch(
-        { coderRuntime: "codex-cli" },
-        { coderRuntime: "cursor-cli" as unknown as "codex-cli" },
+        { coderAgent: { runtime: "codex-cli" } },
+        { coderAgent: { runtime: "cursor-cli" } as unknown as { runtime: "codex-cli" } },
       ),
-    ).toEqual({ coderRuntime: "codex-cli" });
+    ).toEqual({ coderAgent: { runtime: "codex-cli" } });
   });
 
-  it("accepts copilot-cli on each of the three per-repo role keys (#242)", () => {
-    expect(
-      applyRepoSettingsPatch(undefined, {
-        plannerRuntime: "copilot-cli",
-        coderRuntime: "copilot-cli",
-        reviewerRuntime: "copilot-cli",
-      }),
-    ).toEqual({
-      plannerRuntime: "copilot-cli",
-      coderRuntime: "copilot-cli",
-      reviewerRuntime: "copilot-cli",
-    });
+  it("accepts every runtime in the union on each per-repo pair key", () => {
+    for (const runtime of ["claude-cli", "codex-cli", "copilot-cli", "gemini-cli"] as const) {
+      expect(
+        applyRepoSettingsPatch(undefined, {
+          plannerAgent: { runtime },
+          coderAgent: { runtime },
+          reviewerAgent: { runtime },
+        }),
+      ).toEqual({
+        plannerAgent: { runtime },
+        coderAgent: { runtime },
+        reviewerAgent: { runtime },
+      });
+    }
   });
 
-  it("accepts gemini-cli on each of the three per-repo role keys (#243)", () => {
+  it("undefined clears a per-role pair override back to the global", () => {
     expect(
-      applyRepoSettingsPatch(undefined, {
-        plannerRuntime: "gemini-cli",
-        coderRuntime: "gemini-cli",
-        reviewerRuntime: "gemini-cli",
-      }),
-    ).toEqual({
-      plannerRuntime: "gemini-cli",
-      coderRuntime: "gemini-cli",
-      reviewerRuntime: "gemini-cli",
-    });
-  });
-
-  it("undefined clears a per-role runtime override back to the global", () => {
-    expect(
-      applyRepoSettingsPatch({ coderRuntime: "codex-cli" }, { coderRuntime: undefined }),
+      applyRepoSettingsPatch({ coderAgent: { runtime: "codex-cli" } }, { coderAgent: undefined }),
     ).toEqual({});
   });
 
-  it("keeps the three role runtimes independent", () => {
+  it("keeps the three role pairs independent", () => {
     const merged = applyRepoSettingsPatch(
-      { plannerRuntime: "codex-cli" },
-      { reviewerRuntime: "claude-cli" },
+      { plannerAgent: { runtime: "codex-cli" } },
+      { reviewerAgent: { runtime: "claude-cli", model: "haiku" } },
     );
-    expect(merged).toEqual({ plannerRuntime: "codex-cli", reviewerRuntime: "claude-cli" });
+    expect(merged).toEqual({
+      plannerAgent: { runtime: "codex-cli" },
+      reviewerAgent: { runtime: "claude-cli", model: "haiku" },
+    });
   });
 
   it("keeps a boolean graphify toggle and drops a non-bool (#233)", () => {

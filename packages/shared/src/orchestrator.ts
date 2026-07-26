@@ -11,7 +11,12 @@ import {
 } from "./confidence";
 import type { CodeHostId, Issue, IssueSourceId, PullRequest, RepoRef, SourceRef } from "./inbox";
 import type { StoredPlan } from "./plan";
-import { DEFAULT_AGENT_RUNTIME, DEFAULT_LLM_SETTINGS, type AgentRuntimeId } from "./types";
+import {
+  DEFAULT_AGENT_RUNTIME,
+  DEFAULT_LLM_SETTINGS,
+  type AgentRuntimeId,
+  type AgentSelection,
+} from "./types";
 
 export type AgentReviewOutcome = CriticVerdict | "skipped" | "unavailable";
 
@@ -153,17 +158,15 @@ export interface OrchestratorSettings {
    * does nothing because a repo overrides it is worse than no toggle.
    */
   autoPlanPaused: boolean;
-  /** Model handed to the planner's LLM provider (also scores confidence, #8).
-   *  #125: absent = inherit llm.claudeModel. */
-  plannerModel?: string;
-  /** #240 per-role agent runtime. Absent = DEFAULT_AGENT_RUNTIME. */
-  plannerRuntime?: AgentRuntimeId;
-  coderRuntime?: AgentRuntimeId;
-  reviewerRuntime?: AgentRuntimeId;
+  /** Fallback pair for every role that has no pair of its own. Absent = the
+   *  claude-cli floor on the llm.claudeModel model. */
+  defaultAgent?: AgentSelection;
+  /** Per-role (runtime, model) pair. Absent = inherit defaultAgent. */
+  plannerAgent?: AgentSelection;
+  coderAgent?: AgentSelection;
+  reviewerAgent?: AgentSelection;
   /** Gate thresholds + convergence sample count (#8). Hand-editable by design (#62). */
   confidence: ConfidenceThresholds & { extraPlanRuns: number };
-  /** Model handed to the coding agent (#9). #125: absent = inherit llm.claudeModel. */
-  coderModel?: string;
   /** Wall-clock budget per coding run, in minutes (#194). When it fires, the coder
    *  is asked for a final honest report and review continues from there. Turns are a
    *  high anti-runaway backstop (AGENT_MAX_TURNS_BACKSTOP), not the work budget. */
@@ -177,8 +180,6 @@ export interface OrchestratorSettings {
   review: GateMode;
   /** #62: review rounds per fix chain. Applies to on + auto, irrelevant under off. */
   reviewMaxRounds: number;
-  /** Model handed to the diff critic (#10). #125: absent = inherit llm.claudeModel. */
-  reviewerModel?: string;
   /** After a change-request fix round (#11): hold at human-review or repush unattended. */
   shepherdRepush: "human" | "auto";
   /** auto = a red CI on the agent's own push re-enters coding (round-capped). off = evidence only. */
@@ -222,14 +223,11 @@ export interface RepoIntakeSettings {
   review?: GateMode;
   reviewMaxRounds?: number;
   ciReentry?: "off" | "auto";
-  /** #58 per-role model overrides. Absent = inherit the global setting. */
-  plannerModel?: string;
-  coderModel?: string;
-  reviewerModel?: string;
-  /** #240 per-role runtime overrides. Absent = inherit the global setting. */
-  plannerRuntime?: AgentRuntimeId;
-  coderRuntime?: AgentRuntimeId;
-  reviewerRuntime?: AgentRuntimeId;
+  /** Per-role (runtime, model) overrides. Absent = inherit the global pair;
+   *  present = the whole pair wins, it never mixes with a global model. */
+  plannerAgent?: AgentSelection;
+  coderAgent?: AgentSelection;
+  reviewerAgent?: AgentSelection;
   /** #233 opt-in per-repo Graphify knowledge-graph index. Absent = off. */
   graphify?: boolean;
 }
@@ -261,7 +259,8 @@ export interface ResolvedRepoOrchestratorSettings extends ResolvedRepoIntakeSett
   review: GateMode;
   reviewMaxRounds: number;
   ciReentry: "off" | "auto";
-  /** #58 — the model each role's run hands to its provider. */
+  /** #58 — the model each role's run hands to its provider. "" = the runtime's
+   *  own configured default (non-claude CLIs take no model flag). */
   plannerModel: string;
   coderModel: string;
   reviewerModel: string;
@@ -269,6 +268,25 @@ export interface ResolvedRepoOrchestratorSettings extends ResolvedRepoIntakeSett
   plannerRuntime: AgentRuntimeId;
   coderRuntime: AgentRuntimeId;
   reviewerRuntime: AgentRuntimeId;
+}
+
+/**
+ * Resolve one role's pair down the atomic ladder: repo → global role → global
+ * default → the claude-cli floor. The pair that wins wins whole — a repo pair
+ * never picks up a model from a global pair, which is what makes a mismatched
+ * (runtime, model) combination unreachable.
+ */
+function resolveAgent(
+  repo: AgentSelection | undefined,
+  role: AgentSelection | undefined,
+  fallback: AgentSelection | undefined,
+  defaultModel: string,
+): { runtime: AgentRuntimeId; model: string } {
+  const pair = repo ?? role ?? fallback ?? { runtime: DEFAULT_AGENT_RUNTIME };
+  return {
+    runtime: pair.runtime,
+    model: pair.model?.trim() || (pair.runtime === "claude-cli" ? defaultModel : ""),
+  };
 }
 
 /**
@@ -284,9 +302,12 @@ export function resolveRepoOrchestratorSettings(
   global: OrchestratorSettings,
   defaultModel?: string,
 ): ResolvedRepoOrchestratorSettings {
-  // #125: the per-role globals are optional overrides of llm.claudeModel. The floor
-  // covers a hand-edited "" and an omitted arg, so modelForRole never receives "".
+  // #125: a claude pair without a model of its own falls back to llm.claudeModel. The
+  // floor covers a hand-edited "" and an omitted arg, so modelForRole never receives "".
   const dm = defaultModel?.trim() || DEFAULT_LLM_SETTINGS.claudeModel;
+  const planner = resolveAgent(repo?.plannerAgent, global.plannerAgent, global.defaultAgent, dm);
+  const coder = resolveAgent(repo?.coderAgent, global.coderAgent, global.defaultAgent, dm);
+  const reviewer = resolveAgent(repo?.reviewerAgent, global.reviewerAgent, global.defaultAgent, dm);
   return {
     ...resolveRepoIntakeSettings(repo),
     wipLimit: repo?.wipLimit ?? global.codingWipPerRepo,
@@ -294,12 +315,12 @@ export function resolveRepoOrchestratorSettings(
     review: repo?.review ?? global.review,
     reviewMaxRounds: repo?.reviewMaxRounds ?? global.reviewMaxRounds,
     ciReentry: repo?.ciReentry ?? global.ciReentry,
-    plannerModel: repo?.plannerModel ?? global.plannerModel ?? dm,
-    coderModel: repo?.coderModel ?? global.coderModel ?? dm,
-    reviewerModel: repo?.reviewerModel ?? global.reviewerModel ?? dm,
-    plannerRuntime: repo?.plannerRuntime ?? global.plannerRuntime ?? DEFAULT_AGENT_RUNTIME,
-    coderRuntime: repo?.coderRuntime ?? global.coderRuntime ?? DEFAULT_AGENT_RUNTIME,
-    reviewerRuntime: repo?.reviewerRuntime ?? global.reviewerRuntime ?? DEFAULT_AGENT_RUNTIME,
+    plannerModel: planner.model,
+    coderModel: coder.model,
+    reviewerModel: reviewer.model,
+    plannerRuntime: planner.runtime,
+    coderRuntime: coder.runtime,
+    reviewerRuntime: reviewer.runtime,
   };
 }
 

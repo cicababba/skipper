@@ -1,59 +1,57 @@
 "use client";
 
 import { useState } from "react";
+import { DEFAULT_AGENT_RUNTIME, type AgentRuntimeId } from "@skipper/shared";
+import { useT } from "@/lib/app-i18n";
+import { isListedModel, modelOptionsFor } from "@/lib/agents/model-options";
 
-// Claude model picker (#58, #123), shared by the global Orchestration section,
-// the per-repo override rows, onboarding and the Settings page.
+// Model picker, shared by the agent pair rows, onboarding and the Settings page.
 //
-// Aliases only — the claude CLI resolves each to the newest release of that tier,
-// so this list never needs version bumps. The manifest field is an opaque string
-// though: a full model id (e.g. "claude-opus-4-8") is valid and must stay
-// selectable. When the value isn't a known alias the select shows "Custom…" and a
-// free-text input prefilled with it, so the id stays visible and is never silently
-// overwritten. The input commits via onChange only on blur/Enter (per-repo
-// consumers PATCH on every onChange); an empty commit reverts to the prior value.
+// The options come from the selected runtime (see lib/agents/model-options.ts):
+// Claude aliases for claude-cli, the CLI's own default for the others. The
+// manifest field is an opaque string though: a full model id (e.g.
+// "claude-opus-4-8") is valid and must stay selectable. When the value isn't a
+// listed option the select shows "Custom…" and a free-text input prefilled with
+// it, so the id stays visible and is never silently overwritten. The input commits
+// via onChange only on blur/Enter (per-repo consumers PATCH on every onChange); an
+// empty commit reverts to the prior value.
 
 const CUSTOM = "__custom__";
-
-const MODEL_ALIASES = [
-  { value: "opus", label: "Claude Opus" },
-  { value: "sonnet", label: "Claude Sonnet" },
-  { value: "haiku", label: "Claude Haiku" },
-  { value: "fable", label: "Claude Fable" },
-] as const;
-
-function isAlias(value: string): boolean {
-  return MODEL_ALIASES.some((m) => m.value === value);
-}
 
 export function ModelSelect({
   value,
   onChange,
+  runtime = DEFAULT_AGENT_RUNTIME,
   disabled,
   className,
 }: {
   value: string;
   onChange: (model: string) => void;
+  runtime?: AgentRuntimeId;
   disabled?: boolean;
   className?: string;
 }) {
-  const [custom, setCustom] = useState(() => !isAlias(value));
-  const [draft, setDraft] = useState(() => (isAlias(value) ? "" : value));
+  const { t } = useT();
+  const r = t.settings.orchestration;
+  const listed = (v: string) => isListedModel(runtime, v);
+  const [custom, setCustom] = useState(() => !listed(value));
+  const [draft, setDraft] = useState(() => (listed(value) ? "" : value));
 
-  // Resync when the incoming value changes (e.g. loaded async): an alias hides the
-  // input, a full id opens Custom… prefilled. Adjusting state during render — the
-  // endorsed alternative to an effect for deriving state from a prop.
-  const [prevValue, setPrevValue] = useState(value);
-  if (value !== prevValue) {
-    setPrevValue(value);
-    setCustom(!isAlias(value));
-    setDraft(isAlias(value) ? "" : value);
+  // Resync when the incoming value or runtime changes (e.g. loaded async, or the
+  // pair switched runtime): a listed option hides the input, anything else opens
+  // Custom… prefilled. Adjusting state during render — the endorsed alternative to
+  // an effect for deriving state from a prop.
+  const [prev, setPrev] = useState({ value, runtime });
+  if (value !== prev.value || runtime !== prev.runtime) {
+    setPrev({ value, runtime });
+    setCustom(!listed(value));
+    setDraft(listed(value) ? "" : value);
   }
 
   function handleSelect(next: string) {
     if (next === CUSTOM) {
       setCustom(true);
-      setDraft(isAlias(value) ? "" : value);
+      setDraft(listed(value) ? "" : value);
       return;
     }
     setCustom(false);
@@ -64,7 +62,7 @@ export function ModelSelect({
   function commitDraft() {
     const trimmed = draft.trim();
     if (trimmed === "") {
-      if (isAlias(value)) {
+      if (listed(value)) {
         setCustom(false);
         setDraft("");
       } else {
@@ -84,19 +82,19 @@ export function ModelSelect({
         onChange={(e) => handleSelect(e.target.value)}
         className={className}
       >
-        {MODEL_ALIASES.map((m) => (
+        {modelOptionsFor(runtime).map((m) => (
           <option key={m.value} value={m.value}>
-            {m.label}
+            {r[m.labelKey]}
           </option>
         ))}
-        <option value={CUSTOM}>Custom…</option>
+        <option value={CUSTOM}>{r.modelCustom}</option>
       </select>
       {custom && (
         <input
           type="text"
           value={draft}
           disabled={disabled}
-          placeholder="model id"
+          placeholder={r.modelCustomPlaceholder}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commitDraft}
           onKeyDown={(e) => {

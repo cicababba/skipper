@@ -89,18 +89,19 @@ export function buildLlm(
   roleRuntime: AgentRuntimeId = DEFAULT_AGENT_RUNTIME,
 ): LlmBundle {
   const model = modelForRole(settings, roleModel);
+  // The completions provider is claude-cli or openai — never the role's runtime — so
+  // it must never see a non-claude model string; repair rounds stay on a Claude alias.
   const llm = createProvider({
     provider: settings.provider,
-    model,
+    model: modelForRole(settings, roleRuntime === "claude-cli" ? roleModel : settings.claudeModel),
     maxTurns,
     apiKey: settings.provider === "openai" ? settings.openaiApiKey : undefined,
   });
-  // Role models are Claude aliases (#59) — a non-claude runtime gets no model at
-  // all and runs on its own configured default (#240). The completions provider
-  // above keeps the role model: it stays the claude-cli one either way.
+  // The pair already carries the runtime's own model, "" meaning "the CLI's
+  // configured default" — every adapter reads that as "omit the model flag".
   const runtime = createRuntime({
     provider: settings.provider,
-    model: roleRuntime === "claude-cli" ? model : "",
+    model,
     maxTurns,
     runtime: roleRuntime,
   });

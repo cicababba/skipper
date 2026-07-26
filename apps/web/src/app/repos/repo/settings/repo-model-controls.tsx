@@ -1,14 +1,13 @@
 "use client";
 
-import type { RepoIntakeSettings, RepoSettingsRow } from "@skipper/shared";
+import type { AgentSelection, RepoIntakeSettings, RepoSettingsRow } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
-import { ModelSelect } from "@/components/model-select";
-import { RuntimeSelect } from "@/components/runtime-select";
+import { AgentPairSelect } from "@/components/agent-pair-select";
 import { Row, selectClass } from "./settings-row";
 
 /**
- * Per-repo model overrides (#58) — one picker per agent role. Its own section
- * rather than a tail of the intake card: three selects would crowd it.
+ * Per-repo agent overrides (#58) — one (runtime, model) pair per agent role. Its
+ * own section rather than a tail of the intake card: three pairs would crowd it.
  * Mutations apply immediately over IPC via `onPatch`.
  */
 export function RepoModelControls({
@@ -26,71 +25,45 @@ export function RepoModelControls({
 
   // Binds to row.settings (not row.resolved), so "inherit" and "explicitly set to
   // the resolved value" stay distinguishable — the wipLimit/gate model. When the repo
-  // has no override the picker shows row.resolved[key], which now carries the global →
-  // llm.claudeModel fallback (#125) and is refetched after every patch.
-  const modelRow = (key: "plannerModel" | "coderModel" | "reviewerModel", label: string) => (
-    <Row key={key} label={label} busy={false}>
-      <div className="flex items-center gap-2">
-        <ModelSelect
-          value={row.settings[key] ?? row.resolved[key]}
-          disabled={busy}
-          onChange={(m) => onPatch({ [key]: m })}
-          className={selectClass}
-        />
-        {row.settings[key] === undefined ? (
-          <span className="text-[11px] text-muted/50">{rp.wipGlobal}</span>
-        ) : (
-          <button
-            onClick={() => onPatch({ [key]: undefined })}
-            disabled={busy}
-            className="text-[11px] text-accent hover:underline disabled:opacity-40"
-          >
-            {rp.wipClear}
-          </button>
-        )}
-      </div>
-    </Row>
-  );
-
-  const runtimeRow = (
-    key: "plannerRuntime" | "coderRuntime" | "reviewerRuntime",
+  // has no override the pair shows the resolved global, which is refetched after
+  // every patch, so changing just the model stays a one-gesture edit.
+  const agentRow = (
+    key: "plannerAgent" | "coderAgent" | "reviewerAgent",
+    resolvedPair: AgentSelection,
     label: string,
   ) => (
     <Row key={key} label={label} busy={false}>
-      <div className="flex items-center gap-2">
-        <RuntimeSelect
-          value={row.settings[key] ?? row.resolved[key]}
-          disabled={busy}
-          onChange={(rt) => onPatch({ [key]: rt })}
-          className={selectClass}
-        />
-        {row.settings[key] === undefined ? (
-          <span className="text-[11px] text-muted/50">{rp.wipGlobal}</span>
-        ) : (
-          <button
-            onClick={() => onPatch({ [key]: undefined })}
-            disabled={busy}
-            className="text-[11px] text-accent hover:underline disabled:opacity-40"
-          >
-            {rp.wipClear}
-          </button>
-        )}
-      </div>
+      <AgentPairSelect
+        value={row.settings[key] ?? resolvedPair}
+        inherited={row.settings[key] === undefined}
+        inheritedLabel={rp.wipGlobal}
+        claudeFloor={resolvedPair.model ?? ""}
+        disabled={busy}
+        selectClass={selectClass}
+        onChange={(pair) => onPatch({ [key]: pair })}
+        onClear={() => onPatch({ [key]: undefined })}
+      />
     </Row>
   );
 
   return (
     <div className="space-y-4">
-      <p className="text-[11px] text-muted/60 leading-relaxed">{o.modelsDesc}</p>
-      {modelRow("plannerModel", o.plannerModel)}
-      {modelRow("coderModel", o.coderModel)}
-      {modelRow("reviewerModel", o.reviewerModel)}
-      <p className="text-[11px] text-muted/60 leading-relaxed border-t border-border pt-4">
-        {o.runtimesDesc}
-      </p>
-      {runtimeRow("plannerRuntime", o.plannerRuntime)}
-      {runtimeRow("coderRuntime", o.coderRuntime)}
-      {runtimeRow("reviewerRuntime", o.reviewerRuntime)}
+      <p className="text-[11px] text-muted/60 leading-relaxed">{o.agentsDesc}</p>
+      {agentRow(
+        "plannerAgent",
+        { runtime: row.resolved.plannerRuntime, model: row.resolved.plannerModel },
+        o.planner,
+      )}
+      {agentRow(
+        "coderAgent",
+        { runtime: row.resolved.coderRuntime, model: row.resolved.coderModel },
+        o.coder,
+      )}
+      {agentRow(
+        "reviewerAgent",
+        { runtime: row.resolved.reviewerRuntime, model: row.resolved.reviewerModel },
+        o.reviewer,
+      )}
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { OrchestrationSection } from "@/components/orchestration-section";
 import { CliInstallSection } from "@/components/cli-install-section";
 import { UpdatesSection } from "@/components/updates-section";
 import { LanguageSection } from "@/components/language-section";
-import { ModelSelect } from "@/components/model-select";
+import { DefaultAgentSection } from "@/components/default-agent-section";
 import { useT } from "@/lib/app-i18n";
 import { useAuth } from "@/lib/auth-context";
 import { getAppSettings, updateAppSettings } from "@/lib/app-settings";
@@ -37,12 +37,7 @@ export default function SettingsPage() {
     setSaving(true);
     setSaved(false);
     try {
-      // provider is pinned: claude-cli is the only backend that drives the
-      // planner and the coder end-to-end. See the LLM section below.
-      await updateAppSettings({
-        llm: { provider: "claude-cli", claudeModel },
-        autoExtractAtoms,
-      });
+      await updateAppSettings({ autoExtractAtoms });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch {
@@ -75,39 +70,9 @@ export default function SettingsPage() {
 
         <RepositoriesSection />
 
-        {/* Default model — the global default the orchestration roles inherit (#125),
-            so it sits above Orchestration where the per-role overrides live. */}
-        <section className="mb-10">
-          <h2 className="text-sm font-medium text-muted/70 uppercase tracking-wider mb-4">
-            {t.settings.llm.title}
-          </h2>
+        <DefaultAgentSection claudeFloor={claudeModel} onClaudeModelChange={setClaudeModel} />
 
-          {/* No provider picker: the claude-cli runtime is the only backend that
-              drives the planner, and the coder spawns `claude` regardless of this
-              setting. OpenAI has no agent runtime, so it parked every planned item
-              in needs-input. The OpenAI provider, its API routes and its i18n
-              strings are still in the tree — this is a UI-level pin, not a removal. */}
-
-          {/* Claude settings */}
-          <div className="space-y-4 p-5 rounded-xl bg-card border border-border">
-            <div>
-              <label className="block text-xs text-muted/70 mb-2">{t.settings.llm.model}</label>
-              <ModelSelect
-                value={claudeModel}
-                onChange={setClaudeModel}
-                className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
-              />
-            </div>
-            <p className="text-[11px] text-muted/40 leading-relaxed">
-              {t.settings.llm.claudeAuthBefore}{" "}
-              <code className="text-accent/60 bg-accent/5 px-1 rounded">claude auth login</code>{" "}
-              {t.settings.llm.claudeAuthAfter}
-            </p>
-          </div>
-
-        </section>
-
-        <OrchestrationSection defaultModel={claudeModel} />
+        <OrchestrationSection claudeFloor={claudeModel} />
 
         <UpdatesSection />
 

@@ -1,4 +1,4 @@
-import type { OrchestratorSettings, RepoIntakeSettings } from "@skipper/shared";
+import type { AgentSelection, OrchestratorSettings, RepoIntakeSettings } from "@skipper/shared";
 
 // Per-key validation for the two settings writers (#62). Each returns the value to
 // store, or undefined to reject the write.
@@ -17,6 +17,27 @@ export const oneOf =
 export const nonEmptyString = (v: unknown): string | undefined =>
   typeof v === "string" && v.trim() ? v.trim() : undefined;
 
+const agentRuntimeId = oneOf("claude-cli", "codex-cli", "copilot-cli", "gemini-cli");
+
+/**
+ * An agent pair is written whole or not at all: a partially valid pair would
+ * resolve a role onto a runtime the user never picked, so an unknown runtime, a
+ * blank model or an unknown key rejects the entire write. The model stays an
+ * opaque CLI alias (#58) — no enum, so a hand-edited full model id survives.
+ */
+export const agentSelection = (v: unknown): AgentSelection | undefined => {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return undefined;
+  const raw = v as Record<string, unknown>;
+  if (Object.keys(raw).some((k) => k !== "runtime" && k !== "model")) return undefined;
+  const runtime = agentRuntimeId(raw.runtime);
+  if (!runtime) return undefined;
+  // An explicit `model: undefined` is how the UI says "the runtime's own default"
+  // when it resets the pair, and IPC's structured clone keeps the key around.
+  if (raw.model === undefined) return { runtime };
+  const model = nonEmptyString(raw.model);
+  return model ? { runtime, model } : undefined;
+};
+
 export const SETTINGS_VALIDATORS: {
   [K in keyof OrchestratorSettings]?: (v: unknown) => OrchestratorSettings[K] | undefined;
 } = {
@@ -26,15 +47,10 @@ export const SETTINGS_VALIDATORS: {
   reviewMaxRounds: clampInt(1, 5),
   ciReentry: oneOf("off", "auto"),
   codingWipPerRepo: clampInt(1, 10),
-  // #58: model strings stay opaque CLI aliases — no enum, so a manifest
-  // hand-edited to a full model id survives a write from the UI.
-  plannerModel: nonEmptyString,
-  coderModel: nonEmptyString,
-  reviewerModel: nonEmptyString,
-  // #240: runtimes are a closed union — an unknown id would break every run.
-  plannerRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli", "gemini-cli"),
-  coderRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli", "gemini-cli"),
-  reviewerRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli", "gemini-cli"),
+  defaultAgent: agentSelection,
+  plannerAgent: agentSelection,
+  coderAgent: agentSelection,
+  reviewerAgent: agentSelection,
   coderTimeBudgetMin: clampInt(10, 240),
   plannerTimeBudgetMin: clampInt(5, 60),
 };
@@ -51,32 +67,28 @@ export const REPO_SETTINGS_VALIDATORS: {
   review: oneOf("on", "off", "auto"),
   reviewMaxRounds: clampInt(1, 5),
   ciReentry: oneOf("off", "auto"),
-  plannerModel: nonEmptyString,
-  coderModel: nonEmptyString,
-  reviewerModel: nonEmptyString,
-  plannerRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli", "gemini-cli"),
-  coderRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli", "gemini-cli"),
-  reviewerRuntime: oneOf("claude-cli", "codex-cli", "copilot-cli", "gemini-cli"),
+  plannerAgent: agentSelection,
+  coderAgent: agentSelection,
+  reviewerAgent: agentSelection,
   graphify: asBool,
 };
 
 /** The globals an explicit undefined may clear back to their inherited value —
- *  the per-role models (#125) and the per-role runtimes (#240). */
+ *  the per-role pairs (back to defaultAgent) and defaultAgent itself (back to the
+ *  claude-cli floor on llm.claudeModel). */
 const CLEARABLE_SETTINGS_KEYS: readonly (keyof OrchestratorSettings)[] = [
-  "plannerModel",
-  "coderModel",
-  "reviewerModel",
-  "plannerRuntime",
-  "coderRuntime",
-  "reviewerRuntime",
+  "defaultAgent",
+  "plannerAgent",
+  "coderAgent",
+  "reviewerAgent",
 ];
 
 /**
  * Applies a validated settings patch in place (#62). The validator table IS the
  * whitelist: a key absent from it is not writable. `key in patch` (not truthiness)
- * so an absent key is not a clear; explicit undefined clears a per-role model back
- * to inherit llm.claudeModel (#125) or a per-role runtime back to the floor (#240);
- * an invalid value is dropped, never coerced.
+ * so an absent key is not a clear; explicit undefined clears a per-role pair back to
+ * inherit defaultAgent, or defaultAgent back to the claude-cli floor; an invalid
+ * value is dropped, never coerced.
  */
 export function applySettingsPatch(
   settings: OrchestratorSettings,

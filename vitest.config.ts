@@ -1,6 +1,15 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // apps/web is the only package using the "@/" path alias (its tsconfig paths
+  // entry); vitest has no Next.js resolver, so it needs the same mapping to load
+  // a component that imports from @/lib.
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./apps/web/src", import.meta.url)),
+    },
+  },
   test: {
     globals: true,
     environment: "node",

@@ -2,6 +2,8 @@ import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
   DEFAULT_ORCHESTRATOR_SETTINGS,
+  type AgentRuntimeId,
+  type AgentSelection,
   type CodeHostId,
   type IssueSourceId,
   type OrchestratorSettings,
@@ -15,7 +17,7 @@ export { DEFAULT_ORCHESTRATOR_SETTINGS };
 export type { OrchestratorSettings };
 
 export interface OrchestratorManifest {
-  version: 2;
+  version: 3;
   settings: OrchestratorSettings;
   /** itemId → tracked issue. */
   items: Record<string, TrackedItem>;
@@ -72,8 +74,34 @@ function migrateTurnBudgets(settings: OrchestratorSettings): void {
  * v2 manifests are never re-stripped, so opus chosen after the upgrade sticks.
  */
 function migrateRoleModelInherit(settings: OrchestratorSettings): void {
+  const legacy = settings as unknown as Record<string, string | undefined>;
   for (const key of ["plannerModel", "coderModel", "reviewerModel"] as const) {
-    if (settings[key] === "opus") delete settings[key];
+    if (legacy[key] === "opus") delete legacy[key];
+  }
+}
+
+/**
+ * v2 → v3: the flat per-role model + runtime keys become atomic (runtime, model)
+ * pairs. The legacy model rides along only when the pair lands on claude-cli —
+ * legacy models were Claude aliases by definition, so carrying "opus" onto a codex
+ * pair would inject a bogus `--model opus`. Legacy keys are consumed then deleted
+ * (reviewMode precedent): the object reserializes on save and a surviving
+ * coderModel would lie to the next person who opens the file.
+ */
+function migrateAgentPairs(settings: OrchestratorSettings | RepoIntakeSettings): void {
+  const legacy = settings as unknown as Record<string, string | undefined>;
+  for (const role of ["planner", "coder", "reviewer"] as const) {
+    const model = legacy[`${role}Model`];
+    const runtime = legacy[`${role}Runtime`];
+    if (model !== undefined || runtime !== undefined) {
+      const id = (runtime as AgentRuntimeId | undefined) ?? "claude-cli";
+      (settings as Record<string, unknown>)[`${role}Agent`] = {
+        runtime: id,
+        ...(id === "claude-cli" && model ? { model } : {}),
+      } satisfies AgentSelection;
+    }
+    delete legacy[`${role}Model`];
+    delete legacy[`${role}Runtime`];
   }
 }
 
@@ -130,7 +158,7 @@ function resolveAccountKeys(
 
 function freshManifest(): OrchestratorManifest {
   return {
-    version: 2,
+    version: 3,
     settings: structuredClone(DEFAULT_ORCHESTRATOR_SETTINGS),
     items: {},
     parked: {},
@@ -150,7 +178,7 @@ export async function loadOrCreateOrchestratorManifest(
     // On-disk version can lag the current literal, so read it as a plain number.
     const version = parsed.version as number;
     if (
-      (version === 1 || version === 2) &&
+      (version === 1 || version === 2 || version === 3) &&
       typeof parsed.settings === "object" &&
       parsed.settings !== null &&
       typeof parsed.items === "object" &&
@@ -168,13 +196,17 @@ export async function loadOrCreateOrchestratorManifest(
       parsed.settings.shepherdRepush ??= DEFAULT_ORCHESTRATOR_SETTINGS.shepherdRepush;
       parsed.settings.ciReentry ??= DEFAULT_ORCHESTRATOR_SETTINGS.ciReentry;
       parsed.settings.codingWipPerRepo ??= DEFAULT_ORCHESTRATOR_SETTINGS.codingWipPerRepo;
-      // #125: strip the materialized opus trio once, then pin v2 so it never re-strips.
-      if (version === 1) {
-        migrateRoleModelInherit(parsed.settings);
-        parsed.version = 2;
-      }
+      // #125: strip the materialized opus trio once (v1 only), so an opus chosen
+      // after the upgrade sticks and survives into its pair below.
+      if (version === 1) migrateRoleModelInherit(parsed.settings);
       parsed.repoSettings ??= {};
       parsed.projectMappings ??= {};
+      // Flat role model/runtime keys → atomic pairs, then pin v3 so it never re-runs.
+      if (version <= 2) {
+        migrateAgentPairs(parsed.settings);
+        for (const repo of Object.values(parsed.repoSettings)) migrateAgentPairs(repo);
+        parsed.version = 3;
+      }
       for (const item of Object.values(parsed.items)) migrateTwoAxisItem(item);
       // Empty/absent accounts (e.g. a transient auth failure) must never
       // mass-drop items — skip resolution entirely in that case (#101).
