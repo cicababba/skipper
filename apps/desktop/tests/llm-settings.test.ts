@@ -173,13 +173,28 @@ describe("buildLlm (#238)", () => {
     expect(b.runtime!.capabilities.confinement).toBe("sandbox");
   });
 
-  // Role models are Claude aliases (#59), so the codex runtime must be built
-  // model-less and fall through to codex's own default. Read off the runtime's
-  // own field: the observable half of this contract (runCoding never shipping a
-  // Claude alias) is asserted in core's runtime.test.ts.
-  it("hands the codex runtime no model at all", () => {
-    const b = buildLlm(settings({ provider: "claude-cli" }), "opus", 5, "codex-cli");
-    expect((b.runtime as unknown as { model?: string }).model).toBe("");
+  // The pair carries the runtime's own model now, and "" is the resolved value for
+  // "the CLI's configured default" — the runtime gets it verbatim. Read off the
+  // runtime's own field: the observable half of this contract (runCoding never
+  // shipping a Claude alias) is asserted in core's runtime.test.ts.
+  it("hands the codex runtime the pair's model verbatim", () => {
+    const empty = buildLlm(settings({ provider: "claude-cli" }), "", 5, "codex-cli");
+    expect((empty.runtime as unknown as { model?: string }).model).toBe("");
+    const explicit = buildLlm(settings({ provider: "claude-cli" }), "gpt-5-codex", 5, "codex-cli");
+    expect((explicit.runtime as unknown as { model?: string }).model).toBe("gpt-5-codex");
+  });
+
+  // The completions provider is claude-cli either way, so it must never be handed
+  // a non-claude model string — the repair rounds stay on a Claude alias.
+  it("keeps the completions provider on the claude model under a non-claude runtime", () => {
+    const s = settings({ provider: "claude-cli", claudeModel: "haiku" });
+    expect(
+      (buildLlm(s, "gemini-2.5-pro", 5, "gemini-cli").llm as unknown as { model?: string }).model,
+    ).toBe("haiku");
+    // claude-cli runtime keeps the role model on the provider.
+    expect((buildLlm(s, "opus", 5, "claude-cli").llm as unknown as { model?: string }).model).toBe(
+      "opus",
+    );
   });
 
   // #242: same axis, third runtime. Copilot confines with rules (path
@@ -193,8 +208,8 @@ describe("buildLlm (#238)", () => {
     expect(b.runtime!.capabilities.resume).toBe(true);
   });
 
-  it("hands the copilot runtime no model at all", () => {
-    const b = buildLlm(settings({ provider: "claude-cli" }), "opus", 5, "copilot-cli");
+  it("hands the copilot runtime the pair's model verbatim", () => {
+    const b = buildLlm(settings({ provider: "claude-cli" }), "", 5, "copilot-cli");
     expect((b.runtime as unknown as { model?: string }).model).toBe("");
   });
 

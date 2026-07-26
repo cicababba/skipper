@@ -252,10 +252,13 @@ describe("coder driver", () => {
   });
 
   // #58: the model reaches the runner from the resolved per-repo bag.
-  it("hands the runner the global coderModel when the repo has no override", async () => {
+  it("hands the runner the global coder pair's model when the repo has no override", async () => {
     const h = makeHarness({
       getSettings: () =>
-        ({ ...DEFAULT_ORCHESTRATOR_SETTINGS, coderModel: "sonnet" }) as OrchestratorSettings,
+        ({
+          ...DEFAULT_ORCHESTRATOR_SETTINGS,
+          coderAgent: { runtime: "claude-cli", model: "sonnet" },
+        }) as OrchestratorSettings,
     });
     const runner = okRunner();
     initCoder(h.deps, runtimeOf(runner));
@@ -267,13 +270,16 @@ describe("coder driver", () => {
     expect(runner.mock.calls[0][0].model).toBe("sonnet");
   });
 
-  it("lets a per-repo coderModel override the global", async () => {
+  it("lets a per-repo coder pair override the global", async () => {
     const h = makeHarness(
       {
         getSettings: () =>
-          ({ ...DEFAULT_ORCHESTRATOR_SETTINGS, coderModel: "sonnet" }) as OrchestratorSettings,
+          ({
+            ...DEFAULT_ORCHESTRATOR_SETTINGS,
+            coderAgent: { runtime: "claude-cli", model: "sonnet" },
+          }) as OrchestratorSettings,
       },
-      { coderModel: "haiku" },
+      { coderAgent: { runtime: "claude-cli", model: "haiku" } },
     );
     const runner = okRunner();
     initCoder(h.deps, runtimeOf(runner));

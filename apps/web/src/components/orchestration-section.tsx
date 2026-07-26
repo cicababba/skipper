@@ -1,16 +1,15 @@
 "use client";
 
 import { Minus, Plus, Workflow } from "lucide-react";
-import { DEFAULT_AGENT_RUNTIME, type AgentRuntimeId, type GateMode } from "@skipper/shared";
+import { DEFAULT_AGENT_RUNTIME, type AgentSelection, type GateMode } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
-import { ModelSelect } from "@/components/model-select";
-import { RuntimeSelect } from "@/components/runtime-select";
+import { AgentPairSelect } from "@/components/agent-pair-select";
 
 // Settings → Orchestration (#62): the global defaults for the two gate axes.
 // Confidence thresholds stay hand-edit-only, but "auto" on both axes is decided by
 // confidence.high — so the copy reads the number out of settings rather than hiding it.
-export function OrchestrationSection({ defaultModel }: { defaultModel: string }) {
+export function OrchestrationSection({ claudeFloor }: { claudeFloor: string }) {
   const { t } = useT();
   const { state, updateSettings } = useOrchestrator();
 
@@ -19,9 +18,13 @@ export function OrchestrationSection({ defaultModel }: { defaultModel: string })
 
   const r = t.settings.orchestration;
   const s = state.settings;
-  // #125: the per-role globals inherit llm.claudeModel when absent; the picker shows the
-  // inherited value for display and a "Use default" clear appears once a role overrides it.
-  const inheritModel = defaultModel.trim() || "sonnet";
+  // A role with no pair of its own shows the default pair, which itself floors to
+  // claude-cli on llm.claudeModel; a "Use default" clear appears once it overrides it.
+  const floor = claudeFloor.trim() || "sonnet";
+  const inheritPair: AgentSelection = s.defaultAgent ?? {
+    runtime: DEFAULT_AGENT_RUNTIME,
+    model: floor,
+  };
   const high = s.confidence.high.toFixed(2);
   const selectClass =
     "bg-background border border-border rounded-md px-2 py-1.5 text-sm focus:border-accent focus:outline-none disabled:opacity-50";
@@ -163,80 +166,42 @@ export function OrchestrationSection({ defaultModel }: { defaultModel: string })
 
         <div className="border-t border-border pt-5 space-y-5">
           <div>
-            <p className="text-sm font-medium mb-1">{r.models}</p>
-            <p className="text-[11px] text-muted/60 leading-relaxed">{r.modelsDesc}</p>
+            <p className="text-sm font-medium mb-1">{r.agents}</p>
+            <p className="text-[11px] text-muted/60 leading-relaxed">{r.agentsDesc}</p>
           </div>
 
-          <ModelRow
-            label={r.plannerModel}
-            hint={r.plannerModelDesc}
-            model={s.plannerModel}
-            inheritModel={inheritModel}
+          <AgentPairRow
+            label={r.planner}
+            hint={r.plannerDesc}
+            pair={s.plannerAgent}
+            inheritPair={inheritPair}
+            claudeFloor={floor}
             selectClass={selectClass}
-            defaultLabel={r.modelDefault}
-            useDefaultLabel={r.modelUseDefault}
-            onChange={(m) => void updateSettings({ plannerModel: m })}
-            onClear={() => void updateSettings({ plannerModel: undefined })}
+            defaultLabel={r.agentDefault}
+            onChange={(a) => void updateSettings({ plannerAgent: a })}
+            onClear={() => void updateSettings({ plannerAgent: undefined })}
           />
-          <ModelRow
-            label={r.coderModel}
-            hint={r.coderModelDesc}
-            model={s.coderModel}
-            inheritModel={inheritModel}
+          <AgentPairRow
+            label={r.coder}
+            hint={r.coderDesc}
+            pair={s.coderAgent}
+            inheritPair={inheritPair}
+            claudeFloor={floor}
             selectClass={selectClass}
-            defaultLabel={r.modelDefault}
-            useDefaultLabel={r.modelUseDefault}
-            onChange={(m) => void updateSettings({ coderModel: m })}
-            onClear={() => void updateSettings({ coderModel: undefined })}
+            defaultLabel={r.agentDefault}
+            onChange={(a) => void updateSettings({ coderAgent: a })}
+            onClear={() => void updateSettings({ coderAgent: undefined })}
           />
-          <ModelRow
-            label={r.reviewerModel}
-            hint={r.reviewerModelDesc}
-            model={s.reviewerModel}
-            inheritModel={inheritModel}
+          <AgentPairRow
+            label={r.reviewer}
+            hint={r.reviewerDesc}
+            pair={s.reviewerAgent}
+            inheritPair={inheritPair}
+            claudeFloor={floor}
             selectClass={selectClass}
-            defaultLabel={r.modelDefault}
-            useDefaultLabel={r.modelUseDefault}
-            onChange={(m) => void updateSettings({ reviewerModel: m })}
-            onClear={() => void updateSettings({ reviewerModel: undefined })}
-          />
-        </div>
-
-        <div className="border-t border-border pt-5 space-y-5">
-          <div>
-            <p className="text-sm font-medium mb-1">{r.runtimes}</p>
-            <p className="text-[11px] text-muted/60 leading-relaxed">{r.runtimesDesc}</p>
-          </div>
-
-          <RuntimeRow
-            label={r.plannerRuntime}
-            hint={r.plannerRuntimeDesc}
-            runtime={s.plannerRuntime}
-            selectClass={selectClass}
-            defaultLabel={r.runtimeDefault}
-            useDefaultLabel={r.modelUseDefault}
-            onChange={(rt) => void updateSettings({ plannerRuntime: rt })}
-            onClear={() => void updateSettings({ plannerRuntime: undefined })}
-          />
-          <RuntimeRow
-            label={r.coderRuntime}
-            hint={r.coderRuntimeDesc}
-            runtime={s.coderRuntime}
-            selectClass={selectClass}
-            defaultLabel={r.runtimeDefault}
-            useDefaultLabel={r.modelUseDefault}
-            onChange={(rt) => void updateSettings({ coderRuntime: rt })}
-            onClear={() => void updateSettings({ coderRuntime: undefined })}
-          />
-          <RuntimeRow
-            label={r.reviewerRuntime}
-            hint={r.reviewerRuntimeDesc}
-            runtime={s.reviewerRuntime}
-            selectClass={selectClass}
-            defaultLabel={r.runtimeDefault}
-            useDefaultLabel={r.modelUseDefault}
-            onChange={(rt) => void updateSettings({ reviewerRuntime: rt })}
-            onClear={() => void updateSettings({ reviewerRuntime: undefined })}
+            defaultLabel={r.agentDefault}
+            onChange={(a) => void updateSettings({ reviewerAgent: a })}
+            onClear={() => void updateSettings({ reviewerAgent: undefined })}
           />
         </div>
 
@@ -248,83 +213,42 @@ export function OrchestrationSection({ defaultModel }: { defaultModel: string })
   );
 }
 
-// One per-role model row: the picker reads the inherited value when the role has no
-// override, with a muted "Default model" label; an override swaps it for a "Use default"
-// clear. Mirrors the per-repo → global inherit pattern in repo-model-controls.tsx (#125).
-function ModelRow({
+// One per-role agent row: the pair reads the inherited default when the role has no
+// pair of its own, with a muted "Default agent" label; an override swaps it for a
+// "Use default" clear. The controls are stacked so the two selects get the full
+// card width. Mirrors the per-repo → global inherit pattern in repo-model-controls.tsx.
+function AgentPairRow({
   label,
   hint,
-  model,
-  inheritModel,
+  pair,
+  inheritPair,
+  claudeFloor,
   selectClass,
   defaultLabel,
-  useDefaultLabel,
   onChange,
   onClear,
 }: {
   label: string;
   hint: string;
-  model: string | undefined;
-  inheritModel: string;
+  pair: AgentSelection | undefined;
+  inheritPair: AgentSelection;
+  claudeFloor: string;
   selectClass: string;
   defaultLabel: string;
-  useDefaultLabel: string;
-  onChange: (model: string) => void;
+  onChange: (pair: AgentSelection) => void;
   onClear: () => void;
 }) {
   return (
-    <Row label={label} hint={hint}>
-      <div className="flex items-center gap-2">
-        <ModelSelect value={model ?? inheritModel} onChange={onChange} className={selectClass} />
-        {model === undefined ? (
-          <span className="text-[11px] text-muted/50">{defaultLabel}</span>
-        ) : (
-          <button onClick={onClear} className="text-[11px] text-accent hover:underline">
-            {useDefaultLabel}
-          </button>
-        )}
-      </div>
-    </Row>
-  );
-}
-
-// Per-role runtime row (#240), the ModelRow twin. The inherited value is the
-// constant floor, not a setting, so there is no defaultRuntime prop to pass in.
-function RuntimeRow({
-  label,
-  hint,
-  runtime,
-  selectClass,
-  defaultLabel,
-  useDefaultLabel,
-  onChange,
-  onClear,
-}: {
-  label: string;
-  hint: string;
-  runtime: AgentRuntimeId | undefined;
-  selectClass: string;
-  defaultLabel: string;
-  useDefaultLabel: string;
-  onChange: (runtime: AgentRuntimeId) => void;
-  onClear: () => void;
-}) {
-  return (
-    <Row label={label} hint={hint}>
-      <div className="flex items-center gap-2">
-        <RuntimeSelect
-          value={runtime ?? DEFAULT_AGENT_RUNTIME}
-          onChange={onChange}
-          className={selectClass}
-        />
-        {runtime === undefined ? (
-          <span className="text-[11px] text-muted/50">{defaultLabel}</span>
-        ) : (
-          <button onClick={onClear} className="text-[11px] text-accent hover:underline">
-            {useDefaultLabel}
-          </button>
-        )}
-      </div>
+    <Row label={label} hint={hint} stack>
+      <AgentPairSelect
+        value={pair ?? inheritPair}
+        inherited={pair === undefined}
+        inheritedLabel={defaultLabel}
+        claudeFloor={claudeFloor}
+        selectClass={selectClass}
+        onChange={onChange}
+        onClear={onClear}
+      />
     </Row>
   );
 }

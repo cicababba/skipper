@@ -14,6 +14,19 @@ export type AgentRuntimeId = "claude-cli" | "codex-cli" | "copilot-cli" | "gemin
 export const DEFAULT_AGENT_RUNTIME: AgentRuntimeId = "claude-cli";
 
 /**
+ * An agent selection: which CLI runs a role and, optionally, which model. The pair
+ * is atomic — a runtime never resolves against another level's model, so
+ * "Gemini + Claude Opus" is unrepresentable.
+ *
+ * model absent = the runtime's default: claude-cli falls back to the
+ * llm.claudeModel floor, every other CLI runs on its own configured model.
+ */
+export interface AgentSelection {
+  runtime: AgentRuntimeId;
+  model?: string;
+}
+
+/**
  * The runtime that minted a persisted session (#238). Legacy manifests predate
  * the field, so an absent stamp reads as "claude-cli" (the only runtime before
  * this seam). A session whose minting runtime differs from the active one is not

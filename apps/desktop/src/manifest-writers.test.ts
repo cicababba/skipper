@@ -112,7 +112,7 @@ interface Harness {
 
 function makeHarness(opts: { autoCoding?: GateMode; items?: TrackedItem[] } = {}): Harness {
   const manifest: OrchestratorManifest = {
-    version: 2,
+    version: 3,
     settings: { ...DEFAULT_ORCHESTRATOR_SETTINGS },
     items: {},
     parked: {},
