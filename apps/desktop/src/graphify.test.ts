@@ -30,15 +30,20 @@ function uniqueRepo(): RepoRef {
 }
 
 async function settle(): Promise<void> {
-  for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+  // setTimeout (not setImmediate): give any would-be kick's threadpool fs work
+  // wall-clock time to surface before asserting it did NOT happen.
+  for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 1));
 }
 
 /** Wait until a background kick (marked running synchronously) finishes, so its
- *  fs writes don't race afterEach's rm. */
-async function waitIdle(repo: RepoRef): Promise<void> {
-  for (let i = 0; i < 500; i++) {
-    if (!isGraphifyRunning(repoKey(repo))) return;
-    await new Promise((r) => setImmediate(r));
+ *  fs writes don't race afterEach's rm. Wall-clock budget: the kick does real fs
+ *  I/O on the libuv threadpool, so event-loop turns are not a valid unit. */
+async function waitIdle(repo: RepoRef, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (isGraphifyRunning(repoKey(repo))) {
+    if (Date.now() > deadline)
+      throw new Error("waitIdle: graphify kick still running after timeout");
+    await new Promise((r) => setTimeout(r, 5));
   }
 }
 
