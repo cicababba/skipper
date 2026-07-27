@@ -51,6 +51,30 @@ const RECORDS = [
   }),
 ];
 
+/** One degree-4 hub file, one degree-2 tail file. */
+const HUB_RECORDS = [
+  record("github:1", ["src/hub.ts", "src/tail.ts"]),
+  record("github:2", ["src/hub.ts", "src/tail.ts"]),
+  record("github:3", ["src/hub.ts"]),
+  record("github:4", ["src/hub.ts"]),
+];
+
+const scaleOf = (container: HTMLElement) =>
+  Number(
+    /scale\(([-\d.e]+)\)/.exec(container.querySelector("svg > g")?.getAttribute("transform") ?? "")
+      ?.[1],
+  );
+
+const translateOf = (container: HTMLElement) => {
+  const match = /translate\(([-\d.e]+) ([-\d.e]+)\)/.exec(
+    container.querySelector("svg > g")?.getAttribute("transform") ?? "",
+  );
+  return { x: Number(match?.[1]), y: Number(match?.[2]) };
+};
+
+const textsOf = (container: HTMLElement) =>
+  [...container.querySelectorAll("text")].map((node) => node.textContent);
+
 const hit = (id: string): MemoryHit => ({
   id,
   ref: `${id}.json`,
@@ -73,7 +97,7 @@ function renderGraph(props: Partial<React.ComponentProps<typeof MemoryGraphView>
   const onOpen = vi.fn();
   const onDelete = vi.fn();
   const onChanged = vi.fn();
-  render(
+  const { container } = render(
     <MemoryGraphView
       records={props.records ?? RECORDS}
       hits={props.hits ?? null}
@@ -85,7 +109,7 @@ function renderGraph(props: Partial<React.ComponentProps<typeof MemoryGraphView>
       onChanged={props.onChanged ?? onChanged}
     />,
   );
-  return { onFileFilter, onOpen, onDelete, onChanged };
+  return { container, onFileFilter, onOpen, onDelete, onChanged };
 }
 
 afterEach(() => {
@@ -104,9 +128,10 @@ describe("MemoryGraphView — rendering", () => {
     expect(screen.getByLabelText("src/shared.ts")).toBeTruthy();
   });
 
-  it("labels file nodes with the basename", () => {
+  it("labels a file node with its basename on hover", () => {
     installSkipper();
     renderGraph();
+    fireEvent.mouseOver(screen.getByLabelText("src/shared.ts"));
     expect(screen.getByText("shared.ts")).toBeTruthy();
   });
 
@@ -144,6 +169,133 @@ describe("MemoryGraphView — rendering", () => {
 
     expect(screen.getByLabelText("title github:1").getAttribute("class")).not.toContain("opacity-25");
     expect(screen.getByLabelText("title github:2").getAttribute("class")).toContain("opacity-25");
+  });
+});
+
+describe("MemoryGraphView — zoom and pan", () => {
+  it("renders the zoom controls", () => {
+    installSkipper();
+    renderGraph();
+
+    expect(screen.getByLabelText("Zoom in")).toBeTruthy();
+    expect(screen.getByLabelText("Zoom out")).toBeTruthy();
+    expect(screen.getByLabelText("Fit view")).toBeTruthy();
+  });
+
+  it("puts the whole graph in one transform group fitted to the canvas", () => {
+    installSkipper();
+    const { container } = renderGraph();
+
+    expect(container.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 800 480");
+    expect(scaleOf(container)).toBeGreaterThan(0);
+  });
+
+  it("zooms in, out and back to the fitted view", () => {
+    installSkipper();
+    const { container } = renderGraph();
+    const fitted = scaleOf(container);
+
+    fireEvent.click(screen.getByLabelText("Zoom in"));
+    const zoomedIn = scaleOf(container);
+    expect(zoomedIn).toBeGreaterThan(fitted);
+
+    fireEvent.click(screen.getByLabelText("Zoom out"));
+    expect(scaleOf(container)).toBeLessThan(zoomedIn);
+
+    fireEvent.click(screen.getByLabelText("Zoom in"));
+    fireEvent.click(screen.getByLabelText("Fit view"));
+    expect(scaleOf(container)).toBeCloseTo(fitted, 6);
+  });
+
+  it("pans on drag and swallows the click that ends it", () => {
+    installSkipper();
+    const { container, onFileFilter } = renderGraph();
+    const svg = container.querySelector("svg") as SVGSVGElement;
+    const before = translateOf(container);
+
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(svg, { pointerId: 1, clientX: 160, clientY: 130 });
+    const after = translateOf(container);
+    expect(after.x).toBeCloseTo(before.x + 60, 6);
+    expect(after.y).toBeCloseTo(before.y + 30, 6);
+
+    fireEvent.pointerUp(svg, { pointerId: 1 });
+    fireEvent.click(screen.getByLabelText("src/shared.ts"));
+    expect(onFileFilter).not.toHaveBeenCalled();
+  });
+
+  it("ignores pointer movement below the drag threshold", () => {
+    installSkipper();
+    const { container, onFileFilter } = renderGraph();
+    const svg = container.querySelector("svg") as SVGSVGElement;
+    const before = translateOf(container);
+
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(svg, { pointerId: 1, clientX: 101, clientY: 101 });
+    fireEvent.pointerUp(svg, { pointerId: 1 });
+
+    expect(translateOf(container)).toEqual(before);
+    fireEvent.click(screen.getByLabelText("src/shared.ts"));
+    expect(onFileFilter).toHaveBeenCalledWith("src/shared.ts");
+  });
+});
+
+describe("MemoryGraphView — hover ego-network", () => {
+  it("fades everything outside the hovered node's neighbourhood", () => {
+    installSkipper();
+    renderGraph();
+
+    fireEvent.mouseOver(screen.getByLabelText("title github:1"));
+    expect(screen.getByLabelText("title github:2").getAttribute("class")).toContain("opacity-25");
+    expect(screen.getByLabelText("title note:a").getAttribute("class")).toContain("opacity-25");
+    expect(screen.getByLabelText("src/shared.ts").getAttribute("class")).not.toContain(
+      "opacity-25",
+    );
+    expect(screen.getByLabelText("title github:1").getAttribute("class")).not.toContain(
+      "opacity-25",
+    );
+  });
+
+  it("restores the graph when the pointer leaves", () => {
+    installSkipper();
+    renderGraph();
+
+    const node = screen.getByLabelText("title github:1");
+    fireEvent.mouseOver(node);
+    fireEvent.mouseOut(node);
+    expect(screen.getByLabelText("title github:2").getAttribute("class")).not.toContain(
+      "opacity-25",
+    );
+  });
+
+  it("names the hovered memory on the canvas", () => {
+    installSkipper();
+    const { container } = renderGraph();
+
+    expect(textsOf(container)).not.toContain("title github:1");
+    fireEvent.mouseOver(screen.getByLabelText("title github:1"));
+    expect(textsOf(container)).toContain("title github:1");
+  });
+});
+
+describe("MemoryGraphView — file labels", () => {
+  it("labels hub files but not the tail while zoomed out", () => {
+    installSkipper();
+    const { container } = renderGraph({ records: HUB_RECORDS });
+
+    fireEvent.click(screen.getByLabelText("Zoom out"));
+    expect(scaleOf(container)).toBeLessThan(1.5);
+    expect(textsOf(container)).toContain("hub.ts");
+    expect(textsOf(container)).not.toContain("tail.ts");
+  });
+
+  it("labels a tail file on hover", () => {
+    installSkipper();
+    const { container } = renderGraph({ records: HUB_RECORDS });
+
+    fireEvent.click(screen.getByLabelText("Zoom out"));
+    fireEvent.mouseOver(screen.getByLabelText("src/tail.ts"));
+    expect(textsOf(container)).toContain("tail.ts");
   });
 });
 

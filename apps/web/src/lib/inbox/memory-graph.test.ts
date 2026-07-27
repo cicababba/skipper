@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { MemoryHit, SolutionRecord, StoredPlan } from "@skipper/shared";
-import { basename, buildMemoryGraph, dimmedNodeIds, sentimentOf } from "./memory-graph";
+import {
+  basename,
+  buildMemoryGraph,
+  dimmedNodeIds,
+  egoIds,
+  fileRadius,
+  sentimentOf,
+  showFileLabel,
+} from "./memory-graph";
 
 const REPO = { owner: "acme", name: "rocket" };
 
@@ -145,6 +153,69 @@ describe("buildMemoryGraph — file threshold", () => {
       "file:src/a.ts",
       "file:src/z.ts",
     ]);
+  });
+});
+
+describe("fileRadius", () => {
+  it("grows with the degree", () => {
+    expect(fileRadius(4)).toBeGreaterThan(fileRadius(2));
+    expect(fileRadius(9)).toBeGreaterThan(fileRadius(4));
+  });
+
+  it("grows sublinearly", () => {
+    expect(fileRadius(9) - fileRadius(8)).toBeLessThan(fileRadius(3) - fileRadius(2));
+  });
+
+  it("caps at 10", () => {
+    expect(fileRadius(1000)).toBe(10);
+  });
+});
+
+describe("showFileLabel", () => {
+  it("labels hub files at any zoom", () => {
+    expect(showFileLabel(4, 0.5, false, false)).toBe(true);
+  });
+
+  it("hides tail files when zoomed out", () => {
+    expect(showFileLabel(3, 1, false, false)).toBe(false);
+    expect(showFileLabel(2, 0.4, false, false)).toBe(false);
+  });
+
+  it("labels everything once zoomed in", () => {
+    expect(showFileLabel(2, 1.5, false, false)).toBe(true);
+  });
+
+  it("labels the hovered and the active file whatever the zoom", () => {
+    expect(showFileLabel(2, 0.3, true, false)).toBe(true);
+    expect(showFileLabel(2, 0.3, false, true)).toBe(true);
+  });
+});
+
+describe("egoIds", () => {
+  const graph = buildMemoryGraph([
+    record("github:1", ["src/shared.ts"]),
+    record("github:2", ["src/shared.ts", "src/other.ts"]),
+    record("github:3", ["src/other.ts"]),
+  ]);
+
+  it("collects a memory node and the files it touches", () => {
+    expect([...egoIds(graph, "github:2")].sort()).toEqual([
+      "file:src/other.ts",
+      "file:src/shared.ts",
+      "github:2",
+    ]);
+  });
+
+  it("collects a file node and the memories touching it", () => {
+    expect([...egoIds(graph, "file:src/shared.ts")].sort()).toEqual([
+      "file:src/shared.ts",
+      "github:1",
+      "github:2",
+    ]);
+  });
+
+  it("returns just the node itself when it has no links", () => {
+    expect([...egoIds(graph, "nope")]).toEqual(["nope"]);
   });
 });
 

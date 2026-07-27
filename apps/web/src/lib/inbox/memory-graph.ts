@@ -93,6 +93,33 @@ export function buildMemoryGraph(records: SolutionRecord[]): MemoryGraph {
   return { nodes, links };
 }
 
+/** Hubs read as hubs: radius grows with degree, capped so it stays a dot. */
+export function fileRadius(degree: number): number {
+  return Math.min(3 + 1.5 * Math.sqrt(degree), 10);
+}
+
+/** Below this degree a file only gets its label on hover, or once zoomed in. */
+export const LABEL_DEGREE = 4;
+
+export function showFileLabel(
+  degree: number,
+  k: number,
+  hovered: boolean,
+  active: boolean,
+): boolean {
+  return hovered || active || degree >= LABEL_DEGREE || k >= 1.5;
+}
+
+/** A node plus its direct neighbours — the hover highlight set. */
+export function egoIds(graph: MemoryGraph, nodeId: string): Set<string> {
+  const ego = new Set<string>([nodeId]);
+  for (const link of graph.links) {
+    if (link.source === nodeId) ego.add(link.target);
+    else if (link.target === nodeId) ego.add(link.source);
+  }
+  return ego;
+}
+
 /**
  * Ids to render dimmed rather than hidden: with a search or a file filter
  * active, everything outside the match keeps its position so the shape of the

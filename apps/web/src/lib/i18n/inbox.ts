@@ -530,6 +530,9 @@ const en = {
       viewList: "List view",
       viewGraph: "Graph view",
       openRecord: "Open",
+      zoomIn: "Zoom in",
+      zoomOut: "Zoom out",
+      zoomFit: "Fit view",
     },
   },
 };
@@ -1061,6 +1064,9 @@ const it: typeof en = {
       viewList: "Vista elenco",
       viewGraph: "Vista grafo",
       openRecord: "Apri",
+      zoomIn: "Ingrandisci",
+      zoomOut: "Riduci",
+      zoomFit: "Adatta alla vista",
     },
   },
 };
@@ -1594,6 +1600,9 @@ const fr: typeof en = {
       viewList: "Vue liste",
       viewGraph: "Vue graphe",
       openRecord: "Ouvrir",
+      zoomIn: "Zoom avant",
+      zoomOut: "Zoom arrière",
+      zoomFit: "Ajuster la vue",
     },
   },
 };
@@ -2126,6 +2135,9 @@ const es: typeof en = {
       viewList: "Vista de lista",
       viewGraph: "Vista de grafo",
       openRecord: "Abrir",
+      zoomIn: "Acercar",
+      zoomOut: "Alejar",
+      zoomFit: "Ajustar vista",
     },
   },
 };
