@@ -188,6 +188,8 @@ export function WorktreeDetailView() {
               phase="coding"
               refs={item.usedMemory?.coding}
               title={t.inbox.plan.memories.consulted}
+              repo={item.repo}
+              queryText={item.title}
             />
           </div>
 

@@ -8,8 +8,13 @@ export function itemHref(id: string, from?: string | null): string {
   return `/inbox/item?${params.toString()}`;
 }
 
-export function repoHref(repo: { owner: string; name: string }): string {
+export function repoHref(
+  repo: { owner: string; name: string },
+  opts?: { tab?: "memory"; mq?: string },
+): string {
   const params = new URLSearchParams({ owner: repo.owner, name: repo.name });
+  if (opts?.tab) params.set("tab", opts.tab);
+  if (opts?.mq) params.set("mq", opts.mq);
   return `/repos/repo?${params.toString()}`;
 }
 

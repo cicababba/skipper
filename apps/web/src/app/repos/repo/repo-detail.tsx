@@ -2,18 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ExternalLink, FolderGit2, Settings as SettingsIcon } from "lucide-react";
 import type { RepoSettingsRow } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { Section } from "@/app/inbox/item/plan-sections";
 import { InboxView } from "@/app/inbox/inbox-view";
-import { repoSettingsHref } from "@/lib/inbox/nav";
+import { repoHref, repoSettingsHref } from "@/lib/inbox/nav";
 import { MemoryBrowser } from "./memory-browser";
 import { useRepoParams } from "./use-repo-params";
 
 export function RepoDetailView() {
   const { t } = useT();
-  const { owner, name, key } = useRepoParams();
+  const router = useRouter();
+  const { owner, name, key, tab, mq } = useRepoParams();
 
   const [rows, setRows] = useState<RepoSettingsRow[]>([]);
 
@@ -53,13 +55,32 @@ export function RepoDetailView() {
         </Link>
       </div>
 
-      {/* Items — the repo's dedicated inbox (table + sticky rail, scoped). */}
-      <InboxView repo={key} />
+      <div className="flex items-center gap-1 border-b border-border">
+        {(["inbox", "memory"] as const).map((tk) => (
+          <button
+            key={tk}
+            onClick={() =>
+              router.replace(repoHref({ owner, name }, tk === "memory" ? { tab: tk } : undefined))
+            }
+            className={`px-3 py-1.5 text-[12px] font-medium rounded-t-md border-b-2 transition-colors ${
+              tab === tk
+                ? "border-accent text-foreground"
+                : "border-transparent text-muted hover:text-foreground"
+            }`}
+          >
+            {rp.tabs[tk]}
+          </button>
+        ))}
+      </div>
 
-      {/* Solutions memory browser */}
-      <Section title={rp.memory.title} editable={false} editing={false}>
-        <MemoryBrowser repo={repo} />
-      </Section>
+      {tab === "memory" ? (
+        <Section title={rp.memory.title} editable={false} editing={false}>
+          <MemoryBrowser repo={repo} initialQuery={mq} />
+        </Section>
+      ) : (
+        /* Items — the repo's dedicated inbox (table + sticky rail, scoped). */
+        <InboxView repo={key} />
+      )}
     </div>
   );
 }

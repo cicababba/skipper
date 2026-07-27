@@ -1,3 +1,4 @@
+import { dirname, join } from "node:path";
 import { ipcMain, type BrowserWindow } from "electron";
 import {
   issueSourceForAuthProvider,
@@ -96,6 +97,7 @@ import { applySettingsPatch, applyRepoSettingsPatch } from "./settings-validator
 import { shouldSkipPoll, selectPollCursor, pollFailurePatch } from "./poll-policy";
 import { makeManifestWriters } from "./manifest-writers";
 import { registerMemoryHandlers } from "./memory-ipc";
+import { registerEmbedderHost } from "./embedder-host";
 import { registerWorktreeDiffHandlers } from "./worktree-diff-ipc";
 import { readLlmSettings, readLlmSettingsSync, buildLlm } from "./llm-settings";
 import {
@@ -944,6 +946,14 @@ export function initOrchestrator(
   getWindow = windowGetter;
   deps = orchestratorDeps;
 
+  // Must happen here, not in main.ts: @skipper/core is bundled into
+  // orchestrator.cjs, so a registration from outside this bundle would land on
+  // a different module copy and leave the embedder unregistered (#255).
+  registerEmbedderHost({
+    cliBundlePath: orchestratorDeps.cliBundlePath,
+    hfCacheDir: join(dirname(orchestratorDeps.memoryDir), "hf-cache"),
+  });
+
   // Crash safety (#227): the in-flight generation set never survives a restart,
   // so any doc left "generating" by a crash would gate planning forever. Flip
   // them to "failed" before anything reads a doc.
@@ -1678,6 +1688,11 @@ export function initOrchestrator(
     manifestFilePath: orchestratorDeps.manifestFilePath,
     ensureManifest,
     broadcast,
+    localPathFor: async (repo) => {
+      await ensureRepoLinks();
+      return repoPathFor(repo);
+    },
+    runGit: (cwd, args) => runGit(cwd, args),
   });
   registerWorktreeDiffHandlers({ ipcMain, ensureManifest });
   // Open the draft PR from human-review, or push a fix round's updates (#11).

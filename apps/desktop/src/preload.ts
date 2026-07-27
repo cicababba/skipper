@@ -20,6 +20,7 @@ import type {
   FollowCandidatesResult,
   ListRepoBranchesResult,
   ListReposResult,
+  MemoryHit,
   MemoryPhase,
   OrchestratorSettings,
   OrchestratorState,
@@ -361,6 +362,32 @@ const api = {
       ipcRenderer.invoke("skipper:memory:feedback", itemId, phase, id, vote),
     delete: (id: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("skipper:memory:delete", id),
+    search: (
+      repo: RepoRef,
+      query: string,
+      k?: number,
+    ): Promise<{ ok: true; hits: MemoryHit[] } | { ok: false; error: string }> =>
+      ipcRenderer.invoke("skipper:memory:search", repo, query, k),
+    curate: (id: string, vote: "up" | "down" | null): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("skipper:memory:curate", id, vote),
+    createNote: (
+      repo: RepoRef,
+      body: string,
+      files?: string[],
+      title?: string,
+    ): Promise<{ ok: true; id: string } | { ok: false; error: string }> =>
+      ipcRenderer.invoke("skipper:memory:createNote", repo, body, files, title),
+    updateNote: (
+      id: string,
+      body: string,
+      files?: string[],
+      title?: string,
+    ): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("skipper:memory:updateNote", id, body, files, title),
+    repoFiles: (
+      repo: RepoRef,
+    ): Promise<{ ok: true; files: string[] } | { ok: false; error: string }> =>
+      ipcRenderer.invoke("skipper:memory:repoFiles", repo),
   },
 
   // Markdown export (issue #216): save an artifact/dossier to a user-chosen .md file.

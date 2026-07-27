@@ -481,8 +481,9 @@ memory
         return;
       }
       for (const hit of hits) {
-        console.log(`${hit.score.toFixed(3)}  ${displayKey(hit.issueKey)} ${hit.title}`);
-        console.log(`       id ${hit.id} · PR #${hit.pr.number} · captured ${hit.capturedAt}`);
+        console.log(`${hit.score.toFixed(3)}  ${displayKey(hit.issueKey) || "(note)"} ${hit.title}`);
+        const origin = hit.pr ? `PR #${hit.pr.number}` : "note";
+        console.log(`       id ${hit.id} · ${origin} · captured ${hit.capturedAt}`);
         if (hit.planSummary) console.log(`       ${hit.planSummary.slice(0, 200)}`);
         if (hit.filesTouched.length > 0) {
           console.log(`       files: ${hit.filesTouched.slice(0, 8).join(", ")}`);

@@ -33,6 +33,36 @@ describe("repoHref", () => {
       "/repos/repo?owner=a+c&name=w%26t",
     );
   });
+
+  it("stays unchanged when opts is empty or omitted", () => {
+    const bare = "/repos/repo?owner=acme&name=widgets";
+    expect(repoHref({ owner: "acme", name: "widgets" }, {})).toBe(bare);
+    expect(repoHref({ owner: "acme", name: "widgets" }, undefined)).toBe(bare);
+  });
+
+  it("appends the memory tab", () => {
+    expect(repoHref({ owner: "acme", name: "widgets" }, { tab: "memory" })).toBe(
+      "/repos/repo?owner=acme&name=widgets&tab=memory",
+    );
+  });
+
+  it("appends an encoded prefilled query", () => {
+    expect(
+      repoHref({ owner: "acme", name: "widgets" }, { tab: "memory", mq: "oauth & pty resize?" }),
+    ).toBe("/repos/repo?owner=acme&name=widgets&tab=memory&mq=oauth+%26+pty+resize%3F");
+  });
+
+  it("omits an empty query", () => {
+    expect(repoHref({ owner: "acme", name: "widgets" }, { tab: "memory", mq: "" })).toBe(
+      "/repos/repo?owner=acme&name=widgets&tab=memory",
+    );
+  });
+
+  it("carries a query without a tab", () => {
+    expect(repoHref({ owner: "acme", name: "widgets" }, { mq: "oauth" })).toBe(
+      "/repos/repo?owner=acme&name=widgets&mq=oauth",
+    );
+  });
 });
 
 describe("repoSettingsHref", () => {

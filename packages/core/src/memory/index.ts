@@ -11,8 +11,9 @@ export {
   deleteSolutionRecord,
 } from "./store";
 export type { SolutionRecordEntry } from "./store";
-export { buildEmbedText, indexSolutionRecord, reconcileMemoryIndex } from "./indexer";
+export { buildEmbedText, indexSolutionRecord, indexOneRecord, reconcileMemoryIndex } from "./indexer";
 export type { ReconcileResult } from "./indexer";
+export { createNoteRecord } from "./notes";
 export { searchMemory } from "./search";
 export type { MemoryHit, SearchMemoryOptions } from "./search";
 export { recencyWeight, feedbackWeight, applyFeedbackVote } from "./ranking";
