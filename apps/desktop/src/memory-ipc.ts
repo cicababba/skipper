@@ -184,6 +184,23 @@ export function registerMemoryHandlers(deps: MemoryIpcDeps): void {
     },
   );
 
+  // "Keep" from the review queue (#256): the record stops being a prune
+  // candidate for 90 days. Signals stay on the record — only the timer moves.
+  ipcMain.handle("skipper:memory:dismissReview", async (_e, id: string) => {
+    const record = await readSolutionRecord(deps.memoryDir, memoryFileName(id));
+    if (!record) return { ok: false as const, error: `no memory record for id "${id}"` };
+    try {
+      await writeSolutionRecord(deps.memoryDir, {
+        ...record,
+        reviewDismissedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      return { ok: false as const, error: errorMessage(err) };
+    }
+    broadcast();
+    return { ok: true as const };
+  });
+
   // Backfill lessons for a repo's captured solutions (#256): every record that
   // predates distillation, one run at a time so a large memory doesn't spawn a
   // fleet of agent processes. Each success is broadcast as it lands, so the tab

@@ -16,6 +16,7 @@ import {
   Maximize,
   Minus,
   Plus,
+  ShieldCheck,
   ThumbsDown,
   ThumbsUp,
   Trash2,
@@ -40,6 +41,7 @@ import {
   type GraphNode,
   type Sentiment,
 } from "@/lib/inbox/memory-graph";
+import { StalenessBadge } from "./memory-badges";
 
 const TICKS = 300;
 const MEMORY_R = 9;
@@ -67,18 +69,23 @@ export function MemoryGraphView({
   hits,
   fileFilter,
   busy,
+  candidateIds,
   onFileFilter,
   onOpen,
   onDelete,
+  onKeep,
   onChanged,
 }: {
   records: SolutionRecord[];
   hits: MemoryHit[] | null;
   fileFilter: string | null;
   busy: boolean;
+  /** Prune candidates (#256) — highlighted with a ring on the canvas. */
+  candidateIds: Set<string>;
   onFileFilter: (file: string | null) => void;
   onOpen: (id: string) => void;
   onDelete: (record: SolutionRecord) => void;
+  onKeep: (record: SolutionRecord) => void;
   onChanged: () => void;
 }) {
   const { t } = useT();
@@ -314,6 +321,7 @@ export function MemoryGraphView({
                 );
               }
               const isSelected = selected === node.id;
+              const isCandidate = candidateIds.has(node.id);
               return (
                 <g
                   key={node.id}
@@ -322,11 +330,23 @@ export function MemoryGraphView({
                   onClick={onNodeClick(() => setSelected(node.id))}
                   onMouseEnter={() => setHovered(node.id)}
                   onMouseLeave={() => setHovered(null)}
-                  className={`cursor-pointer ${SENTIMENT_CLASS[node.sentiment]} ${
-                    faded ? "opacity-25" : ""
-                  }`}
+                  className={`cursor-pointer ${
+                    node.stale ? "text-muted/40" : SENTIMENT_CLASS[node.sentiment]
+                  } ${faded ? "opacity-25" : ""}`}
                 >
                   <title>{node.label}</title>
+                  {isCandidate && (
+                    <circle
+                      cx={x}
+                      cy={y}
+                      r={MEMORY_R + 4}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                      strokeDasharray="3 2"
+                      className="text-warning"
+                    />
+                  )}
                   {node.kind === "note" ? (
                     <rect
                       x={x - MEMORY_R}
@@ -386,9 +406,11 @@ export function MemoryGraphView({
           record={selectedRecord}
           busy={busy}
           voting={voting}
+          isCandidate={candidateIds.has(selectedRecord.itemId)}
           onClose={() => setSelected(null)}
           onOpen={() => onOpen(selectedRecord.itemId)}
           onDelete={() => onDelete(selectedRecord)}
+          onKeep={() => onKeep(selectedRecord)}
           onVote={(kind) => void curate(selectedRecord, kind)}
         />
       )}
@@ -425,23 +447,28 @@ function GraphSidePanel({
   record,
   busy,
   voting,
+  isCandidate,
   onClose,
   onOpen,
   onDelete,
+  onKeep,
   onVote,
 }: {
   record: SolutionRecord;
   busy: boolean;
   voting: boolean;
+  isCandidate: boolean;
   onClose: () => void;
   onOpen: () => void;
   onDelete: () => void;
+  onKeep: () => void;
   onVote: (kind: "up" | "down") => void;
 }) {
   const { t } = useT();
   const m = t.inbox.repoPage.memory;
   const feedback = record.feedback ?? { up: 0, down: 0 };
-  const snippet = record.kind === "note" ? record.note?.body : record.plan?.plan.summary;
+  const snippet =
+    record.kind === "note" ? record.note?.body : (record.lesson ?? record.plan?.plan.summary);
 
   return (
     <div className="w-[280px] shrink-0 space-y-3 rounded-lg border border-border p-3">
@@ -455,6 +482,8 @@ function GraphSidePanel({
           <X size={13} />
         </button>
       </div>
+
+      <StalenessBadge record={record} />
 
       {snippet && <p className="text-[12px] text-muted/80 line-clamp-6">{snippet}</p>}
 
@@ -487,6 +516,17 @@ function GraphSidePanel({
           <ExternalLink size={12} />
           {m.openRecord}
         </button>
+        {isCandidate && (
+          <button
+            onClick={onKeep}
+            disabled={busy}
+            title={m.keepHint}
+            className="flex items-center gap-1.5 text-[12px] px-2 py-1 rounded-md border border-border text-muted hover:text-foreground transition-colors disabled:opacity-40"
+          >
+            <ShieldCheck size={12} />
+            {m.keep}
+          </button>
+        )}
         <button
           onClick={onDelete}
           disabled={busy}

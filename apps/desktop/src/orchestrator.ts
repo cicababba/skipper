@@ -17,6 +17,7 @@ import {
   codeHostFor,
   codeHostForProvider,
   resolveGate,
+  reconcileMemoryIndex,
   generateRepoInstructions,
   DEFAULT_ORCHESTRATOR_SETTINGS,
   IssuePlanSchema,
@@ -956,6 +957,11 @@ export function initOrchestrator(
     cliBundlePath: orchestratorDeps.cliBundlePath,
     hfCacheDir: join(dirname(orchestratorDeps.memoryDir), "hf-cache"),
   });
+  // Strictly after the embedder registration (#256): records captured or deleted
+  // while the app was closed leave the vector index out of line with the files.
+  void reconcileMemoryIndex(orchestratorDeps.memoryDir).catch((err) =>
+    console.warn(`[memory] startup reconcile failed: ${String(err)}`),
+  );
 
   // Crash safety (#227): the in-flight generation set never survives a restart,
   // so any doc left "generating" by a crash would gate planning forever. Flip

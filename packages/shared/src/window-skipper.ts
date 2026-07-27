@@ -398,6 +398,8 @@ export interface WindowSkipper {
       title?: string,
     ) => Promise<{ ok: boolean; error?: string }>;
     repoFiles: (repo: RepoRef) => Promise<{ ok: true; files: string[] } | { ok: false; error: string }>;
+    /** "Keep" a prune candidate — hides it from the review queue for 90 days (#256). */
+    dismissReview: (id: string) => Promise<{ ok: boolean; error?: string }>;
     /** Backfill lessons for every lesson-less captured solution of a repo (#256). */
     distill: (
       repo: RepoRef,

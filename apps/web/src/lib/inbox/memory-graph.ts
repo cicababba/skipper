@@ -4,6 +4,7 @@
 
 import type { MemoryHit, SolutionRecord } from "@skipper/shared";
 import { recordFiles } from "./memory-filters";
+import { isStale } from "./memory-review";
 
 /** A file linking fewer memories than this adds noise, not structure. */
 const MIN_SHARED_MEMORIES = 2;
@@ -16,6 +17,8 @@ export interface MemoryNode {
   kind: "memory" | "note";
   label: string;
   sentiment: Sentiment;
+  /** Most of the record's files are gone at the base ref (#256). */
+  stale: boolean;
 }
 
 export interface FileNode {
@@ -75,6 +78,7 @@ export function buildMemoryGraph(records: SolutionRecord[]): MemoryGraph {
     kind: record.kind === "note" ? "note" : "memory",
     label: record.title,
     sentiment: sentimentOf(record.feedback),
+    stale: isStale(record),
   }));
   const links: GraphLink[] = [];
 

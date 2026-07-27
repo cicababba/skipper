@@ -388,6 +388,8 @@ const api = {
       repo: RepoRef,
     ): Promise<{ ok: true; files: string[] } | { ok: false; error: string }> =>
       ipcRenderer.invoke("skipper:memory:repoFiles", repo),
+    dismissReview: (id: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("skipper:memory:dismissReview", id),
     distill: (
       repo: RepoRef,
     ): Promise<

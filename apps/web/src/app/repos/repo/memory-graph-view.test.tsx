@@ -103,9 +103,11 @@ function renderGraph(props: Partial<React.ComponentProps<typeof MemoryGraphView>
       hits={props.hits ?? null}
       fileFilter={props.fileFilter ?? null}
       busy={props.busy ?? false}
+      candidateIds={props.candidateIds ?? new Set()}
       onFileFilter={props.onFileFilter ?? onFileFilter}
       onOpen={props.onOpen ?? onOpen}
       onDelete={props.onDelete ?? onDelete}
+      onKeep={props.onKeep ?? vi.fn()}
       onChanged={props.onChanged ?? onChanged}
     />,
   );
@@ -143,9 +145,11 @@ describe("MemoryGraphView — rendering", () => {
         hits={null}
         fileFilter={null}
         busy={false}
+        candidateIds={new Set()}
         onFileFilter={vi.fn()}
         onOpen={vi.fn()}
         onDelete={vi.fn()}
+        onKeep={vi.fn()}
         onChanged={vi.fn()}
       />,
     );

@@ -74,8 +74,10 @@ function renderView(record: SolutionRecord, props: Record<string, unknown> = {})
     <MemoryRecordView
       record={record}
       busy={false}
+      reasons={[]}
       onBack={onBack}
       onDelete={onDelete}
+      onKeep={vi.fn()}
       onChanged={onChanged}
       {...props}
     />,
