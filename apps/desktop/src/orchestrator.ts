@@ -17,6 +17,7 @@ import {
   codeHostFor,
   codeHostForProvider,
   resolveGate,
+  reconcileMemoryIndex,
   generateRepoInstructions,
   DEFAULT_ORCHESTRATOR_SETTINGS,
   IssuePlanSchema,
@@ -141,6 +142,8 @@ import { initPlanner, pokePlanner, cancelPlanningRun, killAllPlanningRuns } from
 import { initCoder, pokeCoder, cancelCodingRun, killAllCodingRuns } from "./coder";
 import { initReviewer, pokeReviewer } from "./reviewer";
 import { initShepherd, pokeShepherd, openOrPushPr } from "./shepherd";
+import { initDistiller, distillForRecord } from "./distiller";
+import { initStalenessSweep, sweepStaleness } from "./memory-staleness";
 import {
   captureWorktreeDiff,
   discardWorktree,
@@ -798,6 +801,7 @@ async function pollNow(ignoreBackoff = false): Promise<void> {
     pokeCoder();
     pokeReviewer();
     pokeShepherd();
+    void sweepStaleness();
   }
 }
 
@@ -953,6 +957,11 @@ export function initOrchestrator(
     cliBundlePath: orchestratorDeps.cliBundlePath,
     hfCacheDir: join(dirname(orchestratorDeps.memoryDir), "hf-cache"),
   });
+  // Strictly after the embedder registration (#256): records captured or deleted
+  // while the app was closed leave the vector index out of line with the files.
+  void reconcileMemoryIndex(orchestratorDeps.memoryDir).catch((err) =>
+    console.warn(`[memory] startup reconcile failed: ${String(err)}`),
+  );
 
   // Crash safety (#227): the in-flight generation set never survives a restart,
   // so any doc left "generating" by a crash would gate planning forever. Flip
@@ -1693,6 +1702,7 @@ export function initOrchestrator(
       return repoPathFor(repo);
     },
     runGit: (cwd, args) => runGit(cwd, args),
+    distillLesson: distillForRecord,
   });
   registerWorktreeDiffHandlers({ ipcMain, ensureManifest });
   // Open the draft PR from human-review, or push a fix round's updates (#11).
@@ -2077,6 +2087,21 @@ export function initOrchestrator(
     completeReentry,
     completeMergedCleanup,
     memoryDir: orchestratorDeps.memoryDir,
+    distillLesson: distillForRecord,
+  });
+
+  initDistiller({
+    getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
+    getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
+  });
+
+  initStalenessSweep({
+    memoryDir: orchestratorDeps.memoryDir,
+    getRepoLinks: async () => (await ensureRepoLinks()).repos,
+    runGit: (cwd, args) => runGit(cwd, args),
+    withRepoGitLock,
+    resolveBaseRef,
+    broadcast,
   });
 
   setTimeout(

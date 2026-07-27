@@ -1,11 +1,12 @@
 // Retrieval ranking weights — the one tunable place (#44).
-// Final score = cosine similarity × recency × feedback, applied post-search
-// at query time so a 👍 never requires reindexing.
+// Final score = cosine similarity × recency × feedback × staleness, applied
+// post-search at query time so a 👍 never requires reindexing.
 
 import type { SolutionRecord } from "@skipper/shared";
 
 const HALF_LIFE_DAYS = 180;
 const RECENCY_FLOOR = 0.3;
+const STALENESS_PENALTY = 0.5;
 
 /** Half-life decay with a floor so old solutions never vanish entirely. */
 export function recencyWeight(capturedAt: string, now: number = Date.now()): number {
@@ -20,6 +21,16 @@ export function feedbackWeight(feedback: SolutionRecord["feedback"]): number {
   if (!feedback) return 1;
   const { up, down } = feedback;
   return (2 * (up + 1)) / (up + down + 2);
+}
+
+/**
+ * Files gone at the base ref weigh a memory down without burying it (#256): a
+ * fully-stale record still scores half, because the reasoning can outlive the
+ * code it was written against. Never measured (undefined) = no penalty.
+ */
+export function stalenessWeight(staleness: number | undefined): number {
+  if (staleness == null) return 1;
+  return 1 - STALENESS_PENALTY * Math.min(1, Math.max(0, staleness));
 }
 
 /**

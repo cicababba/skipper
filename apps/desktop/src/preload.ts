@@ -388,6 +388,14 @@ const api = {
       repo: RepoRef,
     ): Promise<{ ok: true; files: string[] } | { ok: false; error: string }> =>
       ipcRenderer.invoke("skipper:memory:repoFiles", repo),
+    dismissReview: (id: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("skipper:memory:dismissReview", id),
+    distill: (
+      repo: RepoRef,
+    ): Promise<
+      | { ok: true; distilled: number; failed: number; remaining: number }
+      | { ok: false; error: string }
+    > => ipcRenderer.invoke("skipper:memory:distill", repo),
   },
 
   // Markdown export (issue #216): save an artifact/dossier to a user-chosen .md file.

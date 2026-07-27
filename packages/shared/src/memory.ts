@@ -14,7 +14,9 @@ export type MemoryPhase = "planning" | "coding";
  * capture fields (pr/outcome/plan/diff) — hence those being optional.
  */
 export interface SolutionRecord {
-  version: 1;
+  /** v2 (#256) adds the distilled lesson + the maintenance signals below. v1
+   *  files stay valid and are read as-is; any write normalizes them to 2. */
+  version: 1 | 2;
   itemId: string;
   repo: RepoRef;
   /** Work-item display key ("42" | "PROJ-123"); absent on pre-#71 files. */
@@ -39,6 +41,21 @@ export interface SolutionRecord {
   /** Direct curation vote from the memory browser (#255) — the idempotency
    * anchor for the aggregate counters, one per record (single-user app). */
   curationVote?: "up" | "down";
+  /** Distilled lesson (#256): problem + insight + gotchas, embedded with the record. */
+  lesson?: string;
+  /** ISO 8601 — the backfill idempotency marker. */
+  distilledAt?: string;
+  /** Times the record entered an agent run's top-k (written by the MCP serve subprocess). */
+  offeredCount?: number;
+  lastOfferedAt?: string;
+  /** Times an agent called get_memory on the record — the strong usage signal. */
+  fetchedCount?: number;
+  lastFetchedAt?: string;
+  /** 0–1 fraction of filesTouched missing at the repo's base ref; undefined = no data. */
+  staleness?: number;
+  stalenessCheckedAt?: string;
+  /** "Keep" from the review queue — hides the record from prune candidates for 90 days. */
+  reviewDismissedAt?: string;
 }
 
 /** One ranked result of a memory search. */
@@ -55,6 +72,8 @@ export interface MemoryHit {
   pr?: { number: number; url: string };
   kind?: "note";
   planSummary?: string;
+  /** Distilled lesson (#256) — the gist an agent should read before the plan. */
+  lesson?: string;
   filesTouched: string[];
   capturedAt: string;
   feedback?: SolutionRecord["feedback"];

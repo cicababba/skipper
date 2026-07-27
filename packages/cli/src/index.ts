@@ -10,10 +10,14 @@ import { createRequire } from "node:module";
 import {
   createProvider,
   createRuntime,
+  distillLesson,
   extractFromCommit,
+  indexOneRecord,
+  listSolutionRecords,
   reconcileMemoryIndex,
   registerTransformersLoader,
   searchMemory,
+  writeSolutionRecord,
   writePendingAtom,
   listPending,
   acceptAtom,
@@ -26,7 +30,8 @@ import {
   slugify,
 } from "@skipper/core";
 import type { AgentRuntime, LLMProviderInterface } from "@skipper/core";
-import { displayKey } from "@skipper/shared";
+import { displayKey, repoKey, resolveDefaultAgentPair } from "@skipper/shared";
+import type { OrchestratorSettings } from "@skipper/shared";
 import { readFile } from "node:fs/promises";
 import { saveSession, resumeSession } from "./session.js";
 import { serveMemory } from "./memory-serve.js";
@@ -132,6 +137,34 @@ function getLLM(): LLMProviderInterface {
  *  one — the non-null assertion is safe. */
 function getRuntime(): AgentRuntime {
   return createRuntime({ provider: "claude-cli", model: cliModel(), maxTurns: 5 })!;
+}
+
+/**
+ * The runtime the distiller rides (#256): the app's global defaultAgent pair,
+ * read from the orchestrator manifest so a CLI backfill uses the same agent the
+ * app would. An absent or unreadable manifest falls back to the claude-cli floor.
+ */
+function distillerRuntime(): AgentRuntime {
+  let settings: OrchestratorSettings | undefined;
+  try {
+    const p = resolve(resolveUserDataDir(), "orchestrator-manifest.json");
+    if (existsSync(p)) {
+      settings = (JSON.parse(readFileSync(p, "utf-8")) as { settings?: OrchestratorSettings })
+        .settings;
+    }
+  } catch {
+    /* unreadable manifest — the claude-cli floor below still distills */
+  }
+  const model = cliModel();
+  const pair = settings
+    ? resolveDefaultAgentPair(settings, model)
+    : { runtime: "claude-cli" as const, model };
+  return createRuntime({
+    provider: "claude-cli",
+    model: pair.model,
+    maxTurns: 1,
+    runtime: pair.runtime,
+  })!;
 }
 
 program
@@ -489,6 +522,55 @@ memory
           console.log(`       files: ${hit.filesTouched.slice(0, 8).join(", ")}`);
         }
       }
+    } catch (error) {
+      console.error(`✗ ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+  });
+
+memory
+  .command("distill")
+  .description("Distill the missing lessons of a repo's captured solutions (#256)")
+  .requiredOption("-r, --repo <owner/name>", "Repo scope")
+  .option("-n, --limit <n>", "Max records to distill in this run")
+  .action(async (options) => {
+    try {
+      ensureEmbedderRegistered();
+      const repo = parseRepoRef(options.repo);
+      const key = repoKey(repo);
+      const runtime = distillerRuntime();
+      const limit = Number.parseInt(options.limit, 10);
+      let pending = (await listSolutionRecords(memoryRoot())).filter(
+        ({ record }) =>
+          repoKey(record.repo) === key && record.kind !== "note" && !record.lesson,
+      );
+      if (Number.isFinite(limit) && limit > 0) pending = pending.slice(0, limit);
+
+      let distilled = 0;
+      let failed = 0;
+      for (const { ref, record } of pending) {
+        try {
+          const lesson = await distillLesson(runtime, {
+            title: record.title,
+            planSummary: record.plan?.plan.summary,
+            planSteps: record.plan?.plan.steps.map((s) => s.title),
+            diff: record.diff,
+          });
+          if (!lesson) {
+            failed++;
+            continue;
+          }
+          const next = { ...record, lesson, distilledAt: new Date().toISOString() };
+          await writeSolutionRecord(memoryRoot(), next);
+          await indexOneRecord(memoryRoot(), ref, next);
+          distilled++;
+          console.log(`  ${ref}`);
+        } catch (error) {
+          failed++;
+          console.error(`  ${ref}: ${error instanceof Error ? error.message : error}`);
+        }
+      }
+      console.log(`✔ ${distilled} distilled, ${failed} failed`);
     } catch (error) {
       console.error(`✗ ${error instanceof Error ? error.message : error}`);
       process.exit(1);

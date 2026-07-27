@@ -237,9 +237,29 @@ export {
   searchMemory,
   recencyWeight,
   feedbackWeight,
+  stalenessWeight,
   applyFeedbackVote,
+  applyOffered,
+  applyFetched,
+  bumpOffered,
+  bumpFetched,
+  recordFilesTouched,
+  stalenessFraction,
+  DISTILL_DIFF_BUDGET,
+  DISTILL_REVIEW_BUDGET,
+  LESSON_SCHEMA,
+  buildDistillPrompt,
+  formatLesson,
+  distillLesson,
 } from "./memory";
-export type { SolutionRecordEntry, ReconcileResult, MemoryHit, SearchMemoryOptions } from "./memory";
+export type {
+  SolutionRecordEntry,
+  ReconcileResult,
+  MemoryHit,
+  SearchMemoryOptions,
+  DistillInput,
+  Lesson,
+} from "./memory";
 
 // Reviewer (issue #10)
 export {

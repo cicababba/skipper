@@ -16,4 +16,15 @@ export type { ReconcileResult } from "./indexer";
 export { createNoteRecord } from "./notes";
 export { searchMemory } from "./search";
 export type { MemoryHit, SearchMemoryOptions } from "./search";
-export { recencyWeight, feedbackWeight, applyFeedbackVote } from "./ranking";
+export { recencyWeight, feedbackWeight, stalenessWeight, applyFeedbackVote } from "./ranking";
+export { applyOffered, applyFetched, bumpOffered, bumpFetched } from "./usage";
+export { recordFilesTouched, stalenessFraction } from "./staleness";
+export {
+  DISTILL_DIFF_BUDGET,
+  DISTILL_REVIEW_BUDGET,
+  LESSON_SCHEMA,
+  buildDistillPrompt,
+  formatLesson,
+  distillLesson,
+} from "./distill";
+export type { DistillInput, Lesson } from "./distill";

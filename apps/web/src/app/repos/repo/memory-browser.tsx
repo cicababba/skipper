@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   ChevronRight,
   Filter,
   GitPullRequest,
@@ -9,6 +10,7 @@ import {
   Loader2,
   Plus,
   Search,
+  Sparkles,
   StickyNote,
   ThumbsDown,
   ThumbsUp,
@@ -24,7 +26,9 @@ import {
   filterHitsByFile,
   filterRecordsByFile,
 } from "@/lib/inbox/memory-filters";
+import { pruneCandidates, type PruneReason } from "@/lib/inbox/memory-review";
 import { FileSuggestInput } from "./file-picker";
+import { ReasonBadges, StalenessBadge } from "./memory-badges";
 import { MemoryGraphView } from "./memory-graph-view";
 import { MemoryRecordView } from "./memory-record";
 import { NoteEditor } from "./note-editor";
@@ -53,6 +57,9 @@ export function MemoryBrowser({ repo, initialQuery }: { repo: RepoRef; initialQu
   const [composing, setComposing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<"list" | "graph">("list");
+  const [distilling, setDistilling] = useState(false);
+  const [distillNote, setDistillNote] = useState<string | null>(null);
+  const [reviewOnly, setReviewOnly] = useState(false);
 
   const load = useCallback(() => {
     if (!window.skipper) return;
@@ -105,7 +112,15 @@ export function MemoryBrowser({ repo, initialQuery }: { repo: RepoRef; initialQu
     [records],
   );
   const files = useMemo(() => fileOptions(records ?? []), [records]);
+  const candidates = useMemo(() => pruneCandidates(records ?? [], Date.now()), [records]);
+  const reasonsById = useMemo(
+    () => new Map(candidates.map((c) => [c.record.itemId, c.reasons] as const)),
+    [candidates],
+  );
   const rows = useMemo(() => {
+    if (reviewOnly) {
+      return candidates.map(({ record }) => ({ id: record.itemId, record, hit: undefined }));
+    }
     if (debounced && hits) {
       return filterHitsByFile(hits, fileFilter).map((hit) => ({
         id: hit.id,
@@ -118,9 +133,31 @@ export function MemoryBrowser({ repo, initialQuery }: { repo: RepoRef; initialQu
       record,
       hit: undefined,
     }));
-  }, [debounced, hits, fileFilter, records, byId]);
+  }, [debounced, hits, fileFilter, records, byId, reviewOnly, candidates]);
 
   const selectedRecord = records?.find((r) => r.itemId === selected) ?? null;
+  const undistilled = (records ?? []).filter((r) => r.kind !== "note" && !r.lesson).length;
+
+  const distill = async () => {
+    if (!window.skipper) return;
+    setDistilling(true);
+    setDistillNote(null);
+    try {
+      const res = await window.skipper.memory.distill(repo);
+      if (res.ok) {
+        setDistillNote(
+          res.failed > 0
+            ? `${m.distillDone(res.distilled)} · ${m.distillFailed(res.failed)}`
+            : m.distillDone(res.distilled),
+        );
+        await load();
+      } else {
+        setDistillNote(res.error);
+      }
+    } finally {
+      setDistilling(false);
+    }
+  };
 
   const remove = async (rec: SolutionRecord) => {
     if (!window.skipper || !window.confirm(m.deleteConfirm)) return;
@@ -136,13 +173,26 @@ export function MemoryBrowser({ repo, initialQuery }: { repo: RepoRef; initialQu
     }
   };
 
+  const keep = async (rec: SolutionRecord) => {
+    if (!window.skipper) return;
+    setBusy(true);
+    try {
+      await window.skipper.memory.dismissReview(rec.itemId);
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (selectedRecord) {
     return (
       <MemoryRecordView
         record={selectedRecord}
         busy={busy}
+        reasons={reasonsById.get(selectedRecord.itemId) ?? []}
         onBack={() => setSelected(null)}
         onDelete={() => void remove(selectedRecord)}
+        onKeep={() => void keep(selectedRecord)}
         onChanged={() => void load()}
       />
     );
@@ -182,6 +232,16 @@ export function MemoryBrowser({ repo, initialQuery }: { repo: RepoRef; initialQu
             <Waypoints size={13} />
           </ViewToggle>
         </div>
+        {(undistilled > 0 || distilling) && (
+          <button
+            onClick={() => void distill()}
+            disabled={distilling}
+            className="flex items-center gap-1.5 shrink-0 text-[12px] px-2.5 py-2 rounded-lg border border-border text-muted hover:text-foreground hover:border-accent/40 transition-colors disabled:opacity-50"
+          >
+            {distilling ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+            {distilling ? m.distilling : m.distill}
+          </button>
+        )}
         <button
           onClick={() => setComposing((v) => !v)}
           className="flex items-center gap-1.5 shrink-0 text-[12px] px-2.5 py-2 rounded-lg border border-border text-muted hover:text-foreground hover:border-accent/40 transition-colors"
@@ -190,6 +250,23 @@ export function MemoryBrowser({ repo, initialQuery }: { repo: RepoRef; initialQu
           {m.newNote}
         </button>
       </div>
+
+      {distillNote && <p className="text-[11px] text-muted/70">{distillNote}</p>}
+
+      {candidates.length > 0 && (
+        <button
+          onClick={() => setReviewOnly((v) => !v)}
+          aria-pressed={reviewOnly}
+          className={`flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md border transition-colors ${
+            reviewOnly
+              ? "border-warning/40 bg-warning-bg text-warning"
+              : "border-warning/25 text-warning/80 hover:bg-warning-bg"
+          }`}
+        >
+          <AlertTriangle size={11} />
+          {m.reviewQueueCount(candidates.length)}
+        </button>
+      )}
 
       {composing && (
         <NoteEditor
@@ -269,13 +346,17 @@ export function MemoryBrowser({ repo, initialQuery }: { repo: RepoRef; initialQu
           hits={debounced ? hits : null}
           fileFilter={fileFilter}
           busy={busy}
+          candidateIds={new Set(reasonsById.keys())}
           onFileFilter={setFileFilter}
           onOpen={setSelected}
           onDelete={(rec) => void remove(rec)}
+          onKeep={(rec) => void keep(rec)}
           onChanged={() => void load()}
         />
       ) : rows.length === 0 ? (
-        <p className="text-[13px] text-muted/60 py-4">{debounced ? m.noResults : m.empty}</p>
+        <p className="text-[13px] text-muted/60 py-4">
+          {reviewOnly ? m.reviewEmpty : debounced ? m.noResults : m.empty}
+        </p>
       ) : (
         <ul className="divide-y divide-border rounded-lg border border-border overflow-hidden">
           {rows.map((row) => (
@@ -284,6 +365,8 @@ export function MemoryBrowser({ repo, initialQuery }: { repo: RepoRef; initialQu
                 record={row.record}
                 hit={row.hit}
                 noteBadge={m.noteBadge}
+                reasons={reasonsById.get(row.id) ?? []}
+                showReasons={reviewOnly}
                 onOpen={() => setSelected(row.id)}
               />
             </li>
@@ -324,11 +407,15 @@ function MemoryRow({
   record,
   hit,
   noteBadge,
+  reasons,
+  showReasons,
   onOpen,
 }: {
   record: SolutionRecord | undefined;
   hit: MemoryHit | undefined;
   noteBadge: string;
+  reasons: PruneReason[];
+  showReasons: boolean;
   onOpen: () => void;
 }) {
   const title = record?.title ?? hit?.title ?? "";
@@ -336,7 +423,9 @@ function MemoryRow({
   const pr = record?.pr ?? hit?.pr;
   const key = record ? (record.issueKey ?? String(record.issueNumber ?? "")) : (hit?.issueKey ?? "");
   const feedback = record?.feedback ?? hit?.feedback ?? { up: 0, down: 0 };
-  const snippet = isNote ? record?.note?.body : (record?.plan?.plan.summary ?? hit?.planSummary);
+  const snippet = isNote
+    ? record?.note?.body
+    : (record?.lesson ?? hit?.lesson ?? record?.plan?.plan.summary ?? hit?.planSummary);
 
   return (
     <button
@@ -357,6 +446,11 @@ function MemoryRow({
         )}
       </span>
       {isNote && <span className="shrink-0 text-[10px] uppercase text-muted/50">{noteBadge}</span>}
+      {showReasons ? (
+        <ReasonBadges reasons={reasons} />
+      ) : (
+        record && <StalenessBadge record={record} />
+      )}
       {pr && (
         <span className="flex items-center gap-1 shrink-0 font-mono text-[11px] text-muted/70">
           <GitPullRequest size={11} />

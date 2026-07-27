@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_ORCHESTRATOR_SETTINGS,
+  resolveDefaultAgentPair,
   resolveRepoOrchestratorSettings,
   type OrchestratorSettings,
   type RepoIntakeSettings,
@@ -232,5 +233,70 @@ describe("resolveRepoOrchestratorSettings", () => {
       expect("coderAgent" in DEFAULT_ORCHESTRATOR_SETTINGS).toBe(false);
       expect("reviewerAgent" in DEFAULT_ORCHESTRATOR_SETTINGS).toBe(false);
     });
+  });
+});
+
+// #256's distiller has no role of its own: it rides the global default pair, so
+// its ladder is a role's with the two role-specific rungs removed.
+describe("resolveDefaultAgentPair", () => {
+  it("floors to claude-cli on defaultModel when no defaultAgent is set", () => {
+    expect(resolveDefaultAgentPair(global(), "fable")).toEqual({
+      runtime: "claude-cli",
+      model: "fable",
+    });
+  });
+
+  it.each([[undefined], [""], ["   "]] as const)(
+    "floors an omitted/empty/whitespace defaultModel (%p) to sonnet",
+    (dm) => {
+      expect(resolveDefaultAgentPair(global(), dm).model).toBe("sonnet");
+    },
+  );
+
+  it("honours a claude defaultAgent's own model", () => {
+    expect(
+      resolveDefaultAgentPair(global({ defaultAgent: { runtime: "claude-cli", model: "opus" } }), "fable"),
+    ).toEqual({ runtime: "claude-cli", model: "opus" });
+  });
+
+  it("falls a claude defaultAgent with no model back to defaultModel", () => {
+    expect(
+      resolveDefaultAgentPair(global({ defaultAgent: { runtime: "claude-cli" } }), "fable").model,
+    ).toBe("fable");
+  });
+
+  // Non-claude CLIs take no model flag — "" is the "use the CLI's own default"
+  // sentinel, and a Claude alias must never leak onto them.
+  it("gives a non-claude defaultAgent the empty-model sentinel", () => {
+    expect(resolveDefaultAgentPair(global({ defaultAgent: { runtime: "gemini-cli" } }), "fable")).toEqual(
+      { runtime: "gemini-cli", model: "" },
+    );
+  });
+
+  it("carries a non-claude pair's own model through", () => {
+    expect(
+      resolveDefaultAgentPair(global({ defaultAgent: { runtime: "codex-cli", model: "gpt-5-codex" } })),
+    ).toEqual({ runtime: "codex-cli", model: "gpt-5-codex" });
+  });
+
+  // The role rungs are deliberately skipped: distillation is not the planner.
+  it("ignores the per-role pairs entirely", () => {
+    const pair = resolveDefaultAgentPair(
+      global({
+        defaultAgent: { runtime: "claude-cli", model: "haiku" },
+        plannerAgent: { runtime: "codex-cli" },
+        coderAgent: { runtime: "gemini-cli" },
+        reviewerAgent: { runtime: "copilot-cli" },
+      }),
+      "fable",
+    );
+    expect(pair).toEqual({ runtime: "claude-cli", model: "haiku" });
+  });
+
+  it("agrees with a role's resolution when only defaultAgent is set", () => {
+    const g = global({ defaultAgent: { runtime: "copilot-cli" } });
+    const role = resolveRepoOrchestratorSettings(undefined, g, "fable");
+    const pair = resolveDefaultAgentPair(g, "fable");
+    expect(pair).toEqual({ runtime: role.plannerRuntime, model: role.plannerModel });
   });
 });

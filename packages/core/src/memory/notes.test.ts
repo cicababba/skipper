@@ -78,8 +78,10 @@ describe("note persistence", () => {
     const rec = createNoteRecord(REPO, "debounce the resize", ["src/terminal.ts"], "PTY resize");
     const ref = await writeSolutionRecord(memoryDir, rec);
 
+    // #256: the store normalizes every write to v2 — the note is otherwise
+    // returned verbatim, and both versions pass the read gate.
     const back = await readSolutionRecord(memoryDir, ref);
-    expect(back).toEqual(rec);
+    expect(back).toEqual({ ...rec, version: 2 });
 
     const entries = await listSolutionRecords(memoryDir);
     expect(entries.map((e) => e.record.itemId)).toEqual([rec.itemId]);

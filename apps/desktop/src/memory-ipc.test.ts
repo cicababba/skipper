@@ -69,6 +69,8 @@ function makeRecord(itemId: string, overrides: Partial<SolutionRecord> = {}): So
 interface SetupOptions {
   localPath?: string | undefined;
   git?: { code: number; stdout: string; stderr: string };
+  /** null = register the handlers without a distiller at all (#256). */
+  distill?: ((input: { title: string }) => Promise<string | null>) | null;
 }
 
 function setup(opts: SetupOptions = {}) {
@@ -82,6 +84,9 @@ function setup(opts: SetupOptions = {}) {
     "localPath" in opts ? opts.localPath : "/clones/rocket",
   );
   const runGit = vi.fn(async () => opts.git ?? { code: 0, stdout: "", stderr: "" });
+  const distillLesson = vi.fn(
+    opts.distill ?? (async () => "Problem: token clock\nInsight: invert the comparison"),
+  );
   const deps = {
     ipcMain,
     memoryDir,
@@ -90,6 +95,7 @@ function setup(opts: SetupOptions = {}) {
     broadcast,
     localPathFor,
     runGit,
+    ...(opts.distill === null ? {} : { distillLesson }),
   } as unknown as MemoryIpcDeps;
   registerMemoryHandlers(deps);
 
@@ -98,7 +104,7 @@ function setup(opts: SetupOptions = {}) {
     if (!handler) throw new Error(`handler not registered: ${channel}`);
     return handler(null, ...args);
   };
-  return { call, broadcast, localPathFor, runGit };
+  return { call, broadcast, localPathFor, runGit, distillLesson };
 }
 
 const readRecord = async (id: string): Promise<SolutionRecord> =>
@@ -381,6 +387,211 @@ describe("skipper:memory:repoFiles", () => {
       ok: false,
       error: "git ls-files failed",
     });
+  });
+});
+
+describe("skipper:memory:distill (#256)", () => {
+  interface DistillResult {
+    ok: boolean;
+    error?: string;
+    distilled?: number;
+    failed?: number;
+    remaining?: number;
+  }
+
+  it("distills the lesson-less solutions and leaves notes and done records alone", async () => {
+    await writeSolutionRecord(memoryDir, makeRecord("github:1"));
+    await writeSolutionRecord(
+      memoryDir,
+      makeRecord("github:2", { lesson: "Problem: already\nInsight: done" }),
+    );
+    const { call, distillLesson, broadcast } = setup();
+    await call("skipper:memory:createNote", REPO, "a manual note stays untouched");
+    broadcast.mockClear();
+
+    expect(await call("skipper:memory:distill", REPO)).toEqual({
+      ok: true,
+      distilled: 1,
+      failed: 0,
+      remaining: 0,
+    });
+
+    expect(distillLesson).toHaveBeenCalledTimes(1);
+    expect(distillLesson.mock.calls[0][0]).toMatchObject({ title: "fix oauth token refresh" });
+    const done = await readRecord("github:1");
+    expect(done.lesson).toBe("Problem: token clock\nInsight: invert the comparison");
+    expect(Date.parse(done.distilledAt!)).not.toBeNaN();
+    // The already-distilled record keeps its original lesson, untouched.
+    expect((await readRecord("github:2")).lesson).toBe("Problem: already\nInsight: done");
+    expect(broadcast).toHaveBeenCalled();
+  });
+
+  it("passes the record's plan gist and diff to the distiller", async () => {
+    await writeSolutionRecord(
+      memoryDir,
+      makeRecord("github:1", {
+        diff: "diff --git a/src/auth/oauth.ts",
+        plan: {
+          version: 2,
+          itemId: "github:1",
+          repo: REPO,
+          generatedAt: "2026-07-01T00:00:00.000Z",
+          model: "test",
+          plan: {
+            summary: "swap the expiry comparison",
+            files: [],
+            steps: [{ title: "invert it", detail: "", files: [], symbols: [] }],
+            acceptance: [],
+            risks: [],
+            openQuestions: [],
+            estimatedSize: "s",
+          },
+        },
+      }),
+    );
+    const { call, distillLesson } = setup();
+
+    await call("skipper:memory:distill", REPO);
+    expect(distillLesson.mock.calls[0][0]).toMatchObject({
+      planSummary: "swap the expiry comparison",
+      planSteps: ["invert it"],
+      diff: "diff --git a/src/auth/oauth.ts",
+    });
+  });
+
+  it("indexes each distilled record so its lesson is retrievable", async () => {
+    await writeSolutionRecord(memoryDir, makeRecord("github:1"));
+    const { call } = setup({
+      distill: async () => "Problem: the pty resize race\nInsight: debounce the handler",
+    });
+
+    await call("skipper:memory:distill", REPO);
+
+    const res = (await call("skipper:memory:search", REPO, "debounce the pty resize")) as SearchResult;
+    expect(res.hits?.map((h) => h.id)).toEqual(["github:1"]);
+  });
+
+  it("counts a declined lesson as failed and keeps it pending", async () => {
+    await writeSolutionRecord(memoryDir, makeRecord("github:1"));
+    const { call } = setup({ distill: async () => null });
+
+    expect(await call("skipper:memory:distill", REPO)).toEqual({
+      ok: true,
+      distilled: 0,
+      failed: 1,
+      remaining: 1,
+    });
+    expect((await readRecord("github:1")).lesson).toBeUndefined();
+  });
+
+  it("isolates a throwing record from the rest of the batch", async () => {
+    await writeSolutionRecord(memoryDir, makeRecord("github:1"));
+    await writeSolutionRecord(memoryDir, makeRecord("github:2"));
+    const { call } = setup({
+      distill: vi.fn(async (input: { title: string }) => {
+        if (input.title.includes("boom")) throw new Error("runtime exploded");
+        return "Problem: p\nInsight: i";
+      }),
+    });
+    await writeSolutionRecord(memoryDir, makeRecord("github:2", { title: "boom" }));
+
+    const res = (await call("skipper:memory:distill", REPO)) as DistillResult;
+    expect(res).toMatchObject({ ok: true, distilled: 1, failed: 1, remaining: 1 });
+    expect((await readRecord("github:1")).lesson).toBe("Problem: p\nInsight: i");
+    expect((await readRecord("github:2")).lesson).toBeUndefined();
+  });
+
+  it("scopes the batch to the requested repo", async () => {
+    await writeSolutionRecord(memoryDir, makeRecord("github:1"));
+    await writeSolutionRecord(
+      memoryDir,
+      makeRecord("github:2", { repo: { owner: "acme", name: "anvil" } }),
+    );
+    const { call, distillLesson } = setup();
+
+    expect(await call("skipper:memory:distill", REPO)).toMatchObject({ distilled: 1 });
+    expect(distillLesson).toHaveBeenCalledTimes(1);
+    expect((await readRecord("github:2")).lesson).toBeUndefined();
+  });
+
+  it("reports nothing to do on an empty repo", async () => {
+    const { call, distillLesson } = setup();
+    expect(await call("skipper:memory:distill", REPO)).toEqual({
+      ok: true,
+      distilled: 0,
+      failed: 0,
+      remaining: 0,
+    });
+    expect(distillLesson).not.toHaveBeenCalled();
+  });
+
+  it("reports the feature unavailable when no distiller is wired in", async () => {
+    await writeSolutionRecord(memoryDir, makeRecord("github:1"));
+    const { call, broadcast } = setup({ distill: null });
+
+    expect(await call("skipper:memory:distill", REPO)).toEqual({
+      ok: false,
+      error: "lesson distillation unavailable",
+    });
+    expect((await readRecord("github:1")).lesson).toBeUndefined();
+    expect(broadcast).not.toHaveBeenCalled();
+  });
+});
+
+describe("skipper:memory:dismissReview (#256)", () => {
+  it("stamps the dismissal and broadcasts", async () => {
+    await writeSolutionRecord(memoryDir, makeRecord("github:1"));
+    const { call, broadcast } = setup();
+
+    expect(await call("skipper:memory:dismissReview", "github:1")).toEqual({ ok: true });
+    const rec = await readRecord("github:1");
+    expect(Date.parse(rec.reviewDismissedAt!)).not.toBeNaN();
+    expect(rec.version).toBe(2);
+    expect(broadcast).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the record's own signals — only the timer moves", async () => {
+    await writeSolutionRecord(
+      memoryDir,
+      makeRecord("github:1", { staleness: 0.9, feedback: { up: 0, down: 3 } }),
+    );
+    const { call } = setup();
+
+    await call("skipper:memory:dismissReview", "github:1");
+    const rec = await readRecord("github:1");
+    expect(rec.staleness).toBe(0.9);
+    expect(rec.feedback).toEqual({ up: 0, down: 3 });
+  });
+
+  it("refreshes the stamp on a second keep", async () => {
+    await writeSolutionRecord(
+      memoryDir,
+      makeRecord("github:1", { reviewDismissedAt: "2020-01-01T00:00:00.000Z" }),
+    );
+    const { call } = setup();
+
+    await call("skipper:memory:dismissReview", "github:1");
+    expect(Date.parse((await readRecord("github:1")).reviewDismissedAt!)).toBeGreaterThan(
+      Date.parse("2020-01-01T00:00:00.000Z"),
+    );
+  });
+
+  it("dismisses notes too", async () => {
+    const { call } = setup();
+    const created = (await call("skipper:memory:createNote", REPO, "keep me around")) as {
+      id: string;
+    };
+    expect(await call("skipper:memory:dismissReview", created.id)).toEqual({ ok: true });
+    expect((await readRecord(created.id)).reviewDismissedAt).toBeTruthy();
+  });
+
+  it("fails on an unknown id without broadcasting", async () => {
+    const { call, broadcast } = setup();
+    expect(await call("skipper:memory:dismissReview", "github:404")).toEqual({
+      ok: false,
+      error: 'no memory record for id "github:404"',
+    });
+    expect(broadcast).not.toHaveBeenCalled();
   });
 });
 

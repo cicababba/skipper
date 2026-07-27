@@ -9,6 +9,7 @@ import {
   GitPullRequest,
   Loader2,
   Pencil,
+  ShieldCheck,
   StickyNote,
   ThumbsDown,
   ThumbsUp,
@@ -19,6 +20,8 @@ import { useT } from "@/lib/app-i18n";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { VoteButton } from "@/components/vote-button";
 import { recordFiles } from "@/lib/inbox/memory-filters";
+import type { PruneReason } from "@/lib/inbox/memory-review";
+import { ReasonBadges, StalenessBadge } from "./memory-badges";
 import { NoteEditor } from "./note-editor";
 
 /**
@@ -29,14 +32,19 @@ import { NoteEditor } from "./note-editor";
 export function MemoryRecordView({
   record,
   busy,
+  reasons,
   onBack,
   onDelete,
+  onKeep,
   onChanged,
 }: {
   record: SolutionRecord;
   busy: boolean;
+  /** Why the review queue flagged this record (#256); empty = not a candidate. */
+  reasons: PruneReason[];
   onBack: () => void;
   onDelete: () => void;
+  onKeep: () => void;
   onChanged: () => void;
 }) {
   const { t } = useT();
@@ -99,6 +107,17 @@ export function MemoryRecordView({
             {m.editNote}
           </button>
         )}
+        {reasons.length > 0 && (
+          <button
+            onClick={onKeep}
+            disabled={busy}
+            title={m.keepHint}
+            className="flex items-center gap-1.5 text-[12px] px-2 py-1 rounded-md border border-border text-muted hover:text-foreground transition-colors disabled:opacity-40"
+          >
+            <ShieldCheck size={12} />
+            {m.keep}
+          </button>
+        )}
         <button
           onClick={onDelete}
           disabled={busy}
@@ -142,6 +161,8 @@ export function MemoryRecordView({
         <span className="text-[11px] text-muted/50">
           {m.captured} {new Date(record.capturedAt).toLocaleDateString()}
         </span>
+        <StalenessBadge record={record} />
+        <ReasonBadges reasons={reasons} />
       </div>
 
       {isNote && editing ? (
@@ -164,7 +185,19 @@ export function MemoryRecordView({
           <MarkdownRenderer content={record.note?.body ?? ""} />
         </div>
       ) : (
-        <p className="text-[13px] text-muted/90 leading-relaxed">{plan?.summary ?? m.noSummary}</p>
+        <>
+          {record.lesson && (
+            <div className="rounded-lg border border-accent/25 bg-accent/5 px-3 py-2.5 space-y-1">
+              <span className="block text-[11px] uppercase tracking-wide text-accent/80">
+                {m.lesson}
+              </span>
+              <p className="text-[13px] text-foreground/90 leading-relaxed whitespace-pre-wrap">
+                {record.lesson}
+              </p>
+            </div>
+          )}
+          <p className="text-[13px] text-muted/90 leading-relaxed">{plan?.summary ?? m.noSummary}</p>
+        </>
       )}
 
       {files.length > 0 && (

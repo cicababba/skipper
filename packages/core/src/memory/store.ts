@@ -33,7 +33,10 @@ export async function writeSolutionRecord(
   await mkdir(memoryDir, { recursive: true });
   const path = join(memoryDir, ref);
   const tmp = `${path}.tmp`;
-  await writeFile(tmp, JSON.stringify(record, null, 2), "utf-8");
+  // Every mutating path (feedback, curation, distillation, usage, staleness)
+  // goes through here, so a touched v1 record upgrades to v2 in one place (#256).
+  const upgraded: SolutionRecord = { ...record, version: 2 };
+  await writeFile(tmp, JSON.stringify(upgraded, null, 2), "utf-8");
   await rename(tmp, path);
   return ref;
 }
@@ -45,7 +48,7 @@ export async function readSolutionRecord(
   try {
     const raw = await readFile(join(memoryDir, ref), "utf-8");
     const parsed = JSON.parse(raw) as SolutionRecord;
-    return parsed.version === 1 ? parsed : null;
+    return parsed.version === 1 || parsed.version === 2 ? parsed : null;
   } catch {
     return null;
   }

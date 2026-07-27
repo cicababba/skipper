@@ -1,11 +1,16 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SolutionRecord, StoredPlan } from "@skipper/shared";
 import { registerTransformersLoader } from "../vectorstore/embedder";
-import { listSolutionRecords, memoryFileName, writeSolutionRecord } from "./store";
-import { indexOneRecord, reconcileMemoryIndex } from "./indexer";
+import {
+  listSolutionRecords,
+  memoryFileName,
+  readSolutionRecord,
+  writeSolutionRecord,
+} from "./store";
+import { buildEmbedText, indexOneRecord, reconcileMemoryIndex } from "./indexer";
 import { createNoteRecord } from "./notes";
 import { searchMemory } from "./search";
 import { feedbackWeight, recencyWeight } from "./ranking";
@@ -107,6 +112,60 @@ describe("store", () => {
   });
 });
 
+// The single trap of #256: a gate that stopped accepting v1 would make every
+// pre-existing record vanish from list/search/serve at once.
+describe("store — the v2 version gate (#256)", () => {
+  const writeRaw = async (name: string, body: unknown) =>
+    writeFile(join(memoryDir, name), JSON.stringify(body), "utf-8");
+
+  it("reads both v1 and v2 files", async () => {
+    await writeRaw("v1.json", { ...makeRecord("github:1"), version: 1 });
+    await writeRaw("v2.json", { ...makeRecord("github:2"), version: 2, lesson: "Problem: p" });
+
+    expect((await readSolutionRecord(memoryDir, "v1.json"))?.itemId).toBe("github:1");
+    expect((await readSolutionRecord(memoryDir, "v2.json"))?.lesson).toBe("Problem: p");
+    expect((await listSolutionRecords(memoryDir)).map((e) => e.record.itemId).sort()).toEqual([
+      "github:1",
+      "github:2",
+    ]);
+  });
+
+  it("rejects a version it does not know", async () => {
+    await writeRaw("v3.json", { ...makeRecord("github:3"), version: 3 });
+    expect(await readSolutionRecord(memoryDir, "v3.json")).toBeNull();
+    expect(await listSolutionRecords(memoryDir)).toEqual([]);
+  });
+
+  it("normalizes every write to v2, whatever the record said", async () => {
+    const ref = await writeSolutionRecord(memoryDir, makeRecord("github:1", { version: 1 }));
+    expect((await readSolutionRecord(memoryDir, ref))?.version).toBe(2);
+    expect(JSON.parse(await readFile(join(memoryDir, ref), "utf-8")).version).toBe(2);
+  });
+
+  it("upgrades a v1 file in place the first time it is touched", async () => {
+    await writeRaw(memoryFileName("github:1"), { ...makeRecord("github:1"), version: 1 });
+    const record = (await readSolutionRecord(memoryDir, memoryFileName("github:1")))!;
+    record.feedback = { up: 1, down: 0 };
+    await writeSolutionRecord(memoryDir, record);
+    expect((await readSolutionRecord(memoryDir, memoryFileName("github:1")))?.version).toBe(2);
+  });
+});
+
+describe("buildEmbedText — the distilled lesson (#256)", () => {
+  it("embeds the lesson after the plan gist and before the files", () => {
+    const text = buildEmbedText(
+      makeRecord("github:1", { lesson: "Problem: token clock\nInsight: invert it" }),
+    );
+    expect(text).toContain("Problem: token clock");
+    expect(text.indexOf("fix oauth token refresh")).toBeLessThan(text.indexOf("Problem: token clock"));
+    expect(text.indexOf("Problem: token clock")).toBeLessThan(text.indexOf("src/auth/oauth.ts"));
+  });
+
+  it("leaves a lesson-less record's text exactly as it was", () => {
+    expect(buildEmbedText(makeRecord("github:1"))).not.toContain("Problem:");
+  });
+});
+
 describe("reconcileMemoryIndex", () => {
   it("indexes missing records, is idempotent, removes stale entries", async () => {
     await writeSolutionRecord(memoryDir, makeRecord("github:1"));
@@ -182,6 +241,46 @@ describe("searchMemory", () => {
 
     const hits = await searchMemory(memoryDir, "fix oauth token refresh", { repo: REPO_A });
     expect(hits.map((h) => h.id)).toEqual(["github:2", "github:1"]);
+  });
+
+  it("carries the distilled lesson onto the hit (#256)", async () => {
+    await writeSolutionRecord(
+      memoryDir,
+      makeRecord("github:1", { lesson: "Problem: p\nInsight: i" }),
+    );
+    await reconcileMemoryIndex(memoryDir);
+
+    const hits = await searchMemory(memoryDir, "fix oauth token refresh", { repo: REPO_A });
+    expect(hits[0]?.lesson).toBe("Problem: p\nInsight: i");
+  });
+
+  it("leaves lesson undefined on a record that has none", async () => {
+    await writeSolutionRecord(memoryDir, makeRecord("github:1"));
+    await reconcileMemoryIndex(memoryDir);
+
+    const hits = await searchMemory(memoryDir, "fix oauth token refresh", { repo: REPO_A });
+    expect(hits[0]?.lesson).toBeUndefined();
+  });
+
+  // #256: files gone at the base ref weigh a memory down at query time — no
+  // reindex involved, exactly like feedback.
+  it("staleness demotes an otherwise identical record", async () => {
+    await writeSolutionRecord(memoryDir, makeRecord("github:1", { staleness: 1 }));
+    await writeSolutionRecord(memoryDir, makeRecord("github:2"));
+    await reconcileMemoryIndex(memoryDir);
+
+    const hits = await searchMemory(memoryDir, "fix oauth token refresh", { repo: REPO_A });
+    expect(hits.map((h) => h.id)).toEqual(["github:2", "github:1"]);
+    expect(hits[1].score).toBeCloseTo(hits[0].score * 0.5, 10);
+  });
+
+  it("leaves the score untouched for a never-measured record", async () => {
+    await writeSolutionRecord(memoryDir, makeRecord("github:1", { staleness: 0 }));
+    await writeSolutionRecord(memoryDir, makeRecord("github:2"));
+    await reconcileMemoryIndex(memoryDir);
+
+    const hits = await searchMemory(memoryDir, "fix oauth token refresh", { repo: REPO_A });
+    expect(hits[0].score).toBeCloseTo(hits[1].score, 10);
   });
 
   it("respects k", async () => {

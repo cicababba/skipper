@@ -1,11 +1,14 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { LifecycleState, PrReviewComment, TrackedItem } from "@skipper/shared";
+import type { LifecycleState, PrReviewComment, SolutionRecord, TrackedItem } from "@skipper/shared";
 import {
   DEFAULT_ORCHESTRATOR_SETTINGS,
   memoryFileName,
+  registerTransformersLoader,
+  searchMemory,
+  type DistillInput,
   type OrchestratorSettings,
 } from "@skipper/core";
 import { initShepherd, openOrPushPr, pokeShepherd, type ShepherdDeps } from "./shepherd";
@@ -27,6 +30,25 @@ vi.mock("./worktrees", () => ({
   removeWorktree: vi.fn(async () => undefined),
   deleteBranchForce: vi.fn(async () => true),
 }));
+
+// Deterministic bag-of-words embedder (core's memory.test.ts pattern): the
+// distillation path indexes the rewritten record, and no test may download a model.
+function vecFor(text: string): number[] {
+  const v = new Array(32).fill(0);
+  for (const word of text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)) {
+    let h = 0;
+    for (let i = 0; i < word.length; i++) h = (h * 31 + word.charCodeAt(i)) >>> 0;
+    v[h % 32] += 1;
+  }
+  const norm = Math.sqrt(v.reduce((s: number, x: number) => s + x * x, 0)) || 1;
+  return v.map((x: number) => x / norm);
+}
+
+beforeAll(() => {
+  registerTransformersLoader(() => ({
+    pipeline: async () => async (text: string) => ({ tolist: () => [vecFor(text)] }),
+  }));
+});
 
 const commitMock = vi.mocked(commitWorktree);
 const pushMock = vi.mocked(pushWorktreeBranch);
@@ -441,7 +463,8 @@ describe("shepherd scan — merged capture", () => {
     expect(deleteBranchMock).toHaveBeenCalledWith("/repos/repo", "feature/issue-1");
     const record = JSON.parse(await readFile(join(memoryDir, ref), "utf-8"));
     expect(record).toMatchObject({
-      version: 1,
+      // #256: capture writes the v2 shape directly.
+      version: 2,
       itemId: "github:1",
       issueNumber: 1,
       pr: { number: 9 },
@@ -479,5 +502,156 @@ describe("shepherd scan — merged capture", () => {
 
     expect(h.cleanups).toEqual([]);
     expect(captureMock).not.toHaveBeenCalled();
+  });
+});
+
+// Lesson distillation at capture (#256). The contract is that the record lands
+// first and the lesson is a bonus: nothing here may cost a memory.
+describe("shepherd scan — lesson distillation", () => {
+  const mergedItem = (extra: Partial<TrackedItem> = {}) =>
+    makeItem(1, "merged", {
+      pr: { id: "github:555", number: 9, url: "https://example.test/pr/9" },
+      ...extra,
+    });
+
+  const readCaptured = async (ref: string): Promise<SolutionRecord> =>
+    JSON.parse(await readFile(join(memoryDir, ref), "utf-8")) as SolutionRecord;
+
+  it("rewrites the record with the lesson and indexes it for retrieval", async () => {
+    const distillLesson = vi.fn(async () => "Problem: pty resize\nInsight: debounce the handler");
+    const h = makeHarness({ distillLesson });
+    initShepherd(h.deps);
+    h.items.set("github:1", mergedItem());
+
+    pokeShepherd();
+    await settle();
+
+    const record = await readCaptured(h.cleanups[0].memoryRef);
+    expect(record.lesson).toBe("Problem: pty resize\nInsight: debounce the handler");
+    expect(Date.parse(record.distilledAt!)).not.toBeNaN();
+    expect(record.version).toBe(2);
+
+    // indexOneRecord ran: reconcile only heals absences, so retrieval by the
+    // lesson's own wording is the proof the new text was embedded.
+    const hits = await searchMemory(memoryDir, "debounce the pty resize handler", {
+      repo: { owner: "owner", name: "repo" },
+    });
+    expect(hits.map((hit) => hit.id)).toEqual(["github:1"]);
+  });
+
+  it("feeds the distiller the record's plan, diff and every review round", async () => {
+    const distillLesson = vi.fn(async (_input: DistillInput) => "Problem: p\nInsight: i");
+    const h = makeHarness({
+      distillLesson,
+      getPlan: async () => ({
+        version: 2,
+        itemId: "github:1",
+        repo: { owner: "owner", name: "repo" },
+        generatedAt: "2026-07-01T00:00:00.000Z",
+        model: "test",
+        plan: {
+          summary: "swap the expiry comparison",
+          files: [],
+          steps: [{ title: "invert it", detail: "", files: [], symbols: [] }],
+          acceptance: [],
+          risks: [],
+          openQuestions: [],
+          estimatedSize: "s",
+        },
+      }),
+    });
+    initShepherd(h.deps);
+    h.items.set(
+      "github:1",
+      mergedItem({
+        review: {
+          rounds: 2,
+          outcome: "approve",
+          at: "2026-07-13T02:00:00.000Z",
+          history: [
+            { round: 1, outcome: "reject", at: "2026-07-13T01:00:00.000Z" },
+          ],
+        },
+      }),
+    );
+
+    pokeShepherd();
+    await settle();
+
+    expect(distillLesson).toHaveBeenCalledTimes(1);
+    expect(distillLesson.mock.calls[0][0]).toMatchObject({
+      title: "issue 1",
+      planSummary: "swap the expiry comparison",
+      planSteps: ["invert it"],
+      diff: "+line",
+      // History plus the live record: the current round is only snapshotted onto
+      // history when it is overwritten, so it would otherwise be lost.
+      reviewRounds: [
+        { round: 1, outcome: "reject" },
+        { round: 2, outcome: "approve" },
+      ],
+    });
+  });
+
+  it("captures the record before distilling, so a slow lesson never delays it", async () => {
+    let onDiskWhenDistilling: SolutionRecord | null = null;
+    const distillLesson = vi.fn(async () => {
+      onDiskWhenDistilling = await readCaptured(memoryFileName("github:1"));
+      return "Problem: p\nInsight: i";
+    });
+    const h = makeHarness({ distillLesson });
+    initShepherd(h.deps);
+    h.items.set("github:1", mergedItem());
+
+    pokeShepherd();
+    await settle();
+
+    expect(onDiskWhenDistilling).toMatchObject({ itemId: "github:1", outcome: "merged" });
+  });
+
+  it("keeps the capture when the distiller throws", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const distillLesson = vi.fn(async () => {
+      throw new Error("runtime exploded");
+    });
+    const h = makeHarness({ distillLesson });
+    initShepherd(h.deps);
+    h.items.set("github:1", mergedItem());
+
+    pokeShepherd();
+    await settle();
+
+    expect(h.cleanups).toHaveLength(1);
+    const record = await readCaptured(h.cleanups[0].memoryRef);
+    expect(record.lesson).toBeUndefined();
+    expect(record.distilledAt).toBeUndefined();
+    // The worktree teardown still ran — distillation sits before it, not instead.
+    expect(removeMock).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it("stamps nothing when the distiller declines to produce a lesson", async () => {
+    const h = makeHarness({ distillLesson: vi.fn(async () => null) });
+    initShepherd(h.deps);
+    h.items.set("github:1", mergedItem());
+
+    pokeShepherd();
+    await settle();
+
+    const record = await readCaptured(h.cleanups[0].memoryRef);
+    expect(record.lesson).toBeUndefined();
+    expect(record.distilledAt).toBeUndefined();
+  });
+
+  it("captures plainly when no distiller is wired in", async () => {
+    const h = makeHarness();
+    initShepherd(h.deps);
+    h.items.set("github:1", mergedItem());
+
+    pokeShepherd();
+    await settle();
+
+    expect(h.cleanups).toHaveLength(1);
+    expect((await readCaptured(h.cleanups[0].memoryRef)).lesson).toBeUndefined();
   });
 });

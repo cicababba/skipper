@@ -290,6 +290,19 @@ function resolveAgent(
 }
 
 /**
+ * The global default pair, for roles that have no per-role setting of their own
+ * (#256's distiller). Same ladder as a role, with the two role-specific rungs
+ * skipped: global default → the claude-cli floor.
+ */
+export function resolveDefaultAgentPair(
+  global: OrchestratorSettings,
+  defaultModel?: string,
+): { runtime: AgentRuntimeId; model: string } {
+  const dm = defaultModel?.trim() || DEFAULT_LLM_SETTINGS.claudeModel;
+  return resolveAgent(undefined, undefined, global.defaultAgent, dm);
+}
+
+/**
  * Every global-overridable per-repo field, resolved in one place (#62).
  *
  * Deliberately does NOT fold in settings.autoPlanPaused: that master switch is

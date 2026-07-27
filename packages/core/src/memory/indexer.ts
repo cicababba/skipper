@@ -3,9 +3,9 @@ import { VectorStore } from "../vectorstore";
 import { listSolutionRecords } from "./store";
 
 /**
- * Text worth embedding: plan gist + touched files. The record title is
- * excluded — VectorStore.upsert already prepends it. The diff is too noisy
- * to embed; it stays available via the full-record read.
+ * Text worth embedding: plan gist + distilled lesson + touched files. The record
+ * title is excluded — VectorStore.upsert already prepends it. The diff is too
+ * noisy to embed; it stays available via the full-record read.
  */
 export function buildEmbedText(record: SolutionRecord): string {
   if (record.kind === "note" && record.note) {
@@ -21,6 +21,7 @@ export function buildEmbedText(record: SolutionRecord): string {
     parts.push(plan.summary);
     parts.push(...plan.steps.map((s) => s.title));
   }
+  if (record.lesson) parts.push(record.lesson);
   const files = record.diffStats?.files ?? plan?.files.map((f) => f.path) ?? [];
   if (files.length > 0) parts.push(files.join(" "));
   return parts.join("\n");
@@ -63,8 +64,10 @@ export interface ReconcileResult {
 
 /**
  * Bring the vector index in line with the record files: embed missing
- * records, drop entries whose record is gone. Idempotent — records are
- * immutable after capture (feedback is applied at query time, not embedded).
+ * records, drop entries whose record is gone. Already-indexed ids are skipped,
+ * so a record whose embedded text changed (a lesson distilled onto it, #256; a
+ * note edited, #255) must be handed to indexOneRecord by whoever changed it —
+ * reconcile only heals absences.
  */
 export async function reconcileMemoryIndex(
   memoryDir: string,
