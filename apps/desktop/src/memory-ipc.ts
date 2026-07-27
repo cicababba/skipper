@@ -11,6 +11,7 @@ import {
   indexOneRecord,
   searchMemory,
   saveOrchestratorManifest,
+  type DistillInput,
   type OrchestratorManifest,
 } from "@skipper/core";
 import { repoKey } from "@skipper/shared";
@@ -27,6 +28,8 @@ export interface MemoryIpcDeps {
     cwd: string,
     args: string[],
   ) => Promise<{ code: number; stdout: string; stderr: string }>;
+  /** Lesson distillation (#256) — absent = the backfill handler reports it unavailable. */
+  distillLesson?: (input: DistillInput) => Promise<string | null>;
 }
 
 function errorMessage(err: unknown): string {
@@ -180,6 +183,53 @@ export function registerMemoryHandlers(deps: MemoryIpcDeps): void {
       return { ok: true as const };
     },
   );
+
+  // Backfill lessons for a repo's captured solutions (#256): every record that
+  // predates distillation, one run at a time so a large memory doesn't spawn a
+  // fleet of agent processes. Each success is broadcast as it lands, so the tab
+  // fills in progressively rather than after the last record.
+  ipcMain.handle("skipper:memory:distill", async (_e, repo: RepoRef) => {
+    const distillLesson = deps.distillLesson;
+    if (!distillLesson) return { ok: false as const, error: "lesson distillation unavailable" };
+    const key = repoKey(repo);
+    let pending;
+    try {
+      pending = (await listSolutionRecords(deps.memoryDir)).filter(
+        ({ record }) =>
+          repoKey(record.repo) === key && record.kind !== "note" && !record.lesson,
+      );
+    } catch (err) {
+      return { ok: false as const, error: errorMessage(err) };
+    }
+
+    let distilled = 0;
+    let failed = 0;
+    for (const { ref, record } of pending) {
+      try {
+        const lesson = await distillLesson({
+          title: record.title,
+          planSummary: record.plan?.plan.summary,
+          planSteps: record.plan?.plan.steps.map((s) => s.title),
+          diff: record.diff,
+        });
+        if (!lesson) {
+          failed++;
+          continue;
+        }
+        // Re-read: the serve subprocess may have bumped usage counters on the
+        // file while the distillation ran, and the freshest file wins.
+        const fresh = (await readSolutionRecord(deps.memoryDir, ref)) ?? record;
+        const next = { ...fresh, lesson, distilledAt: new Date().toISOString() };
+        await writeSolutionRecord(deps.memoryDir, next);
+        await indexOneRecord(deps.memoryDir, ref, next);
+        distilled++;
+        broadcast();
+      } catch {
+        failed++;
+      }
+    }
+    return { ok: true as const, distilled, failed, remaining: pending.length - distilled };
+  });
 
   // File autocomplete for note linking (#255): the tracked files of the linked clone.
   ipcMain.handle("skipper:memory:repoFiles", async (_e, repo: RepoRef) => {

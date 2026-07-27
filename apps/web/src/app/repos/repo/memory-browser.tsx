@@ -9,6 +9,7 @@ import {
   Loader2,
   Plus,
   Search,
+  Sparkles,
   StickyNote,
   ThumbsDown,
   ThumbsUp,
@@ -53,6 +54,8 @@ export function MemoryBrowser({ repo, initialQuery }: { repo: RepoRef; initialQu
   const [composing, setComposing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<"list" | "graph">("list");
+  const [distilling, setDistilling] = useState(false);
+  const [distillNote, setDistillNote] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!window.skipper) return;
@@ -121,6 +124,28 @@ export function MemoryBrowser({ repo, initialQuery }: { repo: RepoRef; initialQu
   }, [debounced, hits, fileFilter, records, byId]);
 
   const selectedRecord = records?.find((r) => r.itemId === selected) ?? null;
+  const undistilled = (records ?? []).filter((r) => r.kind !== "note" && !r.lesson).length;
+
+  const distill = async () => {
+    if (!window.skipper) return;
+    setDistilling(true);
+    setDistillNote(null);
+    try {
+      const res = await window.skipper.memory.distill(repo);
+      if (res.ok) {
+        setDistillNote(
+          res.failed > 0
+            ? `${m.distillDone(res.distilled)} · ${m.distillFailed(res.failed)}`
+            : m.distillDone(res.distilled),
+        );
+        await load();
+      } else {
+        setDistillNote(res.error);
+      }
+    } finally {
+      setDistilling(false);
+    }
+  };
 
   const remove = async (rec: SolutionRecord) => {
     if (!window.skipper || !window.confirm(m.deleteConfirm)) return;
@@ -182,6 +207,16 @@ export function MemoryBrowser({ repo, initialQuery }: { repo: RepoRef; initialQu
             <Waypoints size={13} />
           </ViewToggle>
         </div>
+        {(undistilled > 0 || distilling) && (
+          <button
+            onClick={() => void distill()}
+            disabled={distilling}
+            className="flex items-center gap-1.5 shrink-0 text-[12px] px-2.5 py-2 rounded-lg border border-border text-muted hover:text-foreground hover:border-accent/40 transition-colors disabled:opacity-50"
+          >
+            {distilling ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+            {distilling ? m.distilling : m.distill}
+          </button>
+        )}
         <button
           onClick={() => setComposing((v) => !v)}
           className="flex items-center gap-1.5 shrink-0 text-[12px] px-2.5 py-2 rounded-lg border border-border text-muted hover:text-foreground hover:border-accent/40 transition-colors"
@@ -190,6 +225,8 @@ export function MemoryBrowser({ repo, initialQuery }: { repo: RepoRef; initialQu
           {m.newNote}
         </button>
       </div>
+
+      {distillNote && <p className="text-[11px] text-muted/70">{distillNote}</p>}
 
       {composing && (
         <NoteEditor
@@ -336,7 +373,9 @@ function MemoryRow({
   const pr = record?.pr ?? hit?.pr;
   const key = record ? (record.issueKey ?? String(record.issueNumber ?? "")) : (hit?.issueKey ?? "");
   const feedback = record?.feedback ?? hit?.feedback ?? { up: 0, down: 0 };
-  const snippet = isNote ? record?.note?.body : (record?.plan?.plan.summary ?? hit?.planSummary);
+  const snippet = isNote
+    ? record?.note?.body
+    : (record?.lesson ?? hit?.lesson ?? record?.plan?.plan.summary ?? hit?.planSummary);
 
   return (
     <button

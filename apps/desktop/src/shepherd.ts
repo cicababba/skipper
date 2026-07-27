@@ -8,14 +8,19 @@ import {
   buildPrBody,
   buildPrTitle,
   codeHostFor,
+  indexOneRecord,
+  readSolutionRecord,
   writeSolutionRecord,
+  type DistillInput,
   type OrchestratorSettings,
   type TokenProvider,
 } from "@skipper/core";
+import { toReviewRound } from "@skipper/shared";
 import type {
   LifecycleState,
   PrReviewComment,
   RepoRef,
+  ReviewRound,
   SolutionRecord,
   StoredPlan,
   TrackedItem,
@@ -60,6 +65,8 @@ export interface ShepherdDeps {
   /** Single manifest write: memoryRef stamp + clear worktree (no transition — merged is terminal). */
   completeMergedCleanup: (itemId: string, memoryRef: string) => Promise<void>;
   memoryDir: string;
+  /** Lesson distillation at capture (#256). Absent = plain capture, no lesson. */
+  distillLesson?: (input: DistillInput) => Promise<string | null>;
 }
 
 let deps: ShepherdDeps | null = null;
@@ -231,6 +238,46 @@ async function reenter(itemId: string): Promise<void> {
   }
 }
 
+/** Every review round the item accumulated, oldest-first — history plus the
+ *  live record, which is only snapshotted onto history when it's overwritten. */
+function reviewRoundsOf(item: TrackedItem): ReviewRound[] {
+  if (!item.review) return [];
+  return [...(item.review.history ?? []), toReviewRound(item.review)];
+}
+
+/**
+ * Best-effort lesson distillation right after capture (#256). The record file is
+ * already on disk before this runs — a distillation failure costs the lesson,
+ * never the memory. Distilled records are indexed explicitly: reconcile skips
+ * ids it already knows, so it would never re-embed the new text.
+ */
+async function distill(item: TrackedItem, record: SolutionRecord, ref: string): Promise<void> {
+  if (!deps?.distillLesson) return;
+  try {
+    const rounds = reviewRoundsOf(item);
+    const lesson = await deps.distillLesson({
+      title: record.title,
+      planSummary: record.plan?.plan.summary,
+      planSteps: record.plan?.plan.steps.map((s) => s.title),
+      diff: record.diff,
+      ...(rounds.length > 0 ? { reviewRounds: rounds } : {}),
+    });
+    if (!lesson) return;
+    // Re-read: the serve subprocess may have bumped usage counters on the file
+    // while the distillation ran, and the freshest file wins.
+    const fresh = (await readSolutionRecord(deps.memoryDir, ref)) ?? record;
+    const distilled: SolutionRecord = {
+      ...fresh,
+      lesson,
+      distilledAt: new Date().toISOString(),
+    };
+    await writeSolutionRecord(deps.memoryDir, distilled);
+    await indexOneRecord(deps.memoryDir, ref, distilled);
+  } catch (err) {
+    console.warn(`[shepherd] lesson distillation failed for ${item.id}: ${String(err)}`);
+  }
+}
+
 /** Merged → capture problema→piano→diff→esito, then drop the worktree. */
 async function captureMerged(itemId: string): Promise<void> {
   if (!deps || inFlight.has(itemId)) return;
@@ -256,7 +303,7 @@ async function captureMerged(itemId: string): Promise<void> {
 
     const stored = await deps.getPlan(item).catch(() => null);
     const record: SolutionRecord = {
-      version: 1,
+      version: 2,
       itemId: item.id,
       repo: item.repo,
       issueKey: item.key,
@@ -271,6 +318,7 @@ async function captureMerged(itemId: string): Promise<void> {
       capturedAt: new Date().toISOString(),
     };
     const ref = await writeSolutionRecord(deps.memoryDir, record);
+    await distill(item, record, ref);
 
     const repoPath = deps.getRepoPath(item.repo);
     if (repoPath) {

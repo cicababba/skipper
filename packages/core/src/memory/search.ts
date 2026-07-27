@@ -38,6 +38,7 @@ export async function searchMemory(
       pr: record.pr,
       kind: record.kind,
       planSummary: record.plan?.plan.summary,
+      lesson: record.lesson,
       filesTouched:
         record.diffStats?.files ??
         record.plan?.plan.files.map((f) => f.path) ??

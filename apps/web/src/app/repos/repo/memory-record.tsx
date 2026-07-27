@@ -164,7 +164,19 @@ export function MemoryRecordView({
           <MarkdownRenderer content={record.note?.body ?? ""} />
         </div>
       ) : (
-        <p className="text-[13px] text-muted/90 leading-relaxed">{plan?.summary ?? m.noSummary}</p>
+        <>
+          {record.lesson && (
+            <div className="rounded-lg border border-accent/25 bg-accent/5 px-3 py-2.5 space-y-1">
+              <span className="block text-[11px] uppercase tracking-wide text-accent/80">
+                {m.lesson}
+              </span>
+              <p className="text-[13px] text-foreground/90 leading-relaxed whitespace-pre-wrap">
+                {record.lesson}
+              </p>
+            </div>
+          )}
+          <p className="text-[13px] text-muted/90 leading-relaxed">{plan?.summary ?? m.noSummary}</p>
+        </>
       )}
 
       {files.length > 0 && (

@@ -141,6 +141,7 @@ import { initPlanner, pokePlanner, cancelPlanningRun, killAllPlanningRuns } from
 import { initCoder, pokeCoder, cancelCodingRun, killAllCodingRuns } from "./coder";
 import { initReviewer, pokeReviewer } from "./reviewer";
 import { initShepherd, pokeShepherd, openOrPushPr } from "./shepherd";
+import { initDistiller, distillForRecord } from "./distiller";
 import {
   captureWorktreeDiff,
   discardWorktree,
@@ -1693,6 +1694,7 @@ export function initOrchestrator(
       return repoPathFor(repo);
     },
     runGit: (cwd, args) => runGit(cwd, args),
+    distillLesson: distillForRecord,
   });
   registerWorktreeDiffHandlers({ ipcMain, ensureManifest });
   // Open the draft PR from human-review, or push a fix round's updates (#11).
@@ -2077,6 +2079,12 @@ export function initOrchestrator(
     completeReentry,
     completeMergedCleanup,
     memoryDir: orchestratorDeps.memoryDir,
+    distillLesson: distillForRecord,
+  });
+
+  initDistiller({
+    getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
+    getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
   });
 
   setTimeout(
