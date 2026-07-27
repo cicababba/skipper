@@ -142,6 +142,7 @@ import { initCoder, pokeCoder, cancelCodingRun, killAllCodingRuns } from "./code
 import { initReviewer, pokeReviewer } from "./reviewer";
 import { initShepherd, pokeShepherd, openOrPushPr } from "./shepherd";
 import { initDistiller, distillForRecord } from "./distiller";
+import { initStalenessSweep, sweepStaleness } from "./memory-staleness";
 import {
   captureWorktreeDiff,
   discardWorktree,
@@ -799,6 +800,7 @@ async function pollNow(ignoreBackoff = false): Promise<void> {
     pokeCoder();
     pokeReviewer();
     pokeShepherd();
+    void sweepStaleness();
   }
 }
 
@@ -2085,6 +2087,15 @@ export function initOrchestrator(
   initDistiller({
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
+  });
+
+  initStalenessSweep({
+    memoryDir: orchestratorDeps.memoryDir,
+    getRepoLinks: async () => (await ensureRepoLinks()).repos,
+    runGit: (cwd, args) => runGit(cwd, args),
+    withRepoGitLock,
+    resolveBaseRef,
+    broadcast,
   });
 
   setTimeout(

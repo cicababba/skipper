@@ -1,9 +1,10 @@
 import { repoKey, type MemoryHit, type RepoRef } from "@skipper/shared";
 import { VectorStore } from "../vectorstore";
 import { readSolutionRecord } from "./store";
-import { feedbackWeight, recencyWeight } from "./ranking";
+import { feedbackWeight, recencyWeight, stalenessWeight } from "./ranking";
+import { recordFilesTouched } from "./staleness";
 
-/** Wide cosine pool re-ranked with recency + feedback before taking top-k. */
+/** Wide cosine pool re-ranked with recency + feedback + staleness before taking top-k. */
 const RERANK_POOL = 50;
 const DEFAULT_K = 5;
 
@@ -31,7 +32,10 @@ export async function searchMemory(
       id: record.itemId,
       ref: candidate.filePath,
       score:
-        candidate.score * recencyWeight(record.capturedAt) * feedbackWeight(record.feedback),
+        candidate.score *
+        recencyWeight(record.capturedAt) *
+        feedbackWeight(record.feedback) *
+        stalenessWeight(record.staleness),
       title: record.title,
       issueKey: record.issueKey ?? (record.issueNumber != null ? String(record.issueNumber) : ""),
       url: record.url,
@@ -39,11 +43,7 @@ export async function searchMemory(
       kind: record.kind,
       planSummary: record.plan?.plan.summary,
       lesson: record.lesson,
-      filesTouched:
-        record.diffStats?.files ??
-        record.plan?.plan.files.map((f) => f.path) ??
-        record.note?.files ??
-        [],
+      filesTouched: recordFilesTouched(record),
       capturedAt: record.capturedAt,
       feedback: record.feedback,
     });

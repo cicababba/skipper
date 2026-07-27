@@ -17,6 +17,8 @@ import {
   searchMemory,
   readSolutionRecord,
   memoryFileName,
+  bumpOffered,
+  bumpFetched,
 } from "@skipper/core";
 import { repoKey, type RepoRef } from "@skipper/shared";
 
@@ -46,6 +48,13 @@ export async function runSearchMemory(
   }
   const k = typeof args.k === "number" && args.k > 0 ? Math.floor(args.k) : undefined;
   const hits = await searchMemory(opts.memoryDir, query, { repo: opts.repo, k });
+  // Usage tracking (#256): only the records the agent was actually shown count
+  // as offered. Never let a counter write break the tool result.
+  try {
+    await bumpOffered(opts.memoryDir, hits.map((h) => h.ref));
+  } catch {
+    /* best-effort */
+  }
   const summaries = hits.map((h) => ({
     id: h.id,
     issue: h.issueKey,
@@ -70,10 +79,17 @@ export async function runGetMemory(
   if (!id) {
     return { content: [{ type: "text", text: "id is required" }], isError: true };
   }
-  const record = await readSolutionRecord(opts.memoryDir, memoryFileName(id));
+  const ref = memoryFileName(id);
+  const record = await readSolutionRecord(opts.memoryDir, ref);
   // Scope guard: never serve another repo's record even if its id is guessed.
   if (!record || repoKey(record.repo) !== repoKey(opts.repo)) {
     return { content: [{ type: "text", text: `No memory record found for id "${id}".` }] };
+  }
+  // A fetch is the strong usage signal (#256) — counted only past the guard.
+  try {
+    await bumpFetched(opts.memoryDir, ref);
+  } catch {
+    /* best-effort */
   }
   return { content: [{ type: "text", text: JSON.stringify(record, null, 2) }] };
 }
