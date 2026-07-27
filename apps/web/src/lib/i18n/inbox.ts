@@ -527,6 +527,9 @@ const en = {
       noSummary: "No summary captured.",
       files: "Files",
       fileFilterLabel: "Filter by file",
+      viewList: "List view",
+      viewGraph: "Graph view",
+      openRecord: "Open",
     },
   },
 };
@@ -1055,6 +1058,9 @@ const it: typeof en = {
       noSummary: "Nessun riepilogo catturato.",
       files: "File",
       fileFilterLabel: "Filtra per file",
+      viewList: "Vista elenco",
+      viewGraph: "Vista grafo",
+      openRecord: "Apri",
     },
   },
 };
@@ -1585,6 +1591,9 @@ const fr: typeof en = {
       noSummary: "Aucun résumé capturé.",
       files: "Fichiers",
       fileFilterLabel: "Filtrer par fichier",
+      viewList: "Vue liste",
+      viewGraph: "Vue graphe",
+      openRecord: "Ouvrir",
     },
   },
 };
@@ -2114,6 +2123,9 @@ const es: typeof en = {
       noSummary: "Ningún resumen capturado.",
       files: "Archivos",
       fileFilterLabel: "Filtrar por archivo",
+      viewList: "Vista de lista",
+      viewGraph: "Vista de grafo",
+      openRecord: "Abrir",
     },
   },
 };

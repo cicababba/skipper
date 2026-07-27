@@ -5,12 +5,14 @@ import {
   ChevronRight,
   Filter,
   GitPullRequest,
+  List,
   Loader2,
   Plus,
   Search,
   StickyNote,
   ThumbsDown,
   ThumbsUp,
+  Waypoints,
   X,
 } from "lucide-react";
 import { displayKey, type MemoryHit, type RepoRef, type SolutionRecord } from "@skipper/shared";
@@ -23,6 +25,7 @@ import {
   filterRecordsByFile,
 } from "@/lib/inbox/memory-filters";
 import { FileSuggestInput } from "./file-picker";
+import { MemoryGraphView } from "./memory-graph-view";
 import { MemoryRecordView } from "./memory-record";
 import { NoteEditor } from "./note-editor";
 
@@ -49,6 +52,7 @@ export function MemoryBrowser({ repo, initialQuery }: { repo: RepoRef; initialQu
   const [selected, setSelected] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [view, setView] = useState<"list" | "graph">("list");
 
   const load = useCallback(() => {
     if (!window.skipper) return;
@@ -162,6 +166,22 @@ export function MemoryBrowser({ repo, initialQuery }: { repo: RepoRef; initialQu
             />
           )}
         </div>
+        <div className="flex items-center shrink-0 rounded-lg border border-border overflow-hidden">
+          <ViewToggle
+            active={view === "list"}
+            label={m.viewList}
+            onClick={() => setView("list")}
+          >
+            <List size={13} />
+          </ViewToggle>
+          <ViewToggle
+            active={view === "graph"}
+            label={m.viewGraph}
+            onClick={() => setView("graph")}
+          >
+            <Waypoints size={13} />
+          </ViewToggle>
+        </div>
         <button
           onClick={() => setComposing((v) => !v)}
           className="flex items-center gap-1.5 shrink-0 text-[12px] px-2.5 py-2 rounded-lg border border-border text-muted hover:text-foreground hover:border-accent/40 transition-colors"
@@ -243,6 +263,17 @@ export function MemoryBrowser({ repo, initialQuery }: { repo: RepoRef; initialQu
         <div className="flex items-center gap-2 text-xs text-muted py-4">
           <Loader2 size={13} className="animate-spin" />
         </div>
+      ) : view === "graph" ? (
+        <MemoryGraphView
+          records={records}
+          hits={debounced ? hits : null}
+          fileFilter={fileFilter}
+          busy={busy}
+          onFileFilter={setFileFilter}
+          onOpen={setSelected}
+          onDelete={(rec) => void remove(rec)}
+          onChanged={() => void load()}
+        />
       ) : rows.length === 0 ? (
         <p className="text-[13px] text-muted/60 py-4">{debounced ? m.noResults : m.empty}</p>
       ) : (
@@ -260,6 +291,32 @@ export function MemoryBrowser({ repo, initialQuery }: { repo: RepoRef; initialQu
         </ul>
       )}
     </div>
+  );
+}
+
+function ViewToggle({
+  active,
+  label,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      aria-label={label}
+      title={label}
+      className={`px-2.5 py-2 transition-colors ${
+        active ? "bg-accent/10 text-accent" : "text-muted hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 

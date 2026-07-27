@@ -268,6 +268,71 @@ describe("MemoryBrowser — notes and file filtering", () => {
   });
 });
 
+describe("MemoryBrowser — list ⇄ graph toggle", () => {
+  const shared = [
+    solution("github:1", { title: "first", plan: planWith("s", ["src/shared.ts"]) }),
+    solution("github:2", { title: "second", plan: planWith("s", ["src/shared.ts"]) }),
+  ];
+
+  it("starts on the list view", async () => {
+    installSkipper({ records: shared });
+    const { container } = render(<MemoryBrowser repo={REPO} />);
+
+    await screen.findByText("first");
+    expect(container.querySelector("svg[role='img']")).toBeNull();
+    expect(screen.getByLabelText("List view").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("swaps the list for the graph and back", async () => {
+    installSkipper({ records: shared });
+    const { container } = render(<MemoryBrowser repo={REPO} />);
+    await screen.findByText("first");
+
+    fireEvent.click(screen.getByLabelText("Graph view"));
+    expect(container.querySelector("svg[role='img']")).toBeTruthy();
+    expect(container.querySelector("ul.divide-y")).toBeNull();
+    expect(screen.getByLabelText("src/shared.ts")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("List view"));
+    expect(container.querySelector("svg[role='img']")).toBeNull();
+    expect(screen.getByText("first")).toBeTruthy();
+  });
+
+  it("keeps the search bar and the note button in the graph view", async () => {
+    installSkipper({ records: shared });
+    render(<MemoryBrowser repo={REPO} />);
+    await screen.findByText("first");
+
+    fireEvent.click(screen.getByLabelText("Graph view"));
+    expect(screen.getByPlaceholderText(/Search memory/)).toBeTruthy();
+    expect(screen.getByText("New note")).toBeTruthy();
+  });
+
+  it("clicking a file node sets the filter chip shared with the list", async () => {
+    installSkipper({ records: shared });
+    render(<MemoryBrowser repo={REPO} />);
+    await screen.findByText("first");
+
+    fireEvent.click(screen.getByLabelText("Graph view"));
+    fireEvent.click(screen.getByLabelText("src/shared.ts"));
+
+    await waitFor(() => expect(screen.getByLabelText("clear filter src/shared.ts")).toBeTruthy());
+  });
+
+  it("opens the record detail from the graph side panel", async () => {
+    installSkipper({ records: shared });
+    render(<MemoryBrowser repo={REPO} />);
+    await screen.findByText("first");
+
+    fireEvent.click(screen.getByLabelText("Graph view"));
+    fireEvent.click(screen.getByLabelText("first"));
+    fireEvent.click(screen.getByText("Open"));
+
+    // The record detail replaces the browser body — its back control appears.
+    await waitFor(() => expect(screen.getByText("Close")).toBeTruthy());
+  });
+});
+
 describe("MemoryBrowser — note authoring", () => {
   it("creates a note and reloads the list", async () => {
     const { createNote, list } = installSkipper({ records: [] });
