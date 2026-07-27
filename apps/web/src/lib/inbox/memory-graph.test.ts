@@ -101,6 +101,22 @@ describe("buildMemoryGraph — nodes", () => {
   it("returns an empty graph for no records", () => {
     expect(buildMemoryGraph([])).toEqual({ nodes: [], links: [] });
   });
+
+  // #256: the view grays a stale node out over its sentiment colour.
+  it("flags nodes whose files are mostly gone as stale", () => {
+    const graph = buildMemoryGraph([
+      record("github:1", [], { staleness: 0.9 }),
+      record("github:2", [], { staleness: 0.5 }),
+      record("github:3", []),
+      record("note:a", [], { kind: "note", note: { body: "b" }, staleness: 1 }),
+    ]);
+    expect(graph.nodes.map((n) => (n.kind === "file" ? null : n.stale))).toEqual([
+      true,
+      false,
+      false,
+      true,
+    ]);
+  });
 });
 
 describe("buildMemoryGraph — file threshold", () => {

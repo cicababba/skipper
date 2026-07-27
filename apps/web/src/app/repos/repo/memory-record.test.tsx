@@ -70,6 +70,7 @@ function renderView(record: SolutionRecord, props: Record<string, unknown> = {})
   const onChanged = vi.fn();
   const onDelete = vi.fn();
   const onBack = vi.fn();
+  const onKeep = vi.fn();
   render(
     <MemoryRecordView
       record={record}
@@ -77,12 +78,12 @@ function renderView(record: SolutionRecord, props: Record<string, unknown> = {})
       reasons={[]}
       onBack={onBack}
       onDelete={onDelete}
-      onKeep={vi.fn()}
+      onKeep={onKeep}
       onChanged={onChanged}
       {...props}
     />,
   );
-  return { onChanged, onDelete, onBack };
+  return { onChanged, onDelete, onBack, onKeep };
 }
 
 afterEach(() => {
@@ -219,5 +220,76 @@ describe("MemoryRecordView — curation", () => {
     renderView(solution({ feedback: { up: 3, down: 1 } }));
     expect(screen.getByLabelText("Mark helpful").textContent).toContain("3");
     expect(screen.getByLabelText("Mark not helpful").textContent).toContain("1");
+  });
+});
+
+describe("MemoryRecordView — the distilled lesson (#256)", () => {
+  it("leads with the lesson, above the plan summary", () => {
+    installSkipper();
+    renderView(solution({ lesson: "Problem: the token clock\nInsight: invert the comparison" }));
+
+    expect(screen.getByText("Lesson")).toBeTruthy();
+    const lesson = screen.getByText(/Problem: the token clock/);
+    const summary = screen.getByText("swap the expiry comparison");
+    expect(lesson.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows no lesson block when the record has none", () => {
+    installSkipper();
+    renderView(solution());
+    expect(screen.queryByText("Lesson")).toBeNull();
+  });
+
+  it("never shows a lesson block on a note", () => {
+    installSkipper();
+    renderView(note({ lesson: "Problem: p\nInsight: i" }));
+    expect(screen.queryByText("Lesson")).toBeNull();
+  });
+});
+
+describe("MemoryRecordView — staleness and the review queue (#256)", () => {
+  it("badges a stale record with the percentage and the check date", () => {
+    installSkipper();
+    renderView(
+      solution({ staleness: 0.75, stalenessCheckedAt: "2026-07-19T00:00:00.000Z" }),
+    );
+
+    const badge = screen.getByText("Stale");
+    expect(badge.getAttribute("title")).toContain("75%");
+    expect(badge.getAttribute("title")).toContain(
+      new Date("2026-07-19T00:00:00.000Z").toLocaleDateString(),
+    );
+  });
+
+  it("shows no badge below the threshold or without a measurement", () => {
+    installSkipper();
+    renderView(solution({ staleness: 0.5 }));
+    expect(screen.queryByText("Stale")).toBeNull();
+  });
+
+  it("offers Keep only to a flagged record, and reports the click", () => {
+    installSkipper();
+    const { onKeep } = renderView(solution({ staleness: 0.9 }), { reasons: ["stale"] });
+
+    expect(screen.getByText("Files gone")).toBeTruthy();
+    fireEvent.click(screen.getByText("Keep"));
+    expect(onKeep).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders every reason that flagged the record", () => {
+    installSkipper();
+    renderView(solution({ staleness: 0.9, feedback: { up: 0, down: 4 } }), {
+      reasons: ["negative-feedback", "unused", "stale"],
+    });
+
+    expect(screen.getByText("Voted down")).toBeTruthy();
+    expect(screen.getByText("Never used")).toBeTruthy();
+    expect(screen.getByText("Files gone")).toBeTruthy();
+  });
+
+  it("hides Keep on a record the queue never flagged", () => {
+    installSkipper();
+    renderView(solution());
+    expect(screen.queryByText("Keep")).toBeNull();
   });
 });

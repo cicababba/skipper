@@ -74,6 +74,9 @@ function installSkipper(opts: {
   records?: SolutionRecord[];
   search?: { ok: true; hits: MemoryHit[] } | { ok: false; error: string };
   repoFiles?: { ok: true; files: string[] } | { ok: false; error: string };
+  distill?:
+    | { ok: true; distilled: number; failed: number; remaining: number }
+    | { ok: false; error: string };
 }) {
   const list = vi.fn().mockResolvedValue(opts.records ?? []);
   const search = vi.fn().mockResolvedValue(opts.search ?? { ok: true, hits: [] });
@@ -84,11 +87,25 @@ function installSkipper(opts: {
   const repoFiles = vi
     .fn()
     .mockResolvedValue(opts.repoFiles ?? { ok: true, files: ["src/terminal.ts"] });
+  const distill = vi
+    .fn()
+    .mockResolvedValue(opts.distill ?? { ok: true, distilled: 1, failed: 0, remaining: 0 });
+  const dismissReview = vi.fn().mockResolvedValue({ ok: true });
   (window as unknown as { skipper: unknown }).skipper = {
-    memory: { list, search, createNote, updateNote, curate, delete: remove, repoFiles },
+    memory: {
+      list,
+      search,
+      createNote,
+      updateNote,
+      curate,
+      delete: remove,
+      repoFiles,
+      distill,
+      dismissReview,
+    },
     openExternal: vi.fn(),
   };
-  return { list, search, createNote, repoFiles };
+  return { list, search, createNote, repoFiles, distill, dismissReview };
 }
 
 function type(value: string) {
@@ -366,5 +383,148 @@ describe("MemoryBrowser — note authoring", () => {
 
     fireEvent.click(screen.getByText("New note"));
     expect(await screen.findByText("Link a local clone to attach files.")).toBeTruthy();
+  });
+});
+
+describe("MemoryBrowser — lesson backfill (#256)", () => {
+  it("offers the backfill only while some solution still lacks a lesson", async () => {
+    installSkipper({ records: [solution("github:1", { lesson: "Problem: p\nInsight: i" })] });
+    render(<MemoryBrowser repo={REPO} />);
+    await screen.findByText("solution github:1");
+    expect(screen.queryByText("Distill lessons")).toBeNull();
+  });
+
+  it("never counts a note as missing its lesson", async () => {
+    installSkipper({ records: [note("note:1")] });
+    render(<MemoryBrowser repo={REPO} />);
+    await screen.findByText("a manual note");
+    expect(screen.queryByText("Distill lessons")).toBeNull();
+  });
+
+  it("runs the backfill, reports the count and reloads the list", async () => {
+    const { distill, list } = installSkipper({
+      records: [solution("github:1")],
+      distill: { ok: true, distilled: 2, failed: 0, remaining: 0 },
+    });
+    render(<MemoryBrowser repo={REPO} />);
+    await screen.findByText("solution github:1");
+
+    fireEvent.click(screen.getByText("Distill lessons"));
+
+    await waitFor(() => expect(distill).toHaveBeenCalledWith(REPO));
+    expect(await screen.findByText("2 lessons distilled")).toBeTruthy();
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+  });
+
+  it("reports the failures alongside the successes", async () => {
+    installSkipper({
+      records: [solution("github:1")],
+      distill: { ok: true, distilled: 1, failed: 2, remaining: 2 },
+    });
+    render(<MemoryBrowser repo={REPO} />);
+    await screen.findByText("solution github:1");
+
+    fireEvent.click(screen.getByText("Distill lessons"));
+    expect(await screen.findByText("1 lesson distilled · 2 failed")).toBeTruthy();
+  });
+
+  it("surfaces a refused backfill", async () => {
+    installSkipper({
+      records: [solution("github:1")],
+      distill: { ok: false, error: "lesson distillation unavailable" },
+    });
+    render(<MemoryBrowser repo={REPO} />);
+    await screen.findByText("solution github:1");
+
+    fireEvent.click(screen.getByText("Distill lessons"));
+    expect(await screen.findByText("lesson distillation unavailable")).toBeTruthy();
+  });
+
+  it("prefers the lesson over the plan summary as the row snippet", async () => {
+    installSkipper({
+      records: [solution("github:1", { lesson: "Problem: the token clock" })],
+    });
+    render(<MemoryBrowser repo={REPO} />);
+
+    expect(await screen.findByText("Problem: the token clock")).toBeTruthy();
+    expect(screen.queryByText("summary of the fix")).toBeNull();
+  });
+});
+
+describe("MemoryBrowser — the review queue (#256)", () => {
+  const stale = () =>
+    solution("github:1", { title: "stale one", staleness: 0.9, lesson: "Problem: p" });
+  const healthy = () =>
+    solution("github:2", { title: "healthy one", lesson: "Problem: p" });
+
+  it("stays out of the way when nothing is flagged", async () => {
+    installSkipper({ records: [healthy()] });
+    render(<MemoryBrowser repo={REPO} />);
+    await screen.findByText("healthy one");
+    expect(screen.queryByText(/Prune candidates/)).toBeNull();
+  });
+
+  it("counts the candidates on the chip", async () => {
+    installSkipper({ records: [stale(), healthy()] });
+    render(<MemoryBrowser repo={REPO} />);
+    expect(await screen.findByText("Prune candidates (1)")).toBeTruthy();
+  });
+
+  it("filters the list to the candidates with their reasons, and back", async () => {
+    installSkipper({ records: [stale(), healthy()] });
+    render(<MemoryBrowser repo={REPO} />);
+    await screen.findByText("healthy one");
+
+    fireEvent.click(screen.getByText("Prune candidates (1)"));
+
+    await waitFor(() => expect(screen.queryByText("healthy one")).toBeNull());
+    expect(screen.getByText("stale one")).toBeTruthy();
+    expect(screen.getByText("Files gone")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Prune candidates (1)"));
+    await waitFor(() => expect(screen.getByText("healthy one")).toBeTruthy());
+  });
+
+  it("badges a stale row outside the queue view too", async () => {
+    installSkipper({ records: [stale()] });
+    render(<MemoryBrowser repo={REPO} />);
+    expect(await screen.findByText("Stale")).toBeTruthy();
+  });
+
+  it("keeps a candidate from the record view and reloads", async () => {
+    const { dismissReview, list } = installSkipper({ records: [stale()] });
+    render(<MemoryBrowser repo={REPO} />);
+    await screen.findByText("stale one");
+
+    fireEvent.click(screen.getByText("stale one"));
+    fireEvent.click(await screen.findByText("Keep"));
+
+    await waitFor(() => expect(dismissReview).toHaveBeenCalledWith("github:1"));
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+  });
+
+  it("drops the chip once the last candidate is kept", async () => {
+    const { list } = installSkipper({ records: [stale()] });
+    render(<MemoryBrowser repo={REPO} />);
+    await screen.findByText("Prune candidates (1)");
+
+    // The keep lands as a fresh list: the record comes back dismissed.
+    list.mockResolvedValue([
+      solution("github:1", {
+        title: "stale one",
+        staleness: 0.9,
+        lesson: "Problem: p",
+        reviewDismissedAt: new Date().toISOString(),
+      }),
+    ]);
+    fireEvent.click(screen.getByText("stale one"));
+    fireEvent.click(await screen.findByText("Keep"));
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+
+    // Back on the list, the kept record is inside its 90-day window.
+    fireEvent.click(screen.getByText("Close"));
+    await screen.findByText("stale one");
+    expect(screen.queryByText(/Prune candidates/)).toBeNull();
+    expect(screen.queryByText("Keep")).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SolutionRecord } from "@skipper/shared";
@@ -8,6 +8,7 @@ import {
   writeSolutionRecord,
   reconcileMemoryIndex,
   createNoteRecord,
+  memoryFileName,
   searchMemory,
 } from "@skipper/core";
 import { displayKey } from "@skipper/shared";
@@ -164,4 +165,99 @@ describe("runGetMemory", () => {
     const res = await runGetMemory({ repo: REPO_A, memoryDir }, {});
     expect(res.isError).toBe(true);
   });
+});
+
+// Usage tracking (#256): the serve subprocess is the only writer of these
+// counters — the Memory tab's own searches deliberately do not count.
+describe("usage counters", () => {
+  const readRecord = async (id: string): Promise<SolutionRecord> =>
+    JSON.parse(await readFile(join(memoryDir, memoryFileName(id)), "utf-8")) as SolutionRecord;
+
+  it("bumps offered on exactly the records the agent was shown", async () => {
+    for (let i = 0; i < 4; i++) {
+      await writeSolutionRecord(memoryDir, makeRecord(`github:${i}`, REPO_A));
+    }
+    await reconcileMemoryIndex(memoryDir);
+
+    const res = await runSearchMemory(
+      { repo: REPO_A, memoryDir },
+      { query: "fix oauth token refresh", k: 2 },
+    );
+    const shown = (JSON.parse(res.content[0].text) as Array<{ id: string }>).map((h) => h.id);
+    expect(shown).toHaveLength(2);
+
+    for (let i = 0; i < 4; i++) {
+      const rec = await readRecord(`github:${i}`);
+      if (shown.includes(`github:${i}`)) {
+        expect(rec.offeredCount).toBe(1);
+        expect(Date.parse(rec.lastOfferedAt!)).not.toBeNaN();
+      } else {
+        expect(rec.offeredCount).toBeUndefined();
+      }
+    }
+  });
+
+  it("accumulates offers across searches and never touches fetched", async () => {
+    await writeSolutionRecord(memoryDir, makeRecord("github:1", REPO_A));
+    await reconcileMemoryIndex(memoryDir);
+
+    await runSearchMemory({ repo: REPO_A, memoryDir }, { query: "fix oauth token refresh" });
+    await runSearchMemory({ repo: REPO_A, memoryDir }, { query: "fix oauth token refresh" });
+
+    const rec = await readRecord("github:1");
+    expect(rec.offeredCount).toBe(2);
+    expect(rec.fetchedCount).toBeUndefined();
+  });
+
+  it("bumps nothing when the search returns nothing", async () => {
+    await writeSolutionRecord(memoryDir, makeRecord("github:1", REPO_B));
+    await reconcileMemoryIndex(memoryDir);
+
+    await runSearchMemory({ repo: REPO_A, memoryDir }, { query: "fix oauth token refresh" });
+    expect((await readRecord("github:1")).offeredCount).toBeUndefined();
+  });
+
+  it("bumps fetched when a record is actually read", async () => {
+    await writeSolutionRecord(memoryDir, makeRecord("github:1", REPO_A));
+
+    await runGetMemory({ repo: REPO_A, memoryDir }, { id: "github:1" });
+    await runGetMemory({ repo: REPO_A, memoryDir }, { id: "github:1" });
+
+    const rec = await readRecord("github:1");
+    expect(rec.fetchedCount).toBe(2);
+    expect(Date.parse(rec.lastFetchedAt!)).not.toBeNaN();
+  });
+
+  it("does not bump a record the scope guard refused", async () => {
+    await writeSolutionRecord(memoryDir, makeRecord("github:2", REPO_B));
+
+    const res = await runGetMemory({ repo: REPO_A, memoryDir }, { id: "github:2" });
+    expect(res.content[0].text).toContain("No memory record found");
+    expect((await readRecord("github:2")).fetchedCount).toBeUndefined();
+  });
+
+  // A counter is worth less than a retrieval: an unwritable memory dir must
+  // still serve hits.
+  it.skipIf(process.getuid?.() === 0)(
+    "serves the tool result even when the counter write fails",
+    async () => {
+      await writeSolutionRecord(memoryDir, makeRecord("github:1", REPO_A));
+      await reconcileMemoryIndex(memoryDir);
+      await chmod(memoryDir, 0o555);
+      try {
+        const search = await runSearchMemory(
+          { repo: REPO_A, memoryDir },
+          { query: "fix oauth token refresh" },
+        );
+        expect(search.isError).toBeUndefined();
+        expect(JSON.parse(search.content[0].text)).toHaveLength(1);
+
+        const get = await runGetMemory({ repo: REPO_A, memoryDir }, { id: "github:1" });
+        expect(get.isError).toBeUndefined();
+        expect(JSON.parse(get.content[0].text).itemId).toBe("github:1");
+      } finally {
+        await chmod(memoryDir, 0o755);
+      }
+    },
+  );
 });
