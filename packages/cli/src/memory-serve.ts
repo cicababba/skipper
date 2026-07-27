@@ -51,6 +51,7 @@ export async function runSearchMemory(
     issue: h.issueKey,
     url: h.url,
     pr: h.pr,
+    kind: h.kind,
     title: h.title,
     score: Number(h.score.toFixed(3)),
     planSummary: h.planSummary,
@@ -100,7 +101,7 @@ const TOOLS = [
   {
     name: "get_memory",
     description:
-      "Fetch the full solution record for one memory id (from a search_memory hit): the stored plan and the merged diff.",
+      "Fetch the full memory record for one memory id (from a search_memory hit): the stored plan and merged diff of a past issue, or the body of a manual note.",
     inputSchema: {
       type: "object",
       properties: {

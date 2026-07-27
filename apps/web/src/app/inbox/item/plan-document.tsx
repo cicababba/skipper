@@ -8,6 +8,7 @@ import {
   sectionDiffCounts,
   type IssuePlan,
   type PlanRevision,
+  type RepoRef,
   type UsedMemoryRef,
 } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
@@ -61,6 +62,9 @@ interface PlanDocumentProps {
   onCancel: () => void;
   memoryRefs: UsedMemoryRef[] | undefined;
   memoriesTitle: string;
+  /** Enables the "search memory" link out of the memories block. */
+  memoryRepo?: RepoRef;
+  memoryQuery?: string;
   revisions?: PlanRevision[];
 }
 
@@ -183,6 +187,8 @@ export function PlanDocument({
   onCancel,
   memoryRefs,
   memoriesTitle,
+  memoryRepo,
+  memoryQuery,
   revisions,
 }: PlanDocumentProps) {
   const { t } = useT();
@@ -535,7 +541,13 @@ export function PlanDocument({
           editable={false}
           editing={false}
         >
-          <MemoriesList itemId={itemId} phase="planning" refs={memoryRefs} />
+          <MemoriesList
+            itemId={itemId}
+            phase="planning"
+            refs={memoryRefs}
+            repo={memoryRepo}
+            queryText={memoryQuery}
+          />
         </DocSection>
       )}
     </div>

@@ -8,6 +8,13 @@ import { listSolutionRecords } from "./store";
  * to embed; it stays available via the full-record read.
  */
 export function buildEmbedText(record: SolutionRecord): string {
+  if (record.kind === "note" && record.note) {
+    const parts = [record.note.body];
+    if (record.note.files && record.note.files.length > 0) {
+      parts.push(record.note.files.join(" "));
+    }
+    return parts.join("\n");
+  }
   const parts: string[] = [];
   const plan = record.plan?.plan;
   if (plan) {
@@ -24,9 +31,28 @@ export async function indexSolutionRecord(
   ref: string,
   record: SolutionRecord,
 ): Promise<void> {
-  await store.upsert(record.itemId, record.title, ref, "solution", buildEmbedText(record), [
-    repoKey(record.repo),
-  ]);
+  await store.upsert(
+    record.itemId,
+    record.title,
+    ref,
+    record.kind === "note" ? "note" : "solution",
+    buildEmbedText(record),
+    [repoKey(record.repo)],
+  );
+}
+
+/**
+ * Index (or re-index) one record against the shared store and persist it.
+ * Re-upserting re-embeds, so an edited note becomes findable by its new wording.
+ */
+export async function indexOneRecord(
+  memoryDir: string,
+  ref: string,
+  record: SolutionRecord,
+): Promise<void> {
+  const store = new VectorStore(memoryDir);
+  await indexSolutionRecord(store, ref, record);
+  await store.save();
 }
 
 export interface ReconcileResult {
@@ -53,7 +79,7 @@ export async function reconcileMemoryIndex(
     await indexSolutionRecord(store, ref, record);
     indexed++;
     onProgress?.(
-      `indexed ${ref} (${repoKey(record.repo)} ${displayKey(record.issueKey ?? String(record.issueNumber))})`,
+      `indexed ${ref} (${repoKey(record.repo)} ${displayKey(record.issueKey ?? (record.issueNumber != null ? String(record.issueNumber) : record.itemId))})`,
     );
   }
 

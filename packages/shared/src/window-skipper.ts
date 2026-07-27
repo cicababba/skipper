@@ -33,7 +33,7 @@ import type {
 } from "./orchestrator";
 import type { CodingEventEnvelope } from "./coding";
 import type { AgentChatKind, IssuePlan, PlanChatMessage, StoredPlan } from "./plan";
-import type { MemoryPhase, SolutionRecord } from "./memory";
+import type { MemoryHit, MemoryPhase, SolutionRecord } from "./memory";
 import type { StoredCoderReport } from "./coder-report";
 import type { RepoRef } from "./inbox";
 import type { AppSettings, AppSettingsPatch } from "./settings";
@@ -366,7 +366,7 @@ export interface WindowSkipper {
     getEvents: (itemId: string) => Promise<CodingEventEnvelope[]>;
     onEvent: (itemId: string, callback: (envelope: CodingEventEnvelope) => void) => () => void;
   };
-  /** Solutions memory — "memories used" card + 👍/👎 (#46). */
+  /** Solutions memory — "memories used" card + 👍/👎 (#46), Memory tab (#255). */
   memory: {
     get: (id: string) => Promise<SolutionRecord | null>;
     list: (repo: RepoRef) => Promise<SolutionRecord[]>;
@@ -377,6 +377,27 @@ export interface WindowSkipper {
       vote: "up" | "down" | null,
     ) => Promise<{ ok: boolean; error?: string }>;
     delete: (id: string) => Promise<{ ok: boolean; error?: string }>;
+    /** Result object rather than a throw: the first search of a session may
+     * download the embedding model and fail offline — the renderer offers a retry. */
+    search: (
+      repo: RepoRef,
+      query: string,
+      k?: number,
+    ) => Promise<{ ok: true; hits: MemoryHit[] } | { ok: false; error: string }>;
+    curate: (id: string, vote: "up" | "down" | null) => Promise<{ ok: boolean; error?: string }>;
+    createNote: (
+      repo: RepoRef,
+      body: string,
+      files?: string[],
+      title?: string,
+    ) => Promise<{ ok: true; id: string } | { ok: false; error: string }>;
+    updateNote: (
+      id: string,
+      body: string,
+      files?: string[],
+      title?: string,
+    ) => Promise<{ ok: boolean; error?: string }>;
+    repoFiles: (repo: RepoRef) => Promise<{ ok: true; files: string[] } | { ok: false; error: string }>;
   };
   updates: {
     getState: () => Promise<UpdateState>;

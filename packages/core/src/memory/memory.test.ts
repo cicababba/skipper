@@ -5,7 +5,8 @@ import { join } from "node:path";
 import type { SolutionRecord, StoredPlan } from "@skipper/shared";
 import { registerTransformersLoader } from "../vectorstore/embedder";
 import { listSolutionRecords, memoryFileName, writeSolutionRecord } from "./store";
-import { reconcileMemoryIndex } from "./indexer";
+import { indexOneRecord, reconcileMemoryIndex } from "./indexer";
+import { createNoteRecord } from "./notes";
 import { searchMemory } from "./search";
 import { feedbackWeight, recencyWeight } from "./ranking";
 
@@ -190,6 +191,94 @@ describe("searchMemory", () => {
     await reconcileMemoryIndex(memoryDir);
     const hits = await searchMemory(memoryDir, "fix oauth token refresh", { repo: REPO_A, k: 3 });
     expect(hits).toHaveLength(3);
+  });
+});
+
+describe("notes in the corpus (#255)", () => {
+  it("retrieves a note by terms that appear only in its body", async () => {
+    await writeSolutionRecord(memoryDir, makeRecord("github:1"));
+    await writeSolutionRecord(
+      memoryDir,
+      createNoteRecord(REPO_A, "the windows pty resize race needs a debounce"),
+    );
+    await reconcileMemoryIndex(memoryDir);
+
+    const hits = await searchMemory(memoryDir, "windows pty resize debounce", { repo: REPO_A });
+    expect(hits[0]?.kind).toBe("note");
+  });
+
+  it("shapes a note hit with no pr, an empty issueKey and the note's files", async () => {
+    const note = createNoteRecord(REPO_A, "prefer structured logging", ["src/log.ts"]);
+    await writeSolutionRecord(memoryDir, note);
+    await reconcileMemoryIndex(memoryDir);
+
+    const hits = await searchMemory(memoryDir, "prefer structured logging", { repo: REPO_A });
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({
+      id: note.itemId,
+      kind: "note",
+      issueKey: "",
+      filesTouched: ["src/log.ts"],
+    });
+    expect(hits[0].pr).toBeUndefined();
+    expect(hits[0].planSummary).toBeUndefined();
+  });
+
+  it("keeps notes scoped to their repo", async () => {
+    await writeSolutionRecord(memoryDir, createNoteRecord(REPO_B, "anvil only wisdom"));
+    await reconcileMemoryIndex(memoryDir);
+
+    expect(await searchMemory(memoryDir, "anvil only wisdom", { repo: REPO_A })).toEqual([]);
+    expect(
+      (await searchMemory(memoryDir, "anvil only wisdom", { repo: REPO_B })).map((h) => h.kind),
+    ).toEqual(["note"]);
+  });
+
+  it("reconcile indexes an unindexed note alongside solutions", async () => {
+    await writeSolutionRecord(memoryDir, makeRecord("github:1"));
+    await reconcileMemoryIndex(memoryDir);
+
+    await writeSolutionRecord(memoryDir, createNoteRecord(REPO_A, "a late arriving note"));
+    expect(await reconcileMemoryIndex(memoryDir)).toEqual({ indexed: 1, removed: 0, total: 2 });
+  });
+
+  it("gives a solution hit an empty issueKey rather than the string \"undefined\"", async () => {
+    await writeSolutionRecord(
+      memoryDir,
+      makeRecord("github:1", { issueKey: undefined, issueNumber: undefined }),
+    );
+    await reconcileMemoryIndex(memoryDir);
+
+    const hits = await searchMemory(memoryDir, "fix oauth token refresh", { repo: REPO_A });
+    expect(hits[0]?.issueKey).toBe("");
+  });
+});
+
+describe("indexOneRecord (#255)", () => {
+  it("makes a single record searchable without a full reconcile", async () => {
+    const note = createNoteRecord(REPO_A, "inline indexed straight away");
+    const ref = await writeSolutionRecord(memoryDir, note);
+    await indexOneRecord(memoryDir, ref, note);
+
+    const hits = await searchMemory(memoryDir, "inline indexed straight away", { repo: REPO_A });
+    expect(hits.map((h) => h.id)).toEqual([note.itemId]);
+  });
+
+  it("re-upserts an edited note so the new wording is findable", async () => {
+    const note = createNoteRecord(REPO_A, "original wording about caching");
+    const ref = await writeSolutionRecord(memoryDir, note);
+    await indexOneRecord(memoryDir, ref, note);
+
+    note.note = { body: "rewritten wording about throttling" };
+    await writeSolutionRecord(memoryDir, note);
+    await indexOneRecord(memoryDir, ref, note);
+
+    const hits = await searchMemory(memoryDir, "rewritten wording about throttling", {
+      repo: REPO_A,
+    });
+    expect(hits.map((h) => h.id)).toEqual([note.itemId]);
+    // Re-upsert replaces rather than duplicates the entry.
+    expect(await reconcileMemoryIndex(memoryDir)).toEqual({ indexed: 0, removed: 0, total: 1 });
   });
 });
 

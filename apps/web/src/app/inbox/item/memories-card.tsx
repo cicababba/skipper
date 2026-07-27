@@ -1,14 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ExternalLink, GitPullRequest, Loader2, ThumbsDown, ThumbsUp } from "lucide-react";
+import Link from "next/link";
+import { ExternalLink, GitPullRequest, Loader2, Search, ThumbsDown, ThumbsUp } from "lucide-react";
 import {
   displayKey,
   type MemoryPhase,
+  type RepoRef,
   type SolutionRecord,
   type UsedMemoryRef,
 } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
+import { VoteButton } from "@/components/vote-button";
+import { repoHref } from "@/lib/inbox/nav";
 import { Section } from "./plan-sections";
 
 type RecordState = SolutionRecord | "error" | undefined;
@@ -25,16 +29,20 @@ export function MemoriesCard({
   phase,
   refs,
   title,
+  repo,
+  queryText,
 }: {
   itemId: string;
   phase: MemoryPhase;
   refs: UsedMemoryRef[] | undefined;
   title: string;
+  repo?: RepoRef;
+  queryText?: string;
 }) {
   if (!refs || refs.length === 0) return null;
   return (
     <Section title={title} count={refs.length} editable={false} editing={false}>
-      <MemoriesList itemId={itemId} phase={phase} refs={refs} />
+      <MemoriesList itemId={itemId} phase={phase} refs={refs} repo={repo} queryText={queryText} />
     </Section>
   );
 }
@@ -43,10 +51,14 @@ export function MemoriesList({
   itemId,
   phase,
   refs,
+  repo,
+  queryText,
 }: {
   itemId: string;
   phase: MemoryPhase;
   refs: UsedMemoryRef[] | undefined;
+  repo?: RepoRef;
+  queryText?: string;
 }) {
   const { t } = useT();
   const m = t.inbox.plan.memories;
@@ -104,26 +116,35 @@ export function MemoriesList({
               ) : rec === "error" ? (
                 <span className="text-muted/70">{m.loadFailed}</span>
               ) : (
-                <div className="flex items-center gap-2 min-w-0">
-                  <button
-                    onClick={() => void window.skipper?.openExternal(rec.url)}
-                    className="flex items-center gap-1.5 min-w-0 text-left hover:text-accent transition-colors"
-                    title={rec.url}
-                  >
-                    <span className="font-mono text-muted shrink-0">
-                      {displayKey(rec.issueKey ?? String(rec.issueNumber))}
-                    </span>
-                    <span className="truncate">{rec.title}</span>
-                    <ExternalLink size={11} className="shrink-0 opacity-50" />
-                  </button>
-                  <button
-                    onClick={() => void window.skipper?.openExternal(rec.pr.url)}
-                    className="flex items-center gap-1 shrink-0 font-mono text-[11px] text-muted hover:text-accent transition-colors"
-                    title={rec.pr.url}
-                  >
-                    <GitPullRequest size={11} />
-                    {rec.pr.number}
-                  </button>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <button
+                      onClick={() => void window.skipper?.openExternal(rec.url)}
+                      className="flex items-center gap-1.5 min-w-0 text-left hover:text-accent transition-colors"
+                      title={rec.url}
+                    >
+                      <span className="font-mono text-muted shrink-0">
+                        {displayKey(rec.issueKey ?? String(rec.issueNumber ?? ""))}
+                      </span>
+                      <span className="truncate">{rec.title}</span>
+                      <ExternalLink size={11} className="shrink-0 opacity-50" />
+                    </button>
+                    {rec.pr && (
+                      <button
+                        onClick={() => void window.skipper?.openExternal(rec.pr!.url)}
+                        className="flex items-center gap-1 shrink-0 font-mono text-[11px] text-muted hover:text-accent transition-colors"
+                        title={rec.pr.url}
+                      >
+                        <GitPullRequest size={11} />
+                        {rec.pr.number}
+                      </button>
+                    )}
+                  </div>
+                  {rec.plan?.plan.summary && (
+                    <p className="text-[11px] text-muted/70 line-clamp-2">
+                      {rec.plan.plan.summary}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -150,35 +171,17 @@ export function MemoriesList({
           </li>
         );
       })}
+      {repo && (
+        <li>
+          <Link
+            href={repoHref(repo, { tab: "memory", mq: queryText })}
+            className="flex items-center gap-1.5 text-[11px] text-muted hover:text-accent transition-colors"
+          >
+            <Search size={11} />
+            {m.searchMemory}
+          </Link>
+        </li>
+      )}
     </ul>
-  );
-}
-
-function VoteButton({
-  active,
-  disabled,
-  label,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  disabled: boolean;
-  label: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      aria-pressed={active}
-      title={label}
-      aria-label={label}
-      className={`p-1 rounded transition-colors disabled:opacity-40 ${
-        active ? "text-accent bg-accent/10" : "text-muted hover:text-foreground"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
