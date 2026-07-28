@@ -1657,6 +1657,9 @@ export function initOrchestrator(
   ipcMain.handle("skipper:planChat:getHistory", (_e, itemId: string) =>
     getPlanChatHistory(itemId),
   );
+  ipcMain.handle("skipper:planChat:cancel", (_e, itemId: string) => {
+    cancelPlanChat(itemId);
+  });
   // Per-tab agent chat (#170): interrogate the coder / reviewer at their tabs.
   // Guards (availability, binding, busy) live in agent-chat.ts.
   ipcMain.handle(
@@ -1671,6 +1674,10 @@ export function initOrchestrator(
   ipcMain.handle("skipper:agentChat:getHistory", (_e, kind: unknown, itemId: string) => {
     if (kind !== "coder" && kind !== "reviewer") return [];
     return getAgentChatHistory(kind, itemId);
+  });
+  ipcMain.handle("skipper:agentChat:cancel", (_e, kind: unknown, itemId: string) => {
+    if (kind !== "coder" && kind !== "reviewer") return;
+    cancelAgentChat(kind, itemId);
   });
   // Coder-chat Apply (#188): distill → preview, then confirm → coding re-entry.
   ipcMain.handle("skipper:agentChat:prepareApply", (_e, itemId: string) =>

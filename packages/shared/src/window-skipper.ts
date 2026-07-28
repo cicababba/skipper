@@ -335,6 +335,9 @@ export interface WindowSkipper {
       { ok: true; stored: StoredPlan } | { ok: false; error?: string; cancelled?: boolean }
     >;
     getHistory: (itemId: string) => Promise<PlanChatMessage[]>;
+    /** Abort the in-flight turn (#260): send resolves { ok: false, cancelled: true }
+     *  and nothing is persisted — the transcript is untouched. No-op when idle. */
+    cancel: (itemId: string) => Promise<void>;
   };
   /** Per-tab agent chat (#170): interrogate the coder / reviewer at their tabs. */
   agentChat: {
@@ -360,6 +363,9 @@ export interface WindowSkipper {
       itemId: string,
       instructions: PrReviewComment[],
     ) => Promise<{ ok: true } | { ok: false; error?: string }>;
+    /** Abort the in-flight turn (#260): send resolves { ok: false, cancelled: true }
+     *  and nothing is persisted — the transcript is untouched. No-op when idle. */
+    cancel: (kind: AgentChatKind, itemId: string) => Promise<void>;
   };
   /** Reviewer progress stream (#113). */
   review: {

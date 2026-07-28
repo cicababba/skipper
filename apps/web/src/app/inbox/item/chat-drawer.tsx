@@ -60,7 +60,7 @@ export function ChatDrawer({
   onClose: () => void;
   title: string;
   /** Focused when the drawer opens; the FAB regains focus on close. */
-  focusRef: RefObject<HTMLInputElement | null>;
+  focusRef: RefObject<HTMLTextAreaElement | null>;
   children: ReactNode;
 }) {
   const { t } = useT();

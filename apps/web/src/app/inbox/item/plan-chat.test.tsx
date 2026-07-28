@@ -32,15 +32,16 @@ function installSkipper(opts: {
   getHistory.mockResolvedValue(opts.historyAfterApply ?? opts.history);
   const apply = vi.fn().mockResolvedValue(opts.applyResult ?? { ok: false });
   const send = vi.fn().mockResolvedValue({ ok: true, reply: "reply" });
+  const cancel = vi.fn().mockResolvedValue(undefined);
   const planning = {
     getEvents: vi.fn().mockResolvedValue([]),
     onEvent: vi.fn(() => () => {}),
   };
   (window as unknown as { skipper: unknown }).skipper = {
-    planChat: { getHistory, send, apply },
+    planChat: { getHistory, send, apply, cancel },
     planning,
   };
-  return { getHistory, apply, send };
+  return { getHistory, apply, send, cancel };
 }
 
 function renderPanel(props: Partial<React.ComponentProps<typeof PlanChatPanel>> = {}) {
@@ -88,6 +89,31 @@ describe("PlanChatPanel — applied marker (#201)", () => {
   });
 });
 
+describe("PlanChatPanel — cancel (#260)", () => {
+  it("stops the in-flight turn through the plan-chat cancel IPC", async () => {
+    const { cancel, send } = installSkipper({ history: [] });
+    send.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          cancel.mockImplementation(() => {
+            resolve({ ok: false, cancelled: true });
+            return Promise.resolve();
+          });
+        }),
+    );
+    renderPanel();
+
+    fireEvent.change(await screen.findByPlaceholderText("Ask about the plan…"), {
+      target: { value: "wait" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
+
+    expect(cancel).toHaveBeenCalledWith("item-1");
+    expect(await screen.findByText("The chat turn was cancelled.")).toBeTruthy();
+  });
+});
+
 describe("PlanChatPanel — apply refetches history (#201)", () => {
   it("refetches the transcript after a successful apply and renders the new marker", async () => {
     const onPlanUpdated = vi.fn();
@@ -105,8 +131,12 @@ describe("PlanChatPanel — apply refetches history (#201)", () => {
     });
     renderPanel({ onPlanUpdated });
 
-    await screen.findByText("change X");
-    fireEvent.click(screen.getByRole("button", { name: "Update plan from discussion" }));
+    // The Apply button unlocks once the loaded transcript's count propagates.
+    const applyButton = (await screen.findByRole("button", {
+      name: "Update plan from discussion",
+    })) as HTMLButtonElement;
+    await waitFor(() => expect(applyButton.disabled).toBe(false));
+    fireEvent.click(applyButton);
 
     expect(await screen.findByText(/Changes applied — 5 changes/)).toBeTruthy();
     expect(apply).toHaveBeenCalledWith("item-1");
