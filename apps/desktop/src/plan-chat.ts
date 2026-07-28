@@ -10,7 +10,13 @@ import {
   type RunConfinement,
 } from "@skipper/core";
 import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
-import { diffCount, diffPlans, isPlanChatText, sessionRuntimeOf } from "@skipper/shared";
+import {
+  CHAT_TURN_DETAILS,
+  diffCount,
+  diffPlans,
+  isPlanChatText,
+  sessionRuntimeOf,
+} from "@skipper/shared";
 import type {
   AgentRuntimeId,
   CodingEvent,
@@ -180,7 +186,11 @@ export async function sendPlanChatMessage(itemId: string, text: string): Promise
     const fallbackSessionId =
       runtime?.capabilities.resume && item.worktree?.path ? randomUUID() : undefined;
 
-    deps.emitEvent(itemId, { kind: "status", phase: "resuming", detail: "plan chat" });
+    deps.emitEvent(itemId, {
+      kind: "status",
+      phase: "resuming",
+      detail: CHAT_TURN_DETAILS.planChat,
+    });
 
     let persistedSessionId: string | undefined = resumable ? item.plan!.sessionId : undefined;
     let sawEvent = false;
@@ -316,7 +326,11 @@ export async function applyPlanChatUpdate(itemId: string): Promise<ApplyPlanChat
     const fallbackSessionId =
       runtime?.capabilities.resume && item.worktree?.path ? randomUUID() : undefined;
 
-    deps.emitEvent(itemId, { kind: "status", phase: "resuming", detail: "apply plan changes" });
+    deps.emitEvent(itemId, {
+      kind: "status",
+      phase: "resuming",
+      detail: CHAT_TURN_DETAILS.planApply,
+    });
 
     let persistedSessionId: string | undefined = resumable ? item.plan!.sessionId : undefined;
     let sawEvent = false;

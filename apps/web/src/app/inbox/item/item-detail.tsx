@@ -124,7 +124,7 @@ function ItemDetailShell() {
     if (reviewerOpen === "1") setReviewerSeen(String(reviewerCount));
   }, [reviewerOpen, reviewerCount, setReviewerSeen]);
 
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Bare fallback: PlanDetailView self-handles the missing item, as before.
   if (!item) return <PlanDetailView />;

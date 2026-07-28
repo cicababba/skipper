@@ -14,6 +14,7 @@ import {
 } from "@skipper/core";
 import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
 import {
+  CHAT_TURN_DETAILS,
   CODER_CHAT_APPLY_STATES,
   sessionRuntimeOf,
   type AgentChatKind,
@@ -102,7 +103,7 @@ const CONFIGS: Record<AgentChatKind, KindConfig> = {
     roleModel: (s) => s.coderModel,
     roleRuntime: (s) => s.coderRuntime,
     repoCwdFallback: false,
-    detail: "coder chat",
+    detail: CHAT_TURN_DETAILS.coderChat,
   },
   reviewer: {
     available: (item) => item.review != null && item.state !== "agent-review",
@@ -112,7 +113,7 @@ const CONFIGS: Record<AgentChatKind, KindConfig> = {
     roleModel: (s) => s.reviewerModel,
     roleRuntime: (s) => s.reviewerRuntime,
     repoCwdFallback: true,
-    detail: "reviewer chat",
+    detail: CHAT_TURN_DETAILS.reviewerChat,
   },
 };
 
@@ -460,7 +461,11 @@ export async function prepareCoderChatApply(itemId: string): Promise<PrepareCode
     const fallbackSessionId =
       runtime?.capabilities.resume && item.worktree?.path ? randomUUID() : undefined;
 
-    deps.emitEvent("coder", itemId, { kind: "status", phase: "resuming", detail: "apply coder chat" });
+    deps.emitEvent("coder", itemId, {
+      kind: "status",
+      phase: "resuming",
+      detail: CHAT_TURN_DETAILS.coderApply,
+    });
 
     let sessionToPersist: string | undefined = resumable ? resumeSessionId : fallbackSessionId;
     let sawEvent = false;

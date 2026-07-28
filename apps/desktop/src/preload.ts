@@ -307,6 +307,8 @@ const api = {
     > => ipcRenderer.invoke("skipper:planChat:apply", itemId),
     getHistory: (itemId: string): Promise<PlanChatMessage[]> =>
       ipcRenderer.invoke("skipper:planChat:getHistory", itemId),
+    cancel: (itemId: string): Promise<void> =>
+      ipcRenderer.invoke("skipper:planChat:cancel", itemId),
   },
 
   // Per-tab agent chat (issue #170): interrogate the coder / reviewer at their tabs.
@@ -333,6 +335,8 @@ const api = {
       instructions: PrReviewComment[],
     ): Promise<{ ok: true } | { ok: false; error?: string }> =>
       ipcRenderer.invoke("skipper:agentChat:confirmApply", itemId, instructions),
+    cancel: (kind: AgentChatKind, itemId: string): Promise<void> =>
+      ipcRenderer.invoke("skipper:agentChat:cancel", kind, itemId),
   },
 
   // Reviewer console (issue #113): same shape as coding/planning, own channel pair.

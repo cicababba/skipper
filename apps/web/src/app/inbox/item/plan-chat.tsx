@@ -1,15 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Check, Loader2, Send, X } from "lucide-react";
-import { isPlanChatText, type PlanChatMessage, type StoredPlan } from "@skipper/shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, Loader2 } from "lucide-react";
+import {
+  CHAT_TURN_DETAILS,
+  isPlanChatText,
+  type PlanChatMessage,
+  type StoredPlan,
+} from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
-import { EventConsole } from "@/components/event-console";
-import { ConsoleMarkdown } from "@/components/console-markdown";
+import { hhmm } from "@/lib/inbox/chat-format";
+import { ChatPanel, type ChatAdapter, type ChatPanelHandle } from "@/components/chat/chat-panel";
+import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 
 // Conversational plan review (#145): chat with the planning session while the
 // item sits at plan-gate. Discuss (Q&A, plan untouched) or Apply (re-emit the
-// plan). Agent activity streams into the planner console while a turn runs.
+// plan). Transcript, composer and per-turn activity live in ChatPanel (#260).
 
 interface PlanChatPanelProps {
   itemId: string;
@@ -18,14 +24,10 @@ interface PlanChatPanelProps {
   onPlanUpdated: (stored: StoredPlan) => void;
   onBusyChange: (busy: boolean) => void;
   onCountChange?: (count: number) => void;
-  inputRef?: React.RefObject<HTMLInputElement | null>;
+  inputRef?: React.RefObject<HTMLTextAreaElement | null>;
 }
 
-const STICKY_THRESHOLD = 24;
-
-function hhmm(at: string): string {
-  return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
+const TURN_DETAILS = [CHAT_TURN_DETAILS.planChat, CHAT_TURN_DETAILS.planApply];
 
 export function PlanChatPanel({
   itemId,
@@ -37,183 +39,110 @@ export function PlanChatPanel({
 }: PlanChatPanelProps) {
   const { t } = useT();
   const chat = t.inbox.plan.chat;
+  const c = t.inbox.chat;
 
-  const [messages, setMessages] = useState<PlanChatMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [busy, setBusy] = useState<"send" | "apply" | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const stuckRef = useRef(true);
-
-  const textCount = messages.filter(isPlanChatText).length;
+  const [count, setCount] = useState(0);
+  const [sendBusy, setSendBusy] = useState(false);
+  const [applyBusy, setApplyBusy] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [applyNotice, setApplyNotice] = useState<string | null>(null);
+  const panelRef = useRef<ChatPanelHandle>(null);
 
   useEffect(() => {
-    onBusyChange(busy !== null);
-  }, [busy, onBusyChange]);
+    onBusyChange(sendBusy || applyBusy);
+  }, [sendBusy, applyBusy, onBusyChange]);
 
-  useEffect(() => {
-    onCountChange?.(textCount);
-  }, [textCount, onCountChange]);
+  const reportCount = useCallback(
+    (n: number) => {
+      setCount(n);
+      onCountChange?.(n);
+    },
+    [onCountChange],
+  );
 
-  useEffect(() => {
-    if (!window.skipper) return;
-    let cancelled = false;
-    window.skipper.planChat.getHistory(itemId).then((h) => {
-      if (!cancelled) setMessages(h);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [itemId]);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el && stuckRef.current) el.scrollTop = el.scrollHeight;
-  }, [messages, busy]);
-
-  const onScroll = () => {
-    const el = scrollRef.current;
-    if (el) stuckRef.current = el.scrollTop + el.clientHeight >= el.scrollHeight - STICKY_THRESHOLD;
-  };
-
-  const submit = async () => {
-    const text = input.trim();
-    if (!text || busy || disabled || !window.skipper) return;
-    setMessages((m) => [...m, { role: "user", text, at: new Date().toISOString() }]);
-    setInput("");
-    setError(null);
-    setNotice(null);
-    setBusy("send");
-    try {
-      const res = await window.skipper.planChat.send(itemId, text);
-      if (res.ok) {
-        setMessages((m) => [...m, { role: "assistant", text: res.reply, at: new Date().toISOString() }]);
-      } else {
-        // Roll back the optimistic user turn and hand the text back.
-        setMessages((m) => m.slice(0, -1));
-        setInput(text);
-        if (res.cancelled) setNotice(chat.cancelled);
-        else setError(res.error ? `${chat.failed}: ${res.error}` : chat.failed);
-      }
-    } finally {
-      setBusy(null);
-    }
-  };
+  const adapter: ChatAdapter = useMemo(
+    () => ({
+      loadHistory: () => window.skipper?.planChat.getHistory(itemId) ?? Promise.resolve([]),
+      send: async (text) => {
+        const res = await window.skipper?.planChat.send(itemId, text);
+        if (!res) return { ok: false };
+        return res.ok ? { ok: true, reply: res.reply } : res;
+      },
+      cancel: () => void window.skipper?.planChat.cancel(itemId),
+    }),
+    [itemId],
+  );
 
   const apply = async () => {
-    if (busy || disabled || textCount === 0 || !window.skipper) return;
-    setError(null);
-    setNotice(null);
-    setBusy("apply");
+    if (sendBusy || applyBusy || disabled || count === 0 || !window.skipper) return;
+    setApplyError(null);
+    setApplyNotice(null);
+    setApplyBusy(true);
     try {
       const res = await window.skipper.planChat.apply(itemId);
       if (res.ok) {
         onPlanUpdated(res.stored);
-        setMessages(await window.skipper.planChat.getHistory(itemId));
-      } else if (res.cancelled) setNotice(chat.cancelled);
-      else setError(res.error ? `${chat.applyFailed}: ${res.error}` : chat.applyFailed);
+        await panelRef.current?.reload();
+      } else if (res.cancelled) setApplyNotice(chat.cancelled);
+      else setApplyError(res.error ? `${chat.applyFailed}: ${res.error}` : chat.applyFailed);
     } finally {
-      setBusy(null);
+      setApplyBusy(false);
     }
   };
 
-  return (
-    <div className="flex flex-col h-full min-h-0">
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        className="flex-1 overflow-y-auto p-4 space-y-2 text-sm"
+  const footer = (
+    <>
+      <button
+        onClick={() => void apply()}
+        disabled={count === 0 || sendBusy || applyBusy || disabled}
+        className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50"
       >
-        {messages.length === 0 && !busy ? (
-          <p className="text-[12px] text-muted/70">{chat.empty}</p>
-        ) : (
-          messages.map((m, i) =>
-            !isPlanChatText(m) ? (
-              <div key={i} className="flex justify-center py-1">
-                <span className="flex items-center gap-1.5 rounded-full bg-card-hover/40 px-2.5 py-0.5 text-[11px] text-muted/70">
-                  <Check size={11} className="text-success" />
-                  {chat.applied(m.changeCount)} · {hhmm(m.at)}
-                </span>
-              </div>
-            ) : m.role === "user" ? (
-              <div key={i} className="flex justify-end">
-                <div className="max-w-[85%] rounded-lg bg-card-hover/40 px-3 py-2 whitespace-pre-wrap break-words">
-                  {m.text}
-                </div>
-              </div>
-            ) : (
-              <div key={i} className="max-w-[90%] text-foreground/90">
-                <ConsoleMarkdown content={m.text} />
-              </div>
-            ),
-          )
-        )}
-        {busy === "send" && (
-          <div className="flex items-center gap-2 text-[12px] text-muted">
-            <Loader2 size={13} className="animate-spin" />
-            {chat.thinking}
-          </div>
-        )}
-      </div>
+        {applyBusy && <Loader2 size={11} className="animate-spin" />}
+        {applyBusy ? chat.applying : chat.apply}
+      </button>
+      {applyNotice && <p className="text-[12px] text-muted/80">{applyNotice}</p>}
+      {applyError && (
+        <p className="rounded-lg border border-danger/25 bg-danger-bg px-3 py-2 text-[12px] text-danger break-all">
+          {applyError}
+        </p>
+      )}
+    </>
+  );
 
-      <div className="shrink-0 border-t border-card-hover p-4 space-y-3">
-        {busy && (
-          <EventConsole
-            itemId={itemId}
-            getEvents={window.skipper!.planning.getEvents}
-            onEvent={window.skipper!.planning.onEvent}
-            collapsible
-            defaultOpen={false}
-            title={chat.activity}
-          />
-        )}
+  return (
+    <ChatPanel
+      ref={panelRef}
+      itemId={itemId}
+      adapter={adapter}
+      stream={window.skipper?.planning}
+      turnDetails={TURN_DETAILS}
+      sendDetail={CHAT_TURN_DETAILS.planChat}
+      placeholder={chat.placeholder}
+      disabled={disabled}
+      footer={footer}
+      emptyState={<ChatEmptyState title={c.emptyPlanTitle} hint={chat.empty} />}
+      renderSystemMessage={appliedMarker}
+      onBusyChange={setSendBusy}
+      onCountChange={reportCount}
+      inputRef={inputRef}
+    />
+  );
+}
 
-        <div className="flex items-center gap-2">
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void submit();
-              }
-            }}
-            placeholder={chat.placeholder}
-            disabled={!!busy || disabled}
-            className="flex-1 bg-card-hover/40 border border-card-hover focus:border-accent outline-none rounded-md px-2 py-1.5 text-sm disabled:opacity-50"
-          />
-          <button
-            onClick={() => void submit()}
-            disabled={!input.trim() || !!busy || disabled}
-            className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-50 whitespace-nowrap"
-          >
-            {busy === "send" ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
-            {chat.send}
-          </button>
-        </div>
+function appliedMarker(message: PlanChatMessage) {
+  if (isPlanChatText(message)) return null;
+  return <AppliedMarker message={message} />;
+}
 
-        <button
-          onClick={() => void apply()}
-          disabled={textCount === 0 || !!busy || disabled}
-          className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50"
-        >
-          {busy === "apply" && <Loader2 size={11} className="animate-spin" />}
-          {busy === "apply" ? chat.applying : chat.apply}
-        </button>
-
-        {notice && <p className="text-[12px] text-muted/80">{notice}</p>}
-        {error && (
-          <div className="flex items-center gap-2 rounded-lg border border-danger/25 bg-danger-bg text-danger px-3 py-2 text-[12px]">
-            <span className="flex-1 break-all">{error}</span>
-            <button onClick={() => setError(null)} className="shrink-0 hover:opacity-70">
-              <X size={14} />
-            </button>
-          </div>
-        )}
-      </div>
+function AppliedMarker({ message }: { message: Extract<PlanChatMessage, { kind: "applied" }> }) {
+  const { t } = useT();
+  const chat = t.inbox.plan.chat;
+  return (
+    <div className="flex justify-center py-1">
+      <span className="flex items-center gap-1.5 rounded-full bg-card-hover/40 px-2.5 py-0.5 text-[11px] text-muted/70">
+        <Check size={11} className="text-success" />
+        {chat.applied(message.changeCount)} · {hhmm(message.at)}
+      </span>
     </div>
   );
 }
