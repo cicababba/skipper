@@ -60,6 +60,12 @@ const messageLine = (text: string) =>
   JSON.stringify({ type: "item.completed", item: { type: "agent_message", text } });
 const okStream = `${threadLine}\n${commandLine}\n${messageLine("planned")}\n${turnLine}\n`;
 
+const MEMORY = {
+  cliBundlePath: "/app/skipper.bundle.cjs",
+  repo: { owner: "Cicababba", name: "Skipper" },
+};
+const GRAPH = { mcpBinPath: "/tools/bin/graphify-mcp", graphPath: "/graphs/skipper/graph.json" };
+
 beforeEach(() => {
   vi.mocked(spawn).mockReset();
   vi.mocked(execSync).mockReset();
@@ -162,6 +168,19 @@ describe("CodexCli.agent", () => {
     await promise;
     expect(argv()).toContain('developer_instructions="be terse"');
     expect(argv()).toContain('mcp_servers.skipper-memory.env={ELECTRON_RUN_AS_NODE="1"}');
+  });
+
+  it("injects the graphify MCP server as -c overrides, env-free (#259)", async () => {
+    const { child, argv } = arm();
+    const promise = new CodexCli("gpt-5-codex").agent("plan it", { graph: GRAPH });
+    child.stdout.emit("data", Buffer.from(okStream));
+    child.emit("close", 0);
+    await promise;
+    expect(argv()).toContain('mcp_servers.graphify.command="/tools/bin/graphify-mcp"');
+    expect(argv()).toContain(
+      'mcp_servers.graphify.args=["--graph","/graphs/skipper/graph.json"]',
+    );
+    expect(argv().some((a) => a.startsWith("mcp_servers.graphify.env="))).toBe(false);
   });
 
   it("throws a CodexCliError when a turn fails", async () => {
@@ -370,6 +389,25 @@ describe("codexConfigArgs", () => {
       `mcp_servers.skipper-memory.command=${JSON.stringify(process.execPath)}`,
       'mcp_servers.skipper-memory.args=["/app/skipper.bundle.cjs","memory","serve","--repo","cicababba/skipper"]',
       'mcp_servers.skipper-memory.env={ELECTRON_RUN_AS_NODE="1"}',
+    ]);
+  });
+
+  it("adds the graphify server as a command/args pair, with no env override", () => {
+    const args = codexConfigArgs({ graph: GRAPH });
+    expect(args.filter((a) => a.startsWith("mcp_servers."))).toEqual([
+      'mcp_servers.graphify.command="/tools/bin/graphify-mcp"',
+      'mcp_servers.graphify.args=["--graph","/graphs/skipper/graph.json"]',
+    ]);
+  });
+
+  it("keeps the memory triple ahead of the graphify pair when both are set", () => {
+    const args = codexConfigArgs({ memory: MEMORY, graph: GRAPH });
+    expect(args.filter((a) => a.startsWith("mcp_servers."))).toEqual([
+      `mcp_servers.skipper-memory.command=${JSON.stringify(process.execPath)}`,
+      'mcp_servers.skipper-memory.args=["/app/skipper.bundle.cjs","memory","serve","--repo","cicababba/skipper"]',
+      'mcp_servers.skipper-memory.env={ELECTRON_RUN_AS_NODE="1"}',
+      'mcp_servers.graphify.command="/tools/bin/graphify-mcp"',
+      'mcp_servers.graphify.args=["--graph","/graphs/skipper/graph.json"]',
     ]);
   });
 

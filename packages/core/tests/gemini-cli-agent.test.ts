@@ -209,10 +209,55 @@ describe("GeminiCli.agent", () => {
     expect(existsSync(settingsPath(cwd))).toBe(false);
   });
 
+  it("declares memory and graphify together, allowing both names (#259)", async () => {
+    const cwd = makeWorktree();
+    const { child, argv } = arm();
+    const promise = new GeminiCli("gemini-2.5-pro").agent("plan it", {
+      cwd,
+      memory: {
+        cliBundlePath: "/app/skipper.bundle.cjs",
+        repo: { owner: "Cicababba", name: "Skipper" },
+      },
+      graph: { mcpBinPath: "/tools/bin/graphify-mcp", graphPath: "/graphs/skipper/graph.json" },
+    });
+
+    const written = JSON.parse(readFileSync(settingsPath(cwd), "utf-8"));
+    expect(Object.keys(written.mcpServers)).toEqual(["skipper-memory", "graphify"]);
+    // trust: true or a headless run auto-denies every graph tool call.
+    expect(written.mcpServers.graphify).toEqual({
+      command: "/tools/bin/graphify-mcp",
+      args: ["--graph", "/graphs/skipper/graph.json"],
+      trust: true,
+    });
+    expect(flagValue(argv(), "--allowed-mcp-server-names")).toBe("skipper-memory,graphify");
+
+    child.stdout.emit("data", Buffer.from(okStream));
+    child.emit("close", 0);
+    await promise;
+  });
+
+  it("declares graphify alone when the run has no memory server", async () => {
+    const cwd = makeWorktree();
+    const { child, argv } = arm();
+    const promise = new GeminiCli("gemini-2.5-pro").agent("plan it", {
+      cwd,
+      graph: { mcpBinPath: "/tools/bin/graphify-mcp", graphPath: "/graphs/skipper/graph.json" },
+    });
+
+    const written = JSON.parse(readFileSync(settingsPath(cwd), "utf-8"));
+    expect(Object.keys(written.mcpServers)).toEqual(["graphify"]);
+    expect(flagValue(argv(), "--allowed-mcp-server-names")).toBe("graphify");
+
+    child.stdout.emit("data", Buffer.from(okStream));
+    child.emit("close", 0);
+    await promise;
+  });
+
   it("allows a name nothing matches when the run has no memory server", async () => {
     const cwd = makeWorktree();
     const { child, argv } = arm();
     const promise = new GeminiCli("gemini-2.5-pro").agent("plan it", { cwd });
+    expect(JSON.parse(readFileSync(settingsPath(cwd), "utf-8")).mcpServers).toBeUndefined();
     child.stdout.emit("data", Buffer.from(okStream));
     child.emit("close", 0);
     await promise;

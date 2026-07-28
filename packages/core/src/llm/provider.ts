@@ -24,7 +24,7 @@ export interface AgentOptions {
   /** Inject the skipper-memory MCP server, scoped to this repo (#45). */
   memory?: MemoryMcp;
   /** Inject the graphify knowledge-graph MCP server, scoped to this repo (#233).
-   *  Planner-only by construction; the claude-cli runtime only. */
+   *  Planner-only by construction; honored by every CLI runtime (#259). */
   graph?: GraphifyMcp;
   /** Persist the run under this session id (drops --no-session-persistence) so it
    *  can be resumed later; cwd-scoped, the claude-cli runtime only (#111). */

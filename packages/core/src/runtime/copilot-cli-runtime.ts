@@ -20,15 +20,16 @@ export const COPILOT_CLI_CAPABILITIES: RuntimeCapabilities = {
 /**
  * GitHub's Copilot CLI behind the AgentRuntime contract (#242). Options accepted
  * and ignored here, by construction: `maxTurns` (copilot has no turn budget — the
- * wall-clock timers are the whole budget, so no max-turns death exists),
+ * wall-clock timers are the whole budget, so no max-turns death exists) and
  * `confinement` (copilot's native path verification replaces the claude
- * rules/hook machinery) and `graph` (graphify is claude-only for now).
+ * rules/hook machinery).
  *
  * MCP leakage is documented, not prevented: copilot has no strict-MCP flag
- * (copilot-cli#3380), so beyond the skipper-memory server Skipper attaches, the
- * user's global `~/.copilot/mcp-config.json` and the repo's own `.mcp.json` /
- * `.github/mcp-config.json` servers still load into every run. Isolating them
- * with `--config-dir` would orphan the user's copilot login, so they stay.
+ * (copilot-cli#3380), so beyond the skipper-memory and graphify servers Skipper
+ * attaches, the user's global `~/.copilot/mcp-config.json` and the repo's own
+ * `.mcp.json` / `.github/mcp-config.json` servers still load into every run.
+ * Isolating them with `--config-dir` would orphan the user's copilot login, so
+ * they stay.
  */
 export class CopilotCliRuntime implements AgentRuntime {
   readonly id: AgentRuntimeId = "copilot-cli";

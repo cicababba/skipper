@@ -8,6 +8,7 @@ import { AgentAbortError } from "./provider";
 import { parseJsonReply } from "./json";
 import { createCodexRunAccumulator } from "./codex-stream";
 import { memoryServerConfig, type MemoryMcp } from "./memory-mcp";
+import { graphifyServerConfig, type GraphifyMcp } from "./graphify-mcp";
 
 /**
  * The codex-cli runtime's structured-call options (#239) — mirrors
@@ -138,6 +139,9 @@ export function buildSystemPromptArgs(systemPrompt?: string): string[] {
 export interface CodexConfigOptions {
   /** Inject the skipper-memory MCP server, scoped to the item's repo (#45). */
   memory?: MemoryMcp;
+  /** Inject the graphify knowledge-graph MCP server, scoped to the item's repo
+   *  (#233, wired here by #259). */
+  graph?: GraphifyMcp;
   systemPrompt?: string;
 }
 
@@ -163,6 +167,15 @@ export function codexConfigArgs(opts: CodexConfigOptions = {}): string[] {
       `mcp_servers.skipper-memory.args=${tomlValue(server.args)}`,
       "-c",
       `mcp_servers.skipper-memory.env=${tomlValue(server.env)}`,
+    );
+  }
+  if (opts.graph) {
+    const server = graphifyServerConfig(opts.graph);
+    args.push(
+      "-c",
+      `mcp_servers.graphify.command=${tomlValue(server.command)}`,
+      "-c",
+      `mcp_servers.graphify.args=${tomlValue(server.args)}`,
     );
   }
   args.push(...buildSystemPromptArgs(opts.systemPrompt));
@@ -317,7 +330,6 @@ export class CodexCli {
   async agent(prompt: string, opts: AgentOptions = {}): Promise<LLMResponse> {
     // opts.maxTurns has no codex equivalent (#239 D7) and opts.confinement is
     // the claude rules machinery — the read-only sandbox below replaces it.
-    // opts.graph (graphify) is claude-only for now.
     const persist = Boolean(opts.sessionId || opts.resumeSessionId);
     const args = [
       "exec",
@@ -328,7 +340,7 @@ export class CodexCli {
       "read-only",
       ...(opts.cwd ? ["-C", opts.cwd] : []),
       ...(persist ? [] : ["--ephemeral"]),
-      ...codexConfigArgs({ memory: opts.memory, systemPrompt: opts.systemPrompt }),
+      ...codexConfigArgs({ memory: opts.memory, graph: opts.graph, systemPrompt: opts.systemPrompt }),
       "-",
     ];
 

@@ -22,14 +22,14 @@ export const GEMINI_CLI_CAPABILITIES: RuntimeCapabilities = {
  * Google's Gemini CLI behind the AgentRuntime contract (#243). Options accepted
  * and ignored here, by construction: `maxTurns` (gemini's only turn budget,
  * `model.maxSessionTurns`, is cumulative per session — the wall-clock timers are
- * the whole per-run budget), `confinement` (the claude rules/hook machinery has
- * no gemini equivalent) and `graph` (graphify is claude-only for now).
+ * the whole per-run budget) and `confinement` (the claude rules/hook machinery
+ * has no gemini equivalent).
  *
  * MCP and context leakage is closed by a Skipper-written `<cwd>/.gemini/settings.json`
  * (there is no inline flag for either): it points `context.fileName` at a name no
  * repo has, which kills the global and workspace GEMINI.md load, and declares the
- * skipper-memory server, which `--allowed-mcp-server-names` then isolates from the
- * user's own. The file is backed up and restored around every run.
+ * skipper-memory and graphify servers, which `--allowed-mcp-server-names` then
+ * isolates from the user's own. The file is backed up and restored around every run.
  */
 export class GeminiCliRuntime implements AgentRuntime {
   readonly id: AgentRuntimeId = "gemini-cli";

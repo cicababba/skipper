@@ -190,6 +190,36 @@ describe("CopilotCli.agent", () => {
     expect(existsSync(dirname(configPath))).toBe(false);
   });
 
+  it("attaches a graphify-only MCP config file and releases it after the run (#259)", async () => {
+    const { child, argv } = arm();
+    const promise = new CopilotCli("claude-sonnet-4.5").agent("plan it", {
+      graph: { mcpBinPath: "/tools/bin/graphify-mcp", graphPath: "/graphs/skipper/graph.json" },
+    });
+    const configPath = flagValue(argv(), "--additional-mcp-config");
+    const written = JSON.parse(readFileSync(configPath, "utf-8"));
+    expect(Object.keys(written.mcpServers)).toEqual(["graphify"]);
+    expect(written.mcpServers.graphify).toEqual({
+      type: "local",
+      command: "/tools/bin/graphify-mcp",
+      args: ["--graph", "/graphs/skipper/graph.json"],
+      tools: ["*"],
+    });
+
+    child.stdout.emit("data", Buffer.from(okStream));
+    child.emit("close", 0);
+    await promise;
+    expect(existsSync(dirname(configPath))).toBe(false);
+  });
+
+  it("writes no MCP config file when neither memory nor graph is set", async () => {
+    const { child, argv } = arm();
+    const promise = new CopilotCli("claude-sonnet-4.5").agent("plan it");
+    child.stdout.emit("data", Buffer.from(okStream));
+    child.emit("close", 0);
+    await promise;
+    expect(argv()).not.toContain("--additional-mcp-config");
+  });
+
   it("throws a CopilotCliError when the stream reported a failure", async () => {
     const { child } = arm();
     const promise = new CopilotCli("claude-sonnet-4.5").agent("plan it");
@@ -382,6 +412,7 @@ describe("buildCopilotMcpConfig", () => {
     cliBundlePath: "/app/skipper.bundle.cjs",
     repo: { owner: "Cicababba", name: "Skipper" },
   };
+  const graph = { mcpBinPath: "/tools/bin/graphify-mcp", graphPath: "/graphs/skipper/graph.json" };
 
   it("writes a one-server config file and releases it on cleanup", () => {
     const { args, cleanup } = buildCopilotMcpConfig(memory);
@@ -400,6 +431,43 @@ describe("buildCopilotMcpConfig", () => {
     });
     cleanup();
     expect(existsSync(dirname(file))).toBe(false);
+  });
+
+  it("writes both servers, each with the full tool allowance, when memory and graph are set", () => {
+    const { args, cleanup } = buildCopilotMcpConfig(memory, graph);
+    expect(JSON.parse(readFileSync(args[1], "utf-8"))).toEqual({
+      mcpServers: {
+        "skipper-memory": {
+          type: "local",
+          command: process.execPath,
+          args: ["/app/skipper.bundle.cjs", "memory", "serve", "--repo", "cicababba/skipper"],
+          env: { ELECTRON_RUN_AS_NODE: "1" },
+          tools: ["*"],
+        },
+        graphify: {
+          type: "local",
+          command: "/tools/bin/graphify-mcp",
+          args: ["--graph", "/graphs/skipper/graph.json"],
+          tools: ["*"],
+        },
+      },
+    });
+    cleanup();
+  });
+
+  it("writes the graphify server alone when there is no memory server", () => {
+    const { args, cleanup } = buildCopilotMcpConfig(undefined, graph);
+    expect(JSON.parse(readFileSync(args[1], "utf-8"))).toEqual({
+      mcpServers: {
+        graphify: {
+          type: "local",
+          command: "/tools/bin/graphify-mcp",
+          args: ["--graph", "/graphs/skipper/graph.json"],
+          tools: ["*"],
+        },
+      },
+    });
+    cleanup();
   });
 
   it("a second cleanup is a no-op, not a throw", () => {
