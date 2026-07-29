@@ -8,6 +8,7 @@ import { inbox } from "./i18n/inbox";
 import { wiki } from "./i18n/wiki";
 import { about } from "./i18n/about";
 import { tree } from "./i18n/tree";
+import { composer } from "./i18n/composer";
 
 // App-wide localization (EN/IT/FR/ES). Resolution order: the language chosen
 // in Settings (localStorage) wins; otherwise the OS/browser language;
@@ -31,6 +32,7 @@ function buildDict(lang: AppLang) {
     wiki: wiki[lang],
     about: about[lang],
     tree: tree[lang],
+    composer: composer[lang],
   };
 }
 

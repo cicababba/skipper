@@ -223,6 +223,25 @@ export type {
   DistillCoderChatOptions,
 } from "./coder";
 
+// Composer (issue #136)
+export {
+  composerDraftSchema,
+  COMPOSER_DRAFT_JSON_SCHEMA,
+  validateComposerDraft,
+  COMPOSER_SYSTEM_PROMPT,
+  buildComposerSystemPrompt,
+  buildComposerFallbackPrompt,
+  buildComposerResumePrompt,
+  renderDraftBlock,
+  discussComposer,
+  distillComposerDraft,
+} from "./composer";
+export type {
+  ComposerChatContext,
+  DiscussComposerOptions,
+  DistillComposerDraftOptions,
+} from "./composer";
+
 // Agent chat — generic discussion dispatch shared by coder/reviewer chats (#170)
 export { runAgentDiscussion, DEFAULT_AGENT_CHAT_MAX_TURNS, AGENT_CHAT_HARD_TIMEOUT_MS } from "./agent-chat";
 export type { RunAgentDiscussionOptions } from "./agent-chat";

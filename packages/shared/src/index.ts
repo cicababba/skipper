@@ -12,5 +12,6 @@ export * from "./plan-diff";
 export * from "./coder-report";
 export * from "./confidence";
 export * from "./coding";
+export * from "./composer";
 export * from "./memory";
 export * from "./window-skipper";

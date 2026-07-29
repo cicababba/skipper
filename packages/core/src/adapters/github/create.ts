@@ -21,6 +21,7 @@ export async function createGitHubIssue(
       title: params.title,
       ...(params.body !== undefined && { body: params.body }),
       ...(params.labels !== undefined && { labels: params.labels }),
+      ...(params.assignees !== undefined && { assignees: params.assignees }),
     },
   );
   return mapIssue(res.body!, params.accountId);

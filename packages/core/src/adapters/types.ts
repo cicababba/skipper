@@ -100,6 +100,8 @@ export interface CreateIssueParams {
   title: string;
   body?: string;
   labels?: string[];
+  /** Provider usernames to assign the created issue to (#136). */
+  assignees?: string[];
   /** Stamped onto the returned Issue (Account.key) — the adapter can't know it. */
   accountId: string;
 }

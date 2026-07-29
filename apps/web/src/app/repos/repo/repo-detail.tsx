@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ExternalLink, FolderGit2, Settings as SettingsIcon } from "lucide-react";
+import { ExternalLink, FolderGit2, Plus, Settings as SettingsIcon } from "lucide-react";
 import type { RepoSettingsRow } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { Section } from "@/app/inbox/item/plan-sections";
 import { InboxView } from "@/app/inbox/inbox-view";
-import { repoHref, repoSettingsHref } from "@/lib/inbox/nav";
+import { composeHref, repoHref, repoSettingsHref } from "@/lib/inbox/nav";
 import { MemoryBrowser } from "./memory-browser";
 import { useRepoParams } from "./use-repo-params";
 
@@ -52,6 +52,14 @@ export function RepoDetailView() {
           title={rp.settings}
         >
           <SettingsIcon size={15} />
+        </Link>
+        <div className="flex-1" />
+        <Link
+          href={composeHref({ owner, name })}
+          className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
+        >
+          <Plus size={13} />
+          {t.composer.newIssue}
         </Link>
       </div>
 

@@ -30,15 +30,18 @@ export type CodingEvent =
 
 // Chat turns are segmented in the renderer purely from the `resuming` status
 // detail the desktop emits when a turn opens (#260). Both sides of that contract
-// read these constants: the emitters in apps/desktop/src/{plan-chat,agent-chat}.ts
-// and the turn reducer in apps/web/src/lib/inbox/chat-turns.ts. A new `resuming`
-// emitter on the planning / coding / review streams must NOT reuse these values.
+// read these constants: the emitters in apps/desktop/src/{plan-chat,agent-chat,
+// composer-chat}.ts and the turn reducer in apps/web/src/lib/inbox/chat-turns.ts.
+// A new `resuming` emitter on the planning / coding / review / composer streams
+// must NOT reuse these values.
 export const CHAT_TURN_DETAILS = {
   planChat: "plan chat",
   planApply: "apply plan changes",
   coderChat: "coder chat",
   reviewerChat: "reviewer chat",
   coderApply: "apply coder chat",
+  composerChat: "composer chat",
+  composerDraft: "composer draft",
 } as const;
 
 /** What rides the per-item IPC channel and the replay buffer. */

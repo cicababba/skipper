@@ -34,6 +34,15 @@ import type {
   WorktreeStatusResult,
 } from "./orchestrator";
 import type { CodingEventEnvelope } from "./coding";
+import type {
+  ComposerChatSnapshot,
+  ComposerDraft,
+  ComposerEditedFlags,
+  ComposerSelfLogin,
+  GenerateComposerDraftResult,
+  SendComposerChatResult,
+  StartComposerChatResult,
+} from "./composer";
 import type { AgentChatKind, IssuePlan, PlanChatMessage, StoredPlan } from "./plan";
 import type { MemoryHit, MemoryPhase, SolutionRecord } from "./memory";
 import type { StoredCoderReport } from "./coder-report";
@@ -371,6 +380,30 @@ export interface WindowSkipper {
     /** Abort the in-flight turn (#260): send resolves { ok: false, cancelled: true }
      *  and nothing is persisted — the transcript is untouched. No-op when idle. */
     cancel: (kind: AgentChatKind, itemId: string) => Promise<void>;
+  };
+  /** Chat composer (#136): a repo-grounded chat that distills into an issue draft.
+   *  Ephemeral — a chat lives in main's memory until dispose or quit (#138). */
+  composer: {
+    start: (repo: RepoRef) => Promise<StartComposerChatResult>;
+    send: (repo: RepoRef, chatId: string, text: string) => Promise<SendComposerChatResult>;
+    getChat: (repo: RepoRef, chatId: string) => Promise<ComposerChatSnapshot | null>;
+    /** Explicit distillation of the discussion into the structured draft. */
+    generateDraft: (repo: RepoRef, chatId: string) => Promise<GenerateComposerDraftResult>;
+    /** Push the renderer's edits so the next send/distill prompt carries them. */
+    updateDraft: (
+      repo: RepoRef,
+      chatId: string,
+      draft: ComposerDraft,
+      editedFlags: ComposerEditedFlags,
+    ) => Promise<{ ok: boolean; error?: string }>;
+    /** Abort the in-flight turn: send/generateDraft resolve cancelled, nothing is recorded. */
+    cancel: (repo: RepoRef, chatId: string) => Promise<void>;
+    /** Drop the chat record (view unmount). */
+    dispose: (repo: RepoRef, chatId: string) => Promise<void>;
+    /** The account's provider username, for the self-assign toggle. */
+    getSelfLogin: (accountId: string) => Promise<ComposerSelfLogin>;
+    getEvents: (key: string) => Promise<CodingEventEnvelope[]>;
+    onEvent: (key: string, callback: (envelope: CodingEventEnvelope) => void) => () => void;
   };
   /** Reviewer progress stream (#113). */
   review: {

@@ -51,6 +51,7 @@ export const SETTINGS_VALIDATORS: {
   plannerAgent: agentSelection,
   coderAgent: agentSelection,
   reviewerAgent: agentSelection,
+  composerAgent: agentSelection,
   coderTimeBudgetMin: clampInt(10, 240),
   plannerTimeBudgetMin: clampInt(5, 60),
 };
@@ -70,6 +71,7 @@ export const REPO_SETTINGS_VALIDATORS: {
   plannerAgent: agentSelection,
   coderAgent: agentSelection,
   reviewerAgent: agentSelection,
+  composerAgent: agentSelection,
   graphify: asBool,
 };
 
@@ -81,6 +83,7 @@ const CLEARABLE_SETTINGS_KEYS: readonly (keyof OrchestratorSettings)[] = [
   "plannerAgent",
   "coderAgent",
   "reviewerAgent",
+  "composerAgent",
 ];
 
 /**

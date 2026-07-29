@@ -28,6 +28,9 @@ describe("mapGitHubUser", () => {
       id: "42",
       email: "octo@example.com",
       name: "Octo Cat",
+      // #136: the login is mapped too — self-assignment needs the username, and
+      // `name` is a display string that may not be one.
+      login: "octo",
       avatarUrl: "https://avatars/42",
     });
   });

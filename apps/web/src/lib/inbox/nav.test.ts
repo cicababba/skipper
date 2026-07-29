@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { itemHref, repoHref, repoSettingsHref, resolveBackHref } from "./nav";
+import { composeHref, itemHref, repoHref, repoSettingsHref, resolveBackHref } from "./nav";
 
 describe("itemHref", () => {
   it("builds an item href with the id", () => {
@@ -70,6 +70,18 @@ describe("repoSettingsHref", () => {
     expect(repoSettingsHref({ owner: "acme", name: "widgets" })).toBe(
       "/repos/repo/settings?owner=acme&name=widgets",
     );
+  });
+});
+
+describe("composeHref", () => {
+  it("builds a compose href with owner and name", () => {
+    expect(composeHref({ owner: "acme", name: "widgets" })).toBe(
+      "/compose?owner=acme&name=widgets",
+    );
+  });
+
+  it("encodes each value", () => {
+    expect(composeHref({ owner: "a c", name: "w&d" })).toBe("/compose?owner=a+c&name=w%26d");
   });
 });
 

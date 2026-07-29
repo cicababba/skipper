@@ -113,6 +113,17 @@ describe("applySettingsPatch", () => {
     expect("plannerAgent" in s).toBe(false);
   });
 
+  // #136: the composer joins the three older roles on both writer tables.
+  it("stores and clears the composer pair like any other role", () => {
+    const s = baseSettings();
+    applySettingsPatch(s, { composerAgent: { runtime: "codex-cli" } });
+    expect(s.composerAgent).toEqual({ runtime: "codex-cli" });
+    applySettingsPatch(s, { composerAgent: { runtime: "nope" } as never });
+    expect(s.composerAgent).toEqual({ runtime: "codex-cli" });
+    applySettingsPatch(s, { composerAgent: undefined });
+    expect("composerAgent" in s).toBe(false);
+  });
+
   it("explicit undefined clears defaultAgent back to the claude floor", () => {
     const s = baseSettings();
     s.defaultAgent = { runtime: "gemini-cli" };
@@ -285,6 +296,16 @@ describe("applyRepoSettingsPatch", () => {
       plannerAgent: { runtime: "codex-cli" },
       reviewerAgent: { runtime: "claude-cli", model: "haiku" },
     });
+  });
+
+  // #136: the per-repo composer override behaves like the other three.
+  it("stores and clears a per-repo composer pair override", () => {
+    expect(applyRepoSettingsPatch(undefined, { composerAgent: { runtime: "gemini-cli" } })).toEqual({
+      composerAgent: { runtime: "gemini-cli" },
+    });
+    expect(
+      applyRepoSettingsPatch({ composerAgent: { runtime: "gemini-cli" } }, { composerAgent: undefined }),
+    ).toEqual({});
   });
 
   it("keeps a boolean graphify toggle and drops a non-bool (#233)", () => {
