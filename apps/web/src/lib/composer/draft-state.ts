@@ -21,6 +21,7 @@ export type DraftEdit =
 
 export type DraftAction =
   | { type: "draftGenerated"; draft: ComposerDraft }
+  | { type: "hydrated"; draft: ComposerDraft; editedFlags: ComposerEditedFlags }
   | ({ type: "fieldEdited"; index: number } & DraftEdit);
 
 function withFlag(flags: ComposerEditedFlags, index: number, field: string): ComposerEditedFlags {
@@ -35,6 +36,11 @@ export function draftReducer(state: DraftState, action: DraftAction): DraftState
       // A regeneration replaces the draft wholesale and the fields are the
       // agent's again — the flags that guarded them have done their job.
       return { draft: action.draft, editedFlags: {} };
+    case "hydrated":
+      // Resuming a saved draft (#138) restores the flags with the draft: they
+      // are the record of what the user hand-wrote, and dropping them would let
+      // the next regeneration overwrite those fields silently.
+      return { draft: action.draft, editedFlags: action.editedFlags };
     case "fieldEdited": {
       if (!state.draft) return state;
       const issues = state.draft.issues.map((issue, i) =>

@@ -9,6 +9,7 @@ import {
   Moon,
   Inbox,
   ChevronDown,
+  FileText,
   Plus,
 } from "lucide-react";
 import type { RepoSettingsRow } from "@skipper/shared";
@@ -118,6 +119,10 @@ export function Sidebar() {
           <InboxNav />
         </Suspense>
 
+        {/* Pre-issue work (#138): things that exist only in Skipper until they
+            reach a tracker. #139 adds "Created by me" to the same shell. */}
+        <WorkNav />
+
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-0.5 overflow-auto">
           {navItems.map((item) => {
@@ -173,6 +178,52 @@ function AttentionBadge({ count, title }: { count: number; title?: string }) {
     >
       {count}
     </span>
+  );
+}
+
+/** The count of things waiting without demanding anything — drafts are the
+ *  user's own unfinished business, not the inbox's call for attention. */
+function MutedBadge({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-card-hover text-muted">
+      {count}
+    </span>
+  );
+}
+
+function WorkNav() {
+  const pathname = usePathname();
+  const { t } = useT();
+  const [drafts, setDrafts] = useState(0);
+
+  const load = useCallback(() => {
+    if (!window.skipper) return;
+    void window.skipper.drafts.list().then((list) => setDrafts(list.length));
+  }, []);
+
+  useEffect(() => {
+    load();
+    return window.skipper?.drafts.onChanged(load);
+  }, [load]);
+
+  const isActive = pathname === "/drafts" || pathname.startsWith("/drafts/");
+
+  return (
+    <div className="shrink-0 border-b border-sidebar-border p-3 space-y-0.5">
+      <Link
+        href="/drafts"
+        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+          isActive
+            ? "bg-card-hover text-foreground"
+            : "text-muted hover:text-foreground hover:bg-card"
+        }`}
+      >
+        <FileText size={16} />
+        <span className="flex-1 truncate">{t.common.nav.drafts}</span>
+        <MutedBadge count={drafts} />
+      </Link>
+    </div>
   );
 }
 

@@ -51,6 +51,11 @@ const en = {
   openIssue: "Open on the tracker",
   allCreated: "Every issue was created.",
 
+  saveDraft: "Save draft",
+  saved: "Saved",
+  savedHint: "The draft is saved and keeps up with the conversation.",
+  saveFailed: "The draft could not be saved",
+
   quick: {
     modeChat: "Chat",
     modeQuick: "Quick",
@@ -119,6 +124,11 @@ const it: typeof en = {
   retry: "Riprova",
   openIssue: "Apri sul tracker",
   allCreated: "Tutte le issue sono state create.",
+
+  saveDraft: "Salva bozza",
+  saved: "Salvata",
+  savedHint: "La bozza è salvata e segue la conversazione.",
+  saveFailed: "Non è stato possibile salvare la bozza",
 
   quick: {
     modeChat: "Chat",
@@ -190,6 +200,11 @@ const fr: typeof en = {
   openIssue: "Ouvrir sur le tracker",
   allCreated: "Toutes les issues ont été créées.",
 
+  saveDraft: "Enregistrer le brouillon",
+  saved: "Enregistré",
+  savedHint: "Le brouillon est enregistré et suit la conversation.",
+  saveFailed: "Le brouillon n'a pas pu être enregistré",
+
   quick: {
     modeChat: "Chat",
     modeQuick: "Rapide",
@@ -258,6 +273,11 @@ const es: typeof en = {
   retry: "Reintentar",
   openIssue: "Abrir en el tracker",
   allCreated: "Se crearon todas las issues.",
+
+  saveDraft: "Guardar borrador",
+  saved: "Guardado",
+  savedHint: "El borrador está guardado y sigue la conversación.",
+  saveFailed: "No se pudo guardar el borrador",
 
   quick: {
     modeChat: "Chat",

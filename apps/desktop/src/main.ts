@@ -992,6 +992,7 @@ app.whenReady().then(async () => {
         plansDir: join(app.getPath("userData"), "plans"),
         worktreesDir: join(app.getPath("userData"), "worktrees"),
         memoryDir: join(app.getPath("userData"), "memory"),
+        draftsDir: join(app.getPath("userData"), "drafts"),
         repoInstructionsDir: join(app.getPath("userData"), "repo-instructions"),
         graphsDir: join(app.getPath("userData"), "graphs"),
         toolsDir: join(app.getPath("userData"), "tools"),

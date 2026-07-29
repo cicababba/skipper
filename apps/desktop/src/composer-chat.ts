@@ -9,6 +9,7 @@ import {
 } from "@skipper/core";
 import {
   CHAT_TURN_DETAILS,
+  isPlanChatText,
   repoKey,
   type AgentRuntimeId,
   type CodingEvent,
@@ -20,17 +21,22 @@ import {
   type PlanChatMessage,
   type RepoRef,
   type ResolvedRepoOrchestratorSettings,
+  type ResumeComposerChatResult,
+  type SaveComposerDraftResult,
   type SendComposerChatResult,
   type StartComposerChatResult,
+  type StoredComposerDraft,
 } from "@skipper/shared";
+import { readComposerDraftFile, saveComposerDraftFile } from "./composer-draft-store";
 import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
 import { buildLlm, injectedBundle, modelForRole, providerCacheKey, type LlmBundle } from "./llm-settings";
 
 // Chat composer driver (#136): a repo-grounded chat that distills into a
 // multi-issue draft. Keyed by (repo, chatId) rather than a TrackedItem — the
-// composer runs before any issue exists. The chat is ephemeral: records live in
-// this module until dispose or quit (persistence is #138), so there is no store
-// file and the agent-chat "persist-before-run" becomes "record-before-run".
+// composer runs before any issue exists. A chat starts ephemeral: records live
+// in this module until dispose or quit, so the agent-chat "persist-before-run"
+// becomes "record-before-run". Saving the draft (#138) promotes the record to a
+// file under <userData>/drafts/, and from then on every commit point re-persists.
 //
 // The run's cwd is the user's own checkout, so there is no confinement to lean
 // on (that is a worktree-only guarantee) — the dirty-checkout tripwire is what
@@ -47,6 +53,10 @@ export interface ComposerChatDeps {
   getMemoryMcp?: (repo: RepoRef) => MemoryMcp | undefined;
   getRepoInstructions: (repo: RepoRef) => Promise<string | undefined>;
   getGraphify: (repo: RepoRef) => Promise<GraphifyContext | undefined> | undefined;
+  /** Saved drafts root (#138), <userData>/drafts. */
+  draftsDir: string;
+  /** A draft file appeared, changed or vanished — the renderer's list is stale. */
+  onDraftsChanged: () => void;
 }
 
 interface ComposerChatRecord {
@@ -58,6 +68,9 @@ interface ComposerChatRecord {
   messages: PlanChatMessage[];
   draft?: ComposerDraft;
   editedFlags?: ComposerEditedFlags;
+  /** Set once the chat is promoted (#138); its presence is what arms autosave. */
+  draftId?: string;
+  createdAt?: string;
 }
 
 let deps: ComposerChatDeps | null = null;
@@ -134,6 +147,7 @@ export function updateComposerDraft(
   if (!record) return { ok: false, error: "unknown composer chat" };
   record.draft = draft;
   record.editedFlags = editedFlags;
+  autosave(record);
   return { ok: true };
 }
 
@@ -145,6 +159,109 @@ export function disposeComposerChat(repo: RepoRef, chatId: string): void {
   const key = chatKey(repo, chatId);
   inFlight.get(key)?.abort();
   chats.delete(key);
+}
+
+/** The draft's first issue names it; before a distillation the opening question
+ *  does. A chat saved before either is titled by the renderer's fallback. */
+function draftTitle(record: ComposerChatRecord): string {
+  const issueTitle = record.draft?.issues[0]?.title?.trim();
+  if (issueTitle) return issueTitle;
+  const firstUser = record.messages.find((m) => isPlanChatText(m) && m.role === "user");
+  const opening =
+    firstUser && isPlanChatText(firstUser) ? firstUser.text.split("\n")[0]?.trim() : undefined;
+  return opening ? opening.slice(0, 120) : "";
+}
+
+function storedFrom(record: ComposerChatRecord, draftId: string): StoredComposerDraft {
+  const now = new Date().toISOString();
+  return {
+    version: 1,
+    draftId,
+    repo: record.repo,
+    chatId: record.chatId,
+    title: draftTitle(record),
+    ...(record.sessionId ? { sessionId: record.sessionId } : {}),
+    ...(record.sessionRuntimeId ? { sessionRuntime: record.sessionRuntimeId } : {}),
+    messages: record.messages,
+    ...(record.draft ? { draft: record.draft } : {}),
+    ...(record.editedFlags ? { editedFlags: record.editedFlags } : {}),
+    createdAt: record.createdAt ?? now,
+    updatedAt: now,
+  };
+}
+
+/** Autosave for an already-promoted chat: fire-and-forget through the store's
+ *  save queue, so a turn never waits on the disk write to return its reply. */
+function autosave(record: ComposerChatRecord): void {
+  if (!record.draftId || !deps) return;
+  const d = deps;
+  void saveComposerDraftFile(d.draftsDir, storedFrom(record, record.draftId))
+    .then(() => d.onDraftsChanged())
+    .catch(() => {
+      /* a failed autosave leaves the previous file — the next commit point retries */
+    });
+}
+
+/** Promote a live chat to a saved draft. Idempotent: a second call re-persists
+ *  the same draft id rather than forking a second file. */
+export async function saveComposerDraft(
+  repo: RepoRef,
+  chatId: string,
+): Promise<SaveComposerDraftResult> {
+  if (!deps) return { ok: false, error: "composer not initialized" };
+  const record = chats.get(chatKey(repo, chatId));
+  if (!record) return { ok: false, error: "unknown composer chat" };
+  const draftId = record.draftId ?? chatId;
+  const stored = storedFrom(record, draftId);
+  try {
+    await saveComposerDraftFile(deps.draftsDir, stored);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  record.draftId = draftId;
+  record.createdAt = stored.createdAt;
+  deps.onDraftsChanged();
+  return { ok: true, draftId };
+}
+
+/**
+ * Rehydrate a saved draft into a live chat. The record carries the session
+ * lineage back, so the next turn resumes the CLI session when the runtime still
+ * matches and degrades to a fresh, history-seeded run when it does not. Emits
+ * the `fetching` status start does — it is the event buffer's reset trigger.
+ */
+export async function resumeComposerChat(
+  repo: RepoRef,
+  draftId: string,
+): Promise<ResumeComposerChatResult> {
+  if (!deps) return { ok: false, error: "composer not initialized" };
+  const cwd = deps.getRepoPath(repo);
+  if (!cwd) return { ok: false, error: "repo not linked" };
+  const stored = await readComposerDraftFile(deps.draftsDir, draftId);
+  if (!stored) return { ok: false, error: "unknown draft" };
+  const key = chatKey(repo, stored.chatId);
+  chats.set(key, {
+    repo,
+    chatId: stored.chatId,
+    cwd,
+    ...(stored.sessionId ? { sessionId: stored.sessionId } : {}),
+    ...(stored.sessionRuntime ? { sessionRuntimeId: stored.sessionRuntime } : {}),
+    messages: stored.messages,
+    ...(stored.draft ? { draft: stored.draft } : {}),
+    ...(stored.editedFlags ? { editedFlags: stored.editedFlags } : {}),
+    draftId: stored.draftId,
+    createdAt: stored.createdAt,
+  });
+  deps.emitEvent(key, { kind: "status", phase: "fetching", detail: "composer resume" });
+  return { ok: true, chatId: stored.chatId };
+}
+
+/** Drop the draft link from whichever live chat holds it (#138): without this a
+ *  deleted draft would be resurrected by the next autosave. */
+export function demoteComposerDraft(draftId: string): void {
+  for (const record of chats.values()) {
+    if (record.draftId === draftId) delete record.draftId;
+  }
 }
 
 interface RunContext {
@@ -299,6 +416,7 @@ export async function sendComposerChatMessage(
       record.sessionId = sessionToRecord;
       record.sessionRuntimeId = ctx.runtime?.id;
     }
+    autosave(record);
     return { ok: true, reply: reply.reply };
   } catch (err) {
     if (err instanceof AgentAbortError) return { ok: false, cancelled: true };
@@ -393,6 +511,7 @@ export async function generateComposerDraft(
       record.sessionId = sessionToRecord;
       record.sessionRuntimeId = ctx.runtime?.id;
     }
+    autosave(record);
     return { ok: true, draft: result.draft };
   } catch (err) {
     if (err instanceof AgentAbortError) return { ok: false, cancelled: true };

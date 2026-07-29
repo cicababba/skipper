@@ -2,6 +2,8 @@
 // Skipper — Chat composer types (issue #136)
 // ============================================================
 
+import type { AgentRuntimeId } from "./types";
+import type { RepoRef } from "./inbox";
 import type { PlanChatMessage } from "./plan";
 
 /**
@@ -55,6 +57,44 @@ export type SendComposerChatResult =
 export type GenerateComposerDraftResult =
   | { ok: true; draft: ComposerDraft }
   | { ok: false; error?: string; cancelled?: boolean };
+
+/**
+ * A composer chat promoted to a saved draft (#138), one JSON file per draft
+ * under <userData>/drafts/. The session fields ride along with the repo and the
+ * runtime that minted them: a session id only resumes under the same
+ * (cwd, runtime) pair (#111), so a resume that no longer matches degrades to a
+ * fresh run seeded from `messages`.
+ */
+export interface StoredComposerDraft {
+  version: 1;
+  draftId: string;
+  repo: RepoRef;
+  chatId: string;
+  title: string;
+  sessionId?: string;
+  sessionRuntime?: AgentRuntimeId;
+  messages: PlanChatMessage[];
+  draft?: ComposerDraft;
+  editedFlags?: ComposerEditedFlags;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A saved draft as the /drafts list renders it. */
+export interface ComposerDraftListItem {
+  draftId: string;
+  repo: RepoRef;
+  title: string;
+  updatedAt: string;
+}
+
+export type SaveComposerDraftResult =
+  | { ok: true; draftId: string }
+  | { ok: false; error: string };
+
+export type ResumeComposerChatResult =
+  | { ok: true; chatId: string }
+  | { ok: false; error: string };
 
 /** The account's provider username, for self-assignment. Absent when it cannot
  *  be resolved (legacy account, offline, non-GitHub provider) — creation then

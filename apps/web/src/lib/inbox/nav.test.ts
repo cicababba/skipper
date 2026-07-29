@@ -95,6 +95,24 @@ describe("composeHref", () => {
       "/compose?owner=acme&name=widgets",
     );
   });
+
+  it("appends the draft to resume (#138)", () => {
+    expect(composeHref({ owner: "acme", name: "widgets" }, undefined, "draft-1")).toBe(
+      "/compose?owner=acme&name=widgets&draft=draft-1",
+    );
+  });
+
+  it("encodes the draft id", () => {
+    expect(composeHref({ owner: "acme", name: "widgets" }, undefined, "a b/c")).toBe(
+      "/compose?owner=acme&name=widgets&draft=a+b%2Fc",
+    );
+  });
+
+  it("omits the draft when undefined or empty", () => {
+    const bare = "/compose?owner=acme&name=widgets";
+    expect(composeHref({ owner: "acme", name: "widgets" }, undefined, undefined)).toBe(bare);
+    expect(composeHref({ owner: "acme", name: "widgets" }, undefined, "")).toBe(bare);
+  });
 });
 
 describe("resolveBackHref", () => {

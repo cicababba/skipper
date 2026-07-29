@@ -4,6 +4,7 @@
 const en = {
   nav: {
     inbox: "Inbox",
+    drafts: "Drafts",
     settings: "Settings",
   },
   actions: {
@@ -40,6 +41,7 @@ const en = {
 const it: typeof en = {
   nav: {
     inbox: "Inbox",
+    drafts: "Bozze",
     settings: "Impostazioni",
   },
   actions: {
@@ -76,6 +78,7 @@ const it: typeof en = {
 const fr: typeof en = {
   nav: {
     inbox: "Inbox",
+    drafts: "Brouillons",
     settings: "Réglages",
   },
   actions: {
@@ -112,6 +115,7 @@ const fr: typeof en = {
 const es: typeof en = {
   nav: {
     inbox: "Inbox",
+    drafts: "Borradores",
     settings: "Ajustes",
   },
   actions: {

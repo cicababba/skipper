@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { repoKey as repoKeyOf, type ComposerDraft, type RepoRef } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
@@ -31,6 +31,7 @@ export function DraftPane({
   busy,
   onEdit,
   onBlur,
+  onAllCreated,
 }: {
   repo: RepoRef;
   draft: ComposerDraft;
@@ -38,6 +39,8 @@ export function DraftPane({
   busy: boolean;
   onEdit: (index: number, edit: DraftEdit) => void;
   onBlur: () => void;
+  /** Every issue of the draft made it to the tracker (#138). */
+  onAllCreated?: () => void;
 }) {
   const { t } = useT();
   const c = t.composer;
@@ -118,6 +121,13 @@ export function DraftPane({
     Object.fromEntries(draft.issues.map((_, i) => [i, stateFor(i)])),
     draft.issues.length,
   );
+
+  const notified = useRef(false);
+  useEffect(() => {
+    if (!done || notified.current) return;
+    notified.current = true;
+    onAllCreated?.();
+  }, [done, onAllCreated]);
 
   return (
     <div className="flex flex-col min-h-0">

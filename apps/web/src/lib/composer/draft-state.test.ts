@@ -88,4 +88,62 @@ describe("draftReducer", () => {
   it("never warns without a draft", () => {
     expect(needsRegenWarning(EMPTY_DRAFT_STATE)).toBe(false);
   });
+
+  // Resuming a saved draft (#138) restores the flags with it: they record what
+  // the user hand-wrote, so a later regeneration still has to warn.
+  describe("hydrated", () => {
+    it("restores the draft together with its flags", () => {
+      const state = draftReducer(EMPTY_DRAFT_STATE, {
+        type: "hydrated",
+        draft: DRAFT,
+        editedFlags: { 0: ["title", "body"] },
+      });
+      expect(state.draft).toEqual(DRAFT);
+      expect(state.editedFlags).toEqual({ 0: ["title", "body"] });
+      expect(hasManualEdits(state)).toBe(true);
+      expect(needsRegenWarning(state)).toBe(true);
+    });
+
+    it("hydrates a never-edited draft without inventing flags", () => {
+      const state = draftReducer(EMPTY_DRAFT_STATE, {
+        type: "hydrated",
+        draft: DRAFT,
+        editedFlags: {},
+      });
+      expect(hasManualEdits(state)).toBe(false);
+      expect(needsRegenWarning(state)).toBe(false);
+    });
+
+    it("replaces whatever the reducer held before", () => {
+      const edited = draftReducer(generated(), {
+        type: "fieldEdited",
+        index: 1,
+        field: "labels",
+        value: ["core"],
+      });
+      const state = draftReducer(edited, {
+        type: "hydrated",
+        draft: { issues: [], relations: [] },
+        editedFlags: {},
+      });
+      expect(state.draft).toEqual({ issues: [], relations: [] });
+      expect(state.editedFlags).toEqual({});
+    });
+
+    it("keeps a later edit flagging on top of the hydrated flags", () => {
+      const hydrated = draftReducer(EMPTY_DRAFT_STATE, {
+        type: "hydrated",
+        draft: DRAFT,
+        editedFlags: { 0: ["title"] },
+      });
+      const state = draftReducer(hydrated, {
+        type: "fieldEdited",
+        index: 1,
+        field: "body",
+        value: "mine",
+      });
+      expect(state.editedFlags).toEqual({ 0: ["title"], 1: ["body"] });
+      expect(state.draft?.issues[1].body).toBe("mine");
+    });
+  });
 });
