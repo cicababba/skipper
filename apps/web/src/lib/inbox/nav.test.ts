@@ -83,6 +83,18 @@ describe("composeHref", () => {
   it("encodes each value", () => {
     expect(composeHref({ owner: "a c", name: "w&d" })).toBe("/compose?owner=a+c&name=w%26d");
   });
+
+  it("appends the quick mode when asked", () => {
+    expect(composeHref({ owner: "acme", name: "widgets" }, "quick")).toBe(
+      "/compose?owner=acme&name=widgets&mode=quick",
+    );
+  });
+
+  it("omits the mode when undefined — chat is the bare href", () => {
+    expect(composeHref({ owner: "acme", name: "widgets" }, undefined)).toBe(
+      "/compose?owner=acme&name=widgets",
+    );
+  });
 });
 
 describe("resolveBackHref", () => {

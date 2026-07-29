@@ -3,9 +3,13 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ComposerDraft } from "@skipper/shared";
 import { ComposerView } from "./composer-view";
 
+const BARE_PARAMS = { owner: "acme", name: "widgets" };
+let searchParams = new URLSearchParams(BARE_PARAMS);
+const replace = vi.fn();
+
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams({ owner: "acme", name: "widgets" }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => searchParams,
+  useRouter: () => ({ push: vi.fn(), replace }),
 }));
 
 vi.mock("@/lib/auth-context", () => ({
@@ -87,6 +91,9 @@ async function clickGenerate(name: "Generate draft" | "Regenerate draft") {
 afterEach(() => {
   vi.restoreAllMocks();
   delete (window as unknown as { skipper?: unknown }).skipper;
+  searchParams = new URLSearchParams(BARE_PARAMS);
+  replace.mockClear();
+  window.localStorage.clear();
 });
 
 describe("ComposerView", () => {
@@ -190,5 +197,44 @@ describe("ComposerView", () => {
     await clickGenerate("Generate draft");
     expect(await screen.findByText(/Draft generation failed: boom/)).toBeTruthy();
     await flushDraftPush();
+  });
+});
+
+// Which path the route opens on (#137): the URL decides, and when it says
+// nothing the last used mode does.
+describe("ComposerView mode dispatch", () => {
+  it("opens the quick path on mode=quick, with no session behind it", async () => {
+    const { start } = installSkipper();
+    searchParams = new URLSearchParams({ ...BARE_PARAMS, mode: "quick" });
+    render(<ComposerView />);
+    expect(await screen.findByLabelText("Title")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Generate draft" })).toBeNull();
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the stored preference when the URL carries no mode", async () => {
+    const { start } = installSkipper();
+    window.localStorage.setItem("composer.mode", "quick");
+    render(<ComposerView />);
+    expect(await screen.findByLabelText("Title")).toBeTruthy();
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it("lets an explicit mode in the URL win over the stored preference", async () => {
+    const { start } = installSkipper();
+    window.localStorage.setItem("composer.mode", "quick");
+    searchParams = new URLSearchParams({ ...BARE_PARAMS, mode: "chat" });
+    render(<ComposerView />);
+    await waitFor(() => expect(start).toHaveBeenCalled());
+  });
+
+  it("remembers the mode the user switches to", async () => {
+    installSkipper();
+    render(<ComposerView />);
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Quick" }));
+    });
+    expect(replace).toHaveBeenCalledWith("/compose?owner=acme&name=widgets&mode=quick");
+    expect(window.localStorage.getItem("composer.mode")).toBe("quick");
   });
 });
