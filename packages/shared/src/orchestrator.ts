@@ -651,6 +651,21 @@ export type UntrackItemResult =
 // "closed on GitHub" path.
 export type CloseItemOnTrackerResult = { ok: true } | { ok: false; error: string };
 
+// Issue creation (#135): create an issue on the tracker via the source's
+// createIssue capability. The created issue lives on the platform only — it is
+// not injected into the manifest (see create-issue-ipc.ts for the why).
+export interface CreateIssueOnTrackerParams {
+  accountId: string;
+  repo: RepoRef;
+  title: string;
+  body?: string;
+  labels?: string[];
+}
+
+export type CreateIssueOnTrackerResult =
+  | { ok: true; id: string; number: number; url: string }
+  | { ok: false; error: string };
+
 // Dirty-worktree cleanup (#204): reset the item's worktree to its base ref +
 // clean untracked files, discarding leftover uncommitted work and local commits.
 export type CleanWorktreeResult = { ok: true } | { ok: false; error: string };

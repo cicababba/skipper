@@ -3,6 +3,8 @@ import type {
   ArchiveItemResult,
   CleanWorktreeResult,
   CloseItemOnTrackerResult,
+  CreateIssueOnTrackerParams,
+  CreateIssueOnTrackerResult,
   FollowCandidatesResult,
   LifecycleState,
   ListRepoBranchesResult,
@@ -291,6 +293,9 @@ export interface WindowSkipper {
     archiveItem: (itemId: string, force?: boolean) => Promise<ArchiveItemResult>;
     untrackItem: (itemId: string, force?: boolean) => Promise<UntrackItemResult>;
     closeItemOnTracker: (itemId: string) => Promise<CloseItemOnTrackerResult>;
+    createIssueOnTracker: (
+      params: CreateIssueOnTrackerParams,
+    ) => Promise<CreateIssueOnTrackerResult>;
     getWorktreeChanges: (itemId: string) => Promise<WorktreeChangesResult>;
     readWorktreeFile: (
       itemId: string,
