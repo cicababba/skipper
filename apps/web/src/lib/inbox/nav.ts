@@ -23,6 +23,11 @@ export function repoSettingsHref(repo: { owner: string; name: string }): string 
   return `/repos/repo/settings?${params.toString()}`;
 }
 
+export function composeHref(repo: { owner: string; name: string }): string {
+  const params = new URLSearchParams({ owner: repo.owner, name: repo.name });
+  return `/compose?${params.toString()}`;
+}
+
 export function resolveBackHref(from: string | null): string {
   // Browsers treat `/\evil.com` like protocol-relative `//evil.com`, so guard both.
   if (from && from.startsWith("/") && !from.startsWith("//") && !from.startsWith("/\\")) {

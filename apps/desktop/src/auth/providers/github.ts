@@ -28,6 +28,7 @@ export async function mapGitHubUser(accessToken: string): Promise<MappedAccount>
     id: String(json.id),
     email: json.email ?? (await fetchPrimaryEmail(accessToken)),
     name: json.name ?? json.login,
+    login: json.login,
     avatarUrl: json.avatar_url,
   };
 }

@@ -51,6 +51,18 @@ describe("createGitHubIssue", () => {
     expect(sent).toEqual({ title: "t" });
     expect(sent).not.toHaveProperty("body");
     expect(sent).not.toHaveProperty("labels");
+    expect(sent).not.toHaveProperty("assignees");
+  });
+
+  // #136: self-assign rides the same optional-field treatment as body/labels.
+  it("includes assignees when provided", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(201, createdIssuePayload()));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createGitHubIssue(params({ assignees: ["cicababba"] }), token);
+
+    const [, init] = fetchMock.mock.calls[0] as [string | URL, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ title: "t", assignees: ["cicababba"] });
   });
 
   it("includes body and labels when provided", async () => {

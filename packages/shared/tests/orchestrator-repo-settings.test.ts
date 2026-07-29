@@ -232,6 +232,51 @@ describe("resolveRepoOrchestratorSettings", () => {
       expect("plannerAgent" in DEFAULT_ORCHESTRATOR_SETTINGS).toBe(false);
       expect("coderAgent" in DEFAULT_ORCHESTRATOR_SETTINGS).toBe(false);
       expect("reviewerAgent" in DEFAULT_ORCHESTRATOR_SETTINGS).toBe(false);
+      expect("composerAgent" in DEFAULT_ORCHESTRATOR_SETTINGS).toBe(false);
+    });
+  });
+
+  // #136: the composer rides the same ladder as the three older roles.
+  describe("composer pair (#136)", () => {
+    it("floors to claude-cli on defaultModel when nothing is set", () => {
+      const resolved = resolveRepoOrchestratorSettings(undefined, global(), "fable");
+      expect(resolved.composerRuntime).toBe(DEFAULT_AGENT_RUNTIME);
+      expect(resolved.composerModel).toBe("fable");
+    });
+
+    it("takes the global composerAgent over defaultAgent", () => {
+      const resolved = resolveRepoOrchestratorSettings(
+        undefined,
+        global({
+          defaultAgent: { runtime: "gemini-cli" },
+          composerAgent: { runtime: "claude-cli", model: "opus" },
+        }),
+        "fable",
+      );
+      expect(resolved.composerRuntime).toBe("claude-cli");
+      expect(resolved.composerModel).toBe("opus");
+    });
+
+    it("lets a repo composerAgent beat the global one", () => {
+      const resolved = resolveRepoOrchestratorSettings(
+        { composerAgent: { runtime: "codex-cli" } },
+        global({ composerAgent: { runtime: "claude-cli", model: "opus" } }),
+        "fable",
+      );
+      expect(resolved.composerRuntime).toBe("codex-cli");
+      expect(resolved.composerModel).toBe("");
+    });
+
+    it("resolves independently of the other roles", () => {
+      const resolved = resolveRepoOrchestratorSettings(
+        undefined,
+        global({ composerAgent: { runtime: "copilot-cli" } }),
+        "fable",
+      );
+      expect(resolved.composerRuntime).toBe("copilot-cli");
+      expect(resolved.plannerRuntime).toBe("claude-cli");
+      expect(resolved.coderRuntime).toBe("claude-cli");
+      expect(resolved.reviewerRuntime).toBe("claude-cli");
     });
   });
 });

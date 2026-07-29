@@ -165,6 +165,8 @@ export interface OrchestratorSettings {
   plannerAgent?: AgentSelection;
   coderAgent?: AgentSelection;
   reviewerAgent?: AgentSelection;
+  /** The repo-grounded agent behind the chat composer (#136). */
+  composerAgent?: AgentSelection;
   /** Gate thresholds + convergence sample count (#8). Hand-editable by design (#62). */
   confidence: ConfidenceThresholds & { extraPlanRuns: number };
   /** Wall-clock budget per coding run, in minutes (#194). When it fires, the coder
@@ -228,6 +230,7 @@ export interface RepoIntakeSettings {
   plannerAgent?: AgentSelection;
   coderAgent?: AgentSelection;
   reviewerAgent?: AgentSelection;
+  composerAgent?: AgentSelection;
   /** #233 opt-in per-repo Graphify knowledge-graph index. Absent = off. */
   graphify?: boolean;
 }
@@ -264,10 +267,12 @@ export interface ResolvedRepoOrchestratorSettings extends ResolvedRepoIntakeSett
   plannerModel: string;
   coderModel: string;
   reviewerModel: string;
+  composerModel: string;
   /** #240 — the agent runtime each role's run drives. */
   plannerRuntime: AgentRuntimeId;
   coderRuntime: AgentRuntimeId;
   reviewerRuntime: AgentRuntimeId;
+  composerRuntime: AgentRuntimeId;
 }
 
 /**
@@ -321,6 +326,7 @@ export function resolveRepoOrchestratorSettings(
   const planner = resolveAgent(repo?.plannerAgent, global.plannerAgent, global.defaultAgent, dm);
   const coder = resolveAgent(repo?.coderAgent, global.coderAgent, global.defaultAgent, dm);
   const reviewer = resolveAgent(repo?.reviewerAgent, global.reviewerAgent, global.defaultAgent, dm);
+  const composer = resolveAgent(repo?.composerAgent, global.composerAgent, global.defaultAgent, dm);
   return {
     ...resolveRepoIntakeSettings(repo),
     wipLimit: repo?.wipLimit ?? global.codingWipPerRepo,
@@ -331,9 +337,11 @@ export function resolveRepoOrchestratorSettings(
     plannerModel: planner.model,
     coderModel: coder.model,
     reviewerModel: reviewer.model,
+    composerModel: composer.model,
     plannerRuntime: planner.runtime,
     coderRuntime: coder.runtime,
     reviewerRuntime: reviewer.runtime,
+    composerRuntime: composer.runtime,
   };
 }
 
@@ -660,6 +668,9 @@ export interface CreateIssueOnTrackerParams {
   title: string;
   body?: string;
   labels?: string[];
+  /** Provider usernames to assign (#136). Self-assignment puts the issue on the
+   *  poll's assigned stream, so it enters the inbox on the next poll. */
+  assignees?: string[];
 }
 
 export type CreateIssueOnTrackerResult =

@@ -161,6 +161,21 @@ describe("registerCreateIssueHandlers", () => {
     expect(getToken).toHaveBeenCalledWith("github:1234", true);
   });
 
+  // #136: self-assign rides through to the adapter untouched.
+  it("passes assignees through to the source", async () => {
+    const { handlers, createIssue } = setup();
+    await handlerOf(handlers)(null, params({ assignees: ["cicababba"] }));
+    const [createParams] = createIssue.mock.calls[0] as unknown as [Record<string, unknown>];
+    expect(createParams.assignees).toEqual(["cicababba"]);
+  });
+
+  it("leaves assignees undefined when the caller omits them", async () => {
+    const { handlers, createIssue } = setup();
+    await handlerOf(handlers)(null, params());
+    const [createParams] = createIssue.mock.calls[0] as unknown as [Record<string, unknown>];
+    expect(createParams.assignees).toBeUndefined();
+  });
+
   it("returns the adapter error when creation throws", async () => {
     const { handlers } = setup({
       createThrows: new Error("Resource not accessible by integration"),

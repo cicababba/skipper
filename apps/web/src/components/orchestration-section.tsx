@@ -203,6 +203,17 @@ export function OrchestrationSection({ claudeFloor }: { claudeFloor: string }) {
             onChange={(a) => void updateSettings({ reviewerAgent: a })}
             onClear={() => void updateSettings({ reviewerAgent: undefined })}
           />
+          <AgentPairRow
+            label={r.composer}
+            hint={r.composerDesc}
+            pair={s.composerAgent}
+            inheritPair={inheritPair}
+            claudeFloor={floor}
+            selectClass={selectClass}
+            defaultLabel={r.agentDefault}
+            onChange={(a) => void updateSettings({ composerAgent: a })}
+            onClear={() => void updateSettings({ composerAgent: undefined })}
+          />
         </div>
 
         <p className="text-[11px] text-muted/50 leading-relaxed border-t border-border pt-4">

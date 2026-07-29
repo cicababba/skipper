@@ -2,6 +2,7 @@ import type { CodingEvent } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
 import type { AgentRuntime } from "../runtime/types";
 import type { MemoryMcp } from "../llm/memory-mcp";
+import type { GraphifyMcp } from "../llm/graphify-mcp";
 import type { RunConfinement } from "../llm/confinement";
 
 // Generic agent-discussion dispatch (#170): the shared runtime.agent(...) call
@@ -29,6 +30,9 @@ export interface RunAgentDiscussionOptions {
   maxTurns?: number;
   onEvent?: (event: CodingEvent) => void;
   memory?: MemoryMcp;
+  /** Inject the graphify knowledge-graph MCP server (#233); the composer chat
+   *  passes it, the coder/reviewer chats never do. */
+  graph?: GraphifyMcp;
   signal?: AbortSignal;
   /** Keep the run inside its cwd (#196); passed only when cwd is the worktree. */
   confinement?: RunConfinement;
@@ -50,6 +54,7 @@ export async function runAgentDiscussion(
       resumeSessionId: opts.resumeSessionId,
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
+      ...(opts.graph ? { graph: opts.graph } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
       ...(opts.confinement ? { confinement: opts.confinement } : {}),
     });
@@ -65,6 +70,7 @@ export async function runAgentDiscussion(
       ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
+      ...(opts.graph ? { graph: opts.graph } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
       ...(opts.confinement ? { confinement: opts.confinement } : {}),
     });

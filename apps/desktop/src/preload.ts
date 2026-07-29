@@ -13,7 +13,14 @@ import type {
   AuthState,
   CliStatus,
   CodingEventEnvelope,
+  ComposerChatSnapshot,
+  ComposerDraft,
+  ComposerEditedFlags,
+  ComposerSelfLogin,
   CreateTerminalResult,
+  GenerateComposerDraftResult,
+  SendComposerChatResult,
+  StartComposerChatResult,
   FsEntry,
   GitOpResult,
   GitStatus,
@@ -343,6 +350,40 @@ const api = {
       ipcRenderer.invoke("skipper:agentChat:confirmApply", itemId, instructions),
     cancel: (kind: AgentChatKind, itemId: string): Promise<void> =>
       ipcRenderer.invoke("skipper:agentChat:cancel", kind, itemId),
+  },
+
+  // Chat composer (issue #136): repo-grounded chat + structured issue draft.
+  // The stream is keyed `${repoKey}:${chatId}`, not an item id.
+  composer: {
+    start: (repo: RepoRef): Promise<StartComposerChatResult> =>
+      ipcRenderer.invoke("skipper:composer:start", repo),
+    send: (repo: RepoRef, chatId: string, text: string): Promise<SendComposerChatResult> =>
+      ipcRenderer.invoke("skipper:composer:send", repo, chatId, text),
+    getChat: (repo: RepoRef, chatId: string): Promise<ComposerChatSnapshot | null> =>
+      ipcRenderer.invoke("skipper:composer:getChat", repo, chatId),
+    generateDraft: (repo: RepoRef, chatId: string): Promise<GenerateComposerDraftResult> =>
+      ipcRenderer.invoke("skipper:composer:generateDraft", repo, chatId),
+    updateDraft: (
+      repo: RepoRef,
+      chatId: string,
+      draft: ComposerDraft,
+      editedFlags: ComposerEditedFlags,
+    ): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("skipper:composer:updateDraft", repo, chatId, draft, editedFlags),
+    cancel: (repo: RepoRef, chatId: string): Promise<void> =>
+      ipcRenderer.invoke("skipper:composer:cancel", repo, chatId),
+    dispose: (repo: RepoRef, chatId: string): Promise<void> =>
+      ipcRenderer.invoke("skipper:composer:dispose", repo, chatId),
+    getSelfLogin: (accountId: string): Promise<ComposerSelfLogin> =>
+      ipcRenderer.invoke("skipper:composer:getSelfLogin", accountId),
+    getEvents: (key: string): Promise<CodingEventEnvelope[]> =>
+      ipcRenderer.invoke("skipper:composer:getEvents", key),
+    onEvent: (key: string, callback: (envelope: CodingEventEnvelope) => void) => {
+      const channel = `skipper:composer:event:${key}`;
+      const handler = (_e: unknown, envelope: CodingEventEnvelope) => callback(envelope);
+      ipcRenderer.on(channel, handler);
+      return () => ipcRenderer.off(channel, handler);
+    },
   },
 
   // Reviewer console (issue #113): same shape as coding/planning, own channel pair.

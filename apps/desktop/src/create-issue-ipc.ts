@@ -9,9 +9,10 @@ import type { IssueSource } from "@skipper/core";
 // Issue creation (#135). The created issue is deliberately NOT injected into the
 // manifest or the poll cache: the GitHub poll only reads the `assigned` stream,
 // so an unassigned issue is invisible to it and the 6-hourly full walk would
-// close the injected item as "no longer assigned or visible". Injection returns
-// together with self-assign. Deps are injected so the handler is testable
-// without a live Electron main.
+// close the injected item as "no longer assigned or visible". Self-assignment
+// (#136) needs no injection either — the assigned stream picks the issue up on
+// the next poll. Deps are injected so the handler is testable without a live
+// Electron main.
 export interface CreateIssueIpcDeps {
   ipcMain: IpcMain;
   getAccounts: () => Account[];
@@ -44,6 +45,7 @@ export function registerCreateIssueHandlers(deps: CreateIssueIpcDeps): void {
             title,
             body: params.body,
             labels: params.labels,
+            assignees: params.assignees,
             accountId: account.key,
           },
           (force) => deps.getToken(account.key, force),

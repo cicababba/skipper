@@ -2,10 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { LogOut, Settings as SettingsIcon, Loader2, Pause, Play, Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { LogOut, Plus, Settings as SettingsIcon, Loader2, Pause, Play, Sparkles } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
+import { composeHref } from "@/lib/inbox/nav";
+import { RepoPickerModal } from "@/components/repo-picker-modal";
 
 // Slim top bar that sits above the main content area. The whole strip is a
 // macOS window-drag region; interactive elements opt out via `-webkit-app-region: no-drag`.
@@ -15,10 +18,41 @@ export function Topbar() {
       className="topbar h-10 shrink-0 border-b border-border bg-sidebar/60 backdrop-blur flex items-center justify-end gap-3 px-3"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
+      <ComposeButton />
       <AutoPlanChip />
       <OrchestratorChip />
       <AccountWidget />
     </div>
+  );
+}
+
+// Chat composer entry point (#136): pick a linked repo, then compose there.
+function ComposeButton() {
+  const { t } = useT();
+  const router = useRouter();
+  const [picking, setPicking] = useState(false);
+
+  return (
+    <>
+      <button
+        onClick={() => setPicking(true)}
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        title={t.composer.newIssue}
+        aria-label={t.composer.newIssue}
+        className="flex items-center justify-center h-7 w-7 rounded-full border border-border bg-card text-muted hover:bg-card-hover hover:text-foreground transition-colors"
+      >
+        <Plus size={13} />
+      </button>
+      {picking && (
+        <RepoPickerModal
+          onClose={() => setPicking(false)}
+          onPick={(repo) => {
+            setPicking(false);
+            router.push(composeHref(repo));
+          }}
+        />
+      )}
+    </>
   );
 }
 

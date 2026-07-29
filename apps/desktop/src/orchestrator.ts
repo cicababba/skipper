@@ -99,6 +99,7 @@ import { shouldSkipPoll, selectPollCursor, pollFailurePatch } from "./poll-polic
 import { makeManifestWriters } from "./manifest-writers";
 import { registerMemoryHandlers } from "./memory-ipc";
 import { registerCreateIssueHandlers } from "./create-issue-ipc";
+import { registerComposerHandlers } from "./composer-ipc";
 import { registerEmbedderHost } from "./embedder-host";
 import { registerWorktreeDiffHandlers } from "./worktree-diff-ipc";
 import { readLlmSettings, readLlmSettingsSync, buildLlm } from "./llm-settings";
@@ -133,6 +134,7 @@ import {
   confirmCoderChatApply,
   cancelAgentChat,
 } from "./agent-chat";
+import { initComposerChat } from "./composer-chat";
 import {
   initRescore,
   startRescore,
@@ -288,6 +290,15 @@ const planningStream = makeEventStream({
 // that opens every round. The reviewer runs no tools, so no memory bookkeeping.
 const reviewStream = makeEventStream({
   channel: "review",
+  resetPhase: "fetching",
+  getWindow: () => getWindow(),
+});
+
+// Chat composer stream (#136): own channel pair, keyed `${repoKey}:${chatId}`
+// (the envelope calls that field itemId — the composer has no item). Only
+// startComposerChat emits `fetching`, so a new chat is the buffer's only reset.
+const composerStream = makeEventStream({
+  channel: "composer",
   resetPhase: "fetching",
   getWindow: () => getWindow(),
 });
@@ -1702,6 +1713,14 @@ export function initOrchestrator(
   ipcMain.handle("skipper:review:getEvents", (_e, itemId: string) => {
     return reviewStream.getEvents(itemId);
   });
+  ipcMain.handle("skipper:composer:getEvents", (_e, key: string) => {
+    return composerStream.getEvents(key);
+  });
+  registerComposerHandlers({
+    ipcMain,
+    getAccounts: () => deps?.getAccounts() ?? [],
+    getToken: (key, force) => deps!.getToken(key, force),
+  });
   registerMemoryHandlers({
     ipcMain,
     memoryDir: orchestratorDeps.memoryDir,
@@ -1999,6 +2018,25 @@ export function initOrchestrator(
         ? { cliBundlePath: orchestratorDeps.cliBundlePath, repo: item.repo }
         : undefined,
     completeReentry,
+  });
+
+  initComposerChat({
+    getRepoPath: repoPathFor,
+    getRepoSettings: repoOrch,
+    getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
+    checkoutDirtyPaths: worktreeDirtyFiles,
+    emitEvent: composerStream.emit,
+    getMemoryMcp: (repo) =>
+      orchestratorDeps.cliBundlePath
+        ? { cliBundlePath: orchestratorDeps.cliBundlePath, repo }
+        : undefined,
+    getRepoInstructions: (repo) =>
+      readReadyInstructions(orchestratorDeps.repoInstructionsDir, repoKey(repo)),
+    getGraphify: (repo) => {
+      if (!repoOrch(repo).graphify) return undefined;
+      const d = graphifyDepsFor(repo);
+      return d ? graphifyForPlanning(d) : undefined;
+    },
   });
 
   initRescore({

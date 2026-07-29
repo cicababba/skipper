@@ -105,6 +105,9 @@ export interface Account {
   /** GitHub may not expose one. */
   email?: string;
   name?: string;
+  /** Provider username, usable in API mutations (self-assignment, #136). Absent
+   *  on pre-#136 accounts — the caller resolves it lazily from the provider. */
+  login?: string;
   avatarUrl?: string;
   /** Normalized instance origin for self-hosted providers. Absent = the provider's fixed host. */
   baseUrl?: string;

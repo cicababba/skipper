@@ -28,7 +28,7 @@ export function RepoModelControls({
   // has no override the pair shows the resolved global, which is refetched after
   // every patch, so changing just the model stays a one-gesture edit.
   const agentRow = (
-    key: "plannerAgent" | "coderAgent" | "reviewerAgent",
+    key: "plannerAgent" | "coderAgent" | "reviewerAgent" | "composerAgent",
     resolvedPair: AgentSelection,
     label: string,
   ) => (
@@ -63,6 +63,11 @@ export function RepoModelControls({
         "reviewerAgent",
         { runtime: row.resolved.reviewerRuntime, model: row.resolved.reviewerModel },
         o.reviewer,
+      )}
+      {agentRow(
+        "composerAgent",
+        { runtime: row.resolved.composerRuntime, model: row.resolved.composerModel },
+        o.composer,
       )}
     </div>
   );
