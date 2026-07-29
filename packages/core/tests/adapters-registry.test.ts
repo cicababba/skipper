@@ -64,6 +64,13 @@ describe("issue-source registry", () => {
     expect(openprojectIssueSource.closeIssue).toBeUndefined();
   });
 
+  it("exposes createIssue on GitHub but not GitLab, Jira, or OpenProject (#134)", () => {
+    expect(typeof githubIssueSource.createIssue).toBe("function");
+    expect(gitlabIssueSource.createIssue).toBeUndefined();
+    expect(jiraIssueSource.createIssue).toBeUndefined();
+    expect(openprojectIssueSource.createIssue).toBeUndefined();
+  });
+
   it("exposes fetchComments on the OpenProject adapter (#144)", () => {
     expect(typeof openprojectIssueSource.fetchComments).toBe("function");
   });

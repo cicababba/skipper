@@ -537,9 +537,11 @@ export type TrackerProjectsResult =
   | { ok: false; error: string };
 
 /** Renderer-visible capability flags per issue source (#132), derived from the
- *  adapter registry. closeIssue = the source can close the issue on its tracker. */
+ *  adapter registry. closeIssue = the source can close the issue on its tracker;
+ *  createIssue = it can create a new issue there (#134). */
 export interface IssueSourceCapabilities {
   closeIssue: boolean;
+  createIssue: boolean;
 }
 
 export interface OrchestratorState {
