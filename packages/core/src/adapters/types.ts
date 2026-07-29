@@ -85,6 +85,23 @@ export interface IssueSource<C = unknown> {
    *  it omit the method — the source is then not close-capable and the UI offers
    *  only untrack + link-out. */
   closeIssue?(issue: Issue, getToken: TokenProvider, baseUrl?: string): Promise<void>;
+  /** Optional capability (#134): create an issue on the tracker. Adapters without
+   *  it omit the method — the source is then not create-capable. Returns the full
+   *  mapped Issue so callers can inject it into the manifest without a re-poll. */
+  createIssue?(
+    params: CreateIssueParams,
+    getToken: TokenProvider,
+    baseUrl?: string,
+  ): Promise<Issue>;
+}
+
+export interface CreateIssueParams {
+  repo: RepoRef;
+  title: string;
+  body?: string;
+  labels?: string[];
+  /** Stamped onto the returned Issue (Account.key) — the adapter can't know it. */
+  accountId: string;
 }
 
 export interface CreatePrParams {

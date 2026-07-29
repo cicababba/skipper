@@ -218,7 +218,10 @@ const unmappedProjects = new Map<string, UnmappedProject[]>();
 const SOURCE_CAPABILITIES = Object.fromEntries(
   (Object.keys(issueSources) as IssueSourceId[]).map((id) => [
     id,
-    { closeIssue: typeof issueSourceFor(id).closeIssue === "function" },
+    {
+      closeIssue: typeof issueSourceFor(id).closeIssue === "function",
+      createIssue: typeof issueSourceFor(id).createIssue === "function",
+    },
   ]),
 ) as Record<IssueSourceId, IssueSourceCapabilities>;
 
