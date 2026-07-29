@@ -23,9 +23,14 @@ export function repoSettingsHref(repo: { owner: string; name: string }): string 
   return `/repos/repo/settings?${params.toString()}`;
 }
 
-export function composeHref(repo: { owner: string; name: string }, mode?: "quick"): string {
+export function composeHref(
+  repo: { owner: string; name: string },
+  mode?: "quick",
+  draft?: string,
+): string {
   const params = new URLSearchParams({ owner: repo.owner, name: repo.name });
   if (mode) params.set("mode", mode);
+  if (draft) params.set("draft", draft);
   return `/compose?${params.toString()}`;
 }
 

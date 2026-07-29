@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import Link from "next/link";
-import { FolderGit2, Loader2, Sparkles } from "lucide-react";
+import { Check, FolderGit2, Loader2, Save, Sparkles } from "lucide-react";
 import { CHAT_TURN_DETAILS, type ComposerDraft, type RepoRef } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -29,10 +29,13 @@ export function ChatView({
   repo,
   mode,
   onSwitch,
+  draftId,
 }: {
   repo: RepoRef;
   mode: ComposeMode;
   onSwitch: (mode: ComposeMode) => void;
+  /** Resume a saved draft (#138) instead of opening a fresh chat. */
+  draftId?: string | null;
 }) {
   const { t } = useT();
   const c = t.composer;
@@ -51,25 +54,47 @@ export function ChatView({
   // starts from clean per-card create states instead of inheriting stale ones.
   const [generation, setGeneration] = useState(0);
   const [state, dispatch] = useReducer(draftReducer, EMPTY_DRAFT_STATE);
+  // The draft id once the chat is promoted (#138) — from then on main autosaves
+  // every turn, so the button has nothing left to do but say so.
+  const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
+  const [saveBusy, setSaveBusy] = useState(false);
 
   useEffect(() => {
     if (!window.skipper || !owner || !name) return;
     let started: string | null = null;
     let disposed = false;
-    void window.skipper.composer.start({ owner, name }).then((res) => {
-      if (res.ok) {
-        started = res.chatId;
-        if (disposed) void window.skipper?.composer.dispose({ owner, name }, res.chatId);
-        else setChatId(res.chatId);
-      } else {
+    const open = draftId
+      ? window.skipper.composer.resume({ owner, name }, draftId)
+      : window.skipper.composer.start({ owner, name });
+    void open.then((res) => {
+      if (!res.ok) {
         setStartError(res.error);
+        return;
       }
+      started = res.chatId;
+      if (disposed) {
+        // A start() mints a fresh id, so this late record is ours alone to drop.
+        // A resume() keys on the draft id instead: a concurrent mount holds that
+        // same key, and disposing here would delete the record it just restored.
+        if (!draftId) void window.skipper?.composer.dispose({ owner, name }, res.chatId);
+        return;
+      }
+      setChatId(res.chatId);
+      if (!draftId) return;
+      setSavedDraftId(draftId);
+      // The transcript rides ChatPanel's loadHistory; the draft pane is ours to
+      // restore, flags included.
+      void window.skipper?.composer.getChat({ owner, name }, res.chatId).then((chat) => {
+        if (disposed || !chat?.draft) return;
+        dispatch({ type: "hydrated", draft: chat.draft, editedFlags: chat.editedFlags ?? {} });
+        setGeneration((g) => g + 1);
+      });
     });
     return () => {
       disposed = true;
       if (started) void window.skipper?.composer.dispose({ owner, name }, started);
     };
-  }, [owner, name]);
+  }, [owner, name, draftId]);
 
   const adapter: ChatAdapter = useMemo(
     () => ({
@@ -128,6 +153,25 @@ export function ChatView({
     }
   };
 
+  const save = async () => {
+    if (!chatId || !window.skipper || savedDraftId || saveBusy) return;
+    setDraftError(null);
+    setSaveBusy(true);
+    try {
+      const res = await window.skipper.composer.saveDraft(repo, chatId);
+      if (res.ok) setSavedDraftId(res.draftId);
+      else setDraftError(`${c.saveFailed}: ${res.error}`);
+    } finally {
+      setSaveBusy(false);
+    }
+  };
+
+  // Publishing ends the draft's life (#138): the issues live on the tracker now.
+  const onAllCreated = useCallback(() => {
+    if (!savedDraftId) return;
+    void window.skipper?.drafts.remove(savedDraftId).then(() => setSavedDraftId(null));
+  }, [savedDraftId]);
+
   const onGenerateClick = () => {
     if (needsRegenWarning(state)) setConfirmRegen(true);
     else void generate();
@@ -164,14 +208,31 @@ export function ChatView({
           </div>
         </div>
       ) : (
-        <button
-          onClick={onGenerateClick}
-          disabled={count === 0 || sendBusy || distilling}
-          className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50"
-        >
-          {distilling ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
-          {distilling ? c.generating : split ? c.regenerate : c.generate}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onGenerateClick}
+            disabled={count === 0 || sendBusy || distilling}
+            className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50"
+          >
+            {distilling ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+            {distilling ? c.generating : split ? c.regenerate : c.generate}
+          </button>
+          {savedDraftId ? (
+            <span className="flex items-center gap-1 text-[12px] text-success" title={c.savedHint}>
+              <Check size={11} />
+              {c.saved}
+            </span>
+          ) : (
+            <button
+              onClick={() => void save()}
+              disabled={count === 0 || sendBusy || distilling || saveBusy}
+              className="flex items-center gap-1 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-50"
+            >
+              {saveBusy ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+              {c.saveDraft}
+            </button>
+          )}
+        </div>
       )}
 
       {draftError && (
@@ -243,6 +304,7 @@ export function ChatView({
             busy={distilling}
             onEdit={editField}
             onBlur={() => pushDraft(state.draft!, state.editedFlags)}
+            onAllCreated={onAllCreated}
           />
         )}
       </div>

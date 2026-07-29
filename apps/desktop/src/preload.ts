@@ -15,10 +15,13 @@ import type {
   CodingEventEnvelope,
   ComposerChatSnapshot,
   ComposerDraft,
+  ComposerDraftListItem,
   ComposerEditedFlags,
   ComposerSelfLogin,
   CreateTerminalResult,
   GenerateComposerDraftResult,
+  ResumeComposerChatResult,
+  SaveComposerDraftResult,
   SendComposerChatResult,
   StartComposerChatResult,
   FsEntry,
@@ -374,6 +377,10 @@ const api = {
       ipcRenderer.invoke("skipper:composer:cancel", repo, chatId),
     dispose: (repo: RepoRef, chatId: string): Promise<void> =>
       ipcRenderer.invoke("skipper:composer:dispose", repo, chatId),
+    saveDraft: (repo: RepoRef, chatId: string): Promise<SaveComposerDraftResult> =>
+      ipcRenderer.invoke("skipper:composer:saveDraft", repo, chatId),
+    resume: (repo: RepoRef, draftId: string): Promise<ResumeComposerChatResult> =>
+      ipcRenderer.invoke("skipper:composer:resume", repo, draftId),
     getSelfLogin: (accountId: string): Promise<ComposerSelfLogin> =>
       ipcRenderer.invoke("skipper:composer:getSelfLogin", accountId),
     getEvents: (key: string): Promise<CodingEventEnvelope[]> =>
@@ -383,6 +390,18 @@ const api = {
       const handler = (_e: unknown, envelope: CodingEventEnvelope) => callback(envelope);
       ipcRenderer.on(channel, handler);
       return () => ipcRenderer.off(channel, handler);
+    },
+  },
+
+  // Saved composer drafts (issue #138): the list surface behind /drafts.
+  drafts: {
+    list: (): Promise<ComposerDraftListItem[]> => ipcRenderer.invoke("skipper:drafts:list"),
+    remove: (draftId: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("skipper:drafts:delete", draftId),
+    onChanged: (callback: () => void) => {
+      const handler = () => callback();
+      ipcRenderer.on("skipper:drafts:changed", handler);
+      return () => ipcRenderer.off("skipper:drafts:changed", handler);
     },
   },
 

@@ -19,10 +19,14 @@ export function ComposerView() {
   const name = params.get("name") ?? "";
   const repo: RepoRef = useMemo(() => ({ owner, name }), [owner, name]);
 
+  const draftId = params.get("draft");
+
   const [storedMode, setStoredMode] = useStoredState("composer.mode", "chat", "local");
   const urlMode = params.get("mode");
-  const mode: ComposeMode =
-    urlMode === "quick" || urlMode === "chat"
+  // A saved draft is a chat session (#138) — resuming one settles the mode.
+  const mode: ComposeMode = draftId
+    ? "chat"
+    : urlMode === "quick" || urlMode === "chat"
       ? urlMode
       : storedMode === "quick"
         ? "quick"
@@ -39,6 +43,6 @@ export function ComposerView() {
   return mode === "quick" ? (
     <QuickView repo={repo} mode={mode} onSwitch={switchMode} />
   ) : (
-    <ChatView repo={repo} mode={mode} onSwitch={switchMode} />
+    <ChatView repo={repo} mode={mode} onSwitch={switchMode} draftId={draftId} />
   );
 }

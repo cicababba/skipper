@@ -100,6 +100,7 @@ import { makeManifestWriters } from "./manifest-writers";
 import { registerMemoryHandlers } from "./memory-ipc";
 import { registerCreateIssueHandlers } from "./create-issue-ipc";
 import { registerComposerHandlers } from "./composer-ipc";
+import { registerDraftsHandlers } from "./drafts-ipc";
 import { registerEmbedderHost } from "./embedder-host";
 import { registerWorktreeDiffHandlers } from "./worktree-diff-ipc";
 import { readLlmSettings, readLlmSettingsSync, buildLlm } from "./llm-settings";
@@ -180,6 +181,8 @@ export interface OrchestratorDeps {
   memoryDir: string;
   /** Per-repo agent-instructions docs (#227), one JSON per linked repo. */
   repoInstructionsDir: string;
+  /** Saved composer drafts (#138), one JSON per draft. */
+  draftsDir: string;
   /** Per-repo Graphify index state + graphs (#233), one dir per linked repo. */
   graphsDir: string;
   /** uv-managed runtime root for the Graphify install (#233). */
@@ -256,6 +259,15 @@ function broadcast(): void {
   const win = getWindow();
   if (win && !win.isDestroyed()) {
     win.webContents.send("skipper:orchestrator:stateChanged", snapshot());
+  }
+}
+
+// Saved drafts (#138) live outside the manifest, so they get their own ping:
+// the sidebar badge and the /drafts list refetch on it.
+function broadcastDraftsChanged(): void {
+  const win = getWindow();
+  if (win && !win.isDestroyed()) {
+    win.webContents.send("skipper:drafts:changed");
   }
 }
 
@@ -1721,6 +1733,11 @@ export function initOrchestrator(
     getAccounts: () => deps?.getAccounts() ?? [],
     getToken: (key, force) => deps!.getToken(key, force),
   });
+  registerDraftsHandlers({
+    ipcMain,
+    draftsDir: orchestratorDeps.draftsDir,
+    notifyChanged: broadcastDraftsChanged,
+  });
   registerMemoryHandlers({
     ipcMain,
     memoryDir: orchestratorDeps.memoryDir,
@@ -2037,6 +2054,8 @@ export function initOrchestrator(
       const d = graphifyDepsFor(repo);
       return d ? graphifyForPlanning(d) : undefined;
     },
+    draftsDir: orchestratorDeps.draftsDir,
+    onDraftsChanged: broadcastDraftsChanged,
   });
 
   initRescore({

@@ -33,32 +33,52 @@ const DRAFT: ComposerDraft = {
   relations: [{ from: 1, to: 0, kind: "blocks" }],
 };
 
-function installSkipper(opts: { draft?: ComposerDraft } = {}) {
-  const start = vi.fn().mockResolvedValue({ ok: true, chatId: "chat-1" });
-  const getChat = vi.fn().mockResolvedValue({ messages: [] });
+function installSkipper(
+  opts: {
+    draft?: ComposerDraft;
+    /** Deferred openers (#138) let a test unmount before resume/start resolves. */
+    startResult?: Promise<unknown>;
+    resumeResult?: Promise<unknown>;
+    chat?: unknown;
+  } = {},
+) {
+  const start = vi.fn(() => opts.startResult ?? Promise.resolve({ ok: true, chatId: "chat-1" }));
+  const resume = vi.fn(() => opts.resumeResult ?? Promise.resolve({ ok: true, chatId: "draft-1" }));
+  const getChat = vi.fn().mockResolvedValue(opts.chat ?? { messages: [] });
   const send = vi.fn().mockResolvedValue({ ok: true, reply: "an answer" });
   const generateDraft = vi.fn().mockResolvedValue({ ok: true, draft: opts.draft ?? DRAFT });
   const updateDraft = vi.fn().mockResolvedValue({ ok: true });
   const dispose = vi.fn().mockResolvedValue(undefined);
   const cancel = vi.fn().mockResolvedValue(undefined);
   const getSelfLogin = vi.fn().mockResolvedValue({ login: "cicababba" });
+  const saveDraft = vi.fn().mockResolvedValue({ ok: true, draftId: "chat-1" });
+  const remove = vi.fn().mockResolvedValue({ ok: true });
+  const createIssueOnTracker = vi.fn(async () => ({
+    ok: true,
+    id: "12",
+    number: 12,
+    url: "https://github.com/acme/widgets/issues/12",
+  }));
   (window as unknown as { skipper: unknown }).skipper = {
     composer: {
       start,
+      resume,
       getChat,
       send,
       generateDraft,
       updateDraft,
+      saveDraft,
       dispose,
       cancel,
       getSelfLogin,
       getEvents: vi.fn().mockResolvedValue([]),
       onEvent: vi.fn(() => () => {}),
     },
-    orchestrator: { createIssueOnTracker: vi.fn() },
+    drafts: { list: vi.fn().mockResolvedValue([]), remove, onChanged: vi.fn(() => () => {}) },
+    orchestrator: { createIssueOnTracker },
     openExternal: vi.fn(),
   };
-  return { start, send, generateDraft, updateDraft, dispose };
+  return { start, resume, getChat, send, generateDraft, updateDraft, dispose, saveDraft, remove, createIssueOnTracker };
 }
 
 async function chat(text: string) {
@@ -236,5 +256,172 @@ describe("ComposerView mode dispatch", () => {
     });
     expect(replace).toHaveBeenCalledWith("/compose?owner=acme&name=widgets&mode=quick");
     expect(window.localStorage.getItem("composer.mode")).toBe("quick");
+  });
+});
+
+// Saved drafts (#138): promotion, resume and the publish that ends the draft.
+describe("ComposerView drafts", () => {
+  const HYDRATED = {
+    messages: [{ role: "user", text: "rate-limit the webhook", at: "2026-07-25T10:00:00.000Z" }],
+    draft: DRAFT,
+    editedFlags: { 0: ["title"] },
+  };
+
+  it("keeps Save draft disabled until something has been discussed", async () => {
+    installSkipper();
+    render(<ComposerView />);
+    const button = (await screen.findByRole("button", { name: "Save draft" })) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+  });
+
+  it("promotes the chat and turns the button into a Saved indicator", async () => {
+    const { saveDraft } = installSkipper();
+    render(<ComposerView />);
+    await chat("rate-limit the webhook");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    });
+
+    expect(saveDraft).toHaveBeenCalledWith({ owner: "acme", name: "widgets" }, "chat-1");
+    expect(await screen.findByText("Saved")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull();
+  });
+
+  it("surfaces a failed save and leaves the button offering a retry", async () => {
+    const skipper = installSkipper();
+    skipper.saveDraft.mockResolvedValue({ ok: false, error: "disk full" });
+    render(<ComposerView />);
+    await chat("go");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    });
+
+    expect(await screen.findByText(/The draft could not be saved: disk full/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Save draft" })).toBeTruthy();
+  });
+
+  it("resumes a saved draft instead of opening a fresh chat", async () => {
+    const { start, resume, getChat } = installSkipper({ chat: HYDRATED });
+    searchParams = new URLSearchParams({ ...BARE_PARAMS, draft: "draft-1" });
+    render(<ComposerView />);
+
+    await waitFor(() =>
+      expect(resume).toHaveBeenCalledWith({ owner: "acme", name: "widgets" }, "draft-1"),
+    );
+    expect(start).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(getChat).toHaveBeenCalledWith({ owner: "acme", name: "widgets" }, "draft-1"),
+    );
+    // The pane comes back with the draft, and the chat is promoted from the start.
+    expect(await screen.findByDisplayValue("web:feat: rate-limit the webhook")).toBeTruthy();
+    expect(screen.getByText("Saved")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Regenerate draft" })).toBeTruthy();
+    await flushDraftPush();
+  });
+
+  it("keeps the restored edit flags, so a regeneration still warns", async () => {
+    const { generateDraft } = installSkipper({ chat: HYDRATED });
+    searchParams = new URLSearchParams({ ...BARE_PARAMS, draft: "draft-1" });
+    render(<ComposerView />);
+    await screen.findByDisplayValue("web:feat: rate-limit the webhook");
+
+    await clickGenerate("Regenerate draft");
+    expect(await screen.findByText("Regenerate over your edits?")).toBeTruthy();
+    expect(generateDraft).not.toHaveBeenCalled();
+    await flushDraftPush();
+  });
+
+  it("opens the chat path on a draft even when quick is the stored preference", async () => {
+    const { resume } = installSkipper({ chat: HYDRATED });
+    window.localStorage.setItem("composer.mode", "quick");
+    searchParams = new URLSearchParams({ ...BARE_PARAMS, draft: "draft-1" });
+    render(<ComposerView />);
+
+    await waitFor(() => expect(resume).toHaveBeenCalled());
+    expect(await screen.findByPlaceholderText("Describe the work…")).toBeTruthy();
+    await flushDraftPush();
+  });
+
+  it("surfaces a resume that finds no draft", async () => {
+    installSkipper({ resumeResult: Promise.resolve({ ok: false, error: "unknown draft" }) });
+    searchParams = new URLSearchParams({ ...BARE_PARAMS, draft: "gone" });
+    render(<ComposerView />);
+    expect(await screen.findByText(/unknown draft/)).toBeTruthy();
+  });
+
+  // A resumed record is keyed by the stable draft id, so a mount that lost the
+  // race must not dispose it — the mount that owns the key is still using it.
+  it("does not dispose a resumed chat whose promise lands after unmount", async () => {
+    let resolveResume!: (v: unknown) => void;
+    const resumeResult = new Promise<unknown>((resolve) => {
+      resolveResume = resolve;
+    });
+    const { dispose } = installSkipper({ resumeResult });
+    searchParams = new URLSearchParams({ ...BARE_PARAMS, draft: "draft-1" });
+    const view = render(<ComposerView />);
+    view.unmount();
+
+    await act(async () => {
+      resolveResume({ ok: true, chatId: "draft-1" });
+      await resumeResult;
+    });
+    expect(dispose).not.toHaveBeenCalled();
+  });
+
+  // A fresh chat's id was minted for this mount alone, so the late record is
+  // nobody else's and disposing it is the only way not to leak it.
+  it("still disposes a fresh chat whose promise lands after unmount", async () => {
+    let resolveStart!: (v: unknown) => void;
+    const startResult = new Promise<unknown>((resolve) => {
+      resolveStart = resolve;
+    });
+    const { dispose } = installSkipper({ startResult });
+    const view = render(<ComposerView />);
+    view.unmount();
+
+    await act(async () => {
+      resolveStart({ ok: true, chatId: "chat-1" });
+      await startResult;
+    });
+    expect(dispose).toHaveBeenCalledWith({ owner: "acme", name: "widgets" }, "chat-1");
+  });
+
+  it("deletes the draft once every issue reached the tracker", async () => {
+    const { remove, createIssueOnTracker } = installSkipper();
+    render(<ComposerView />);
+    await chat("go");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    });
+    await screen.findByText("Saved");
+    await clickGenerate("Generate draft");
+    await screen.findByDisplayValue("web:feat: rate-limit the webhook");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    });
+
+    expect(createIssueOnTracker).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText("Every issue was created.")).toBeTruthy();
+    await waitFor(() => expect(remove).toHaveBeenCalledWith("chat-1"));
+    await flushDraftPush();
+  });
+
+  it("leaves an unsaved chat alone when its issues are created", async () => {
+    const { remove } = installSkipper();
+    render(<ComposerView />);
+    await chat("go");
+    await clickGenerate("Generate draft");
+    await screen.findByDisplayValue("web:feat: rate-limit the webhook");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    });
+
+    expect(await screen.findByText("Every issue was created.")).toBeTruthy();
+    expect(remove).not.toHaveBeenCalled();
+    await flushDraftPush();
   });
 });

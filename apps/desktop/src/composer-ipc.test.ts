@@ -64,6 +64,8 @@ describe("registerComposerHandlers", () => {
       "skipper:composer:generateDraft",
       "skipper:composer:getChat",
       "skipper:composer:getSelfLogin",
+      "skipper:composer:resume",
+      "skipper:composer:saveDraft",
       "skipper:composer:send",
       "skipper:composer:start",
       "skipper:composer:updateDraft",

@@ -12,6 +12,8 @@ import {
   disposeComposerChat,
   generateComposerDraft,
   getComposerChat,
+  resumeComposerChat,
+  saveComposerDraft,
   sendComposerChatMessage,
   startComposerChat,
   updateComposerDraft,
@@ -93,6 +95,12 @@ export function registerComposerHandlers(deps: ComposerIpcDeps): void {
   deps.ipcMain.handle("skipper:composer:dispose", (_e, repo: RepoRef, chatId: string) => {
     disposeComposerChat(repo, chatId);
   });
+  deps.ipcMain.handle("skipper:composer:saveDraft", (_e, repo: RepoRef, chatId: string) =>
+    saveComposerDraft(repo, chatId),
+  );
+  deps.ipcMain.handle("skipper:composer:resume", (_e, repo: RepoRef, draftId: string) =>
+    resumeComposerChat(repo, draftId),
+  );
   deps.ipcMain.handle("skipper:composer:getSelfLogin", (_e, accountId: string) =>
     resolveSelfLogin(deps, accountId),
   );

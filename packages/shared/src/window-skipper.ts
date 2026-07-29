@@ -37,9 +37,12 @@ import type { CodingEventEnvelope } from "./coding";
 import type {
   ComposerChatSnapshot,
   ComposerDraft,
+  ComposerDraftListItem,
   ComposerEditedFlags,
   ComposerSelfLogin,
   GenerateComposerDraftResult,
+  ResumeComposerChatResult,
+  SaveComposerDraftResult,
   SendComposerChatResult,
   StartComposerChatResult,
 } from "./composer";
@@ -382,7 +385,8 @@ export interface WindowSkipper {
     cancel: (kind: AgentChatKind, itemId: string) => Promise<void>;
   };
   /** Chat composer (#136): a repo-grounded chat that distills into an issue draft.
-   *  Ephemeral — a chat lives in main's memory until dispose or quit (#138). */
+   *  A chat lives in main's memory until dispose or quit unless it is promoted to
+   *  a saved draft (#138), which survives both. */
   composer: {
     start: (repo: RepoRef) => Promise<StartComposerChatResult>;
     send: (repo: RepoRef, chatId: string, text: string) => Promise<SendComposerChatResult>;
@@ -398,12 +402,22 @@ export interface WindowSkipper {
     ) => Promise<{ ok: boolean; error?: string }>;
     /** Abort the in-flight turn: send/generateDraft resolve cancelled, nothing is recorded. */
     cancel: (repo: RepoRef, chatId: string) => Promise<void>;
-    /** Drop the chat record (view unmount). */
+    /** Drop the chat record (view unmount). A promoted chat leaves its file behind. */
     dispose: (repo: RepoRef, chatId: string) => Promise<void>;
+    /** Promote the chat to a saved draft — from here on every turn re-persists it. */
+    saveDraft: (repo: RepoRef, chatId: string) => Promise<SaveComposerDraftResult>;
+    /** Rehydrate a saved draft into a live chat; the returned id replaces start's. */
+    resume: (repo: RepoRef, draftId: string) => Promise<ResumeComposerChatResult>;
     /** The account's provider username, for the self-assign toggle. */
     getSelfLogin: (accountId: string) => Promise<ComposerSelfLogin>;
     getEvents: (key: string) => Promise<CodingEventEnvelope[]>;
     onEvent: (key: string, callback: (envelope: CodingEventEnvelope) => void) => () => void;
+  };
+  /** Saved composer drafts (#138): pre-issue and temporary — deleted on publish. */
+  drafts: {
+    list: () => Promise<ComposerDraftListItem[]>;
+    remove: (draftId: string) => Promise<{ ok: boolean; error?: string }>;
+    onChanged: (callback: () => void) => () => void;
   };
   /** Reviewer progress stream (#113). */
   review: {

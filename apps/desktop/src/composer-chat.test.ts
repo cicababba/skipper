@@ -1,26 +1,44 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type {
   CodingEvent,
   ComposerDraft,
   LlmSettings,
   RepoRef,
   ResolvedRepoOrchestratorSettings,
+  StoredComposerDraft,
 } from "@skipper/shared";
 import { CHAT_TURN_DETAILS, DEFAULT_LLM_SETTINGS, isPlanChatText } from "@skipper/shared";
 import type { GraphifyContext, LLMProviderInterface, LLMResponse } from "@skipper/core";
 import {
   cancelComposerChat,
+  demoteComposerDraft,
   disposeComposerChat,
   generateComposerDraft,
   getComposerChat,
   initComposerChat,
+  resumeComposerChat,
+  saveComposerDraft,
   sendComposerChatMessage,
   startComposerChat,
   updateComposerDraft,
   type ComposerChatDeps,
 } from "./composer-chat";
+import { readComposerDraftFile, saveComposerDraftFile } from "./composer-draft-store";
 
 const REPO: RepoRef = { owner: "acme", name: "widgets" };
+
+let draftsDir: string;
+
+beforeEach(async () => {
+  draftsDir = await mkdtemp(join(tmpdir(), "sk-composer-drafts-"));
+});
+
+afterEach(async () => {
+  await rm(draftsDir, { recursive: true, force: true });
+});
 
 const DRAFT_JSON = JSON.stringify({
   issues: [
@@ -38,10 +56,12 @@ const GRAPHIFY: GraphifyContext = {
 interface Harness {
   deps: ComposerChatDeps;
   events: { key: string; event: CodingEvent }[];
+  draftChanges: { count: number };
 }
 
 function makeHarness(over: Partial<ComposerChatDeps> = {}): Harness {
   const events: { key: string; event: CodingEvent }[] = [];
+  const draftChanges = { count: 0 };
   const deps: ComposerChatDeps = {
     getRepoPath: () => "/checkout/widgets",
     getRepoSettings: () =>
@@ -51,9 +71,34 @@ function makeHarness(over: Partial<ComposerChatDeps> = {}): Harness {
     emitEvent: (key, event) => events.push({ key, event }),
     getRepoInstructions: async () => undefined,
     getGraphify: () => undefined,
+    draftsDir,
+    onDraftsChanged: () => {
+      draftChanges.count++;
+    },
     ...over,
   };
-  return { deps, events };
+  return { deps, events, draftChanges };
+}
+
+/** Autosave is fire-and-forget, so the file lands after the call returns. Polls
+ *  on wall-clock time so a loaded CI box doesn't turn a slow write into a
+ *  failure; the negative assertions use `settle` instead. */
+async function waitForDraft(
+  draftId: string,
+  predicate: (draft: StoredComposerDraft) => boolean,
+): Promise<StoredComposerDraft> {
+  const deadline = Date.now() + 2000;
+  let last: StoredComposerDraft | null = null;
+  while (Date.now() < deadline) {
+    last = await readComposerDraftFile(draftsDir, draftId);
+    if (last && predicate(last)) return last;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`draft ${draftId} never matched: ${JSON.stringify(last)}`);
+}
+
+async function settle(ms = 150): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function fakeProvider(
@@ -365,5 +410,301 @@ describe("disposeComposerChat", () => {
     const chatId = start();
     disposeComposerChat(REPO, chatId);
     expect(getComposerChat(REPO, chatId)).toBeNull();
+  });
+
+  // A saved draft outlives the view that made it — that is the whole point.
+  it("leaves a promoted chat's file on disk", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "keep me");
+    await saveComposerDraft(REPO, chatId);
+
+    disposeComposerChat(REPO, chatId);
+    expect(getComposerChat(REPO, chatId)).toBeNull();
+    expect(await readComposerDraftFile(draftsDir, chatId)).not.toBeNull();
+  });
+});
+
+describe("saveComposerDraft", () => {
+  it("projects the record onto disk, session lineage included", async () => {
+    const h = makeHarness();
+    const provider = fakeProvider();
+    initComposerChat(h.deps, provider);
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "rate-limit the webhook");
+
+    const res = await saveComposerDraft(REPO, chatId);
+    expect(res).toEqual({ ok: true, draftId: chatId });
+
+    const stored = await readComposerDraftFile(draftsDir, chatId);
+    const minted = (provider.agent.mock.calls[0][1] as Record<string, unknown>).sessionId;
+    expect(stored).toMatchObject({
+      version: 1,
+      draftId: chatId,
+      chatId,
+      repo: REPO,
+      sessionId: minted,
+      sessionRuntime: "claude-cli",
+    });
+    expect(stored?.messages.filter(isPlanChatText).map((m) => m.text)).toEqual([
+      "rate-limit the webhook",
+      "an answer",
+    ]);
+    expect(h.draftChanges.count).toBe(1);
+  });
+
+  it("names the draft after the first drafted issue", async () => {
+    const provider = fakeProvider(async (_p, opts) =>
+      opts?.resumeSessionId ? { text: DRAFT_JSON } : { text: "an answer", sessionId: "sess-a" },
+    );
+    const h = makeHarness();
+    initComposerChat(h.deps, provider);
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "shape it");
+    await generateComposerDraft(REPO, chatId);
+
+    await saveComposerDraft(REPO, chatId);
+    expect((await readComposerDraftFile(draftsDir, chatId))?.title).toBe("web:feat: a thing");
+  });
+
+  it("falls back to the first line of the opening message", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "rate-limit the webhook\nand log the drops");
+
+    await saveComposerDraft(REPO, chatId);
+    expect((await readComposerDraftFile(draftsDir, chatId))?.title).toBe("rate-limit the webhook");
+  });
+
+  it("leaves the title empty when there is nothing to name it by", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+
+    await saveComposerDraft(REPO, chatId);
+    expect((await readComposerDraftFile(draftsDir, chatId))?.title).toBe("");
+  });
+
+  it("re-saves the same draft instead of forking a second one", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "first");
+    const first = await saveComposerDraft(REPO, chatId);
+    const createdAt = (await readComposerDraftFile(draftsDir, chatId))?.createdAt;
+
+    await sendComposerChatMessage(REPO, chatId, "second");
+    const second = await saveComposerDraft(REPO, chatId);
+
+    expect(second).toEqual(first);
+    const stored = await readComposerDraftFile(draftsDir, chatId);
+    expect(stored?.createdAt).toBe(createdAt);
+    expect(stored?.messages).toHaveLength(4);
+  });
+
+  it("rejects an unknown chat", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    expect(await saveComposerDraft(REPO, "nope")).toEqual({
+      ok: false,
+      error: "unknown composer chat",
+    });
+  });
+});
+
+// Promotion arms the three commit points: from then on the file keeps up with
+// the chat without the user asking again.
+describe("composer draft autosave", () => {
+  it("persists the transcript after a send", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "first");
+    await saveComposerDraft(REPO, chatId);
+    const before = (await readComposerDraftFile(draftsDir, chatId))!;
+
+    await sendComposerChatMessage(REPO, chatId, "second");
+
+    const after = await waitForDraft(chatId, (d) => d.messages.length === 4);
+    expect(after.messages.filter(isPlanChatText).map((m) => m.text)).toEqual([
+      "first",
+      "an answer",
+      "second",
+      "an answer",
+    ]);
+    expect(after.createdAt).toBe(before.createdAt);
+    expect(after.updatedAt >= before.updatedAt).toBe(true);
+    expect(h.draftChanges.count).toBeGreaterThan(1);
+  });
+
+  it("persists the distilled draft", async () => {
+    const provider = fakeProvider(async (_p, opts) =>
+      opts?.resumeSessionId ? { text: DRAFT_JSON } : { text: "an answer", sessionId: "sess-a" },
+    );
+    const h = makeHarness();
+    initComposerChat(h.deps, provider);
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "shape it");
+    await saveComposerDraft(REPO, chatId);
+
+    await generateComposerDraft(REPO, chatId);
+
+    const stored = await waitForDraft(chatId, (d) => d.draft !== undefined);
+    expect(stored.draft?.issues).toHaveLength(2);
+    expect(stored.title).toBe("web:feat: a thing");
+  });
+
+  it("persists a renderer draft edit", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "go");
+    await saveComposerDraft(REPO, chatId);
+
+    updateComposerDraft(
+      REPO,
+      chatId,
+      { issues: [{ title: "my own title", body: "b", acceptanceCriteria: [], labels: [] }], relations: [] },
+      { 0: ["title"] },
+    );
+
+    const stored = await waitForDraft(chatId, (d) => d.draft !== undefined);
+    expect(stored.draft?.issues[0].title).toBe("my own title");
+    expect(stored.editedFlags).toEqual({ 0: ["title"] });
+  });
+
+  it("writes nothing for a chat that was never promoted", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+
+    await sendComposerChatMessage(REPO, chatId, "go");
+    updateComposerDraft(REPO, chatId, { issues: [], relations: [] }, {});
+    await settle();
+
+    expect(await readComposerDraftFile(draftsDir, chatId)).toBeNull();
+    expect(h.draftChanges.count).toBe(0);
+  });
+
+  it("stops writing once the chat is demoted", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "go");
+    await saveComposerDraft(REPO, chatId);
+
+    demoteComposerDraft(chatId);
+    const changesAtDemotion = h.draftChanges.count;
+    await sendComposerChatMessage(REPO, chatId, "again");
+    await settle();
+
+    expect((await readComposerDraftFile(draftsDir, chatId))?.messages).toHaveLength(2);
+    expect(h.draftChanges.count).toBe(changesAtDemotion);
+  });
+});
+
+describe("resumeComposerChat", () => {
+  async function promoted(): Promise<{ h: Harness; chatId: string; provider: ReturnType<typeof fakeProvider> }> {
+    const h = makeHarness();
+    const provider = fakeProvider();
+    initComposerChat(h.deps, provider);
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "rate-limit the webhook");
+    updateComposerDraft(
+      REPO,
+      chatId,
+      { issues: [{ title: "mine", body: "b", acceptanceCriteria: [], labels: [] }], relations: [] },
+      { 0: ["title"] },
+    );
+    await saveComposerDraft(REPO, chatId);
+    return { h, chatId, provider };
+  }
+
+  it("rehydrates the record a restart would have lost", async () => {
+    const { chatId } = await promoted();
+    // A fresh driver: the in-memory map is gone, only the file survives.
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    expect(getComposerChat(REPO, chatId)).toBeNull();
+
+    const res = await resumeComposerChat(REPO, chatId);
+    expect(res).toEqual({ ok: true, chatId });
+    const chat = getComposerChat(REPO, chatId);
+    expect(chat?.messages.filter(isPlanChatText).map((m) => m.text)).toEqual([
+      "rate-limit the webhook",
+      "an answer",
+    ]);
+    expect(chat?.draft?.issues[0].title).toBe("mine");
+    expect(chat?.editedFlags).toEqual({ 0: ["title"] });
+  });
+
+  it("emits the one fetching reset the stream needs", async () => {
+    const { chatId } = await promoted();
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+
+    await resumeComposerChat(REPO, chatId);
+    expect(h.events).toEqual([
+      {
+        key: `acme/widgets:${chatId}`,
+        event: { kind: "status", phase: "fetching", detail: "composer resume" },
+      },
+    ]);
+  });
+
+  it("resumes the stored CLI session on the next turn", async () => {
+    const { chatId, provider: first } = await promoted();
+    const minted = (first.agent.mock.calls[0][1] as Record<string, unknown>).sessionId;
+    const h = makeHarness();
+    const provider = fakeProvider();
+    initComposerChat(h.deps, provider);
+    await resumeComposerChat(REPO, chatId);
+
+    await sendComposerChatMessage(REPO, chatId, "and now?");
+    expect((provider.agent.mock.calls[0][1] as Record<string, unknown>).resumeSessionId).toBe(minted);
+  });
+
+  it("degrades to a fresh seeded run when the stored session belongs to another runtime", async () => {
+    const { chatId } = await promoted();
+    const stored = (await readComposerDraftFile(draftsDir, chatId))!;
+    await saveComposerDraftFile(draftsDir, { ...stored, sessionRuntime: "codex-cli" });
+    const h = makeHarness();
+    const provider = fakeProvider();
+    initComposerChat(h.deps, provider);
+    await resumeComposerChat(REPO, chatId);
+
+    await sendComposerChatMessage(REPO, chatId, "and now?");
+    const opts = provider.agent.mock.calls[0][1] as Record<string, unknown>;
+    expect(opts.resumeSessionId).toBeUndefined();
+    expect(provider.agent.mock.calls[0][0] as string).toContain("--- Conversation so far ---");
+  });
+
+  it("keeps autosaving the resumed chat", async () => {
+    const { chatId } = await promoted();
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    await resumeComposerChat(REPO, chatId);
+
+    await sendComposerChatMessage(REPO, chatId, "one more");
+    const after = await waitForDraft(chatId, (d) => d.messages.length === 4);
+    expect(after.messages.filter(isPlanChatText).map((m) => m.text).at(-2)).toBe("one more");
+  });
+
+  it("refuses an unknown draft", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    expect(await resumeComposerChat(REPO, "never-saved")).toEqual({
+      ok: false,
+      error: "unknown draft",
+    });
+  });
+
+  it("refuses a repo that is not linked", async () => {
+    const { chatId } = await promoted();
+    const h = makeHarness({ getRepoPath: () => undefined });
+    initComposerChat(h.deps, fakeProvider());
+    expect(await resumeComposerChat(REPO, chatId)).toEqual({ ok: false, error: "repo not linked" });
   });
 });

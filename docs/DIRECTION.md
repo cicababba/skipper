@@ -271,6 +271,9 @@ X" → 30 secondi → l'issue esiste sulla piattaforma e il piano sta già giran
 
 - L'issue creata **vive sulla piattaforma** (GitHub/Jira), mai in un database
   nostro. L'app è la penna, non l'archivio.
+- Le **bozze** (sessioni del compositore salvate) sono pre-issue e temporanee:
+  esistono solo finché non diventano issue, e la pubblicazione le cancella —
+  l'archivio resta la piattaforma.
 - La creazione è il posto dove **prevenire le issue vaghe** invece di penalizzarle
   dopo: l'app propone criteri di accettazione, chiede il repo target, segnala
   "somiglia a [[issue già risolta]]" (memoria in retrieval). Le issue create
