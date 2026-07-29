@@ -8,6 +8,7 @@ import { AgentAbortError } from "./provider";
 import { parseJsonReply } from "./json";
 import { createGeminiRunAccumulator } from "./gemini-stream";
 import { memoryServerConfig, type MemoryMcp } from "./memory-mcp";
+import { graphifyServerConfig, type GraphifyMcp } from "./graphify-mcp";
 
 /**
  * The gemini-cli runtime's structured-call options (#243) — mirrors
@@ -189,36 +190,37 @@ function excludeGeminiDir(cwd: string): void {
  * Gemini's project settings file for one run (#243 D5). It is the only channel
  * for two things gemini has no flag for: suppressing the GEMINI.md context load
  * (Skipper injects the seeded repo instructions itself) and attaching the
- * skipper-memory MCP server (#45), which needs `trust: true` because a headless
+ * Skipper MCP servers — skipper-memory (#45) and the graphify knowledge graph
+ * (#233, wired by #259) — each of which needs `trust: true` because a headless
  * run auto-denies every tool confirmation.
  *
  * The file lives in the run's own cwd, so an existing one is backed up and
  * restored by `cleanup`, which the caller must run on every exit path — settle
  * and kill alike. `--allowed-mcp-server-names` isolates the run from the user's
- * own configured servers; with no memory server the name matches nothing on
+ * own configured servers; with no server of ours the name matches nothing on
  * purpose, so none load.
  */
 export function buildGeminiProjectSettings(
   cwd: string,
   memory?: MemoryMcp,
+  graph?: GraphifyMcp,
 ): { args: string[]; cleanup: () => void } {
   const dir = join(cwd, ".gemini");
   const file = join(dir, "settings.json");
   const createdDir = !existsSync(dir);
   if (createdDir) mkdirSync(dir, { recursive: true });
   const backup = existsSync(file) ? readFileSync(file, "utf-8") : undefined;
+  const servers = {
+    ...(memory ? { "skipper-memory": { ...memoryServerConfig(memory), trust: true } } : {}),
+    ...(graph ? { graphify: { ...graphifyServerConfig(graph), trust: true } } : {}),
+  };
+  const names = Object.keys(servers);
   writeFileSync(
     file,
     JSON.stringify(
       {
         context: { fileName: NO_CONTEXT_FILE },
-        ...(memory
-          ? {
-              mcpServers: {
-                "skipper-memory": { ...memoryServerConfig(memory), trust: true },
-              },
-            }
-          : {}),
+        ...(names.length ? { mcpServers: servers } : {}),
       },
       null,
       2,
@@ -226,7 +228,7 @@ export function buildGeminiProjectSettings(
   );
   excludeGeminiDir(cwd);
   return {
-    args: ["--allowed-mcp-server-names", memory ? "skipper-memory" : "skipper-none"],
+    args: ["--allowed-mcp-server-names", names.length ? names.join(",") : "skipper-none"],
     cleanup: () => {
       try {
         if (backup !== undefined) {
@@ -412,9 +414,11 @@ export class GeminiCli {
   async agent(prompt: string, opts: AgentOptions = {}): Promise<LLMResponse> {
     // opts.maxTurns has no per-run gemini equivalent (#243 D7) and
     // opts.confinement is the claude rules machinery — gemini's approval mode
-    // replaces it. opts.graph (graphify) is claude-only for now.
+    // replaces it.
     const persist = Boolean(opts.sessionId || opts.resumeSessionId);
-    const settings = opts.cwd ? buildGeminiProjectSettings(opts.cwd, opts.memory) : undefined;
+    const settings = opts.cwd
+      ? buildGeminiProjectSettings(opts.cwd, opts.memory, opts.graph)
+      : undefined;
     const args = [
       ...geminiBaseArgs(),
       ...this.modelArgs(),

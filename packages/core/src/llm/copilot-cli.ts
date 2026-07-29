@@ -8,6 +8,7 @@ import { AgentAbortError } from "./provider";
 import { parseJsonReply } from "./json";
 import { createCopilotRunAccumulator } from "./copilot-stream";
 import { memoryServerConfig, type MemoryMcp } from "./memory-mcp";
+import { graphifyServerConfig, type GraphifyMcp } from "./graphify-mcp";
 
 /**
  * The copilot-cli runtime's structured-call options (#242) — mirrors
@@ -144,24 +145,33 @@ export function buildReadLeaningArgs(kind: "agent" | "structured"): string[] {
 }
 
 /**
- * The skipper-memory MCP server for a copilot run (#242 D3). Copilot takes MCP
- * servers as a file, not inline, so the config is written to a throwaway temp
- * dir the caller must clean up when the process settles. `--additional-mcp-config`
- * merges on top of the user's own servers (`~/.copilot/mcp-config.json`, the
- * repo's `.mcp.json`) — copilot has no strict-MCP equivalent (copilot-cli#3380).
+ * The Skipper MCP servers for a copilot run (#242 D3): skipper-memory (#45) and
+ * the graphify knowledge graph (#233, wired by #259), each attached only when
+ * the caller passes it. Copilot takes MCP servers as a file, not inline, so the
+ * config is written to a throwaway temp dir the caller must clean up when the
+ * process settles. `--additional-mcp-config` merges on top of the user's own
+ * servers (`~/.copilot/mcp-config.json`, the repo's `.mcp.json`) — copilot has
+ * no strict-MCP equivalent (copilot-cli#3380).
  */
-export function buildCopilotMcpConfig(memory: MemoryMcp): {
+export function buildCopilotMcpConfig(
+  memory?: MemoryMcp,
+  graph?: GraphifyMcp,
+): {
   args: string[];
   cleanup: () => void;
 } {
   const dir = mkdtempSync(join(tmpdir(), "skipper-copilot-"));
   const file = join(dir, "mcp.json");
-  const server = memoryServerConfig(memory);
   writeFileSync(
     file,
     JSON.stringify({
       mcpServers: {
-        "skipper-memory": { type: "local", ...server, tools: ["*"] },
+        ...(memory
+          ? { "skipper-memory": { type: "local", ...memoryServerConfig(memory), tools: ["*"] } }
+          : {}),
+        ...(graph
+          ? { graphify: { type: "local", ...graphifyServerConfig(graph), tools: ["*"] } }
+          : {}),
       },
     }),
   );
@@ -330,9 +340,10 @@ export class CopilotCli {
   async agent(prompt: string, opts: AgentOptions = {}): Promise<LLMResponse> {
     // opts.maxTurns has no copilot equivalent (#242 D7) and opts.confinement is
     // the claude rules machinery — copilot's native path verification replaces
-    // it. opts.graph (graphify) is claude-only for now.
+    // it.
     const persist = Boolean(opts.sessionId || opts.resumeSessionId);
-    const mcp = opts.memory ? buildCopilotMcpConfig(opts.memory) : undefined;
+    const mcp =
+      opts.memory || opts.graph ? buildCopilotMcpConfig(opts.memory, opts.graph) : undefined;
     const args = [
       ...copilotBaseArgs(),
       ...this.modelArgs(),
