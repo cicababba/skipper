@@ -6,6 +6,8 @@ import type {
   ArchiveItemResult,
   CleanWorktreeResult,
   CloseItemOnTrackerResult,
+  CreateIssueOnTrackerParams,
+  CreateIssueOnTrackerResult,
   AuthProviderId,
   AuthProviderMeta,
   AuthState,
@@ -250,6 +252,10 @@ const api = {
       ipcRenderer.invoke("skipper:orchestrator:untrackItem", itemId, force),
     closeItemOnTracker: (itemId: string): Promise<CloseItemOnTrackerResult> =>
       ipcRenderer.invoke("skipper:orchestrator:closeItemOnTracker", itemId),
+    createIssueOnTracker: (
+      params: CreateIssueOnTrackerParams,
+    ): Promise<CreateIssueOnTrackerResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:createIssueOnTracker", params),
     getWorktreeChanges: (itemId: string): Promise<WorktreeChangesResult> =>
       ipcRenderer.invoke("skipper:orchestrator:getWorktreeChanges", itemId),
     readWorktreeFile: (itemId: string, path: string, oldPath?: string): Promise<WorktreeFileResult> =>

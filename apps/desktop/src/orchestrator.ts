@@ -98,6 +98,7 @@ import { applySettingsPatch, applyRepoSettingsPatch } from "./settings-validator
 import { shouldSkipPoll, selectPollCursor, pollFailurePatch } from "./poll-policy";
 import { makeManifestWriters } from "./manifest-writers";
 import { registerMemoryHandlers } from "./memory-ipc";
+import { registerCreateIssueHandlers } from "./create-issue-ipc";
 import { registerEmbedderHost } from "./embedder-host";
 import { registerWorktreeDiffHandlers } from "./worktree-diff-ipc";
 import { readLlmSettings, readLlmSettingsSync, buildLlm } from "./llm-settings";
@@ -1715,6 +1716,12 @@ export function initOrchestrator(
     distillLesson: distillForRecord,
   });
   registerWorktreeDiffHandlers({ ipcMain, ensureManifest });
+  registerCreateIssueHandlers({
+    ipcMain,
+    getAccounts: () => deps?.getAccounts() ?? [],
+    getToken: (key, force) => deps!.getToken(key, force),
+    sourceForProvider: issueSourceForAuthProvider,
+  });
   // Open the draft PR from human-review, or push a fix round's updates (#11).
   ipcMain.handle("skipper:orchestrator:openPr", async (_e, itemId: string) => {
     await ensureManifest();
