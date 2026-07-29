@@ -51,6 +51,18 @@ const en = {
   openIssue: "Open on the tracker",
   allCreated: "Every issue was created.",
 
+  quick: {
+    modeChat: "Chat",
+    modeQuick: "Quick",
+    hint: "A title and a couple of lines, straight to the tracker — no agent, no draft.",
+    leaveChatTitle: "Leave the conversation?",
+    leaveChatBody:
+      "Switching to the quick path ends this composer session — the conversation and any draft are lost.",
+    leaveQuickTitle: "Discard this issue?",
+    leaveQuickBody: "Switching to the chat path discards what you typed here.",
+    leaveConfirm: "Switch",
+  },
+
   picker: {
     title: "Pick a repository",
     desc: "The composer works inside a linked repository — it reads the local checkout.",
@@ -107,6 +119,18 @@ const it: typeof en = {
   retry: "Riprova",
   openIssue: "Apri sul tracker",
   allCreated: "Tutte le issue sono state create.",
+
+  quick: {
+    modeChat: "Chat",
+    modeQuick: "Rapida",
+    hint: "Un titolo e due righe, dritte al tracker — niente agente, niente bozza.",
+    leaveChatTitle: "Uscire dalla conversazione?",
+    leaveChatBody:
+      "Passare alla modalità rapida chiude questa sessione del composer — la conversazione e l'eventuale bozza vanno perse.",
+    leaveQuickTitle: "Scartare questa issue?",
+    leaveQuickBody: "Passare alla chat scarta quello che hai scritto qui.",
+    leaveConfirm: "Passa",
+  },
 
   picker: {
     title: "Scegli un repository",
@@ -166,6 +190,18 @@ const fr: typeof en = {
   openIssue: "Ouvrir sur le tracker",
   allCreated: "Toutes les issues ont été créées.",
 
+  quick: {
+    modeChat: "Chat",
+    modeQuick: "Rapide",
+    hint: "Un titre et deux lignes, directement sur le tracker — pas d'agent, pas de brouillon.",
+    leaveChatTitle: "Quitter la conversation ?",
+    leaveChatBody:
+      "Passer au mode rapide met fin à cette session du composer — la conversation et le brouillon éventuel sont perdus.",
+    leaveQuickTitle: "Abandonner cette issue ?",
+    leaveQuickBody: "Passer au mode chat abandonne ce que vous avez écrit ici.",
+    leaveConfirm: "Basculer",
+  },
+
   picker: {
     title: "Choisissez un dépôt",
     desc: "Le composer travaille dans un dépôt lié — il lit la copie locale.",
@@ -222,6 +258,18 @@ const es: typeof en = {
   retry: "Reintentar",
   openIssue: "Abrir en el tracker",
   allCreated: "Se crearon todas las issues.",
+
+  quick: {
+    modeChat: "Chat",
+    modeQuick: "Rápida",
+    hint: "Un título y un par de líneas, directo al tracker — sin agente, sin borrador.",
+    leaveChatTitle: "¿Salir de la conversación?",
+    leaveChatBody:
+      "Cambiar al modo rápido termina esta sesión del composer — se pierden la conversación y el borrador.",
+    leaveQuickTitle: "¿Descartar esta issue?",
+    leaveQuickBody: "Cambiar al modo chat descarta lo que has escrito aquí.",
+    leaveConfirm: "Cambiar",
+  },
 
   picker: {
     title: "Elige un repositorio",
