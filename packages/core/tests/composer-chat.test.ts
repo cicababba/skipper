@@ -158,6 +158,49 @@ describe("discussComposer", () => {
     expect((agent.mock.calls[0][1] as AgentOptions).graph).toBeUndefined();
   });
 
+  it("resume path: threads the attachment paths into the prompt", async () => {
+    const { llm, runtime, agent } = fakeLLM();
+    await discussComposer({
+      llm,
+      runtime,
+      cwd: "/repo",
+      message: "why is the header cut off?",
+      resumeSessionId: "sess-1",
+      attachments: ["/data/attachments/c1/shot.png", "/data/attachments/c1/spec.pdf"],
+    });
+    const prompt = agent.mock.calls[0][0] as string;
+    expect(prompt).toContain(
+      "Attached image: /data/attachments/c1/shot.png — read this file before answering.",
+    );
+    expect(prompt).toContain(
+      "Attached PDF: /data/attachments/c1/spec.pdf — read this file before answering.",
+    );
+  });
+
+  it("fallback path: threads the attachment paths into the seeded prompt", async () => {
+    const { llm, runtime, agent } = fakeLLM();
+    await discussComposer({
+      llm,
+      runtime,
+      cwd: "/repo",
+      message: "have a look",
+      sessionId: "mint-1",
+      context: { history: HISTORY },
+      attachments: ["/data/attachments/c1/notes.md"],
+    });
+    const prompt = agent.mock.calls[0][0] as string;
+    expect(prompt).toContain(
+      "Attached file: /data/attachments/c1/notes.md — read this file before answering.",
+    );
+    expect(prompt).toContain("--- Conversation so far ---");
+  });
+
+  it("says nothing about attachments when the turn has none", async () => {
+    const { llm, runtime, agent } = fakeLLM();
+    await discussComposer({ llm, runtime, cwd: "/repo", message: "hi", resumeSessionId: "sess-1" });
+    expect(agent.mock.calls[0][0] as string).not.toContain("Attached");
+  });
+
   it("degrades to a single ask() when there is no runtime", async () => {
     const { llm, runtime, ask } = fakeLLM({ noAgent: true });
     const res = await discussComposer({

@@ -13,6 +13,10 @@ export const CODEX_CLI_CAPABILITIES: RuntimeCapabilities = {
   resume: true,
   confinement: "sandbox",
   mcp: true,
+  /** Assumption (#281), to verify against the installed CLI: codex loads images
+   *  through its `view_image` tool but has no native PDF reader. */
+  images: true,
+  pdfs: false,
 };
 
 /**

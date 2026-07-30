@@ -15,6 +15,10 @@ export const COPILOT_CLI_CAPABILITIES: RuntimeCapabilities = {
   resume: true,
   confinement: "rules",
   mcp: true,
+  /** Assumption (#281), to verify against the installed CLI: copilot's file tools
+   *  are text-only — no image or PDF reader. */
+  images: false,
+  pdfs: false,
 };
 
 /**

@@ -131,6 +131,8 @@ export function injectedBundle(
             resume: provider.name === "claude-cli",
             confinement: "rules",
             mcp: true,
+            images: true,
+            pdfs: true,
           },
           agent: (prompt: string, opts?: unknown) => p.agent!(prompt, opts),
           structured: (prompt: string, schema: Record<string, unknown>, opts?: unknown) =>

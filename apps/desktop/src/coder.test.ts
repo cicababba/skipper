@@ -34,7 +34,14 @@ function runtimeOf(
 ): AgentRuntime {
   return {
     id,
-    capabilities: { streaming: true, resume: true, confinement: "rules", mcp: true },
+    capabilities: {
+      streaming: true,
+      resume: true,
+      confinement: "rules",
+      mcp: true,
+      images: true,
+      pdfs: true,
+    },
     runCoding,
     agent: vi.fn(),
     structured: vi.fn(),

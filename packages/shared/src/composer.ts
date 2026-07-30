@@ -54,6 +54,13 @@ export type SendComposerChatResult =
   | { ok: true; reply: string }
   | { ok: false; error?: string; cancelled?: boolean };
 
+/** Result of attaching a file to a composer chat (#281). `supported` is false
+ *  when the repo's effective composer runtime cannot read that kind of file —
+ *  the attachment is still made, the UI just warns. */
+export type AttachComposerFileResult =
+  | { ok: true; path: string; name: string; supported: boolean }
+  | { ok: false; error: string };
+
 export type GenerateComposerDraftResult =
   | { ok: true; draft: ComposerDraft }
   | { ok: false; error?: string; cancelled?: boolean };

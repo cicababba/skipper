@@ -43,6 +43,9 @@ export interface DiscussComposerOptions {
   draft?: ComposerDraft;
   /** Fields the user hand-edited, marked preserve-verbatim in the prompt. */
   edited?: ComposerEditedFlags;
+  /** Absolute paths of files attached to this turn (#281) — the prompt tells the
+   *  runtime to read them with whatever file tool it has. */
+  attachments?: string[];
   maxTurns?: number;
   onEvent?: (event: CodingEvent) => void;
   memory?: MemoryMcp;
@@ -63,6 +66,7 @@ export async function discussComposer(
         message,
         ...(opts.draft ? { draft: opts.draft } : {}),
         ...(opts.edited ? { edited: opts.edited } : {}),
+        ...(opts.attachments ? { attachments: opts.attachments } : {}),
       })
     : opts.context
       ? buildComposerFallbackPrompt({
@@ -70,6 +74,7 @@ export async function discussComposer(
           history: opts.context.history,
           ...(opts.draft ? { draft: opts.draft } : {}),
           ...(opts.edited ? { edited: opts.edited } : {}),
+          ...(opts.attachments ? { attachments: opts.attachments } : {}),
         })
       : undefined;
   if (prompt === undefined) throw new Error("discussComposer without a session needs context");

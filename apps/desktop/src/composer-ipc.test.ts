@@ -1,8 +1,10 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Account, ComposerDraft, RepoRef } from "@skipper/shared";
+import type { LLMProviderInterface, LLMResponse } from "@skipper/core";
 import { clearSelfLoginCache, registerComposerHandlers, type ComposerIpcDeps } from "./composer-ipc";
 import { initComposerChat, type ComposerChatDeps } from "./composer-chat";
 import { readComposerDraftFile } from "./composer-draft-store";
@@ -50,9 +52,19 @@ const chatDeps = {
   getGraphify: () => undefined,
 } as unknown as ComposerChatDeps;
 
+/** A send turn must never reach a real CLI from an IPC test. */
+function fakeProvider(): LLMProviderInterface {
+  return {
+    name: "claude-cli",
+    ask: async (): Promise<LLMResponse> => ({ text: "ask answer" }),
+    askStructured: async () => ({}),
+    agent: async (): Promise<LLMResponse> => ({ text: "an answer", sessionId: "sess-a" }),
+  } as unknown as LLMProviderInterface;
+}
+
 beforeEach(() => {
   clearSelfLoginCache();
-  initComposerChat(chatDeps);
+  initComposerChat(chatDeps, fakeProvider());
 });
 
 afterEach(() => {
@@ -63,7 +75,9 @@ describe("registerComposerHandlers", () => {
   it("registers every composer channel", () => {
     const { handlers } = setup();
     expect([...handlers.keys()].sort()).toEqual([
+      "skipper:composer:attach",
       "skipper:composer:cancel",
+      "skipper:composer:detach",
       "skipper:composer:dispose",
       "skipper:composer:generateDraft",
       "skipper:composer:getChat",
@@ -116,7 +130,10 @@ describe("composer dispose", () => {
 
   beforeEach(async () => {
     draftsDir = await mkdtemp(join(tmpdir(), "sk-composer-ipc-drafts-"));
-    initComposerChat({ ...chatDeps, draftsDir, onDraftsChanged: () => {} } as ComposerChatDeps);
+    initComposerChat(
+      { ...chatDeps, draftsDir, onDraftsChanged: () => {} } as ComposerChatDeps,
+      fakeProvider(),
+    );
   });
 
   afterEach(async () => {
@@ -145,6 +162,92 @@ describe("composer dispose", () => {
     await call(handlers, "skipper:composer:dispose", REPO, chatId, { discard: true });
 
     expect(await readComposerDraftFile(draftsDir, chatId)).toBeNull();
+  });
+});
+
+// The attach channel carries the bytes as a structured-clone ArrayBuffer (#281);
+// the send channel gained the attachments argument behind it.
+describe("composer attachments", () => {
+  let attachmentsDir: string;
+
+  beforeEach(async () => {
+    attachmentsDir = await mkdtemp(join(tmpdir(), "sk-composer-ipc-attachments-"));
+    initComposerChat(
+      { ...chatDeps, attachmentsDir, onDraftsChanged: () => {} } as ComposerChatDeps,
+      fakeProvider(),
+    );
+  });
+
+  afterEach(async () => {
+    await rm(attachmentsDir, { recursive: true, force: true });
+  });
+
+  async function startChat(handlers: Map<string, Handler>): Promise<string> {
+    const started = (await call(handlers, "skipper:composer:start", REPO)) as { chatId: string };
+    return started.chatId;
+  }
+
+  it("writes the ArrayBuffer through attach and reports the saved path", async () => {
+    const { handlers } = setup();
+    const chatId = await startChat(handlers);
+    const bytes = new Uint8Array(Buffer.from("png-bytes")).buffer;
+
+    const res = (await call(handlers, "skipper:composer:attach", REPO, chatId, "shot.png", bytes)) as {
+      ok: boolean;
+      path: string;
+    };
+
+    expect(res).toMatchObject({ ok: true, name: "shot.png", supported: true });
+    expect(res.path).toBe(join(attachmentsDir, chatId, "shot.png"));
+    expect(await readFile(res.path, "utf-8")).toBe("png-bytes");
+  });
+
+  it("dispatches detach onto the driver", async () => {
+    const { handlers } = setup();
+    const chatId = await startChat(handlers);
+    const saved = (await call(
+      handlers,
+      "skipper:composer:attach",
+      REPO,
+      chatId,
+      "shot.png",
+      new Uint8Array([1]).buffer,
+    )) as { path: string };
+
+    await expect(
+      call(handlers, "skipper:composer:detach", REPO, chatId, saved.path),
+    ).resolves.toEqual({ ok: true });
+    expect(existsSync(saved.path)).toBe(false);
+  });
+
+  it("passes the send handler's fourth argument through to the driver", async () => {
+    const { handlers } = setup();
+    const chatId = await startChat(handlers);
+    const saved = (await call(
+      handlers,
+      "skipper:composer:attach",
+      REPO,
+      chatId,
+      "shot.png",
+      new Uint8Array([1]).buffer,
+    )) as { path: string; name: string };
+
+    // The driver rejects a path outside the chat's directory, so a reachable
+    // rejection proves the argument arrived rather than being dropped.
+    const rejected = (await call(handlers, "skipper:composer:send", REPO, chatId, "read this", [
+      { name: "passwd", path: "/etc/passwd" },
+    ])) as { ok: boolean; error?: string };
+    expect(rejected.ok).toBe(false);
+    expect(rejected.error).toMatch(/outside its chat directory/);
+
+    const accepted = (await call(handlers, "skipper:composer:send", REPO, chatId, "read this", [
+      { name: saved.name, path: saved.path },
+    ])) as { ok: boolean };
+    expect(accepted.ok).toBe(true);
+    const chat = (await call(handlers, "skipper:composer:getChat", REPO, chatId)) as {
+      messages: { attachments?: unknown }[];
+    };
+    expect(chat.messages[0].attachments).toEqual([{ name: saved.name, path: saved.path }]);
   });
 });
 

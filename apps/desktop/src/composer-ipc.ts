@@ -5,10 +5,13 @@ import {
   type ComposerDraft,
   type ComposerEditedFlags,
   type ComposerSelfLogin,
+  type PlanChatAttachment,
   type RepoRef,
 } from "@skipper/shared";
 import {
+  attachComposerFile,
   cancelComposerChat,
+  detachComposerFile,
   disposeComposerChat,
   generateComposerDraft,
   getComposerChat,
@@ -75,8 +78,19 @@ async function resolveSelfLogin(deps: ComposerIpcDeps, accountId: string): Promi
 
 export function registerComposerHandlers(deps: ComposerIpcDeps): void {
   deps.ipcMain.handle("skipper:composer:start", (_e, repo: RepoRef) => startComposerChat(repo));
-  deps.ipcMain.handle("skipper:composer:send", (_e, repo: RepoRef, chatId: string, text: string) =>
-    sendComposerChatMessage(repo, chatId, text),
+  deps.ipcMain.handle(
+    "skipper:composer:send",
+    (_e, repo: RepoRef, chatId: string, text: string, attachments?: PlanChatAttachment[]) =>
+      sendComposerChatMessage(repo, chatId, text, attachments),
+  );
+  deps.ipcMain.handle(
+    "skipper:composer:attach",
+    (_e, repo: RepoRef, chatId: string, name: string, bytes: ArrayBuffer) =>
+      attachComposerFile(repo, chatId, name, new Uint8Array(bytes)),
+  );
+  deps.ipcMain.handle(
+    "skipper:composer:detach",
+    (_e, repo: RepoRef, chatId: string, path: string) => detachComposerFile(repo, chatId, path),
   );
   deps.ipcMain.handle("skipper:composer:getChat", (_e, repo: RepoRef, chatId: string) =>
     getComposerChat(repo, chatId),

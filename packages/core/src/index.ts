@@ -26,6 +26,7 @@ export {
   COPILOT_CLI_CAPABILITIES,
   GeminiCliRuntime,
   GEMINI_CLI_CAPABILITIES,
+  RUNTIME_CAPABILITIES,
 } from "./runtime";
 export type { AgentRuntime, RuntimeCapabilities, RuntimeStructuredOptions } from "./runtime";
 

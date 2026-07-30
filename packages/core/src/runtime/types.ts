@@ -18,6 +18,10 @@ export interface RuntimeCapabilities {
   readonly confinement: "sandbox" | "rules" | "none";
   /** Accepts MCP servers (skipper-memory, graphify). */
   readonly mcp: boolean;
+  /** Can read local image files during an agentic run (multimodal file tool). */
+  readonly images: boolean;
+  /** Can read local PDF files during an agentic run. */
+  readonly pdfs: boolean;
 }
 
 /** Options for a runtime's tools-enabled structured call — the wide surface the

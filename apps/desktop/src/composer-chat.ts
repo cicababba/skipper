@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { access } from "node:fs/promises";
+import { basename } from "node:path";
 import {
   AgentAbortError,
   discussComposer,
   distillComposerDraft,
+  RUNTIME_CAPABILITIES,
   type GraphifyContext,
   type LLMProviderInterface,
   type MemoryMcp,
@@ -12,12 +15,14 @@ import {
   isPlanChatText,
   repoKey,
   type AgentRuntimeId,
+  type AttachComposerFileResult,
   type CodingEvent,
   type ComposerChatSnapshot,
   type ComposerDraft,
   type ComposerEditedFlags,
   type GenerateComposerDraftResult,
   type LlmSettings,
+  type PlanChatAttachment,
   type PlanChatMessage,
   type RepoRef,
   type ResolvedRepoOrchestratorSettings,
@@ -30,10 +35,22 @@ import {
 import {
   deleteUnfinishedDraftFiles,
   deleteUnfinishedDraftFilesSync,
+  listComposerDraftChatIds,
   readComposerDraftFile,
   saveComposerDraftFile,
   saveComposerDraftFileSync,
 } from "./composer-draft-store";
+import {
+  assertAttachmentPath,
+  attachmentDir,
+  attachmentKind,
+  deleteAttachmentFile,
+  deleteAttachmentsDir,
+  deleteAttachmentsDirSync,
+  listAttachmentDirs,
+  saveAttachmentFile,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+} from "./composer-attachment-store";
 import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
 import { buildLlm, injectedBundle, modelForRole, providerCacheKey, type LlmBundle } from "./llm-settings";
 
@@ -61,6 +78,8 @@ export interface ComposerChatDeps {
   getGraphify: (repo: RepoRef) => Promise<GraphifyContext | undefined> | undefined;
   /** Saved drafts root (#138), <userData>/drafts. */
   draftsDir: string;
+  /** Chat attachments root (#281), <userData>/composer/attachments. */
+  attachmentsDir: string;
   /** A draft file appeared, changed or vanished — the renderer's list is stale. */
   onDraftsChanged: () => void;
 }
@@ -106,6 +125,24 @@ export function initComposerChat(
   chats.clear();
   bundles.clear();
   inFlight.clear();
+  void sweepOrphanAttachments(composerChatDeps);
+}
+
+/** Nothing is live at init, so an attachment directory with no draft behind it
+ *  belongs to a session that ended without cleanup (#281). Best-effort. */
+async function sweepOrphanAttachments(d: ComposerChatDeps): Promise<void> {
+  try {
+    const dirs = await listAttachmentDirs(d.attachmentsDir);
+    if (dirs.length === 0) return;
+    const chatIds = await listComposerDraftChatIds(d.draftsDir);
+    const keep = new Set(chatIds.map((id) => basename(attachmentDir(d.attachmentsDir, id))));
+    for (const dir of dirs) {
+      if (keep.has(dir)) continue;
+      await deleteAttachmentsDir(d.attachmentsDir, dir);
+    }
+  } catch {
+    /* an orphan that survives costs disk, nothing else — the next init retries */
+  }
 }
 
 async function resolveBundle(roleModel: string, roleRuntime: AgentRuntimeId): Promise<LlmBundle> {
@@ -167,6 +204,64 @@ export function cancelComposerChat(repo: RepoRef, chatId: string): void {
   inFlight.get(chatKey(repo, chatId))?.abort();
 }
 
+/** Does a live record still hold this chat? The drafts-delete handler asks
+ *  before removing an attachment directory dispose is about to handle (#281). */
+export function hasLiveComposerChat(chatId: string): boolean {
+  for (const record of chats.values()) if (record.chatId === chatId) return true;
+  return false;
+}
+
+/** Can the repo's effective composer runtime read this kind of file? Text always
+ *  works — every CLI has a plain file reader. */
+function attachmentSupported(repo: RepoRef, kind: ReturnType<typeof attachmentKind>): boolean {
+  if (kind === null || kind === "text") return true;
+  const runtimeId = deps!.getRepoSettings(repo).composerRuntime;
+  const caps = RUNTIME_CAPABILITIES[runtimeId];
+  return kind === "image" ? caps.images : caps.pdfs;
+}
+
+/**
+ * Persist a pasted/dropped file for a live chat (#281). The bytes land under
+ * <userData>, never in the checkout the turn runs in — the dirty-tree tripwire
+ * would fail the turn otherwise.
+ */
+export async function attachComposerFile(
+  repo: RepoRef,
+  chatId: string,
+  name: string,
+  bytes: Uint8Array,
+): Promise<AttachComposerFileResult> {
+  if (!deps) return { ok: false, error: "composer not initialized" };
+  if (!chats.has(chatKey(repo, chatId))) return { ok: false, error: "unknown composer chat" };
+  try {
+    const saved = await saveAttachmentFile(deps.attachmentsDir, chatId, name, bytes);
+    return {
+      ok: true,
+      path: saved.path,
+      name: saved.name,
+      supported: attachmentSupported(repo, saved.kind),
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Drop an attachment the user removed before sending. */
+export async function detachComposerFile(
+  repo: RepoRef,
+  chatId: string,
+  path: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!deps) return { ok: false, error: "composer not initialized" };
+  try {
+    const abs = assertAttachmentPath(deps.attachmentsDir, chatId, path);
+    await deleteAttachmentFile(abs);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 /** Worth keeping when the user walks away: a discussion, or hand-written issue
  *  content in a draft that was never distilled from one. */
 function hasCaptureContent(record: ComposerChatRecord): boolean {
@@ -199,15 +294,36 @@ export async function disposeComposerChat(
   const record = chats.get(key);
   chats.delete(key);
   if (!deps || !record) return;
-  if (opts?.discard || record.discarded || record.draftId || !hasCaptureContent(record)) return;
+  // Attachments outlive the record only for as long as a draft can resume it:
+  // a discarded session or one with nothing worth capturing takes them along.
+  const discarded = opts?.discard || record.discarded;
+  if (discarded || (!record.draftId && !hasCaptureContent(record))) {
+    await deleteAttachmentsDir(deps.attachmentsDir, record.chatId).catch(() => {
+      /* best-effort: the next composer init sweeps what is left */
+    });
+  }
+  if (discarded || record.draftId || !hasCaptureContent(record)) return;
   record.unfinished = true;
   try {
     await saveComposerDraftFile(deps.draftsDir, storedFrom(record, chatId));
-    await deleteUnfinishedDraftFiles(deps.draftsDir, repoKey(record.repo), unfinishedKeepIds(chatId));
+    await deleteUnfinishedDraftFiles(
+      deps.draftsDir,
+      repoKey(record.repo),
+      unfinishedKeepIds(chatId),
+      dropAttachmentsOf,
+    );
     deps.onDraftsChanged();
   } catch {
     /* capture is best-effort, like autosave — a lost one leaves the list as it was */
   }
+}
+
+/** A swept unfinished draft takes its attachments with it (#281). */
+function dropAttachmentsOf(draft: StoredComposerDraft): void {
+  if (!deps || hasLiveComposerChat(draft.chatId)) return;
+  void deleteAttachmentsDir(deps.attachmentsDir, draft.chatId).catch(() => {
+    /* best-effort */
+  });
 }
 
 /**
@@ -219,14 +335,21 @@ export function flushUnfinishedComposerChats(): void {
   if (!deps) return;
   const promoted = new Set<string>();
   const eligible = new Map<string, ComposerChatRecord>();
+  const dropped: ComposerChatRecord[] = [];
   for (const record of chats.values()) {
     if (record.draftId) {
       promoted.add(record.draftId);
       continue;
     }
-    if (record.discarded || !hasCaptureContent(record)) continue;
+    if (record.discarded || !hasCaptureContent(record)) {
+      dropped.push(record);
+      continue;
+    }
+    const displaced = eligible.get(repoKey(record.repo));
+    if (displaced) dropped.push(displaced);
     eligible.set(repoKey(record.repo), record);
   }
+  for (const record of dropped) deleteAttachmentsDirSync(deps.attachmentsDir, record.chatId);
   for (const [key, record] of eligible) {
     record.unfinished = true;
     try {
@@ -234,7 +357,12 @@ export function flushUnfinishedComposerChats(): void {
     } catch {
       continue;
     }
-    deleteUnfinishedDraftFilesSync(deps.draftsDir, key, new Set([record.chatId, ...promoted]));
+    deleteUnfinishedDraftFilesSync(
+      deps.draftsDir,
+      key,
+      new Set([record.chatId, ...promoted]),
+      (draft) => deleteAttachmentsDirSync(deps!.attachmentsDir, draft.chatId),
+    );
   }
 }
 
@@ -417,10 +545,29 @@ async function checkoutEscaped(ctx: RunContext): Promise<string | undefined> {
   return escaped.length > 0 ? checkoutEscapeReason(escaped) : undefined;
 }
 
+/** Attachments are re-validated here, not trusted from the renderer: the paths
+ *  cross the IPC boundary and end up in a prompt telling the agent to read them. */
+async function resolveAttachments(
+  chatId: string,
+  attachments: PlanChatAttachment[],
+): Promise<PlanChatAttachment[]> {
+  if (attachments.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+    throw new Error(`At most ${MAX_ATTACHMENTS_PER_MESSAGE} attachments per message`);
+  }
+  const resolved: PlanChatAttachment[] = [];
+  for (const attachment of attachments) {
+    const path = assertAttachmentPath(deps!.attachmentsDir, chatId, attachment.path);
+    await access(path);
+    resolved.push({ name: attachment.name, path });
+  }
+  return resolved;
+}
+
 export async function sendComposerChatMessage(
   repo: RepoRef,
   chatId: string,
   text: string,
+  attachments?: PlanChatAttachment[],
 ): Promise<SendComposerChatResult> {
   if (!deps) return { ok: false, error: "composer not initialized" };
   const message = text.trim();
@@ -429,6 +576,13 @@ export async function sendComposerChatMessage(
   if (inFlight.has(key)) return { ok: false, error: "chat turn already running" };
   const record = chats.get(key);
   if (!record) return { ok: false, error: "unknown composer chat" };
+
+  let attached: PlanChatAttachment[];
+  try {
+    attached = attachments?.length ? await resolveAttachments(chatId, attachments) : [];
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 
   // Claim the slot synchronously (before any await) so a concurrent send busy-guards.
   const controller = new AbortController();
@@ -462,6 +616,7 @@ export async function sendComposerChatMessage(
       ...(ctx.graphify ? { graphify: ctx.graphify } : {}),
       ...(record.draft ? { draft: record.draft } : {}),
       ...(record.editedFlags ? { edited: record.editedFlags } : {}),
+      ...(attached.length > 0 ? { attachments: attached.map((a) => a.path) } : {}),
       onEvent,
       ...(ctx.memory ? { memory: ctx.memory } : {}),
       signal: controller.signal,
@@ -501,7 +656,12 @@ export async function sendComposerChatMessage(
     if (controller.signal.aborted || !chats.has(key)) return { ok: false, cancelled: true };
 
     const at = new Date().toISOString();
-    record.messages.push({ role: "user", text: message, at });
+    record.messages.push({
+      role: "user",
+      text: message,
+      at,
+      ...(attached.length > 0 ? { attachments: attached } : {}),
+    });
     record.messages.push({ role: "assistant", text: reply.reply, at: new Date().toISOString() });
     if (sessionToRecord) {
       record.sessionId = sessionToRecord;

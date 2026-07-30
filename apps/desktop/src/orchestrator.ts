@@ -183,6 +183,8 @@ export interface OrchestratorDeps {
   repoInstructionsDir: string;
   /** Saved composer drafts (#138), one JSON per draft. */
   draftsDir: string;
+  /** Composer chat attachments (#281), one dir per chat. */
+  composerAttachmentsDir: string;
   /** Per-repo Graphify index state + graphs (#233), one dir per linked repo. */
   graphsDir: string;
   /** uv-managed runtime root for the Graphify install (#233). */
@@ -1736,6 +1738,7 @@ export function initOrchestrator(
   registerDraftsHandlers({
     ipcMain,
     draftsDir: orchestratorDeps.draftsDir,
+    attachmentsDir: orchestratorDeps.composerAttachmentsDir,
     notifyChanged: broadcastDraftsChanged,
   });
   registerMemoryHandlers({
@@ -2056,6 +2059,7 @@ export function initOrchestrator(
       return d ? graphifyForPlanning(d) : undefined;
     },
     draftsDir: orchestratorDeps.draftsDir,
+    attachmentsDir: orchestratorDeps.composerAttachmentsDir,
     onDraftsChanged: broadcastDraftsChanged,
   });
 

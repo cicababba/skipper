@@ -6,7 +6,11 @@ import { Check, FolderGit2, Loader2, Save, Sparkles } from "lucide-react";
 import { CHAT_TURN_DETAILS, type ComposerDraft, type RepoRef } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
-import { ChatPanel, type ChatAdapter } from "@/components/chat/chat-panel";
+import {
+  ChatPanel,
+  type ChatAdapter,
+  type ChatAttachmentsAdapter,
+} from "@/components/chat/chat-panel";
 import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { repoHref } from "@/lib/inbox/nav";
 import {
@@ -115,13 +119,28 @@ export function ChatView({
         const chat = await window.skipper?.composer.getChat(repo, chatId);
         return chat?.messages ?? [];
       },
-      send: async (text) => {
+      send: async (text, attachments) => {
         if (!chatId) return { ok: false };
-        const res = await window.skipper?.composer.send(repo, chatId, text);
+        const res = await window.skipper?.composer.send(repo, chatId, text, attachments);
         return res ?? { ok: false };
       },
       cancel: () => {
         if (chatId) void window.skipper?.composer.cancel(repo, chatId);
+      },
+    }),
+    [repo, chatId],
+  );
+
+  const attachmentsAdapter: ChatAttachmentsAdapter = useMemo(
+    () => ({
+      attach: async (file) => {
+        if (!chatId) return { ok: false, error: "no chat" };
+        const bytes = await file.arrayBuffer();
+        const res = await window.skipper?.composer.attach(repo, chatId, file.name, bytes);
+        return res ?? { ok: false, error: "no bridge" };
+      },
+      detach: (path) => {
+        if (chatId) void window.skipper?.composer.detach(repo, chatId, path);
       },
     }),
     [repo, chatId],
@@ -311,6 +330,7 @@ export function ChatView({
             emptyState={<ChatEmptyState title={c.emptyTitle} hint={c.emptyHint} />}
             onBusyChange={setSendBusy}
             onCountChange={setCount}
+            attachments={attachmentsAdapter}
           />
         </div>
 

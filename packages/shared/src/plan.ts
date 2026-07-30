@@ -51,11 +51,20 @@ export interface IssuePlan {
   estimatedSize: "xs" | "s" | "m" | "l" | "xl";
 }
 
+/** A file the user attached to a chat turn (#281). `path` is absolute and lives
+ *  under `<userData>`, never inside the repo checkout the turn runs in. */
+export interface PlanChatAttachment {
+  name: string;
+  path: string;
+}
+
 /** One text turn of the plan-review chat (#145). */
 export interface PlanChatTextMessage {
   role: "user" | "assistant";
   text: string;
   at: string; // ISO 8601
+  /** Files attached to this turn (#281); user turns only. */
+  attachments?: PlanChatAttachment[];
 }
 
 /** A persisted marker recording that a discussion was applied to the plan (#201). */
