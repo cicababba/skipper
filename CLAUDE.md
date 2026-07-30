@@ -1,10 +1,12 @@
-# Skipper (pivoted from NestBrain)
+# CLAUDE.md
 
-**This codebase has pivoted.** It was born as NestBrain (LLM-powered personal knowledge base, sold at [nestbrain.app](https://nestbrain.app)); it is now a **cross-platform issue inbox + orchestration layer on top of coding agents**: assigned issues arrive with an eager plan and a verifiable confidence score, coding runs in isolated worktrees behind a human gate, PRs are shepherded to merge. The v1 loop (epic #3) is largely implemented — orchestrator, planner, coder, reviewer, and shepherd live in `apps/desktop/src/` and `packages/core/src/`, with issue sources/code hosts for GitHub, GitLab, Jira, and Bitbucket. Vision, decisions, and phasing live in [`docs/DIRECTION.md`](docs/DIRECTION.md) (authoritative, in Italian). Foundational issues: #1 (open-core boundary), #2 (demolition of the old product surface), #3 (v1 loop epic).
+This file provides guidance to Claude Code when working with code in this repository.
 
-**Skipper is the product name** (decided 2026-07-14; the repo codename was promoted). The coordinated rename landed with #16: package scopes are `@skipper/*`, the IPC prefix is `skipper:*`, the CLI is `skipper`, env vars are `SKIPPER_*`, appId is `com.cicababba.skipper` (originally `com.nextepochs.skipper`, renamed pre-beta with #195). Historical NestBrain references in docs are intentional. Skipper is a **clean break** for installs: no migration from NestBrain userData/workspaces — both apps can coexist on one machine.
+# Skipper
 
-The old product surface (wiki ingest/compile pipeline, Google Drive sync, Team Server client, `packages/db`) was demolished in #2; the private-modules overlay machinery (open-core gating seam) was removed with #16 — feature gating gets redesigned if/when monetization needs it. What survives from NestBrain: the Electron shell (PATH fixes, embedded server), editor + file tree + terminal, the Google OAuth desktop flow, the LLM provider layer, embeddings + vectorstore (now backing the solutions memory in `packages/core/src/memory`), the knowledge-atom pipeline (structured extraction prototype), and the `SyncBackend`/manifest seams the orchestrator builds on. NestBrain 1.16.x remains sold and maintained **from its own upstream repo** — this repo's release pipeline is intentionally **disarmed** (zero Actions secrets, publishes nothing) until the distribution cutover (#17), and external identifiers in it (update-feed domain, Polar product, private releases repo) are placeholders to be provisioned at that cutover. Don't add release secrets here before that cutover is intentional.
+Skipper is a **cross-platform issue inbox + orchestration layer on top of coding agents**: assigned issues arrive with an eager plan and a verifiable confidence score, coding runs in isolated worktrees behind a human gate, and PRs are shepherded to merge. Issue sources/code hosts: GitHub, GitLab, Jira, OpenProject, and Bitbucket. On top of the loop: a repo-grounded chat composer that drafts issues (plus a no-agent quick path) with saved/auto-saved drafts, per-repo agent instructions, and a solutions-memory tab with semantic search and curation.
+
+Naming is uniform: package scopes are `@skipper/*`, the IPC prefix is `skipper:*`, the CLI is `skipper`, env vars are `SKIPPER_*`, appId is `com.cicababba.skipper`.
 
 ## Repo Layout (pnpm monorepo)
 
@@ -12,25 +14,27 @@ The old product surface (wiki ingest/compile pipeline, Google Drive sync, Team S
 skipper/
 ├── apps/
 │   ├── desktop/                # Electron 33 shell (main + preload + builder config)
-│   │   ├── src/main.ts         # Electron main: PATH fix, IPC, embedded server
-│   │   ├── src/git.ts          # Git backend (public core, #1)
-│   │   ├── src/terminal.ts     # PTY session manager (public core, #18)
-│   │   ├── src/auth/           # Multi-provider OAuth desktop flow (Google, GitHub, GitLab, Jira, Bitbucket; loopback)
+│   │   ├── src/main.ts         # Electron main: PATH fix, IPC, app://skipper static-export protocol
+│   │   ├── src/git.ts          # Git backend (public core)
+│   │   ├── src/terminal.ts     # PTY session manager (public core)
+│   │   ├── src/auth/           # Multi-provider OAuth desktop flow (Google, GitHub, GitLab, Jira, OpenProject, Bitbucket; loopback)
 │   │   ├── src/orchestrator.ts # Issue-orchestration loop (+ planner, coder, reviewer, shepherd,
 │   │   │                       #   plan-store, worktrees, repo-links, inbox-cursor-store, updater,
-│   │   │                       #   graphify: per-repo knowledge-graph index, #233)
+│   │   │                       #   composer-chat + draft stores, repo-instructions + distiller,
+│   │   │                       #   agent-chat, create-issue IPC, graphify: per-repo knowledge-graph index)
 │   │   ├── src/preload.ts      # Renderer-safe IPC bridge
 │   │   └── build/              # electron-builder hooks, icons, NSIS installer
-│   └── web/                    # Next.js 16 + React 19 UI (runs as standalone inside Electron)
+│   └── web/                    # Next.js 16 + React 19 UI (static export, served over app://skipper inside Electron)
 │       └── src/{app,components,lib,types}
 ├── packages/
-│   ├── cli/                    # `skipper` CLI (commander): knowledge, projects, session, memory
+│   ├── cli/                    # `skipper` CLI (commander): knowledge, projects, session, memory, guard
 │   ├── core/                   # Domain logic
-│   │   └── src/{llm,vectorstore,knowledge,orchestrator,planner,coder,reviewer,shepherd,confidence,memory,adapters}
+│   │   └── src/{llm,runtime,vectorstore,knowledge,orchestrator,planner,coder,reviewer,shepherd,
+│   │            confidence,memory,adapters,composer,agent-chat,instructions}
 │   ├── shared/                 # Types and constants (auth types live here so main + renderer share them)
-│   └── sync/                   # Orchestrator seams kept from the retired Drive engine
-│       └── src/{backend,manifest,types}   # diffFiles + SyncBackend contract, local manifest
-├── data/                       # Local-dev workspace (legacy artifacts; untouched by the build)
+│   └── sync/                   # Orchestrator seams: diffFiles + SyncBackend contract, local manifest
+│       └── src/{backend,manifest,types}
+├── data/                       # Local-dev scratch data (untouched by the build)
 ├── docs/screenshots/
 ├── pnpm-workspace.yaml
 ├── turbo.json
@@ -44,11 +48,13 @@ skipper/
 - **Desktop shell**: Electron 33, `node-pty` (lazy-loaded), `electron-builder` (mac DMG signed/notarized, Windows NSIS, Linux placeholder)
 - **UI**: Next.js 16.2 + React 19, CodeMirror 6, xterm.js + addon-fit, lucide-react, Tailwind v4
 - **CLI**: `commander`
-- **LLM providers** (`packages/core/src/llm/`): `claude-cli` (default — spawns the user's `claude` CLI), `openai`, `ollama`
+- **LLM completions providers** (`packages/core/src/llm/`): `claude-cli` (default — spawns the user's `claude` CLI) and `openai`. This is the completions backend the roles fall back to for structured/repair rounds — it must only ever see Claude model aliases (or the OpenAI model).
+- **Agent runtimes** (`packages/core/src/runtime/`): the `AgentRuntime` seam with a capability matrix; adapters for `claude-cli`, `codex-cli`, `copilot-cli`, `gemini-cli`. Every orchestration role (planner, coder, reviewer, composer, …) is selected as a coupled `(runtime, model)` pair — per role globally and overridable per repo. The model menu is derived from the runtime, so a Claude alias can never be attached to another vendor's CLI; empty model means "the CLI's own configured default".
 - **Embeddings**: `@huggingface/transformers` running ONNX locally (`Xenova/all-MiniLM-L6-v2`), in `packages/core/src/vectorstore`
-- **Knowledge graph** (#233, opt-in per repo): [Graphify](https://github.com/Graphify-Labs/graphify) — tree-sitter AST index of the linked repo, extracted code-only (no LLM, no API key) from a throwaway worktree at the base ref. The planner queries it via the `graphify-mcp` stdio server (7 local graph tools allowlisted; coder excluded by construction). Python runtime isolated in `<userData>/tools` via a bundled `uv` binary — two pins to maintain: `UV_VERSION` in `apps/desktop/build/prepare-uv.mjs` and `GRAPHIFY_PIP_SPEC` in `apps/desktop/src/graphify-runtime.ts`
-- **Auth**: multi-provider multi-account OAuth desktop flow (loopback redirect) behind a `ProviderConfig` registry in `apps/desktop/src/auth/` — registered providers: `google`, `github`, `gitlab`, `jira`, `bitbucket`. Google: PKCE, identity-only scopes — proves the email for the supporter update entitlement (`getIdToken`, Google-only path). GitHub: GitHub App user-to-server flow, fixed loopback ports 8127–8129, expiring tokens with refresh rotation — feeds the orchestrator (#5+). GitLab/Jira/Bitbucket feed the tracker/code-host adapters in `packages/core/src/adapters`. Accounts + tokens live in one `auth.enc` (v2 multi-account format, legacy single-session migrated on load) encrypted via Electron `safeStorage`.
-- **Testing**: Vitest (configured at root). Coverage is solid where it counts: `packages/core/tests/` (~69 files, incl. a 54-case reconcile suite and ~31 adapter suites covering the GitHub/GitLab/Jira/OpenProject/Bitbucket clients, mappers, polls and actions), every desktop driver loop (planner/coder/reviewer/shepherd/rescore/plan-chat via injected deps), the pure stores (worktrees, plan-store, repo-links), and `apps/web/src/lib/inbox/*` (11 pure modules, 1:1 tests). Known holes: `apps/desktop/src/orchestrator.ts` wiring (zero tests), most of the Electron shell (`main.ts`, `auth/`). Test-writing and failure-triage rules live in [`.claude/rules/testing.md`](.claude/rules/testing.md).
+- **Knowledge graph** (opt-in per repo): [Graphify](https://github.com/Graphify-Labs/graphify) — tree-sitter AST index of the linked repo, extracted code-only (no LLM, no API key) from a throwaway worktree at the base ref. Queried via the `graphify-mcp` stdio server (7 local graph tools allowlisted, wired into every runtime's MCP config) by the planner, the composer, and the plan/agent chats — the coder is excluded by construction. Python runtime isolated in `<userData>/tools` via a bundled `uv` binary — two pins to maintain: `UV_VERSION` in `apps/desktop/build/prepare-uv.mjs` and `GRAPHIFY_PIP_SPEC` in `apps/desktop/src/graphify-runtime.ts`
+- **Repo instructions**: per-repo agent instructions in `<userData>/repo-instructions/`, seeded at link time from the checkout's `CLAUDE.md` → `AGENTS.md` → `.github/copilot-instructions.md` → `GEMINI.md` (first non-blank wins) or generated agentically when none exists; injected into the planner/coder/composer prompts. A ready doc is never re-seeded automatically — regeneration is explicit (`force`).
+- **Auth**: multi-provider multi-account OAuth desktop flow (loopback redirect) behind a `ProviderConfig` registry in `apps/desktop/src/auth/` — registered providers: `google`, `github`, `gitlab`, `jira`, `openproject`, `bitbucket`. Google: PKCE, identity-only scopes — proves the email for the supporter update entitlement (`getIdToken`, Google-only path). GitHub: GitHub App user-to-server flow, fixed loopback ports 8127–8129, expiring tokens with refresh rotation — feeds the orchestrator. GitLab/Jira/OpenProject/Bitbucket feed the tracker/code-host adapters in `packages/core/src/adapters` (OpenProject also supports an API-key path: HTTP Basic, username `apikey`). Accounts + tokens live in one `auth.enc` (v2 multi-account format) encrypted via Electron `safeStorage`.
+- **Testing**: Vitest (configured at root). Coverage is solid where it counts: `packages/core/tests/` (~72 files, incl. a 54-case reconcile suite and ~32 adapter suites covering the GitHub/GitLab/Jira/OpenProject/Bitbucket clients, mappers, polls and actions), every desktop driver loop (planner/coder/reviewer/shepherd/rescore/plan-chat/composer-chat/drafts via injected deps), the pure stores (worktrees, plan-store, repo-links, draft stores), and the pure modules in `apps/web/src/lib/{inbox,composer,agents,export}` (1:1 tests). Known holes: `apps/desktop/src/orchestrator.ts` wiring (zero tests), most of the Electron shell (`main.ts`, `auth/`). Test-writing and failure-triage rules live in [`.claude/rules/testing.md`](.claude/rules/testing.md).
 - **Lint/format**: ESLint 9 + Prettier 3
 
 ## Key Commands
@@ -84,12 +90,15 @@ skipper knowledge promote          # Add a curated atom from stdin
 skipper projects register          # Install the post-commit extraction hook
 skipper projects unregister|status # Remove the hook / show registration state
 skipper session save|resume        # Cross-machine session handoff
-skipper memory reindex|search|serve # Solutions-memory index: rebuild, query, serve
+skipper memory reindex|search|distill|serve  # Solutions-memory index: rebuild, query, distill lessons, MCP serve
+skipper guard --root <path>        # PreToolUse hook: confine an agent run's Edit/Write/Bash to its worktree
 ```
 
 ## Git Workflow
 
-Gitflow: `main` is release-only (**every push to `main` fires `.github/workflows/release.yml`** — full signed build + publish to Polar/update feed), `develop` is the integration branch, work happens on `feature/issue-<N>-<slug>` branches. Conventions for branches, commit messages, issue/PR titles, and labels live in [`.claude/rules/conventions.md`](.claude/rules/conventions.md) — the skills in `.claude/skills/` (`/create-issue`, `/start-issue`, `/plan-issue`, `/implement-plan`, `/commit`, `/pr`, `/merge-pr`, `/release`) implement the day-to-day flow and are the preferred way to run it; `/goto` (jump to code) and `/verify` (build + drive the Electron app) round out the toolbox. Issue state is derived from git/GitHub (branch = in progress, PR = in review, closed = done); a GitHub Project board mirrors it as a prioritization view — the skills sync the board `Status` automatically via `.claude/scripts/board.sh` (contract in conventions.md).
+Gitflow: `main` is release-only, `develop` is the integration branch (and the repo's default branch), work happens on `feature/issue-<N>-<slug>` branches. Conventions for branches, commit messages, issue/PR titles, and labels live in [`.claude/rules/conventions.md`](.claude/rules/conventions.md) — the skills in `.claude/skills/` (`/create-issue`, `/start-issue`, `/plan-issue`, `/implement-plan`, `/commit`, `/pr`, `/merge-pr`, `/release`) implement the day-to-day flow and are the preferred way to run it; `/goto` (jump to code) and `/verify` (build + drive the Electron app) round out the toolbox. Issue state is derived from git/GitHub (branch = in progress, PR = in review, closed = done); a GitHub Project board mirrors it as a prioritization view — the skills sync the board `Status` automatically via `.claude/scripts/board.sh` (contract in conventions.md).
+
+Release workflows: `.github/workflows/beta.yml` (manual dispatch) builds beta releases; `.github/workflows/release.yml` (push to `main`) runs the full signed build + publish, but is currently **disabled** on GitHub and its external identifiers (update-feed domain, Polar product, private releases repo) are placeholders. Don't arm it or add release secrets without an explicit release decision.
 
 ## Coding Conventions
 
@@ -97,17 +106,17 @@ Gitflow: `main` is release-only (**every push to `main` fires `.github/workflows
 - Module systems, as they actually are: `packages/cli` and `apps/web` are ESM; `packages/shared` and `packages/sync` compile to CJS (they are consumed by the CJS Electron main); the Electron main bundle ends up CJS (so dynamic `require` is fine when needed, e.g. lazy `node-pty`).
 - Use `node:fs/promises` + `node:path` for filesystem work. Use `node:path.join` with the platform separator — don't hand-build paths with `/`.
 - One responsibility per file. The `packages/core/src/<area>/index.ts` files are the public surface; siblings are internals.
-- Errors propagate inside `packages/core`. CLI commands, Next.js route handlers, and the Electron IPC layer are the boundaries that turn errors into user-facing messages.
+- Errors propagate inside `packages/core`. CLI commands and the Electron IPC layer are the boundaries that turn errors into user-facing messages.
 - Prefer direct implementations over abstractions. No premature interfaces.
 - Default to no comments. Never add comments that restate what the code does or narrate a change. Add one only when the *why* is non-obvious from the code — a real example is the `node-pty` lazy-load block in `apps/desktop/src/main.ts`.
 - Do not log to stdout from `packages/core` — surface progress through callbacks so the caller decides how to present it.
 
 ## Important Notes
 
-- **No workspace folder** (removed with #39): all app state lives in Electron `userData` (`~/.config/Skipper` on Linux, `%APPDATA%/Skipper` on Windows, `~/Library/Application Support/Skipper` on macOS) — `settings.json`, `knowledge/{pending,rejected,accepted}`, plus the orchestrator files (manifest, plans/, worktrees/, memory/, graphs/ — per-repo Graphify indexes, tools/ — the uv-managed Python runtime, #233). `<userData>/knowledge/` holds captured knowledge atoms — user data, never modify or delete it. The CLI resolves the same directory itself (no anchor file).
-- LLM credentials come from the user's `claude` CLI auth (default) or the OpenAI key in Settings. Never hardcode keys, never log them.
-- The Electron main on macOS does **not** inherit the user's shell PATH — `apps/desktop/src/main.ts` runs an inline `fix-path` equivalent so that spawning `claude` works regardless of where it's installed. Don't remove it.
+- **No workspace folder**: all app state lives in Electron `userData` (`~/.config/Skipper` on Linux, `%APPDATA%/Skipper` on Windows, `~/Library/Application Support/Skipper` on macOS) — `settings.json`, `knowledge/{pending,rejected,accepted}`, plus the orchestrator files (manifest, plans/, worktrees/, memory/, drafts/ — composer drafts, repo-instructions/ — per-repo agent instructions, graphs/ — per-repo Graphify indexes, tools/ — the uv-managed Python runtime). `<userData>/knowledge/` holds captured knowledge atoms — user data, never modify or delete it. The CLI resolves the same directory itself (no anchor file).
+- LLM credentials come from the user's own CLIs (`claude` by default; `codex`/`copilot`/`gemini` authenticate through their own CLI sessions) or the OpenAI key in Settings. Never hardcode keys, never log them.
+- The Electron main on macOS does **not** inherit the user's shell PATH — `apps/desktop/src/main.ts` runs an inline `fix-path` equivalent so that spawning `claude` (or any agent CLI) works regardless of where it's installed. Don't remove it.
 - `node-pty` is loaded with a `try/catch require` because a native-binding load failure must not crash the app — the terminal is optional.
-- **Open-core**: git + terminal are public core (decision #18). The private-modules overlay machinery (module registry, dev-impl seam, `useModules()`) was removed with #16 — there is currently **no feature gating in the code**; it gets redesigned when monetization returns (Polar keys). The supporter update-entitlement path in `main.ts` is separate and still present.
-- `packages/sync` now contains only the orchestrator seams: `backend.ts` (`diffFiles` three-way reconcile + the `SyncBackend` versioned-commit contract) and `manifest.ts`. They remain intentionally consumerless (the v1 loop landed without wiring them in) — don't delete them as dead code.
+- **Open-core**: git + terminal are public core. There is currently **no feature gating in the code**; it gets designed if/when monetization needs it. The supporter update-entitlement path in `main.ts` is separate and present.
+- `packages/sync` contains only the orchestrator seams: `backend.ts` (`diffFiles` three-way reconcile + the `SyncBackend` versioned-commit contract) and `manifest.ts`. They are intentionally consumerless — don't delete them as dead code.
 - The Google OAuth Client ID + non-confidential Desktop client secret live in `apps/desktop/src/auth/oauth-config.ts` (gitignored; see `oauth-config.example.ts`). For OAuth client type "Desktop app" Google considers the secret non-confidential (PKCE is what actually secures the flow).

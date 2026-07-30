@@ -1,10 +1,10 @@
 # Skipper
 
-**One inbox for every issue assigned to you — across GitHub, Bitbucket, Jira, Linear — where each issue arrives already planned, scored with a verifiable confidence, and one click away from becoming a draft PR that gets shepherded all the way to merge.**
+**One inbox for every issue assigned to you — across GitHub, GitLab, Jira, OpenProject, Bitbucket — where each issue arrives already planned, scored with a verifiable confidence, and one click away from becoming a draft PR that gets shepherded all the way to merge.**
 
 ![Status](https://img.shields.io/badge/status-beta-yellow) ![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue) ![License](https://img.shields.io/badge/license-GPL--3.0-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
 
-> **Beta.** The v1 loop is up and running and Skipper is being tried by early testers. It was born as [NestBrain](https://nestbrain.app), an LLM-compiled personal knowledge base, and rebuilt into the product described below. The full vision and decision log lives in [`docs/DIRECTION.md`](docs/DIRECTION.md) (in Italian). NestBrain itself keeps living — and being sold and maintained — at [nestbrain.app](https://nestbrain.app).
+> **Beta.** The v1 loop is up and running and Skipper is being tried by early testers.
 
 ---
 
@@ -22,7 +22,7 @@ provider accounts. Betas don't auto-update; re-download each new prerelease.
 
 Coding agents can write the code — that part is fast becoming a commodity. What's scarce is the layer **above** them: deciding *which* issues are worth handing to an agent, *how* to approach them, with *how much* confidence — and carrying each one all the way to a merged PR instead of firing and forgetting.
 
-Skipper is that layer. It orchestrates coding agents (Claude Code first); it doesn't reimplement them.
+Skipper is that layer. It orchestrates coding agents — Claude Code, Codex CLI, Copilot CLI, Gemini CLI, selectable per role and per repo — it doesn't reimplement them.
 
 | It is | It is not |
 |---|---|
@@ -62,16 +62,12 @@ Two things make this different from a wrapper:
 
 ## Roadmap
 
-- **v1 — the loop + the judgment**: GitHub, eager plan, confidence-gated approval, worktree coding, agent + human review, draft PR, shepherding → [epic #3](../../issues/3) *(in progress)*
-- **v2 — the memory**: capture at scale, retrieval into planning, memory as a confidence signal
-- **v3 — the aggregation**: Bitbucket + Jira/Linear, one queue across orgs
+- **v1 — the loop + the judgment**: eager plan, confidence-gated approval, worktree coding, agent + human review, draft PR, shepherding → [epic #3](../../issues/3) *(landed)*
+- **v2 — the memory**: capture at scale, retrieval into planning, memory as a confidence signal *(in progress: solutions memory, distilled lessons, memory tab)*
+- **v3 — the aggregation**: one queue across orgs — GitHub, GitLab, Jira, OpenProject and Bitbucket adapters already landed
 - **v4 — the team**: parallel agents, shared queue, metrics
 
 No dates. Watch the repo.
-
-## Heritage
-
-Skipper is built on the NestBrain codebase, and reuses its best parts: the Electron + Next.js desktop shell with editor, file tree and real PTY terminal; the desktop OAuth stack; local embeddings (ONNX, no API); and a battle-tested "observe → reconcile → track state" engine being repurposed as the orchestrator. The coordinated rename landed with [#16](../../issues/16) — everything is `skipper` now (`@skipper/*` packages, `skipper:*` IPC, `SKIPPER_*` env vars).
 
 ## Development
 
@@ -93,6 +89,7 @@ Sign-in works out of the box only in official builds. Source builds run with pla
 - **GitLab** (gitlab.com sign-in): `SKIPPER_GITLAB_CLIENT_ID` — a GitLab application (User Settings → Applications) with "Confidential" **unchecked** (public client, no secret var), scope `api`, and callback URLs `http://127.0.0.1:8130/callback`, `:8131`, `:8132`. Requires GitLab 15.0+. Self-managed instances aren't covered by the shipped client — connect them with a personal access token instead.
 - **Jira** (Jira Cloud sign-in): `SKIPPER_JIRA_CLIENT_ID` + `SKIPPER_JIRA_CLIENT_SECRET` — an Atlassian OAuth 2.0 (3LO) app (developer.atlassian.com console) with the Jira API scopes `read:jira-work`, `read:jira-user` (plus `offline_access`) and a single callback URL `http://127.0.0.1:8133/callback`. 3LO doesn't use PKCE, so the (non-confidential desktop) secret is required. Jira Data Center (self-hosted) isn't covered by the shipped client — connect it with a personal access token and instance URL instead.
 - **Bitbucket** (Bitbucket Cloud sign-in): `SKIPPER_BITBUCKET_CLIENT_ID` + `SKIPPER_BITBUCKET_CLIENT_SECRET` — a Bitbucket Cloud OAuth consumer (workspace → Settings → OAuth consumers) marked as a private consumer, with permissions Account (read), Repositories (read), Pull requests (write), and a single callback URL `http://127.0.0.1/callback` (Bitbucket ignores the loopback port, so no port is pinned). No PKCE support, so the (non-confidential desktop) secret is required. Bitbucket Data Center (self-hosted) isn't covered.
+- **OpenProject** (self-hosted): no shipped client — point Skipper at your instance in Settings → OpenProject with either an OAuth application (Doorkeeper, `api_v3` scope) created on the instance itself, or an API key.
 
 ## Author
 

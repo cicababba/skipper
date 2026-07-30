@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { useT } from "@/lib/app-i18n";
+import { isStuck } from "@/lib/inbox/chat-format";
 import type { ChatTurn } from "@/lib/inbox/chat-turns";
 import { EventLine } from "@/components/event-line";
 
@@ -15,6 +16,29 @@ export function ChatActivity({ turn }: { turn: ChatTurn }) {
   const c = t.inbox.chat;
   const [override, setOverride] = useState<boolean | null>(null);
   const open = override ?? turn.open;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const stuckRef = useRef(true);
+
+  // Follow activity while the block is open and the user hasn't scrolled away.
+  // The inner list clips at max-h-64, so without this new EventLine rows land
+  // below the fold and the transcript appears frozen (#275).
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !open || !stuckRef.current) return;
+    el.scrollTop = el.scrollHeight;
+    // Re-pin on async EventLine / markdown reflow that grows the list height
+    // after this effect ran.
+    const observer = new ResizeObserver(() => {
+      if (stuckRef.current) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [open, turn.envelopes.length]);
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (el) stuckRef.current = isStuck(el.scrollTop, el.clientHeight, el.scrollHeight);
+  };
 
   // Streamed reply increments (#277) belong to the draft bubble, not the step
   // log — exclude them so they neither flood the list nor inflate the count.
@@ -31,7 +55,11 @@ export function ChatActivity({ turn }: { turn: ChatTurn }) {
         {c.activitySteps(steps.length)}
       </button>
       {open && steps.length > 0 && (
-        <div className="max-h-64 overflow-y-auto rounded-lg border border-card-hover bg-card p-2.5 font-mono text-xs leading-relaxed space-y-1.5">
+        <div
+          ref={scrollRef}
+          onScroll={onScroll}
+          className="max-h-64 overflow-y-auto rounded-lg border border-card-hover bg-card p-2.5 font-mono text-xs leading-relaxed space-y-1.5"
+        >
           {steps.map((e) => (
             <div key={e.seq}>
               <EventLine event={e.event} />

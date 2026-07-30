@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { ArrowDown, Loader2 } from "lucide-react";
 import { isPlanChatText, type PlanChatMessage } from "@skipper/shared";
 import type { ReactNode } from "react";
@@ -37,20 +37,35 @@ export function ChatTranscript({
   const c = t.inbox.chat;
   const scrollRef = useRef<HTMLDivElement>(null);
   const [stuck, setStuck] = useState(true);
+  // Mirror of `stuck` for the ResizeObserver callback, which would otherwise
+  // capture a stale value; the state still drives the jump-to-latest pill.
+  const stuckRef = useRef(true);
 
-  useEffect(() => {
+  // Read layout synchronously after DOM mutation so we re-pin before paint, and
+  // keep following activity/markdown reflow that grows the height afterwards (#275).
+  useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (el && stuck) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (stuckRef.current) el.scrollTop = el.scrollHeight;
+    const observer = new ResizeObserver(() => {
+      if (stuckRef.current) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [items, thinking, stuck]);
 
   const onScroll = () => {
     const el = scrollRef.current;
-    if (el) setStuck(isStuck(el.scrollTop, el.clientHeight, el.scrollHeight));
+    if (!el) return;
+    const next = isStuck(el.scrollTop, el.clientHeight, el.scrollHeight);
+    stuckRef.current = next;
+    setStuck(next);
   };
 
   const toBottom = () => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
+    stuckRef.current = true;
     setStuck(true);
   };
 
