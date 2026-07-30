@@ -47,6 +47,9 @@ let orchestratorPoke: (() => void) | null = null;
 let coderKillAll: (() => void) | null = null;
 let plannerKillAll: (() => void) | null = null;
 let rescoreKillAll: (() => void) | null = null;
+// Auto-saves abandoned composer sessions as unfinished drafts (#272). Sync on
+// purpose: the quit path cannot await before the failsafe force-exits.
+let composerQuitFlush: (() => void) | null = null;
 
 // On macOS, packaged Electron apps don't inherit the user's shell PATH —
 // they get a minimal PATH like /usr/bin:/bin which doesn't include common
@@ -966,6 +969,7 @@ app.whenReady().then(async () => {
           // planning agent children that would block the NSIS file
           // replacement on Windows.
           shuttingDown = true;
+          composerQuitFlush?.();
           coderKillAll?.();
           plannerKillAll?.();
           rescoreKillAll?.();
@@ -981,7 +985,7 @@ app.whenReady().then(async () => {
     // the ESM @skipper/core; a broken bundle must never block startup.
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { initOrchestrator, pokeOrchestrator, killAllCodingRuns, killAllPlanningRuns, killAllRescores } = require("./orchestrator.cjs") as typeof import("./orchestrator");
+      const { initOrchestrator, pokeOrchestrator, killAllCodingRuns, killAllPlanningRuns, killAllRescores, flushUnfinishedComposerChats } = require("./orchestrator.cjs") as typeof import("./orchestrator");
       initOrchestrator(() => mainWindow, {
         getAccounts: () => authManager?.getState().accounts ?? [],
         getToken: (key, force) =>
@@ -1006,6 +1010,7 @@ app.whenReady().then(async () => {
       coderKillAll = killAllCodingRuns;
       plannerKillAll = killAllPlanningRuns;
       rescoreKillAll = killAllRescores;
+      composerQuitFlush = flushUnfinishedComposerChats;
     } catch (e) {
       console.warn("[orchestrator] bundle unavailable:", e instanceof Error ? e.message : e);
     }
@@ -1036,6 +1041,9 @@ app.on("before-quit", () => {
   // Drop the dock icon immediately: while the (bounded) teardown runs, a
   // still-clickable icon could relaunch into a black window.
   if (process.platform === "darwin") app.dock?.hide();
+  // Before anything is torn down: the composer's live sessions only exist in
+  // memory, so an unsaved one is written out here or lost (#272).
+  composerQuitFlush?.();
   // Live node-pty children (integrated terminals) and coding agents keep the
   // process alive past app.quit() — the classic "window gone, app still in
   // the dock" zombie.

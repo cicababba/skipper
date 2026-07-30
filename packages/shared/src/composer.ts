@@ -76,6 +76,10 @@ export interface StoredComposerDraft {
   messages: PlanChatMessage[];
   draft?: ComposerDraft;
   editedFlags?: ComposerEditedFlags;
+  /** Auto-saved on abandonment (#272) rather than saved on purpose: at most one
+   *  per repo, overwritten by the next abandoned session until an explicit save
+   *  or a publish ends its life. */
+  unfinished?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -86,6 +90,10 @@ export interface ComposerDraftListItem {
   repo: RepoRef;
   title: string;
   updatedAt: string;
+  unfinished?: boolean;
+  /** No transcript, so the session was the quick path (#137) — resuming it
+   *  reopens quick mode, not the chat. */
+  quick?: boolean;
 }
 
 export type SaveComposerDraftResult =
@@ -93,7 +101,7 @@ export type SaveComposerDraftResult =
   | { ok: false; error: string };
 
 export type ResumeComposerChatResult =
-  | { ok: true; chatId: string }
+  | { ok: true; chatId: string; unfinished?: boolean }
   | { ok: false; error: string };
 
 /** The account's provider username, for self-assignment. Absent when it cannot

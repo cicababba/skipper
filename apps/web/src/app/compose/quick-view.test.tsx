@@ -17,8 +17,28 @@ vi.mock("@/lib/orchestrator-context", () => ({
 
 const REPO = { owner: "acme", name: "widgets" };
 
-function installSkipper(opts: { created?: unknown } = {}) {
+/** A resumed quick draft comes back without a transcript — the card is all of it. */
+const RESUMED_CARD = {
+  messages: [],
+  draft: {
+    issues: [
+      {
+        title: "web:fix: the topbar jumps",
+        body: "It shifts by a pixel on hover.",
+        acceptanceCriteria: [],
+        labels: [],
+      },
+    ],
+    relations: [],
+  },
+};
+
+function installSkipper(opts: { created?: unknown; chat?: unknown } = {}) {
   const start = vi.fn().mockResolvedValue({ ok: true, chatId: "chat-1" });
+  const resume = vi.fn().mockResolvedValue({ ok: true, chatId: "draft-3", unfinished: true });
+  const dispose = vi.fn().mockResolvedValue(undefined);
+  const updateDraft = vi.fn().mockResolvedValue({ ok: true });
+  const remove = vi.fn().mockResolvedValue({ ok: true });
   const getSelfLogin = vi.fn().mockResolvedValue({ login: "cicababba" });
   const createIssueOnTracker = vi.fn().mockResolvedValue(
     opts.created ?? {
@@ -28,29 +48,42 @@ function installSkipper(opts: { created?: unknown } = {}) {
       url: "https://github.com/acme/widgets/issues/12",
     },
   );
+  const getChat = vi.fn().mockResolvedValue(opts.chat ?? { messages: [] });
   (window as unknown as { skipper: unknown }).skipper = {
     composer: {
       start,
-      getChat: vi.fn().mockResolvedValue({ messages: [] }),
+      resume,
+      getChat,
       send: vi.fn(),
       generateDraft: vi.fn(),
-      updateDraft: vi.fn(),
-      dispose: vi.fn(),
+      updateDraft,
+      dispose,
       cancel: vi.fn(),
       getSelfLogin,
       getEvents: vi.fn().mockResolvedValue([]),
       onEvent: vi.fn(() => () => {}),
     },
+    drafts: { list: vi.fn().mockResolvedValue([]), remove, onChanged: vi.fn(() => () => {}) },
     orchestrator: { createIssueOnTracker },
     openExternal: vi.fn(),
   };
-  return { start, getSelfLogin, createIssueOnTracker };
+  return { start, resume, getChat, updateDraft, dispose, remove, getSelfLogin, createIssueOnTracker };
 }
 
-function renderQuick() {
+function renderQuick(draftId?: string) {
   const onSwitch = vi.fn();
-  render(<QuickView repo={REPO} mode="quick" onSwitch={onSwitch} />);
-  return { onSwitch };
+  const view = render(
+    <QuickView repo={REPO} mode="quick" onSwitch={onSwitch} draftId={draftId ?? null} />,
+  );
+  return { onSwitch, view };
+}
+
+/** The push to main is debounced (500ms) — let it land inside act so a pending
+ *  timer never updates state after the test. */
+async function flushDraftPush() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+  });
 }
 
 function type(label: string, value: string) {
@@ -181,6 +214,125 @@ describe("QuickView", () => {
     expect(onSwitch).not.toHaveBeenCalled();
     expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe(
       "web:fix: the topbar jumps",
+    );
+  });
+});
+
+// Quick borrows the composer record (#272) for one reason: so an abandoned card
+// survives. Nothing else about the path changes.
+describe("QuickView unfinished drafts", () => {
+  it("starts a session on the first edit and pushes the card after the debounce", async () => {
+    const { start, updateDraft } = installSkipper();
+    renderQuick();
+    expect(start).not.toHaveBeenCalled();
+
+    type("Title", "web:fix: the topbar jumps");
+
+    await waitFor(() => expect(start).toHaveBeenCalledWith(REPO));
+    await flushDraftPush();
+    const [, chatId, draft] = updateDraft.mock.calls.at(-1) as [
+      unknown,
+      string,
+      { issues: { title: string }[] },
+    ];
+    expect(chatId).toBe("chat-1");
+    expect(draft.issues[0].title).toBe("web:fix: the topbar jumps");
+  });
+
+  // An unlinked repo has no record to hold the card; creating issues is still
+  // the point of the page, so it must keep working.
+  it("keeps the create flow working when the session cannot start", async () => {
+    const { start, updateDraft, createIssueOnTracker } = installSkipper();
+    start.mockResolvedValue({ ok: false, error: "repo not linked" });
+    renderQuick();
+
+    type("Title", "web:fix: the topbar jumps");
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    type("Body", "It shifts by a pixel on hover.");
+    await flushDraftPush();
+
+    // A failed start is remembered, not retried on every keystroke.
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(updateDraft).not.toHaveBeenCalled();
+
+    await clickCreate();
+    expect(createIssueOnTracker).toHaveBeenCalled();
+    expect(await screen.findByText("#12 created")).toBeTruthy();
+  });
+
+  it("resumes an unfinished quick draft prefilled, without starting a new session", async () => {
+    const { start, resume, getChat } = installSkipper({ chat: RESUMED_CARD });
+    renderQuick("draft-3");
+
+    await waitFor(() => expect(resume).toHaveBeenCalledWith(REPO, "draft-3"));
+    expect(start).not.toHaveBeenCalled();
+    await waitFor(() => expect(getChat).toHaveBeenCalledWith(REPO, "draft-3"));
+    expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe(
+      "web:fix: the topbar jumps",
+    );
+    expect((screen.getByLabelText("Body") as HTMLTextAreaElement).value).toBe(
+      "It shifts by a pixel on hover.",
+    );
+    await flushDraftPush();
+  });
+
+  it("says so when the resume fails", async () => {
+    const { resume } = installSkipper();
+    resume.mockResolvedValue({ ok: false, error: "unknown draft" });
+    renderQuick("draft-3");
+
+    await waitFor(() => expect(resume).toHaveBeenCalledWith(REPO, "draft-3"));
+    expect(
+      await screen.findByText("The composer could not start: unknown draft"),
+    ).toBeTruthy();
+  });
+
+  it("leaves the abandoned card to main's capture on a plain unmount", async () => {
+    const { start, dispose } = installSkipper();
+    const { view } = renderQuick();
+    type("Title", "web:fix: the topbar jumps");
+    await waitFor(() => expect(start).toHaveBeenCalled());
+    await flushDraftPush();
+
+    view.unmount();
+
+    await waitFor(() => expect(dispose).toHaveBeenCalledWith(REPO, "chat-1", undefined));
+  });
+
+  it("discards the session when the user confirms leaving for chat", async () => {
+    const { start, dispose } = installSkipper();
+    const { onSwitch, view } = renderQuick();
+    type("Title", "web:fix: the topbar jumps");
+    await waitFor(() => expect(start).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch" }));
+    await waitFor(() => expect(onSwitch).toHaveBeenCalledWith("chat"));
+    await flushDraftPush();
+    view.unmount();
+
+    await waitFor(() =>
+      expect(dispose).toHaveBeenCalledWith(REPO, "chat-1", { discard: true }),
+    );
+  });
+
+  it("removes the draft it resumed once every issue reached the tracker", async () => {
+    const { remove, dispose } = installSkipper({ chat: RESUMED_CARD });
+    const { view } = renderQuick("draft-3");
+    await waitFor(() =>
+      expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe(
+        "web:fix: the topbar jumps",
+      ),
+    );
+
+    await clickCreate();
+
+    expect(await screen.findByText("#12 created")).toBeTruthy();
+    await waitFor(() => expect(remove).toHaveBeenCalledWith("draft-3"));
+    await flushDraftPush();
+    view.unmount();
+    await waitFor(() =>
+      expect(dispose).toHaveBeenCalledWith(REPO, "draft-3", { discard: true }),
     );
   });
 });

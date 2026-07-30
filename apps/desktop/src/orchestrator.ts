@@ -135,7 +135,7 @@ import {
   confirmCoderChatApply,
   cancelAgentChat,
 } from "./agent-chat";
-import { initComposerChat } from "./composer-chat";
+import { flushUnfinishedComposerChats, initComposerChat } from "./composer-chat";
 import {
   initRescore,
   startRescore,
@@ -160,7 +160,7 @@ import {
   worktreeDirtyFiles,
 } from "./worktrees";
 
-export { killAllCodingRuns, killAllPlanningRuns, killAllRescores };
+export { killAllCodingRuns, killAllPlanningRuns, killAllRescores, flushUnfinishedComposerChats };
 
 // Orchestrator loop (issue #6): absorbs the issue-#5 inbox poller. Keeps
 // per-account snapshots of assigned issues + authored PRs fresh via the core

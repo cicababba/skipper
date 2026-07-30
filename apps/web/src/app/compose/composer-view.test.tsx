@@ -123,7 +123,11 @@ describe("ComposerView", () => {
     await waitFor(() => expect(start).toHaveBeenCalledWith({ owner: "acme", name: "widgets" }));
     view.unmount();
     await waitFor(() =>
-      expect(dispose).toHaveBeenCalledWith({ owner: "acme", name: "widgets" }, "chat-1"),
+      expect(dispose).toHaveBeenCalledWith(
+        { owner: "acme", name: "widgets" },
+        "chat-1",
+        undefined,
+      ),
     );
   });
 
@@ -423,5 +427,141 @@ describe("ComposerView drafts", () => {
     expect(await screen.findByText("Every issue was created.")).toBeTruthy();
     expect(remove).not.toHaveBeenCalled();
     await flushDraftPush();
+  });
+});
+
+// Unfinished drafts (#272): the same list, the same resume route, one flag that
+// says the app saved this — not the user.
+describe("ComposerView unfinished drafts", () => {
+  const UNFINISHED_RESUME = Promise.resolve({ ok: true, chatId: "draft-1", unfinished: true });
+
+  const HYDRATED = {
+    messages: [{ role: "user", text: "rate-limit the webhook", at: "2026-07-25T10:00:00.000Z" }],
+    draft: DRAFT,
+    editedFlags: {},
+  };
+
+  /** A quick session has no transcript — that is what makes it quick-shaped. */
+  const QUICK_HYDRATED = {
+    messages: [],
+    draft: {
+      issues: [
+        {
+          title: "web:fix: the topbar jumps",
+          body: "It shifts by a pixel on hover.",
+          acceptanceCriteria: [],
+          labels: [],
+        },
+      ],
+      relations: [],
+    },
+  };
+
+  it("resumes an unfinished quick draft into the quick path, prefilled", async () => {
+    const { start, resume, getChat } = installSkipper({ chat: QUICK_HYDRATED });
+    searchParams = new URLSearchParams({ ...BARE_PARAMS, mode: "quick", draft: "draft-1" });
+    render(<ComposerView />);
+
+    await waitFor(() =>
+      expect(resume).toHaveBeenCalledWith({ owner: "acme", name: "widgets" }, "draft-1"),
+    );
+    expect(start).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(getChat).toHaveBeenCalledWith({ owner: "acme", name: "widgets" }, "draft-1"),
+    );
+    expect(await screen.findByDisplayValue("web:fix: the topbar jumps")).toBeTruthy();
+    // Quick stays quick: no chat, no distillation.
+    expect(screen.queryByRole("button", { name: "Generate draft" })).toBeNull();
+    expect(screen.queryByPlaceholderText("Describe the work…")).toBeNull();
+    await flushDraftPush();
+  });
+
+  it("keeps offering Save draft on a resumed unfinished chat", async () => {
+    installSkipper({ chat: HYDRATED, resumeResult: UNFINISHED_RESUME });
+    searchParams = new URLSearchParams({ ...BARE_PARAMS, draft: "draft-1" });
+    render(<ComposerView />);
+
+    expect(await screen.findByRole("button", { name: "Save draft" })).toBeTruthy();
+    expect(screen.queryByText("Saved")).toBeNull();
+    await flushDraftPush();
+  });
+
+  it("promotes the resumed unfinished draft when the user saves it", async () => {
+    const { saveDraft } = installSkipper({ chat: HYDRATED, resumeResult: UNFINISHED_RESUME });
+    saveDraft.mockResolvedValue({ ok: true, draftId: "draft-1" });
+    searchParams = new URLSearchParams({ ...BARE_PARAMS, draft: "draft-1" });
+    render(<ComposerView />);
+    const save = (await screen.findByRole("button", { name: "Save draft" })) as HTMLButtonElement;
+    await waitFor(() => expect(save.disabled).toBe(false));
+
+    await act(async () => {
+      fireEvent.click(save);
+    });
+
+    expect(saveDraft).toHaveBeenCalledWith({ owner: "acme", name: "widgets" }, "draft-1");
+    expect(await screen.findByText("Saved")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull();
+    await flushDraftPush();
+  });
+
+  it("publishing a resumed unfinished draft removes it and discards the session", async () => {
+    const { remove, dispose, createIssueOnTracker } = installSkipper({
+      chat: HYDRATED,
+      resumeResult: UNFINISHED_RESUME,
+    });
+    searchParams = new URLSearchParams({ ...BARE_PARAMS, draft: "draft-1" });
+    const view = render(<ComposerView />);
+    await screen.findByDisplayValue("web:feat: rate-limit the webhook");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    });
+
+    expect(createIssueOnTracker).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(remove).toHaveBeenCalledWith("draft-1"));
+    await flushDraftPush();
+
+    view.unmount();
+    await waitFor(() =>
+      expect(dispose).toHaveBeenCalledWith({ owner: "acme", name: "widgets" }, "draft-1", {
+        discard: true,
+      }),
+    );
+  });
+
+  // Walking away is the whole feature: the renderer says nothing and main is the
+  // one that decides the session is worth keeping.
+  it("leaves an abandoned chat to main's capture on a plain unmount", async () => {
+    const { dispose } = installSkipper();
+    const view = render(<ComposerView />);
+    await chat("rate-limit the webhook");
+
+    view.unmount();
+
+    await waitFor(() =>
+      expect(dispose).toHaveBeenCalledWith(
+        { owner: "acme", name: "widgets" },
+        "chat-1",
+        undefined,
+      ),
+    );
+  });
+
+  it("discards the session when the user confirms a switch to quick", async () => {
+    const { dispose } = installSkipper();
+    const view = render(<ComposerView />);
+    await chat("rate-limit the webhook");
+
+    fireEvent.click(screen.getByRole("button", { name: "Quick" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Switch" }));
+    });
+    view.unmount();
+
+    await waitFor(() =>
+      expect(dispose).toHaveBeenCalledWith({ owner: "acme", name: "widgets" }, "chat-1", {
+        discard: true,
+      }),
+    );
   });
 });
