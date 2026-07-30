@@ -16,6 +16,7 @@ export { buildMcpConfigArgs } from "./mcp-config";
 export {
   toClaudePathRoot,
   scopedWriteRules,
+  writeApprovalRules,
   buildConfinementSettingsArgs,
   confinementEnv,
 } from "./confinement";

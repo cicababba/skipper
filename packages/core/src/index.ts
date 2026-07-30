@@ -8,6 +8,7 @@ export type { GraphifyMcp, GraphifyContext } from "./llm";
 export {
   toClaudePathRoot,
   scopedWriteRules,
+  writeApprovalRules,
   buildConfinementSettingsArgs,
   confinementEnv,
 } from "./llm";

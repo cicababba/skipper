@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
 import {
   buildCoderPrompt,
   buildCoderRecapPrompt,
@@ -378,12 +379,14 @@ async function run(itemId: string, repoKey: string): Promise<void> {
         : buildCoderRecapPrompt(issue, await collectRecap(item, worktree.path, stored.plan));
 
     const memory = deps.getMemoryMcp?.(item);
-    // Confinement (#196): scope writes to the worktree, deny the checkout, and
-    // launch the guard hook from the CLI bundle (reusing the memory wiring's path
-    // — present exactly when a bundle exists). No bundle → L1 scoping + tripwire.
+    // Confinement (#196): scope writes to the worktree, deny the checkout, protect
+    // the user's home from out-of-root Bash paths (#278), and launch the guard hook
+    // from the CLI bundle (reusing the memory wiring's path — present exactly when a
+    // bundle exists). No bundle → L1 scoping + tripwire.
     const confinement: RunConfinement = {
       runRoot: worktree.path,
       denyRoots: repoPath ? [repoPath] : [],
+      protectRoots: [homedir()],
       ...(memory?.cliBundlePath ? { cliBundlePath: memory.cliBundlePath } : {}),
     };
     // #227: inject the repo's conventions doc into the coder system prompt.

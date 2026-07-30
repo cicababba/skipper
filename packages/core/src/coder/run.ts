@@ -6,7 +6,7 @@ import { MEMORY_TOOLS, buildMemoryMcpArgs, type MemoryMcp } from "../llm/memory-
 import {
   buildConfinementSettingsArgs,
   confinementEnv,
-  scopedWriteRules,
+  writeApprovalRules,
   type RunConfinement,
 } from "../llm/confinement";
 
@@ -92,10 +92,12 @@ export function runCodingAgent(
     const tools = opts.memory ? `${CODER_TOOLS},${MEMORY_TOOLS}` : CODER_TOOLS;
     // L1 confinement (#196): --tools keeps the bare names, but --allowedTools
     // pre-approves the write tools only path-scoped to the run root, so an
-    // absolute-path Edit/Write anywhere else on disk is auto-denied. Scoping is
-    // unconditional — a coder write outside its worktree is a bug by contract.
+    // absolute-path Edit/Write anywhere else on disk is auto-denied. On Windows
+    // no scoped rule shape matches (#278), so there the write grant is bare and
+    // the guard hook is the enforcement — hence the guarded flag.
     const nonWrite = opts.memory ? `${CODER_NONWRITE_TOOLS},${MEMORY_TOOLS}` : CODER_NONWRITE_TOOLS;
-    const allowedTools = [nonWrite, ...scopedWriteRules(opts.cwd)].join(",");
+    const guarded = Boolean(opts.confinement?.cliBundlePath);
+    const allowedTools = [nonWrite, ...writeApprovalRules(opts.cwd, guarded)].join(",");
     const args = [
       ...claude.argsPrefix,
       "-p",
