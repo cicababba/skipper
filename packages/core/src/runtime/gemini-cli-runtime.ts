@@ -16,6 +16,10 @@ export const GEMINI_CLI_CAPABILITIES: RuntimeCapabilities = {
   resume: true,
   confinement: "none",
   mcp: true,
+  /** Assumption (#281), to verify against the installed CLI: gemini's read_file
+   *  is multimodal and handles both images and PDFs. */
+  images: true,
+  pdfs: true,
 };
 
 /**

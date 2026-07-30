@@ -1008,6 +1008,7 @@ app.whenReady().then(async () => {
         worktreesDir: join(app.getPath("userData"), "worktrees"),
         memoryDir: join(app.getPath("userData"), "memory"),
         draftsDir: join(app.getPath("userData"), "drafts"),
+        composerAttachmentsDir: join(app.getPath("userData"), "composer", "attachments"),
         repoInstructionsDir: join(app.getPath("userData"), "repo-instructions"),
         graphsDir: join(app.getPath("userData"), "graphs"),
         toolsDir: join(app.getPath("userData"), "tools"),

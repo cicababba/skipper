@@ -11,11 +11,16 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
-import { isPlanChatText, type PlanChatMessage } from "@skipper/shared";
+import {
+  isPlanChatText,
+  type AttachComposerFileResult,
+  type PlanChatAttachment,
+  type PlanChatMessage,
+} from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { buildTranscript } from "@/lib/inbox/chat-transcript";
 import { draftFromTurn } from "@/lib/inbox/chat-draft";
-import { ChatComposer } from "./chat-composer";
+import { ChatComposer, type PendingChatAttachment } from "./chat-composer";
 import { ChatTranscript } from "./chat-transcript";
 import { useChatStream, type ChatStreamSource } from "./use-chat-stream";
 
@@ -33,9 +38,41 @@ export interface ChatSendResult {
 
 export interface ChatAdapter {
   loadHistory: () => Promise<PlanChatMessage[]>;
-  send: (text: string) => Promise<ChatSendResult>;
+  send: (text: string, attachments?: PlanChatAttachment[]) => Promise<ChatSendResult>;
   /** Presence turns the Send button into Stop while a turn is in flight. */
   cancel?: () => void;
+}
+
+/** Attachments (#281) are opt-in per interlocutor: without this adapter the
+ *  composer renders no chip strip and ignores paste/drop. */
+export interface ChatAttachmentsAdapter {
+  attach: (file: File) => Promise<AttachComposerFileResult>;
+  detach: (path: string) => void;
+}
+
+const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
+const ATTACHABLE_EXTENSIONS = [
+  ...IMAGE_EXTENSIONS,
+  ".pdf",
+  ".txt",
+  ".md",
+  ".markdown",
+  ".csv",
+  ".json",
+  ".log",
+  ".yaml",
+  ".yml",
+];
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_ATTACHMENTS = 4;
+
+function extensionOf(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot < 0 ? "" : name.slice(dot).toLowerCase();
+}
+
+interface PendingAttachment extends PendingChatAttachment {
+  path: string;
 }
 
 export interface ChatPanelHandle {
@@ -60,6 +97,7 @@ interface ChatPanelProps {
   onBusyChange: (busy: boolean) => void;
   onCountChange?: (count: number) => void;
   inputRef?: React.RefObject<HTMLTextAreaElement | null>;
+  attachments?: ChatAttachmentsAdapter;
   className?: string;
 }
 
@@ -78,12 +116,14 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
     onBusyChange,
     onCountChange,
     inputRef,
+    attachments,
     className,
   },
   ref,
 ) {
   const { t } = useT();
   const chat = t.inbox.plan.chat;
+  const chatT = t.inbox.chat;
 
   const [messages, setMessages] = useState<PlanChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -93,6 +133,29 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
   const [failedAt, setFailedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingAttachment[]>([]);
+  const [attachWarning, setAttachWarning] = useState(false);
+
+  // Previews are ObjectURLs keyed by the saved path, so a failed send can hand
+  // the same chips back on dismiss instead of losing the thumbnail.
+  const previewUrls = useRef(new Map<string, string>());
+  const pendingRef = useRef<PendingAttachment[]>([]);
+  pendingRef.current = pending;
+
+  const releasePreview = useCallback((path: string) => {
+    const url = previewUrls.current.get(path);
+    if (!url) return;
+    URL.revokeObjectURL(url);
+    previewUrls.current.delete(path);
+  }, []);
+
+  useEffect(() => {
+    const urls = previewUrls.current;
+    return () => {
+      for (const url of urls.values()) URL.revokeObjectURL(url);
+      urls.clear();
+    };
+  }, []);
 
   const turns = useChatStream(itemId, turnDetails, stream);
   const textCount = messages.filter(isPlanChatText).length;
@@ -151,17 +214,75 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
     [messages, turns, failedIndex, draft],
   );
 
-  const send = async (text: string) => {
+  const attachFiles = async (files: File[]) => {
+    if (!attachments) return;
+    setError(null);
+    for (const file of files) {
+      if (pendingRef.current.length >= MAX_ATTACHMENTS) {
+        setError(chatT.attachLimit);
+        return;
+      }
+      if (!ATTACHABLE_EXTENSIONS.includes(extensionOf(file.name))) {
+        setError(chatT.attachInvalidType);
+        continue;
+      }
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        setError(chatT.attachTooLarge);
+        continue;
+      }
+      const res = await attachments.attach(file);
+      if (!res.ok) {
+        setError(res.error ? `${chatT.attachFailed}: ${res.error}` : chatT.attachFailed);
+        continue;
+      }
+      const previewUrl = IMAGE_EXTENSIONS.includes(extensionOf(res.name))
+        ? URL.createObjectURL(file)
+        : undefined;
+      if (previewUrl) previewUrls.current.set(res.path, previewUrl);
+      const added: PendingAttachment = {
+        id: res.path,
+        name: res.name,
+        path: res.path,
+        ...(previewUrl ? { previewUrl } : {}),
+      };
+      pendingRef.current = [...pendingRef.current, added];
+      setPending(pendingRef.current);
+      if (!res.supported) setAttachWarning(true);
+    }
+  };
+
+  const removeAttachment = (id: string) => {
+    const next = pendingRef.current.filter((a) => a.id !== id);
+    pendingRef.current = next;
+    setPending(next);
+    if (next.length === 0) setAttachWarning(false);
+    releasePreview(id);
+    attachments?.detach(id);
+  };
+
+  /** Rebuild the input chips from a message's attachments — the previews are
+   *  still alive, so a dismissed failure looks exactly as it did before Send. */
+  const chipsFrom = (attached: PlanChatAttachment[]): PendingAttachment[] =>
+    attached.map((a) => {
+      const previewUrl = previewUrls.current.get(a.path);
+      return { id: a.path, name: a.name, path: a.path, ...(previewUrl ? { previewUrl } : {}) };
+    });
+
+  const send = async (text: string, attached: PlanChatAttachment[] = []) => {
     const at = new Date().toISOString();
     setError(null);
     setNotice(null);
     setFailedAt(null);
     setBusy(true);
     editedRef.current = true;
-    setMessages((m) => [...m, { role: "user", text, at }]);
+    setMessages((m) => [
+      ...m,
+      { role: "user", text, at, ...(attached.length > 0 ? { attachments: attached } : {}) },
+    ]);
     try {
-      const res = await adapter.send(text);
+      const res = await adapter.send(text, attached.length > 0 ? attached : undefined);
       if (res.ok) {
+        for (const a of attached) releasePreview(a.path);
         setMessages((m) => [
           ...m,
           { role: "assistant", text: res.reply ?? "", at: new Date().toISOString() },
@@ -170,6 +291,8 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
         // Cancel means "let me rephrase": hand the text back, drop the bubble.
         setMessages((m) => m.filter((x) => !sentAt(at)(x)));
         setInput(text);
+        pendingRef.current = chipsFrom(attached);
+        setPending(pendingRef.current);
         setNotice(chat.cancelled);
       } else {
         setFailedAt(at);
@@ -183,29 +306,37 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
   const submit = () => {
     const text = input.trim();
     if (!text || busy || disabled) return;
+    const attached = pending.map(({ name, path }) => ({ name, path }));
     setInput("");
-    void send(text);
+    pendingRef.current = [];
+    setPending([]);
+    setAttachWarning(false);
+    void send(text, attached);
   };
 
-  const failedText = () => {
+  const failedMessage = () => {
     const failed = failedIndex < 0 ? null : messages[failedIndex];
-    return failed && isPlanChatText(failed) ? failed.text : null;
+    return failed && isPlanChatText(failed) ? failed : null;
   };
 
   const retry = () => {
-    const text = failedText();
-    if (text === null || busy || disabled) return;
+    const failed = failedMessage();
+    if (failed === null || busy || disabled) return;
     setMessages((m) => m.filter((_, i) => i !== failedIndex));
-    void send(text);
+    void send(failed.text, failed.attachments ?? []);
   };
 
   const dismiss = () => {
-    const text = failedText();
-    if (text === null) return;
+    const failed = failedMessage();
+    if (failed === null) return;
     setMessages((m) => m.filter((_, i) => i !== failedIndex));
     setFailedAt(null);
     setError(null);
-    setInput(text);
+    setInput(failed.text);
+    if (failed.attachments?.length) {
+      pendingRef.current = chipsFrom(failed.attachments);
+      setPending(pendingRef.current);
+    }
   };
 
   return (
@@ -229,6 +360,14 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
           disabled={disabled}
           busy={busy}
           inputRef={inputRef}
+          {...(attachments
+            ? {
+                attachments: pending,
+                onAttachFiles: (files: File[]) => void attachFiles(files),
+                onRemoveAttachment: removeAttachment,
+                attachmentsWarning: attachWarning ? chatT.attachmentsWarning : null,
+              }
+            : {})}
         />
 
         {footer}

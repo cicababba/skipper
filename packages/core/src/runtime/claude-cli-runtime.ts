@@ -5,12 +5,15 @@ import { runCodingAgent, type CodingRunResult, type RunCodingAgentOptions } from
 import type { AgentRuntime, RuntimeCapabilities, RuntimeStructuredOptions } from "./types";
 
 /** The claude-cli runtime's capabilities (#238): streaming, resumable on-disk
- *  sessions, rule-based confinement (the Bash guard hook), and MCP servers. */
+ *  sessions, rule-based confinement (the Bash guard hook), and MCP servers.
+ *  Read loads images and PDFs natively (#281). */
 export const CLAUDE_CLI_CAPABILITIES: RuntimeCapabilities = {
   streaming: true,
   resume: true,
   confinement: "rules",
   mcp: true,
+  images: true,
+  pdfs: true,
 };
 
 /**

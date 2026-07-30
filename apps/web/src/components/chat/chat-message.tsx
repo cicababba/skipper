@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Paperclip } from "lucide-react";
 import type { PlanChatTextMessage } from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { hhmm } from "@/lib/inbox/chat-format";
@@ -52,6 +52,20 @@ export function ChatMessage({ message, failed, onRetry, onDismiss }: ChatMessage
   if (message.role === "user") {
     return (
       <div className="group flex flex-col items-end gap-0.5">
+        {message.attachments && message.attachments.length > 0 && (
+          <div className="flex flex-wrap justify-end gap-1.5 max-w-[85%]">
+            {message.attachments.map((attachment) => (
+              <span
+                key={attachment.path}
+                title={attachment.name}
+                className="flex items-center gap-1 rounded-md border border-card-hover bg-card-hover/40 px-2 py-0.5 text-[11px] text-muted max-w-[160px]"
+              >
+                <Paperclip size={10} className="shrink-0 text-muted/70" />
+                <span className="truncate">{attachment.name}</span>
+              </span>
+            ))}
+          </div>
+        )}
         <div
           className={`max-w-[85%] rounded-lg px-3 py-2 whitespace-pre-wrap break-words ${
             failed ? "border border-danger/30 bg-danger-bg text-danger" : "bg-card-hover/40"

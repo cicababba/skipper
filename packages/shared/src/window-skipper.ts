@@ -35,6 +35,7 @@ import type {
 } from "./orchestrator";
 import type { CodingEventEnvelope } from "./coding";
 import type {
+  AttachComposerFileResult,
   ComposerChatSnapshot,
   ComposerDraft,
   ComposerDraftListItem,
@@ -46,7 +47,13 @@ import type {
   SendComposerChatResult,
   StartComposerChatResult,
 } from "./composer";
-import type { AgentChatKind, IssuePlan, PlanChatMessage, StoredPlan } from "./plan";
+import type {
+  AgentChatKind,
+  IssuePlan,
+  PlanChatAttachment,
+  PlanChatMessage,
+  StoredPlan,
+} from "./plan";
 import type { MemoryHit, MemoryPhase, SolutionRecord } from "./memory";
 import type { StoredCoderReport } from "./coder-report";
 import type { RepoRef } from "./inbox";
@@ -393,7 +400,26 @@ export interface WindowSkipper {
    *  a saved draft (#138), which survives both. */
   composer: {
     start: (repo: RepoRef) => Promise<StartComposerChatResult>;
-    send: (repo: RepoRef, chatId: string, text: string) => Promise<SendComposerChatResult>;
+    send: (
+      repo: RepoRef,
+      chatId: string,
+      text: string,
+      attachments?: PlanChatAttachment[],
+    ) => Promise<SendComposerChatResult>;
+    /** Persist a pasted/dropped file under <userData> so the turn can point the
+     *  runtime's own file tool at it (#281). */
+    attach: (
+      repo: RepoRef,
+      chatId: string,
+      name: string,
+      bytes: ArrayBuffer,
+    ) => Promise<AttachComposerFileResult>;
+    /** Drop an attachment that was never sent. */
+    detach: (
+      repo: RepoRef,
+      chatId: string,
+      path: string,
+    ) => Promise<{ ok: boolean; error?: string }>;
     getChat: (repo: RepoRef, chatId: string) => Promise<ComposerChatSnapshot | null>;
     /** Explicit distillation of the discussion into the structured draft. */
     generateDraft: (repo: RepoRef, chatId: string) => Promise<GenerateComposerDraftResult>;

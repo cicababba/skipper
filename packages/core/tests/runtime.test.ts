@@ -54,6 +54,8 @@ describe("createRuntime (#238)", () => {
       resume: true,
       confinement: "rules",
       mcp: true,
+      images: true,
+      pdfs: true,
     });
   });
 
@@ -87,6 +89,8 @@ describe("createRuntime with runtime: codex-cli (#239)", () => {
       resume: true,
       confinement: "sandbox",
       mcp: true,
+      images: true,
+      pdfs: false,
     });
   });
 
@@ -121,6 +125,8 @@ describe("createRuntime with runtime: copilot-cli (#242)", () => {
       resume: true,
       confinement: "rules",
       mcp: true,
+      images: false,
+      pdfs: false,
     });
   });
 
@@ -150,6 +156,8 @@ describe("createRuntime with runtime: gemini-cli (#243)", () => {
       resume: true,
       confinement: "none",
       mcp: true,
+      images: true,
+      pdfs: true,
     });
   });
 

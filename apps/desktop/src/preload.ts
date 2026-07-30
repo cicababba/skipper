@@ -18,6 +18,7 @@ import type {
   ComposerDraftListItem,
   ComposerEditedFlags,
   ComposerSelfLogin,
+  AttachComposerFileResult,
   CreateTerminalResult,
   GenerateComposerDraftResult,
   ResumeComposerChatResult,
@@ -37,6 +38,7 @@ import type {
   OrchestratorSettings,
   OrchestratorState,
   OrchestratorTransitionResult,
+  PlanChatAttachment,
   PlanChatMessage,
   PrReviewComment,
   RepoIntakeSettings,
@@ -361,8 +363,26 @@ const api = {
   composer: {
     start: (repo: RepoRef): Promise<StartComposerChatResult> =>
       ipcRenderer.invoke("skipper:composer:start", repo),
-    send: (repo: RepoRef, chatId: string, text: string): Promise<SendComposerChatResult> =>
-      ipcRenderer.invoke("skipper:composer:send", repo, chatId, text),
+    send: (
+      repo: RepoRef,
+      chatId: string,
+      text: string,
+      attachments?: PlanChatAttachment[],
+    ): Promise<SendComposerChatResult> =>
+      ipcRenderer.invoke("skipper:composer:send", repo, chatId, text, attachments),
+    attach: (
+      repo: RepoRef,
+      chatId: string,
+      name: string,
+      bytes: ArrayBuffer,
+    ): Promise<AttachComposerFileResult> =>
+      ipcRenderer.invoke("skipper:composer:attach", repo, chatId, name, bytes),
+    detach: (
+      repo: RepoRef,
+      chatId: string,
+      path: string,
+    ): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("skipper:composer:detach", repo, chatId, path),
     getChat: (repo: RepoRef, chatId: string): Promise<ComposerChatSnapshot | null> =>
       ipcRenderer.invoke("skipper:composer:getChat", repo, chatId),
     generateDraft: (repo: RepoRef, chatId: string): Promise<GenerateComposerDraftResult> =>

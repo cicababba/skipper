@@ -1,7 +1,12 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { CodingEventEnvelope, PlanChatMessage } from "@skipper/shared";
-import { ChatPanel, type ChatAdapter, type ChatSendResult } from "./chat-panel";
+import {
+  ChatPanel,
+  type ChatAdapter,
+  type ChatAttachmentsAdapter,
+  type ChatSendResult,
+} from "./chat-panel";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -16,6 +21,7 @@ function renderPanel(opts: {
   send?: ChatAdapter["send"];
   cancel?: () => void;
   emit?: (cb: (e: CodingEventEnvelope) => void) => void;
+  attachments?: ChatAttachmentsAdapter;
 }) {
   const adapter: ChatAdapter = {
     loadHistory: vi.fn().mockResolvedValue(opts.history ?? []),
@@ -39,6 +45,7 @@ function renderPanel(opts: {
       placeholder="Ask…"
       onBusyChange={vi.fn()}
       emptyState={<p>Nothing yet</p>}
+      attachments={opts.attachments}
     />,
   );
   return { adapter, stream };
@@ -65,7 +72,7 @@ describe("ChatPanel — send", () => {
 
     expect(await screen.findByText("hello")).toBeTruthy();
     expect(await screen.findByText("reply")).toBeTruthy();
-    expect(adapter.send).toHaveBeenCalledWith("hello");
+    expect(adapter.send).toHaveBeenCalledWith("hello", undefined);
   });
 });
 
@@ -85,7 +92,7 @@ describe("ChatPanel — failure and retry (#260)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("second time lucky")).toBeTruthy();
-    expect(send).toHaveBeenNthCalledWith(2, "hello");
+    expect(send).toHaveBeenNthCalledWith(2, "hello", undefined);
   });
 
   it("hands the text back to the composer on Dismiss", async () => {
@@ -227,5 +234,271 @@ describe("ChatPanel — activity autoscroll (#275)", () => {
     } finally {
       restore();
     }
+  });
+});
+
+// Attachments (#281). jsdom has no DataTransfer and no ObjectURL, so the paste
+// and drop inits are hand-built and the URL statics are stubbed. Events go on the
+// textarea: React's delegation carries the drop up to the composer wrapper.
+const ATTACH_WARNING =
+  "The selected agent runtime may not be able to read this file type — it could be ignored.";
+
+function file(name: string, bytes = "x") {
+  return new File([bytes], name, { type: "application/octet-stream" });
+}
+
+function attachmentsAdapter(
+  over: Partial<ChatAttachmentsAdapter> = {},
+): ChatAttachmentsAdapter & { attach: ReturnType<typeof vi.fn>; detach: ReturnType<typeof vi.fn> } {
+  return {
+    attach: vi.fn(async (f: File) => ({
+      ok: true as const,
+      path: `/data/attachments/chat-1/${f.name}`,
+      name: f.name,
+      supported: true,
+    })),
+    detach: vi.fn(),
+    ...over,
+  } as ChatAttachmentsAdapter & {
+    attach: ReturnType<typeof vi.fn>;
+    detach: ReturnType<typeof vi.fn>;
+  };
+}
+
+const paste = (files: File[]) =>
+  fireEvent.paste(screen.getByPlaceholderText("Ask…"), { clipboardData: { files } });
+
+const drop = (files: File[]) =>
+  fireEvent.drop(screen.getByPlaceholderText("Ask…"), {
+    dataTransfer: { files, types: ["Files"] },
+  });
+
+/** The input chip owns the remove button; the transcript chip does not. */
+const removeButtons = () => screen.queryAllByRole("button", { name: "Remove attachment" });
+
+beforeEach(() => {
+  const url = URL as unknown as Record<string, unknown>;
+  url.createObjectURL = vi.fn(() => "blob:preview-1");
+  url.revokeObjectURL = vi.fn();
+});
+
+describe("ChatPanel — attachments (#281)", () => {
+  it("attaches a pasted image and shows its chip with a preview", async () => {
+    const attachments = attachmentsAdapter();
+    renderPanel({ attachments });
+
+    paste([file("shot.png")]);
+
+    expect(await screen.findByText("shot.png")).toBeTruthy();
+    expect(attachments.attach).toHaveBeenCalledOnce();
+    expect(removeButtons()).toHaveLength(1);
+    expect(URL.createObjectURL).toHaveBeenCalled();
+    expect(screen.getByRole("img", { name: "shot.png" }).getAttribute("src")).toBe("blob:preview-1");
+  });
+
+  it("attaches dropped files, and mints no preview for a non-image", async () => {
+    const attachments = attachmentsAdapter();
+    renderPanel({ attachments });
+
+    drop([file("spec.pdf"), file("notes.md")]);
+
+    expect(await screen.findByText("spec.pdf")).toBeTruthy();
+    expect(screen.getByText("notes.md")).toBeTruthy();
+    expect(attachments.attach).toHaveBeenCalledTimes(2);
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it("does nothing without the adapter, so the plan and agent chats are untouched", async () => {
+    renderPanel({});
+    paste([file("shot.png")]);
+    drop([file("spec.pdf")]);
+    await waitFor(() => expect(screen.queryByText("shot.png")).toBeNull());
+    expect(removeButtons()).toHaveLength(0);
+  });
+
+  it("detaches the file when the chip's X is clicked", async () => {
+    const attachments = attachmentsAdapter();
+    renderPanel({ attachments });
+    paste([file("shot.png")]);
+    await screen.findByText("shot.png");
+
+    fireEvent.click(removeButtons()[0]);
+
+    await waitFor(() => expect(screen.queryByText("shot.png")).toBeNull());
+    expect(attachments.detach).toHaveBeenCalledWith("/data/attachments/chat-1/shot.png");
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:preview-1");
+  });
+
+  it("sends the pending attachments with the text and clears the chip strip", async () => {
+    const attachments = attachmentsAdapter();
+    const { adapter } = renderPanel({ attachments });
+    paste([file("shot.png")]);
+    await screen.findByText("shot.png");
+
+    type("why is the header cut off?");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(adapter.send).toHaveBeenCalledWith("why is the header cut off?", [
+        { name: "shot.png", path: "/data/attachments/chat-1/shot.png" },
+      ]),
+    );
+    // The chips move into the transcript bubble; the input strip is empty again.
+    await waitFor(() => expect(removeButtons()).toHaveLength(0));
+    expect(screen.getByText("shot.png")).toBeTruthy();
+  });
+
+  it("keeps requiring text — attachments alone do not enable Send", async () => {
+    renderPanel({ attachments: attachmentsAdapter() });
+    paste([file("shot.png")]);
+    await screen.findByText("shot.png");
+
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+
+    type("now with a question");
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("warns when the runtime cannot read the attached kind", async () => {
+    const attachments = attachmentsAdapter({
+      attach: vi.fn(async (f: File) => ({
+        ok: true as const,
+        path: `/data/attachments/chat-1/${f.name}`,
+        name: f.name,
+        supported: false,
+      })),
+    });
+    renderPanel({ attachments });
+
+    paste([file("shot.png")]);
+
+    expect(await screen.findByText(ATTACH_WARNING)).toBeTruthy();
+
+    // The warning belongs to the chips: removing the last one clears it.
+    fireEvent.click(removeButtons()[0]);
+    await waitFor(() => expect(screen.queryByText(ATTACH_WARNING)).toBeNull());
+  });
+
+  it("rejects an unsupported type and an oversized file before calling attach", async () => {
+    const attachments = attachmentsAdapter();
+    renderPanel({ attachments });
+
+    drop([file("payload.docx")]);
+    expect(await screen.findByText(/Unsupported file type/)).toBeTruthy();
+
+    const huge = file("huge.png");
+    Object.defineProperty(huge, "size", { value: 11 * 1024 * 1024 });
+    drop([huge]);
+    expect(await screen.findByText(/File is too large/)).toBeTruthy();
+
+    expect(attachments.attach).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a failed attach without adding a chip", async () => {
+    const attachments = attachmentsAdapter({
+      attach: vi.fn(async () => ({ ok: false as const, error: "disk full" })),
+    });
+    renderPanel({ attachments });
+
+    paste([file("shot.png")]);
+
+    expect(await screen.findByText(/Could not attach the file: disk full/)).toBeTruthy();
+    expect(removeButtons()).toHaveLength(0);
+  });
+
+  it("stops at four attachments per message", async () => {
+    const attachments = attachmentsAdapter();
+    renderPanel({ attachments });
+
+    drop(["a.png", "b.png", "c.png", "d.png", "e.png"].map((n) => file(n)));
+
+    expect(await screen.findByText(/At most 4 files per message/)).toBeTruthy();
+    await waitFor(() => expect(removeButtons()).toHaveLength(4));
+    expect(attachments.attach).toHaveBeenCalledTimes(4);
+  });
+
+  it("resends the attachments when a failed turn is retried", async () => {
+    const send = vi
+      .fn<ChatAdapter["send"]>()
+      .mockResolvedValueOnce({ ok: false, error: "boom" })
+      .mockResolvedValueOnce({ ok: true, reply: "second time lucky" });
+    renderPanel({ send, attachments: attachmentsAdapter() });
+    paste([file("shot.png")]);
+    await screen.findByText("shot.png");
+
+    type("look at this");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText(/The chat turn failed: boom/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("second time lucky")).toBeTruthy();
+    expect(send).toHaveBeenNthCalledWith(2, "look at this", [
+      { name: "shot.png", path: "/data/attachments/chat-1/shot.png" },
+    ]);
+  });
+
+  it("hands the chips back with the text on Dismiss", async () => {
+    renderPanel({
+      send: vi.fn().mockResolvedValue({ ok: false }),
+      attachments: attachmentsAdapter(),
+    });
+    paste([file("shot.png")]);
+    await screen.findByText("shot.png");
+
+    type("look at this");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Dismiss" }));
+
+    await waitFor(() =>
+      expect((screen.getByPlaceholderText("Ask…") as HTMLTextAreaElement).value).toBe(
+        "look at this",
+      ),
+    );
+    expect(removeButtons()).toHaveLength(1);
+  });
+
+  it("restores the chips when the turn is cancelled", async () => {
+    const pending = deferred<ChatSendResult>();
+    const cancel = vi.fn(() => pending.resolve({ ok: false, cancelled: true }));
+    renderPanel({
+      send: vi.fn().mockReturnValue(pending.promise),
+      cancel,
+      attachments: attachmentsAdapter(),
+    });
+    paste([file("shot.png")]);
+    await screen.findByText("shot.png");
+
+    type("look at this");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
+
+    expect(await screen.findByText("The chat turn was cancelled.")).toBeTruthy();
+    await waitFor(() => expect(removeButtons()).toHaveLength(1));
+  });
+});
+
+// The transcript keeps name chips after a resume, when the bytes are long gone.
+describe("ChatPanel — attachment chips in the transcript (#281)", () => {
+  it("renders the stored names on a restored user turn", async () => {
+    renderPanel({
+      history: [
+        {
+          role: "user",
+          text: "why is the header cut off?",
+          at: "2026-07-30T09:00:00.000Z",
+          attachments: [
+            { name: "shot.png", path: "/data/attachments/chat-1/shot.png" },
+            { name: "spec.pdf", path: "/data/attachments/chat-1/spec.pdf" },
+          ],
+        },
+      ],
+    });
+
+    expect(await screen.findByText("shot.png")).toBeTruthy();
+    expect(screen.getByText("spec.pdf")).toBeTruthy();
+    // Read-back is out of scope: names only, no image element and no remove.
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(removeButtons()).toHaveLength(0);
   });
 });

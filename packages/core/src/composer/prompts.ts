@@ -80,7 +80,11 @@ export function renderDraftBlock(draft: ComposerDraft, edited?: ComposerEditedFl
 function renderHistory(history: PlanChatMessage[]): string {
   return history
     .filter(isPlanChatText)
-    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
+    .map((m) => {
+      const head = `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`;
+      const attached = (m.attachments ?? []).map((a) => `\n[Attached file: ${a.path}]`).join("");
+      return head + attached;
+    })
     .join("\n\n");
 }
 
@@ -93,15 +97,36 @@ function draftLines(draft?: ComposerDraft, edited?: ComposerEditedFlags): string
   ];
 }
 
+const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
+
+function kindWord(path: string): string {
+  const lower = path.toLowerCase();
+  if (IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext))) return "image";
+  if (lower.endsWith(".pdf")) return "PDF";
+  return "file";
+}
+
+// Deliberately tool-name-neutral: every runtime has its own file tool, and the
+// prompt must not name claude's.
+function attachmentLines(paths?: string[]): string[] {
+  if (!paths || paths.length === 0) return [];
+  return [
+    ``,
+    ...paths.map((p) => `Attached ${kindWord(p)}: ${p} — read this file before answering.`),
+  ];
+}
+
 export function buildComposerResumePrompt(opts: {
   message: string;
   draft?: ComposerDraft;
   edited?: ComposerEditedFlags;
+  attachments?: string[];
 }): string {
   return [
     `The user is continuing the discussion about the issues to open on this repository.`,
     `Answer conversationally, grounded in the code. Do NOT modify any file and do NOT emit the issue draft unless the user asks for it.`,
     ...draftLines(opts.draft, opts.edited),
+    ...attachmentLines(opts.attachments),
     ``,
     `User: ${opts.message}`,
   ].join("\n");
@@ -112,12 +137,14 @@ export function buildComposerFallbackPrompt(opts: {
   history: PlanChatMessage[];
   draft?: ComposerDraft;
   edited?: ComposerEditedFlags;
+  attachments?: string[];
 }): string {
   const history = renderHistory(opts.history);
   return [
     `You are helping the user shape work into well-scoped issues for the repository at your current working directory. Answer the latest message conversationally in markdown, grounded in the code. Do NOT modify any file and do NOT emit the issue draft unless the user asks for it.`,
     ...(history ? [``, `--- Conversation so far ---`, history, `--- End conversation ---`] : []),
     ...draftLines(opts.draft, opts.edited),
+    ...attachmentLines(opts.attachments),
     ``,
     `User: ${opts.message}`,
   ].join("\n");

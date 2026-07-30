@@ -105,6 +105,7 @@ export async function deleteUnfinishedDraftFiles(
   dir: string,
   repoKeyStr: string,
   keepIds: Set<string>,
+  onDeleted?: (draft: StoredComposerDraft) => void,
 ): Promise<boolean> {
   let files: string[];
   try {
@@ -122,6 +123,7 @@ export async function deleteUnfinishedDraftFiles(
     try {
       await unlink(path);
       deleted = true;
+      onDeleted?.(draft);
     } catch {
       /* a file that cannot be removed stays listed — the next capture retries */
     }
@@ -133,6 +135,7 @@ export function deleteUnfinishedDraftFilesSync(
   dir: string,
   repoKeyStr: string,
   keepIds: Set<string>,
+  onDeleted?: (draft: StoredComposerDraft) => void,
 ): boolean {
   let files: string[];
   try {
@@ -150,11 +153,29 @@ export function deleteUnfinishedDraftFilesSync(
     try {
       unlinkSync(path);
       deleted = true;
+      onDeleted?.(draft);
     } catch {
       /* same as the async twin: best-effort */
     }
   }
   return deleted;
+}
+
+/** Chat ids of every stored draft — the attachment sweep's keep-set (#281). */
+export async function listComposerDraftChatIds(dir: string): Promise<string[]> {
+  let files: string[];
+  try {
+    files = await readdir(dir);
+  } catch {
+    return [];
+  }
+  const ids: string[] = [];
+  for (const file of files) {
+    if (!file.endsWith(".json")) continue;
+    const draft = await readDraftPath(join(dir, file));
+    if (draft) ids.push(draft.chatId);
+  }
+  return ids;
 }
 
 /** Most recently touched first — the list is a resume surface, not an archive. */

@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
+  AgentRuntimeId,
   CodingEvent,
   ComposerDraft,
   LlmSettings,
+  PlanChatAttachment,
   RepoRef,
   ResolvedRepoOrchestratorSettings,
   StoredComposerDraft,
@@ -14,12 +16,15 @@ import { CHAT_TURN_DETAILS, DEFAULT_LLM_SETTINGS, isPlanChatText } from "@skippe
 import type { GraphifyContext, LLMProviderInterface, LLMResponse } from "@skipper/core";
 import { existsSync } from "node:fs";
 import {
+  attachComposerFile,
   cancelComposerChat,
   demoteComposerDraft,
+  detachComposerFile,
   disposeComposerChat,
   flushUnfinishedComposerChats,
   generateComposerDraft,
   getComposerChat,
+  hasLiveComposerChat,
   initComposerChat,
   resumeComposerChat,
   saveComposerDraft,
@@ -39,13 +44,16 @@ const REPO: RepoRef = { owner: "acme", name: "widgets" };
 const OTHER_REPO: RepoRef = { owner: "acme", name: "rocket" };
 
 let draftsDir: string;
+let attachmentsDir: string;
 
 beforeEach(async () => {
   draftsDir = await mkdtemp(join(tmpdir(), "sk-composer-drafts-"));
+  attachmentsDir = await mkdtemp(join(tmpdir(), "sk-composer-attachments-"));
 });
 
 afterEach(async () => {
   await rm(draftsDir, { recursive: true, force: true });
+  await rm(attachmentsDir, { recursive: true, force: true });
 });
 
 const DRAFT_JSON = JSON.stringify({
@@ -80,6 +88,7 @@ function makeHarness(over: Partial<ComposerChatDeps> = {}): Harness {
     getRepoInstructions: async () => undefined,
     getGraphify: () => undefined,
     draftsDir,
+    attachmentsDir,
     onDraftsChanged: () => {
       draftChanges.count++;
     },
@@ -943,5 +952,366 @@ describe("resumeComposerChat", () => {
     const h = makeHarness({ getRepoPath: () => undefined });
     initComposerChat(h.deps, fakeProvider());
     expect(await resumeComposerChat(REPO, chatId)).toEqual({ ok: false, error: "repo not linked" });
+  });
+});
+
+// Attachments (#281): saved under <userData>, referenced by absolute path in the
+// turn prompt, and cleaned up along whichever path ends the chat's life.
+describe("attachComposerFile", () => {
+  const png = () => new Uint8Array(Buffer.from("png-bytes"));
+
+  function withRuntime(runtime: AgentRuntimeId): Harness {
+    return makeHarness({
+      getRepoSettings: () =>
+        ({ composerModel: "opus", composerRuntime: runtime }) as unknown as ResolvedRepoOrchestratorSettings,
+    });
+  }
+
+  it("writes the file under the chat's own directory", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+
+    const res = await attachComposerFile(REPO, chatId, "shot.png", png());
+
+    expect(res).toEqual({
+      ok: true,
+      path: join(attachmentsDir, chatId, "shot.png"),
+      name: "shot.png",
+      supported: true,
+    });
+    expect(await readFile(join(attachmentsDir, chatId, "shot.png"), "utf-8")).toBe("png-bytes");
+  });
+
+  it("refuses a chat that is not live", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    expect(await attachComposerFile(REPO, "never-started", "shot.png", png())).toEqual({
+      ok: false,
+      error: "unknown composer chat",
+    });
+  });
+
+  it("reports the store's rejection instead of throwing", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    const res = await attachComposerFile(REPO, chatId, "payload.docx", png());
+    expect(res).toMatchObject({ ok: false });
+    expect((res as { error: string }).error).toMatch(/Unsupported attachment type/);
+  });
+
+  // The warning is computed at attach time from the repo's effective composer
+  // runtime — no capability IPC of its own.
+  it.each([
+    ["claude-cli", true, true],
+    ["codex-cli", true, false],
+    ["gemini-cli", true, true],
+    ["copilot-cli", false, false],
+  ] as const)("reports supported per %s × kind", async (runtime, image, pdf) => {
+    const h = withRuntime(runtime);
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+
+    const shot = await attachComposerFile(REPO, chatId, "shot.png", png());
+    const spec = await attachComposerFile(REPO, chatId, "spec.pdf", png());
+    const notes = await attachComposerFile(REPO, chatId, "notes.md", png());
+
+    expect(shot).toMatchObject({ ok: true, supported: image });
+    expect(spec).toMatchObject({ ok: true, supported: pdf });
+    // Text always works: every CLI has a plain file reader.
+    expect(notes).toMatchObject({ ok: true, supported: true });
+  });
+});
+
+describe("detachComposerFile", () => {
+  it("removes a file the user took back before sending", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    const saved = (await attachComposerFile(
+      REPO,
+      chatId,
+      "shot.png",
+      new Uint8Array([1]),
+    )) as { path: string };
+
+    expect(await detachComposerFile(REPO, chatId, saved.path)).toEqual({ ok: true });
+    expect(existsSync(saved.path)).toBe(false);
+  });
+
+  it("refuses a path outside the chat's directory", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    const other = start();
+    const saved = (await attachComposerFile(
+      REPO,
+      other,
+      "shot.png",
+      new Uint8Array([1]),
+    )) as { path: string };
+
+    const res = await detachComposerFile(REPO, chatId, saved.path);
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/outside its chat directory/);
+    expect(existsSync(saved.path)).toBe(true);
+  });
+});
+
+describe("sendComposerChatMessage with attachments", () => {
+  async function attach(chatId: string, name: string): Promise<PlanChatAttachment> {
+    const res = await attachComposerFile(REPO, chatId, name, new Uint8Array(Buffer.from("data")));
+    if (!res.ok) throw new Error(res.error);
+    return { name: res.name, path: res.path };
+  }
+
+  it("threads the paths into the prompt and records them on the user turn", async () => {
+    const h = makeHarness();
+    const provider = fakeProvider();
+    initComposerChat(h.deps, provider);
+    const chatId = start();
+    const shot = await attach(chatId, "shot.png");
+    const spec = await attach(chatId, "spec.pdf");
+
+    const res = await sendComposerChatMessage(REPO, chatId, "why is the header cut off?", [
+      shot,
+      spec,
+    ]);
+
+    expect(res).toMatchObject({ ok: true });
+    const prompt = provider.agent.mock.calls[0][0] as string;
+    expect(prompt).toContain(`Attached image: ${shot.path} — read this file before answering.`);
+    expect(prompt).toContain(`Attached PDF: ${spec.path} — read this file before answering.`);
+    const user = getComposerChat(REPO, chatId)?.messages.filter(isPlanChatText)[0];
+    expect(user?.attachments).toEqual([shot, spec]);
+  });
+
+  it("says nothing about attachments on a turn without any", async () => {
+    const h = makeHarness();
+    const provider = fakeProvider();
+    initComposerChat(h.deps, provider);
+    const chatId = start();
+
+    await sendComposerChatMessage(REPO, chatId, "plain question");
+
+    expect(provider.agent.mock.calls[0][0] as string).not.toContain("Attached");
+    expect(getComposerChat(REPO, chatId)?.messages.filter(isPlanChatText)[0].attachments).toBeUndefined();
+  });
+
+  it("persists the attachments into the saved draft", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    const shot = await attach(chatId, "shot.png");
+    await sendComposerChatMessage(REPO, chatId, "look at this", [shot]);
+
+    await saveComposerDraft(REPO, chatId);
+
+    const stored = await readComposerDraftFile(draftsDir, chatId);
+    expect(stored?.messages.filter(isPlanChatText)[0].attachments).toEqual([shot]);
+  });
+
+  // The renderer's paths cross IPC and end up in a prompt telling the agent to
+  // read them, so the driver re-validates rather than trusting them.
+  it("refuses a path outside the chat's directory and runs nothing", async () => {
+    const h = makeHarness();
+    const provider = fakeProvider();
+    initComposerChat(h.deps, provider);
+    const chatId = start();
+
+    const res = await sendComposerChatMessage(REPO, chatId, "read this", [
+      { name: "passwd", path: "/etc/passwd" },
+    ]);
+
+    expect(res.ok).toBe(false);
+    expect((res as { error: string }).error).toMatch(/outside its chat directory/);
+    expect(provider.agent).not.toHaveBeenCalled();
+  });
+
+  it("refuses an attachment that is no longer on disk", async () => {
+    const h = makeHarness();
+    const provider = fakeProvider();
+    initComposerChat(h.deps, provider);
+    const chatId = start();
+    const shot = await attach(chatId, "shot.png");
+    await detachComposerFile(REPO, chatId, shot.path);
+
+    const res = await sendComposerChatMessage(REPO, chatId, "read this", [shot]);
+
+    expect(res.ok).toBe(false);
+    expect(provider.agent).not.toHaveBeenCalled();
+  });
+
+  it("refuses more than four attachments", async () => {
+    const h = makeHarness();
+    const provider = fakeProvider();
+    initComposerChat(h.deps, provider);
+    const chatId = start();
+    const five = [];
+    for (let i = 0; i < 5; i++) five.push(await attach(chatId, `shot-${i}.png`));
+
+    const res = await sendComposerChatMessage(REPO, chatId, "read these", five);
+
+    expect(res.ok).toBe(false);
+    expect((res as { error: string }).error).toMatch(/At most 4 attachments/);
+    expect(provider.agent).not.toHaveBeenCalled();
+    // Four is still fine.
+    await expect(
+      sendComposerChatMessage(REPO, chatId, "read these", five.slice(0, 4)),
+    ).resolves.toMatchObject({ ok: true });
+  });
+});
+
+// Attachments outlive the record exactly as long as a draft can resume them.
+describe("attachment cleanup matrix (#281)", () => {
+  const dirOf = (chatId: string) => join(attachmentsDir, chatId);
+
+  async function withAttachment(chatId: string, repo: RepoRef = REPO): Promise<void> {
+    const res = await attachComposerFile(repo, chatId, "shot.png", new Uint8Array([1]));
+    if (!res.ok) throw new Error(res.error);
+  }
+
+  it("deletes the directory when the renderer discards the chat", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "published already");
+    await withAttachment(chatId);
+
+    await disposeComposerChat(REPO, chatId, { discard: true });
+
+    expect(existsSync(dirOf(chatId))).toBe(false);
+  });
+
+  it("keeps the directory when the chat was promoted to a saved draft", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "keep me");
+    await withAttachment(chatId);
+    await saveComposerDraft(REPO, chatId);
+
+    await disposeComposerChat(REPO, chatId);
+
+    expect(existsSync(dirOf(chatId))).toBe(true);
+  });
+
+  it("keeps the directory behind an auto-saved unfinished draft", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "abandoned mid-discussion");
+    await withAttachment(chatId);
+
+    await disposeComposerChat(REPO, chatId);
+    await settle();
+
+    expect((await readComposerDraftFile(draftsDir, chatId))?.unfinished).toBe(true);
+    expect(existsSync(dirOf(chatId))).toBe(true);
+  });
+
+  it("deletes the directory of an attach-then-abandon session with no content", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    await withAttachment(chatId);
+
+    await disposeComposerChat(REPO, chatId);
+    await settle();
+
+    expect(await readComposerDraftFile(draftsDir, chatId)).toBeNull();
+    expect(existsSync(dirOf(chatId))).toBe(false);
+  });
+
+  it("takes the attachments along when the unfinished sweep drops a draft", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const first = start();
+    await sendComposerChatMessage(REPO, first, "one");
+    await withAttachment(first);
+    await disposeComposerChat(REPO, first);
+    await settle();
+    expect(existsSync(dirOf(first))).toBe(true);
+
+    // A second abandoned session in the same repo overwrites the pool entry.
+    const second = start();
+    await sendComposerChatMessage(REPO, second, "two");
+    await withAttachment(second);
+    await disposeComposerChat(REPO, second);
+    await settle();
+
+    expect(await readComposerDraftFile(draftsDir, first)).toBeNull();
+    expect(existsSync(dirOf(first))).toBe(false);
+    expect(existsSync(dirOf(second))).toBe(true);
+  });
+
+  it("deletes the ineligible records' directories synchronously at quit", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const contentful = start();
+    await sendComposerChatMessage(REPO, contentful, "still typing when it quit");
+    await withAttachment(contentful);
+    const empty = start(OTHER_REPO);
+    await withAttachment(empty, OTHER_REPO);
+
+    flushUnfinishedComposerChats();
+
+    // Sync: both verdicts are settled before anything is awaited.
+    expect(existsSync(dirOf(empty))).toBe(false);
+    expect(existsSync(dirOf(contentful))).toBe(true);
+  });
+
+  it("keeps only the surviving capture's directory when two compete at quit", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const displaced = start();
+    await sendComposerChatMessage(REPO, displaced, "older session");
+    await withAttachment(displaced);
+    const winner = start();
+    await sendComposerChatMessage(REPO, winner, "newer session");
+    await withAttachment(winner);
+
+    flushUnfinishedComposerChats();
+
+    expect(existsSync(dirOf(displaced))).toBe(false);
+    expect(existsSync(dirOf(winner))).toBe(true);
+  });
+});
+
+describe("hasLiveComposerChat", () => {
+  it("tracks the record's lifetime, so the drafts-delete handler can defer", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    expect(hasLiveComposerChat(chatId)).toBe(true);
+
+    await disposeComposerChat(REPO, chatId, { discard: true });
+
+    expect(hasLiveComposerChat(chatId)).toBe(false);
+  });
+});
+
+// Nothing is live at init, so a directory with no draft behind it belongs to a
+// session that ended without cleanup.
+describe("orphan attachment sweep at init", () => {
+  it("removes the directories no stored draft claims", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const kept = start();
+    await sendComposerChatMessage(REPO, kept, "keep me");
+    const res = await attachComposerFile(REPO, kept, "shot.png", new Uint8Array([1]));
+    if (!res.ok) throw new Error(res.error);
+    await saveComposerDraft(REPO, kept);
+
+    // A leftover from a session that never got to clean up after itself.
+    await mkdir(join(attachmentsDir, "orphan-chat"), { recursive: true });
+    await writeFile(join(attachmentsDir, "orphan-chat", "stray.png"), "x");
+
+    initComposerChat(makeHarness().deps, fakeProvider());
+    await settle();
+
+    expect(existsSync(join(attachmentsDir, "orphan-chat"))).toBe(false);
+    expect(existsSync(join(attachmentsDir, kept))).toBe(true);
   });
 });
