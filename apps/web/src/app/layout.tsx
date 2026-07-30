@@ -12,7 +12,9 @@ import { GitStatusProvider } from "@/lib/git-status-context";
 import { EditorTabsProvider } from "@/lib/editor-tabs-context";
 import { OnboardingGate } from "@/lib/onboarding-gate";
 import { AppLangProvider } from "@/lib/app-i18n";
+import { ToastProvider } from "@/lib/toast-context";
 import { UpdateToast } from "@/components/update-toast";
+import { ToastHost } from "@/components/toast-host";
 import { AboutModal } from "@/components/about-modal";
 import { ResumeRiteModal } from "@/components/resume-rite-modal";
 import "./globals.css";
@@ -46,6 +48,7 @@ export default function RootLayout({
       <body className="h-screen overflow-hidden flex bg-background text-foreground">
         <ThemeProvider>
          <AppLangProvider>
+         <ToastProvider>
           <AuthProvider>
             <OrchestratorProvider>
               <TerminalProvider>
@@ -62,6 +65,7 @@ export default function RootLayout({
                       <StatusBar />
                     </div>
                     <UpdateToast />
+                    <ToastHost />
                     <AboutModal />
                     <ResumeRiteModal />
                   </OnboardingGate>
@@ -70,6 +74,7 @@ export default function RootLayout({
               </TerminalProvider>
             </OrchestratorProvider>
           </AuthProvider>
+         </ToastProvider>
          </AppLangProvider>
         </ThemeProvider>
       </body>
