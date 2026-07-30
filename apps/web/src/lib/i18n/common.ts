@@ -30,6 +30,9 @@ const en = {
     switchToLight: "Switch to light mode",
     switchToDark: "Switch to dark mode",
   },
+  toast: {
+    dismiss: "Dismiss",
+  },
   language: {
     title: "Language",
     subtitle: "Skipper follows your system language unless you pick one explicitly.",
@@ -66,6 +69,9 @@ const it: typeof en = {
   theme: {
     switchToLight: "Passa al tema chiaro",
     switchToDark: "Passa al tema scuro",
+  },
+  toast: {
+    dismiss: "Ignora",
   },
   language: {
     title: "Lingua",
@@ -104,6 +110,9 @@ const fr: typeof en = {
     switchToLight: "Passer au thème clair",
     switchToDark: "Passer au thème sombre",
   },
+  toast: {
+    dismiss: "Ignorer",
+  },
   language: {
     title: "Langue",
     subtitle: "Skipper suit la langue du système, sauf choix explicite.",
@@ -140,6 +149,9 @@ const es: typeof en = {
   theme: {
     switchToLight: "Cambiar a tema claro",
     switchToDark: "Cambiar a tema oscuro",
+  },
+  toast: {
+    dismiss: "Descartar",
   },
   language: {
     title: "Idioma",
