@@ -3,7 +3,7 @@
 // ============================================================
 
 /** Where the work item is tracked (issue-tracker axis, epic #68). */
-export type IssueSourceId = "github" | "gitlab" | "jira" | "openproject";
+export type IssueSourceId = "github" | "gitlab" | "jira" | "openproject" | "bitbucket";
 
 /** Where the code lives (git-host axis, epic #68). */
 export type CodeHostId = "github" | "gitlab" | "bitbucket";
@@ -105,6 +105,38 @@ export function parseRepoMappingValue(
 export function formatRepoMappingValue(codeHost: CodeHostId, repo: RepoRef): string {
   const path = `${repo.owner}/${repo.name}`;
   return codeHost === "github" ? path : `${codeHost}:${path}`;
+}
+
+export type ProjectForRepoResult =
+  | { ok: true; projectKey: string }
+  | { ok: false; reason: "unmapped" }
+  | { ok: false; reason: "ambiguous"; candidates: string[] };
+
+/**
+ * Reverse of the project→repo mapping (#274): which tracker project of `source`
+ * on `host` holds this repo's issues. Needed at create time by the project-scoped
+ * trackers (Jira, OpenProject), which cannot create an issue without a project.
+ * The mapping value's code-host prefix is ignored — the repo identity is the key.
+ */
+export function projectForRepo(
+  mappings: Record<string, string>,
+  target: { source: string; host: string; repo: RepoRef },
+): ProjectForRepoResult {
+  const wantedHost = target.host.toLowerCase();
+  const wantedRepo = repoKey(target.repo);
+  const found = new Set<string>();
+  for (const [key, value] of Object.entries(mappings)) {
+    const parts = parseProjectMappingKey(key);
+    if (!parts || parts.source !== target.source || parts.host.toLowerCase() !== wantedHost) {
+      continue;
+    }
+    const parsed = parseRepoMappingValue(value);
+    if (!parsed || repoKey(parsed.repo) !== wantedRepo) continue;
+    found.add(parts.projectKey);
+  }
+  if (found.size === 0) return { ok: false, reason: "unmapped" };
+  if (found.size > 1) return { ok: false, reason: "ambiguous", candidates: [...found].sort() };
+  return { ok: true, projectKey: [...found][0] };
 }
 
 interface WorkItemBase {

@@ -106,7 +106,7 @@ export const JIRA_OAUTH_ENDPOINTS = {
   myselfEndpoint: (cloudId: string) =>
     `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/myself`,
   dcMyselfEndpoint: (base: string) => `${base}/rest/api/2/myself`,
-  scopes: ["read:jira-work", "read:jira-user", "offline_access"],
+  scopes: ["read:jira-work", "write:jira-work", "read:jira-user", "offline_access"],
   redirectPorts: [8133],
 } as const;
 
@@ -135,7 +135,7 @@ export const BITBUCKET_OAUTH_ENDPOINTS = {
   tokenEndpoint: "https://bitbucket.org/site/oauth2/access_token",
   userEndpoint: "https://api.bitbucket.org/2.0/user",
   emailsEndpoint: "https://api.bitbucket.org/2.0/user/emails",
-  scopes: ["repository", "pullrequest:write", "account"],
+  scopes: ["repository", "pullrequest:write", "issue:write", "account"],
   redirectPorts: [8134],
 } as const;
 

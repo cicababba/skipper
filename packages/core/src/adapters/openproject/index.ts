@@ -1,5 +1,6 @@
-export { openprojectGet, openprojectApiBase } from "./client";
+export { openprojectGet, openprojectPost, openprojectApiBase } from "./client";
 export { listOpenProjectProjects } from "./projects";
+export { createOpenProjectIssue } from "./create";
 export { fetchOpenProjectComments } from "./comments";
 export { mapOpenProjectWorkPackage, type OpenProjectWorkPackagePayload } from "./map";
 export { pollOpenProjectAccount } from "./poll";

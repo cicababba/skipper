@@ -3,8 +3,14 @@ import type {
   Account,
   CreateIssueOnTrackerParams,
   CreateIssueOnTrackerResult,
+  IssueSourceId,
 } from "@skipper/shared";
+import { mappingHost, projectForRepo } from "@skipper/shared";
 import type { IssueSource } from "@skipper/core";
+
+// Trackers whose issues live in a project rather than in the repo: the create
+// call needs the project, which only the project→repo mapping knows (#274).
+const PROJECT_SCOPED_SOURCES = new Set<IssueSourceId>(["jira", "openproject"]);
 
 // Issue creation (#135). The created issue is deliberately NOT injected into the
 // manifest or the poll cache: the GitHub poll only reads the `assigned` stream,
@@ -18,6 +24,7 @@ export interface CreateIssueIpcDeps {
   getAccounts: () => Account[];
   getToken: (accountKey: string, forceRefresh?: boolean) => Promise<string | null>;
   sourceForProvider: (provider: Account["provider"]) => IssueSource | undefined;
+  getProjectMappings: () => Promise<Record<string, string>>;
 }
 
 export function registerCreateIssueHandlers(deps: CreateIssueIpcDeps): void {
@@ -38,6 +45,25 @@ export function registerCreateIssueHandlers(deps: CreateIssueIpcDeps): void {
         return { ok: false, error: `issue creation is not supported for ${account.provider}` };
       }
 
+      let project: string | undefined;
+      if (PROJECT_SCOPED_SOURCES.has(source.id)) {
+        const mapped = projectForRepo(await deps.getProjectMappings(), {
+          source: source.id,
+          host: mappingHost(account.baseUrl),
+          repo: { owner, name },
+        });
+        if (!mapped.ok) {
+          return {
+            ok: false,
+            error:
+              mapped.reason === "unmapped"
+                ? `no ${source.id} project is mapped to ${owner}/${name} — add the mapping in Settings`
+                : `${owner}/${name} is mapped to more than one ${source.id} project (${mapped.candidates.join(", ")}) — leave a single mapping in Settings`,
+          };
+        }
+        project = mapped.projectKey;
+      }
+
       try {
         const issue = await source.createIssue(
           {
@@ -47,11 +73,20 @@ export function registerCreateIssueHandlers(deps: CreateIssueIpcDeps): void {
             labels: params.labels,
             assignees: params.assignees,
             accountId: account.key,
+            ...(project !== undefined && { project }),
           },
           (force) => deps.getToken(account.key, force),
           account.baseUrl,
+          account.cloudId,
+          account.authMethod,
         );
-        return { ok: true, id: issue.id, number: issue.number!, url: issue.url };
+        return {
+          ok: true,
+          id: issue.id,
+          key: issue.key,
+          ...(issue.number != null && { number: issue.number }),
+          url: issue.url,
+        };
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) };
       }

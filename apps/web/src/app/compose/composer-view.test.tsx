@@ -56,6 +56,7 @@ function installSkipper(
   const createIssueOnTracker = vi.fn(async () => ({
     ok: true,
     id: "12",
+    key: "12",
     number: 12,
     url: "https://github.com/acme/widgets/issues/12",
   }));

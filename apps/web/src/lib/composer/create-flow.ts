@@ -5,14 +5,20 @@
 export type CardCreateState =
   | { status: "pending" }
   | { status: "creating" }
-  | { status: "created"; url: string; number: number }
+  | { status: "created"; url: string; key: string; number?: number }
   | { status: "failed"; error: string };
 
 export type CreateStates = Record<number, CardCreateState>;
 
 export type CreateOutcome =
-  | { ok: true; id: string; number: number; url: string }
+  | { ok: true; id: string; key: string; number?: number; url: string }
   | { ok: false; error: string };
+
+/** How a created issue is referred to: "#42" where the tracker numbers issues,
+ *  the display key ("PROJ-123") where it doesn't. */
+export function displayRef(state: { key: string; number?: number }): string {
+  return state.number != null ? `#${state.number}` : state.key;
+}
 
 export function initialCreateStates(count: number): CreateStates {
   const states: CreateStates = {};
@@ -37,7 +43,12 @@ export function allCreated(states: CreateStates, count: number): boolean {
 
 export function outcomeToState(outcome: CreateOutcome): CardCreateState {
   return outcome.ok
-    ? { status: "created", url: outcome.url, number: outcome.number }
+    ? {
+        status: "created",
+        url: outcome.url,
+        key: outcome.key,
+        ...(outcome.number != null && { number: outcome.number }),
+      }
     : { status: "failed", error: outcome.error };
 }
 

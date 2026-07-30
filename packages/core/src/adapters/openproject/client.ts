@@ -28,3 +28,13 @@ export async function openprojectGet<T>(
 ): Promise<T> {
   return (await vendorRequest<T>(httpConfig(authMethod), "GET", url, getToken)).body as T;
 }
+
+export async function openprojectPost<T>(
+  url: string,
+  getToken: OpenProjectTokenProvider,
+  body: unknown,
+  authMethod?: "oauth" | "pat",
+): Promise<T> {
+  return (await vendorRequest<T>(httpConfig(authMethod), "POST", url, getToken, { body }))
+    .body as T;
+}

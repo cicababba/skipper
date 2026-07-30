@@ -155,3 +155,114 @@ export function adfToMarkdown(doc: unknown): string | undefined {
     .trim();
   return out.length > 0 ? out : undefined;
 }
+
+export interface AdfDocument {
+  type: "doc";
+  version: 1;
+  content: AdfNode[];
+}
+
+/** Text run for a block: intra-block newlines become hardBreak nodes. Empty text
+ *  yields no content at all — ADF rejects a text node with an empty string. */
+function textContent(text: string): AdfNode[] {
+  const out: AdfNode[] = [];
+  const lines = text.split("\n");
+  lines.forEach((line, i) => {
+    if (i > 0) out.push({ type: "hardBreak" });
+    if (line.length > 0) out.push({ type: "text", text: line });
+  });
+  return out;
+}
+
+function paragraph(text: string): AdfNode {
+  const content = textContent(text);
+  return content.length > 0 ? { type: "paragraph", content } : { type: "paragraph" };
+}
+
+function listItem(text: string): AdfNode {
+  return { type: "listItem", content: [paragraph(text)] };
+}
+
+const HEADING_RE = /^(#{1,6})\s+(.*)$/;
+const BULLET_RE = /^[-*+]\s+(.*)$/;
+const ORDERED_RE = /^\d+[.)]\s+(.*)$/;
+const FENCE_RE = /^```(\S*)\s*$/;
+
+/**
+ * Markdown → ADF, block level only (the Cloud REST API takes descriptions as ADF
+ * documents, never markdown). Paragraphs, ATX headings, fenced code blocks and
+ * bullet/ordered lists are structural; inline marks (bold, links, inline code)
+ * are deliberately left as literal text — round-tripping them is not worth the
+ * parser, and Jira renders the raw characters legibly.
+ */
+export function markdownToAdf(markdown: string): AdfDocument {
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const content: AdfNode[] = [];
+  let paragraphLines: string[] = [];
+
+  const flushParagraph = () => {
+    if (paragraphLines.length === 0) return;
+    content.push(paragraph(paragraphLines.join("\n")));
+    paragraphLines = [];
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    const fence = FENCE_RE.exec(line);
+    if (fence) {
+      flushParagraph();
+      const code: string[] = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i])) {
+        code.push(lines[i]);
+        i++;
+      }
+      const text = code.join("\n");
+      content.push({
+        type: "codeBlock",
+        ...(fence[1] ? { attrs: { language: fence[1] } } : {}),
+        ...(text.length > 0 ? { content: [{ type: "text", text }] } : {}),
+      });
+      continue;
+    }
+
+    if (line.trim().length === 0) {
+      flushParagraph();
+      continue;
+    }
+
+    const heading = HEADING_RE.exec(line);
+    if (heading) {
+      flushParagraph();
+      content.push({
+        type: "heading",
+        attrs: { level: heading[1].length },
+        ...(heading[2].length > 0 ? { content: [{ type: "text", text: heading[2] }] } : {}),
+      });
+      continue;
+    }
+
+    const bullet = BULLET_RE.exec(line);
+    const ordered = bullet ? null : ORDERED_RE.exec(line);
+    if (bullet || ordered) {
+      flushParagraph();
+      const type = bullet ? "bulletList" : "orderedList";
+      const re = bullet ? BULLET_RE : ORDERED_RE;
+      const items: AdfNode[] = [listItem((bullet ?? ordered!)[1])];
+      while (i + 1 < lines.length) {
+        const next = re.exec(lines[i + 1]);
+        if (!next) break;
+        items.push(listItem(next[1]));
+        i++;
+      }
+      content.push({ type, content: items });
+      continue;
+    }
+
+    paragraphLines.push(line);
+  }
+  flushParagraph();
+
+  return { type: "doc", version: 1, content };
+}

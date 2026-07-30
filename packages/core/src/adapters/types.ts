@@ -92,6 +92,8 @@ export interface IssueSource<C = unknown> {
     params: CreateIssueParams,
     getToken: TokenProvider,
     baseUrl?: string,
+    cloudId?: string,
+    authMethod?: "oauth" | "pat",
   ): Promise<Issue>;
 }
 
@@ -102,6 +104,10 @@ export interface CreateIssueParams {
   labels?: string[];
   /** Provider usernames to assign the created issue to (#136). */
   assignees?: string[];
+  /** Tracker project the issue belongs to — Jira project key, OpenProject numeric
+   *  project id. Filled by the caller from the project→repo mapping; the
+   *  project-scoped adapters throw without it, the repo-scoped ones ignore it. */
+  project?: string;
   /** Stamped onto the returned Issue (Account.key) — the adapter can't know it. */
   accountId: string;
 }

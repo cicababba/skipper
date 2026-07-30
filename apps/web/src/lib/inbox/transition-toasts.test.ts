@@ -66,6 +66,7 @@ const CAPABILITIES: Record<IssueSourceId, IssueSourceCapabilities> = {
   gitlab: { closeIssue: true, createIssue: true },
   jira: { closeIssue: false, createIssue: true },
   openproject: { closeIssue: true, createIssue: true },
+  bitbucket: { closeIssue: false, createIssue: true },
 };
 
 function snapshot(items: TrackedItem[], pullRequests?: PullRequest[]): OrchestratorState {

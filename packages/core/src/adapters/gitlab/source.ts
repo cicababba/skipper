@@ -1,6 +1,7 @@
 import type { IssueSource } from "../types";
 import { closeGitLabIssue } from "./close";
 import { fetchGitLabComments } from "./comments";
+import { createGitLabIssue } from "./create";
 import { pollGitLabAccount } from "./poll";
 import type { GitLabAccountCursor } from "./types";
 
@@ -10,4 +11,5 @@ export const gitlabIssueSource: IssueSource<GitLabAccountCursor> = {
   poll: (opts) => pollGitLabAccount(opts),
   fetchComments: (issue, getToken, baseUrl) => fetchGitLabComments(issue, getToken, baseUrl),
   closeIssue: (issue, getToken, baseUrl) => closeGitLabIssue(issue, getToken, baseUrl),
+  createIssue: (params, getToken, baseUrl) => createGitLabIssue(params, getToken, baseUrl),
 };

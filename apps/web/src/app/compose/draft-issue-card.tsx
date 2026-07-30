@@ -7,7 +7,7 @@ import { useT } from "@/lib/app-i18n";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { FileSuggestInput } from "@/app/repos/repo/file-picker";
 import type { DraftEdit } from "@/lib/composer/draft-state";
-import type { CardCreateState } from "@/lib/composer/create-flow";
+import { displayRef, type CardCreateState } from "@/lib/composer/create-flow";
 
 // One editable issue of the draft (#136). Every field is the user's to rewrite;
 // what they touch is flagged so the next distillation is told to keep it.
@@ -226,7 +226,7 @@ function CreateBadge({ state, onRetry }: { state: CardCreateState; onRetry: () =
         title={c.openIssue}
       >
         <CheckCircle2 size={11} />
-        {c.createdN(state.number)}
+        {c.createdN(displayRef(state))}
         <ExternalLink size={10} />
       </button>
     );

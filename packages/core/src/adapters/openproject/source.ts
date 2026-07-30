@@ -1,6 +1,7 @@
 import type { Issue } from "@skipper/shared";
 import { fetchOpenProjectComments } from "./comments";
-import type { IssueComment, IssueSource, TokenProvider } from "../types";
+import { createOpenProjectIssue } from "./create";
+import type { CreateIssueParams, IssueComment, IssueSource, TokenProvider } from "../types";
 import { pollOpenProjectAccount } from "./poll";
 import type { OpenProjectAccountCursor, OpenProjectPollOptions, OpenProjectPollResult } from "./types";
 
@@ -19,5 +20,14 @@ export const openprojectIssueSource: IssueSource<OpenProjectAccountCursor> = {
     authMethod?: "oauth" | "pat",
   ): Promise<IssueComment[]> {
     return fetchOpenProjectComments(issue, getToken, baseUrl, authMethod);
+  },
+  createIssue(
+    params: CreateIssueParams,
+    getToken: TokenProvider,
+    baseUrl?: string,
+    _cloudId?: string,
+    authMethod?: "oauth" | "pat",
+  ): Promise<Issue> {
+    return createOpenProjectIssue(params, getToken, baseUrl, authMethod);
   },
 };

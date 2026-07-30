@@ -35,7 +35,8 @@ describe("provider registry", () => {
       {
         id: "bitbucket",
         displayName: "Bitbucket",
-        isIssueSource: false,
+        // #274: Bitbucket became an issue source, not just a code host.
+        isIssueSource: true,
         requiresBaseUrl: false,
         supportsPat: false,
       },
@@ -65,6 +66,8 @@ describe("provider registry", () => {
     expect(jira.tokenRequestFormat).toBe("json");
     expect(jira.redirectPorts).toEqual([8133]);
     expect(jira.scopes).toContain("offline_access");
+    // write:jira-work (#274) — issue creation; existing accounts must reconnect for it.
+    expect(jira.scopes).toContain("write:jira-work");
     expect(jira.rotatesRefreshToken).toBe(true);
     expect(jira.requiresBaseUrl).toBe(false);
     expect(jira.patRequiresBaseUrl).toBe(true);
@@ -80,7 +83,13 @@ describe("provider registry", () => {
     expect(bitbucket.rotatesRefreshToken).toBe(true);
     expect(bitbucket.requiresRefreshTokenOnExchange).toBe(true);
     expect(bitbucket.redirectPorts).toEqual([8134]);
-    expect(bitbucket.scopes).toEqual(["repository", "pullrequest:write", "account"]);
+    // issue:write (#274) — issue creation; existing accounts must reconnect for it.
+    expect(bitbucket.scopes).toEqual([
+      "repository",
+      "pullrequest:write",
+      "issue:write",
+      "account",
+    ]);
     expect(bitbucket.requiresBaseUrl).toBe(false);
     expect(bitbucket.supportsPat).toBe(false);
     expect(bitbucket.revoke).toBeUndefined();

@@ -6,12 +6,23 @@ import type { AuthProviderId } from "@skipper/shared";
 
 /**
  * Auth providers whose issue source implements createIssue. Hardcoded rather
- * than derived: the renderer's capability map is keyed by IssueSourceId, and the
- * only create-capable adapter is the GitHub one
- * (packages/core/src/adapters/github/source.ts:17). Add a provider here when its
- * adapter grows createIssue.
+ * than derived: the renderer's capability map is keyed by IssueSourceId, not by
+ * auth provider. Add a provider here when its adapter grows createIssue.
  */
-export const CREATE_CAPABLE_PROVIDERS: readonly AuthProviderId[] = ["github"];
+export const CREATE_CAPABLE_PROVIDERS: readonly AuthProviderId[] = [
+  "github",
+  "gitlab",
+  "jira",
+  "openproject",
+  "bitbucket",
+];
+
+/**
+ * Of those, the providers whose adapter can assign the issue at create time.
+ * Jira/OpenProject/Bitbucket need an id lookup their adapters don't do, so the
+ * self-assign option is hidden rather than silently ignored (#274).
+ */
+export const ASSIGN_CAPABLE_PROVIDERS: readonly AuthProviderId[] = ["github", "gitlab"];
 
 export interface AccountCandidateInput {
   /** Connected accounts, in the order the auth layer reports them. */

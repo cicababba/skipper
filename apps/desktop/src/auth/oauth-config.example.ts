@@ -35,8 +35,8 @@
 // Jira (issue orchestration — Atlassian 3LO; Jira Cloud):
 //   1. https://developer.atlassian.com/console/myapps → Create → OAuth 2.0
 //      integration. Add the "Jira API" permission with the classic scopes
-//      read:jira-work, read:jira-user (offline_access is added automatically
-//      for rotating refresh tokens).
+//      read:jira-work, write:jira-work (issue creation), read:jira-user
+//      (offline_access is added automatically for rotating refresh tokens).
 //   2. Authorization → OAuth 2.0 (3LO): set the callback URL to
 //      http://127.0.0.1:8133/callback (only ONE callback URL is allowed).
 //   3. Copy the Client ID and Client secret from Settings into the consts
@@ -53,7 +53,7 @@
 //      behavior is gone), so the app pins redirect port 8134.
 //   4. Scopes: Account → Email + Read (`account`, covers /user/emails),
 //      Repositories → Read + Write (`repository`), Pull requests → Read +
-//      Write (`pullrequest:write`).
+//      Write (`pullrequest:write`), Issues → Read + Write (`issue:write`).
 //   5. Copy client Key/Secret below. No PKCE support, so the
 //      (non-confidential desktop) secret is required; token endpoint takes it
 //      via HTTP Basic. Bitbucket Data Center (self-hosted) is not covered.

@@ -9,11 +9,12 @@ import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useToast } from "@/lib/toast-context";
 import { useStoredState } from "@/lib/use-stored-state";
 import { truncateLabel } from "@/lib/inbox/transition-toasts";
-import { accountCandidates } from "@/lib/composer/derive-account";
+import { accountCandidates, ASSIGN_CAPABLE_PROVIDERS } from "@/lib/composer/derive-account";
 import { renderDraftBody } from "@/lib/composer/render-issue-body";
 import { relationsForIssue, type RelationLabels } from "@/lib/composer/relations-text";
 import {
   allCreated,
+  displayRef,
   initialCreateStates,
   isCreated,
   runCreateFlow,
@@ -70,6 +71,8 @@ export function DraftPane({
     [authState.accounts, state?.items, key],
   );
   const accountId = accountOverride ?? candidates[0];
+  const provider = authState.accounts.find((a) => a.key === accountId)?.provider;
+  const canSelfAssign = provider != null && ASSIGN_CAPABLE_PROVIDERS.includes(provider);
 
   const labelSuggestions = useMemo(() => {
     const seen = new Set<string>();
@@ -91,7 +94,7 @@ export function DraftPane({
     setCreating(true);
     try {
       let assignees: string[] | undefined;
-      if (selfAssign) {
+      if (selfAssign && canSelfAssign) {
         const self = await window.skipper.composer.getSelfLogin(accountId);
         if (self.login) assignees = [self.login];
         else setNotice(c.noLogin);
@@ -118,7 +121,7 @@ export function DraftPane({
             toast({
               id: `compose-created-${cardState.url}`,
               variant: "success",
-              title: c.toastCreated(cardState.number),
+              title: c.toastCreated(displayRef(cardState)),
               message: truncateLabel(draft.issues[index].title),
               action: {
                 label: c.toastView,
@@ -186,18 +189,20 @@ export function DraftPane({
           </label>
         )}
 
-        <label className="flex items-start gap-2 text-[12px]">
-          <input
-            type="checkbox"
-            checked={selfAssign}
-            onChange={(e) => setSelfAssignStored(e.target.checked ? "true" : "false")}
-            className="mt-0.5"
-          />
-          <span>
-            {c.selfAssign}
-            <span className="block text-[11px] text-muted/70">{c.selfAssignHint}</span>
-          </span>
-        </label>
+        {canSelfAssign && (
+          <label className="flex items-start gap-2 text-[12px]">
+            <input
+              type="checkbox"
+              checked={selfAssign}
+              onChange={(e) => setSelfAssignStored(e.target.checked ? "true" : "false")}
+              className="mt-0.5"
+            />
+            <span>
+              {c.selfAssign}
+              <span className="block text-[11px] text-muted/70">{c.selfAssignHint}</span>
+            </span>
+          </label>
+        )}
 
         {accountId ? (
           <button
