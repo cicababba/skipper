@@ -5,6 +5,7 @@ import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { updateAppSettings } from "@/lib/app-settings";
 import { AgentPairSelect } from "@/components/agent-pair-select";
+import { authHintFor } from "@/lib/agents/auth-hints";
 
 /**
  * Settings → Default agent: the pair every orchestration role inherits, so it
@@ -25,6 +26,7 @@ export function DefaultAgentSection({
 
   const stored = state?.settings.defaultAgent;
   const pair: AgentSelection = stored ?? { runtime: DEFAULT_AGENT_RUNTIME, model: claudeFloor };
+  const hint = authHintFor(pair.runtime);
 
   function apply(next: AgentSelection) {
     void updateSettings({ defaultAgent: next });
@@ -64,9 +66,9 @@ export function DefaultAgentSection({
           )}
         </div>
         <p className="text-[11px] text-muted/40 leading-relaxed">
-          {t.settings.llm.claudeAuthBefore}{" "}
-          <code className="text-accent/60 bg-accent/5 px-1 rounded">claude auth login</code>{" "}
-          {t.settings.llm.claudeAuthAfter}
+          {t.settings.llm.authHintBefore(r[hint.runtimeLabelKey])}{" "}
+          <code className="text-accent/60 bg-accent/5 px-1 rounded">{hint.command}</code>{" "}
+          {t.settings.llm[hint.afterKey]}
         </p>
       </div>
     </section>
