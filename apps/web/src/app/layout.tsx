@@ -14,6 +14,7 @@ import { OnboardingGate } from "@/lib/onboarding-gate";
 import { AppLangProvider } from "@/lib/app-i18n";
 import { ToastProvider } from "@/lib/toast-context";
 import { UpdateToast } from "@/components/update-toast";
+import { OrchestratorToasts } from "@/components/orchestrator-toasts";
 import { ToastHost } from "@/components/toast-host";
 import { AboutModal } from "@/components/about-modal";
 import { ResumeRiteModal } from "@/components/resume-rite-modal";
@@ -65,6 +66,7 @@ export default function RootLayout({
                       <StatusBar />
                     </div>
                     <UpdateToast />
+                    <OrchestratorToasts />
                     <ToastHost />
                     <AboutModal />
                     <ResumeRiteModal />

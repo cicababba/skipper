@@ -50,6 +50,8 @@ const en = {
   retry: "Retry",
   openIssue: "Open on the tracker",
   allCreated: "Every issue was created.",
+  toastCreated: (n: number) => `Issue #${n} created`,
+  toastView: "Open on the tracker",
 
   saveDraft: "Save draft",
   saved: "Saved",
@@ -124,6 +126,8 @@ const it: typeof en = {
   retry: "Riprova",
   openIssue: "Apri sul tracker",
   allCreated: "Tutte le issue sono state create.",
+  toastCreated: (n) => `Issue #${n} creata`,
+  toastView: "Apri sul tracker",
 
   saveDraft: "Salva bozza",
   saved: "Salvata",
@@ -199,6 +203,8 @@ const fr: typeof en = {
   retry: "Réessayer",
   openIssue: "Ouvrir sur le tracker",
   allCreated: "Toutes les issues ont été créées.",
+  toastCreated: (n) => `Issue #${n} créée`,
+  toastView: "Ouvrir sur le tracker",
 
   saveDraft: "Enregistrer le brouillon",
   saved: "Enregistré",
@@ -273,6 +279,8 @@ const es: typeof en = {
   retry: "Reintentar",
   openIssue: "Abrir en el tracker",
   allCreated: "Se crearon todas las issues.",
+  toastCreated: (n) => `Issue #${n} creada`,
+  toastView: "Abrir en el tracker",
 
   saveDraft: "Guardar borrador",
   saved: "Guardado",
