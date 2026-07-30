@@ -40,6 +40,10 @@ export function ChatActivity({ turn }: { turn: ChatTurn }) {
     if (el) stuckRef.current = isStuck(el.scrollTop, el.clientHeight, el.scrollHeight);
   };
 
+  // Streamed reply increments (#277) belong to the draft bubble, not the step
+  // log — exclude them so they neither flood the list nor inflate the count.
+  const steps = turn.envelopes.filter((e) => e.event.kind !== "text-delta");
+
   return (
     <div className="space-y-1.5">
       <button
@@ -48,15 +52,15 @@ export function ChatActivity({ turn }: { turn: ChatTurn }) {
       >
         {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         {turn.open && <Loader2 size={11} className="animate-spin" />}
-        {c.activitySteps(turn.envelopes.length)}
+        {c.activitySteps(steps.length)}
       </button>
-      {open && turn.envelopes.length > 0 && (
+      {open && steps.length > 0 && (
         <div
           ref={scrollRef}
           onScroll={onScroll}
           className="max-h-64 overflow-y-auto rounded-lg border border-card-hover bg-card p-2.5 font-mono text-xs leading-relaxed space-y-1.5"
         >
-          {turn.envelopes.map((e) => (
+          {steps.map((e) => (
             <div key={e.seq}>
               <EventLine event={e.event} />
             </div>

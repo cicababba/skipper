@@ -35,4 +35,36 @@ describe("draftFromTurn", () => {
       "real",
     );
   });
+
+  it("concatenates consecutive text-delta events with no separator", () => {
+    const draft = draftFromTurn(
+      turnOf([
+        { kind: "text-delta", text: "Hel" },
+        { kind: "text-delta", text: "lo " },
+        { kind: "text-delta", text: "world" },
+      ]),
+    );
+    expect(draft).toBe("Hello world");
+  });
+
+  it("joins a delta run and a block text segment with a blank line", () => {
+    const draft = draftFromTurn(
+      turnOf([
+        { kind: "text-delta", text: "streamed " },
+        { kind: "text-delta", text: "reply" },
+        { kind: "text", text: "block" },
+      ]),
+    );
+    expect(draft).toBe("streamed reply\n\nblock");
+  });
+
+  it("ignores a blank delta run", () => {
+    const draft = draftFromTurn(
+      turnOf([
+        { kind: "text-delta", text: "  " },
+        { kind: "text", text: "real" },
+      ]),
+    );
+    expect(draft).toBe("real");
+  });
 });

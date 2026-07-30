@@ -103,6 +103,12 @@ export function runCodingAgent(
       "--output-format",
       "stream-json",
       "--verbose", // stream-json requires it in print mode
+      // Deliberately no --include-partial-messages here (#277): unlike the
+      // read-leaning agent() chat path, the coding run streams into the coder
+      // console, which renders whole `text` blocks as prose. Partial messages
+      // would suppress that block text (and `text-delta` renders nothing in the
+      // console), so this path stays block-level by design. Coder *chat* replies
+      // go through runtime.agent() and do stream progressively.
       ...(opts.model ? ["--model", opts.model] : []),
       "--max-turns",
       String(opts.maxTurns ?? AGENT_MAX_TURNS_BACKSTOP),

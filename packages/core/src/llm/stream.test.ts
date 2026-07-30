@@ -63,3 +63,80 @@ describe("mapAssistantLine tool input expand view (#113)", () => {
     expect(event.input).toBeUndefined();
   });
 });
+
+/** Drive several raw lines through a single parser and collect the events. */
+function eventsForLines(lines: Record<string, unknown>[]): CodingEvent[] {
+  const events: CodingEvent[] = [];
+  const parser = createStreamJsonParser((e) => events.push(e));
+  for (const line of lines) parser.feed(JSON.stringify(line) + "\n");
+  parser.flush();
+  return events;
+}
+
+function textDelta(text: string): Record<string, unknown> {
+  return {
+    type: "stream_event",
+    event: { type: "content_block_delta", delta: { type: "text_delta", text } },
+  };
+}
+
+const blockStop = { type: "stream_event", event: { type: "content_block_stop" } };
+
+describe("stream_event partial messages (#277)", () => {
+  it("flushes coalesced deltas as one text-delta on content_block_stop", () => {
+    const events = eventsForLines([textDelta("Hel"), textDelta("lo"), blockStop]);
+    expect(events).toEqual([{ kind: "text-delta", text: "Hello" }]);
+  });
+
+  it("coalesces long deltas into bounded chunks", () => {
+    const chunk = "x".repeat(50);
+    const events = eventsForLines([
+      textDelta(chunk),
+      textDelta(chunk),
+      textDelta(chunk),
+      blockStop,
+    ]);
+    // The buffer flushes once it crosses the 64-char threshold, so 150 chars of
+    // deltas coalesce into a bounded number of events (not one per delta), and
+    // the concatenation reconstructs the full streamed text.
+    expect(events.length).toBeGreaterThan(1);
+    expect(events.length).toBeLessThan(3);
+    expect(events.map((e) => (e.kind === "text-delta" ? e.text : "")).join("")).toBe(
+      chunk.repeat(3),
+    );
+  });
+
+  it("suppresses the block text once deltas streamed but keeps tool_use", () => {
+    const assistant = {
+      type: "assistant",
+      message: {
+        content: [
+          { type: "text", text: "Hello" },
+          { type: "tool_use", name: "Read", input: { file_path: "/tmp/x.ts" } },
+        ],
+      },
+    };
+    const events = eventsForLines([textDelta("Hello"), blockStop, assistant]);
+    expect(events).toEqual([
+      { kind: "text-delta", text: "Hello" },
+      {
+        kind: "tool-use",
+        tool: "Read",
+        detail: "/tmp/x.ts",
+        input: JSON.stringify({ file_path: "/tmp/x.ts" }, null, 2),
+      },
+    ]);
+  });
+
+  it("keeps the block text when no deltas streamed", () => {
+    const events = eventsForLines([
+      { type: "assistant", message: { content: [{ type: "text", text: "Hello" }] } },
+    ]);
+    expect(events).toEqual([{ kind: "text", text: "Hello" }]);
+  });
+
+  it("maps a stream_event with no partials to nothing", () => {
+    const events = eventsForLines([{ type: "stream_event", event: { type: "message_start" } }]);
+    expect(events).toEqual([]);
+  });
+});

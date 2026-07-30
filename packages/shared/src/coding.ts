@@ -11,6 +11,10 @@ export type CodingEvent =
     }
   | { kind: "agent-init"; sessionId: string; model?: string; tools?: string[] }
   | { kind: "text"; text: string }
+  // A partial-message increment for the streaming draft bubble (#277) — distinct
+  // from `text`, which carries a whole content block. Coalesced upstream so the
+  // replay buffer isn't flooded; concatenated (no separator) into the live draft.
+  | { kind: "text-delta"; text: string }
   | {
       kind: "tool-use";
       tool: string;
