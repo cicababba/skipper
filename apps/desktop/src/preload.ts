@@ -375,8 +375,8 @@ const api = {
       ipcRenderer.invoke("skipper:composer:updateDraft", repo, chatId, draft, editedFlags),
     cancel: (repo: RepoRef, chatId: string): Promise<void> =>
       ipcRenderer.invoke("skipper:composer:cancel", repo, chatId),
-    dispose: (repo: RepoRef, chatId: string): Promise<void> =>
-      ipcRenderer.invoke("skipper:composer:dispose", repo, chatId),
+    dispose: (repo: RepoRef, chatId: string, opts?: { discard?: boolean }): Promise<void> =>
+      ipcRenderer.invoke("skipper:composer:dispose", repo, chatId, opts),
     saveDraft: (repo: RepoRef, chatId: string): Promise<SaveComposerDraftResult> =>
       ipcRenderer.invoke("skipper:composer:saveDraft", repo, chatId),
     resume: (repo: RepoRef, draftId: string): Promise<ResumeComposerChatResult> =>

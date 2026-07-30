@@ -1,7 +1,11 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
-import type { Account, RepoRef } from "@skipper/shared";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Account, ComposerDraft, RepoRef } from "@skipper/shared";
 import { clearSelfLoginCache, registerComposerHandlers, type ComposerIpcDeps } from "./composer-ipc";
 import { initComposerChat, type ComposerChatDeps } from "./composer-chat";
+import { readComposerDraftFile } from "./composer-draft-store";
 
 type Handler = (event: unknown, ...args: unknown[]) => Promise<unknown>;
 
@@ -98,6 +102,49 @@ describe("registerComposerHandlers", () => {
     await expect(
       call(handlers, "skipper:composer:getChat", REPO, started.chatId),
     ).resolves.toMatchObject({ draft, editedFlags: { 0: ["title"] } });
+  });
+});
+
+// The dispose channel carries the renderer's discard verdict (#272): with it,
+// abandoning the composer is what saves the work, and publishing is what doesn't.
+describe("composer dispose", () => {
+  const CARD: ComposerDraft = {
+    issues: [{ title: "web:fix: the topbar jumps", body: "", acceptanceCriteria: [], labels: [] }],
+    relations: [],
+  };
+  let draftsDir: string;
+
+  beforeEach(async () => {
+    draftsDir = await mkdtemp(join(tmpdir(), "sk-composer-ipc-drafts-"));
+    initComposerChat({ ...chatDeps, draftsDir, onDraftsChanged: () => {} } as ComposerChatDeps);
+  });
+
+  afterEach(async () => {
+    await rm(draftsDir, { recursive: true, force: true });
+  });
+
+  async function startWithCard(handlers: Map<string, Handler>): Promise<string> {
+    const started = (await call(handlers, "skipper:composer:start", REPO)) as { chatId: string };
+    await call(handlers, "skipper:composer:updateDraft", REPO, started.chatId, CARD, {});
+    return started.chatId;
+  }
+
+  it("captures the abandoned session when no opts come through", async () => {
+    const { handlers } = setup();
+    const chatId = await startWithCard(handlers);
+
+    await call(handlers, "skipper:composer:dispose", REPO, chatId);
+
+    expect((await readComposerDraftFile(draftsDir, chatId))?.unfinished).toBe(true);
+  });
+
+  it("forwards the discard flag, so nothing is captured", async () => {
+    const { handlers } = setup();
+    const chatId = await startWithCard(handlers);
+
+    await call(handlers, "skipper:composer:dispose", REPO, chatId, { discard: true });
+
+    expect(await readComposerDraftFile(draftsDir, chatId)).toBeNull();
   });
 });
 

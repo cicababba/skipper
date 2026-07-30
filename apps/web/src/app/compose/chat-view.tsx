@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import Link from "next/link";
 import { Check, FolderGit2, Loader2, Save, Sparkles } from "lucide-react";
 import { CHAT_TURN_DETAILS, type ComposerDraft, type RepoRef } from "@skipper/shared";
@@ -58,6 +58,12 @@ export function ChatView({
   // every turn, so the button has nothing left to do but say so.
   const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
   const [saveBusy, setSaveBusy] = useState(false);
+  // An auto-saved draft (#272) is on disk but not kept on purpose: it still
+  // offers "Save draft", and the next abandoned session may overwrite it.
+  const [unfinished, setUnfinished] = useState(false);
+  // The content is deliberately gone (published, or a confirmed mode switch) —
+  // dispose must not capture it back as an unfinished draft.
+  const discardRef = useRef(false);
 
   useEffect(() => {
     if (!window.skipper || !owner || !name) return;
@@ -82,6 +88,7 @@ export function ChatView({
       setChatId(res.chatId);
       if (!draftId) return;
       setSavedDraftId(draftId);
+      setUnfinished("unfinished" in res && res.unfinished === true);
       // The transcript rides ChatPanel's loadHistory; the draft pane is ours to
       // restore, flags included.
       void window.skipper?.composer.getChat({ owner, name }, res.chatId).then((chat) => {
@@ -92,7 +99,12 @@ export function ChatView({
     });
     return () => {
       disposed = true;
-      if (started) void window.skipper?.composer.dispose({ owner, name }, started);
+      if (started)
+        void window.skipper?.composer.dispose(
+          { owner, name },
+          started,
+          discardRef.current ? { discard: true } : undefined,
+        );
     };
   }, [owner, name, draftId]);
 
@@ -154,13 +166,15 @@ export function ChatView({
   };
 
   const save = async () => {
-    if (!chatId || !window.skipper || savedDraftId || saveBusy) return;
+    if (!chatId || !window.skipper || (savedDraftId && !unfinished) || saveBusy) return;
     setDraftError(null);
     setSaveBusy(true);
     try {
       const res = await window.skipper.composer.saveDraft(repo, chatId);
-      if (res.ok) setSavedDraftId(res.draftId);
-      else setDraftError(`${c.saveFailed}: ${res.error}`);
+      if (res.ok) {
+        setSavedDraftId(res.draftId);
+        setUnfinished(false);
+      } else setDraftError(`${c.saveFailed}: ${res.error}`);
     } finally {
       setSaveBusy(false);
     }
@@ -168,6 +182,7 @@ export function ChatView({
 
   // Publishing ends the draft's life (#138): the issues live on the tracker now.
   const onAllCreated = useCallback(() => {
+    discardRef.current = true;
     if (!savedDraftId) return;
     void window.skipper?.drafts.remove(savedDraftId).then(() => setSavedDraftId(null));
   }, [savedDraftId]);
@@ -217,7 +232,7 @@ export function ChatView({
             {distilling ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
             {distilling ? c.generating : split ? c.regenerate : c.generate}
           </button>
-          {savedDraftId ? (
+          {savedDraftId && !unfinished ? (
             <span className="flex items-center gap-1 text-[12px] text-success" title={c.savedHint}>
               <Check size={11} />
               {c.saved}
@@ -262,7 +277,10 @@ export function ChatView({
         <ComposeSwitchConfirm
           title={c.quick.leaveChatTitle}
           body={c.quick.leaveChatBody}
-          onConfirm={() => onSwitch(confirmSwitch)}
+          onConfirm={() => {
+            discardRef.current = true;
+            onSwitch(confirmSwitch);
+          }}
           onCancel={() => setConfirmSwitch(null)}
         />
       )}

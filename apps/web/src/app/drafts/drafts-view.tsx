@@ -76,7 +76,11 @@ export function DraftsView() {
             </thead>
             <tbody className="divide-y divide-card-hover">
               {items.map((item) => {
-                const href = composeHref(item.repo, undefined, item.draftId);
+                const href = composeHref(
+                  item.repo,
+                  item.quick ? "quick" : undefined,
+                  item.draftId,
+                );
                 return (
                   <tr key={item.draftId} className="hover:bg-card-hover/50 transition-colors">
                     <td className="px-3 py-2.5 max-w-[420px]">
@@ -88,6 +92,11 @@ export function DraftsView() {
                         <span className={item.title ? "" : "text-muted"}>
                           {item.title || d.untitled}
                         </span>
+                        {item.unfinished && (
+                          <span className="ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-card-hover text-muted">
+                            {d.unfinished}
+                          </span>
+                        )}
                       </button>
                     </td>
                     <td className="px-3 py-2.5 text-[12px] text-muted whitespace-nowrap">

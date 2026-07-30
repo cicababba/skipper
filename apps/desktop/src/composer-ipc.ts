@@ -92,9 +92,11 @@ export function registerComposerHandlers(deps: ComposerIpcDeps): void {
   deps.ipcMain.handle("skipper:composer:cancel", (_e, repo: RepoRef, chatId: string) => {
     cancelComposerChat(repo, chatId);
   });
-  deps.ipcMain.handle("skipper:composer:dispose", (_e, repo: RepoRef, chatId: string) => {
-    disposeComposerChat(repo, chatId);
-  });
+  deps.ipcMain.handle(
+    "skipper:composer:dispose",
+    (_e, repo: RepoRef, chatId: string, opts?: { discard?: boolean }) =>
+      disposeComposerChat(repo, chatId, opts),
+  );
   deps.ipcMain.handle("skipper:composer:saveDraft", (_e, repo: RepoRef, chatId: string) =>
     saveComposerDraft(repo, chatId),
   );

@@ -402,8 +402,10 @@ export interface WindowSkipper {
     ) => Promise<{ ok: boolean; error?: string }>;
     /** Abort the in-flight turn: send/generateDraft resolve cancelled, nothing is recorded. */
     cancel: (repo: RepoRef, chatId: string) => Promise<void>;
-    /** Drop the chat record (view unmount). A promoted chat leaves its file behind. */
-    dispose: (repo: RepoRef, chatId: string) => Promise<void>;
+    /** Drop the chat record (view unmount). A promoted chat leaves its file
+     *  behind; an unpromoted one is auto-saved as an unfinished draft (#272)
+     *  unless `discard` says its content is deliberately gone. */
+    dispose: (repo: RepoRef, chatId: string, opts?: { discard?: boolean }) => Promise<void>;
     /** Promote the chat to a saved draft — from here on every turn re-persists it. */
     saveDraft: (repo: RepoRef, chatId: string) => Promise<SaveComposerDraftResult>;
     /** Rehydrate a saved draft into a live chat; the returned id replaces start's. */

@@ -3,9 +3,17 @@
 // the directory. Mirrors repo-instructions' per-entity JSON pattern (sanitized
 // filename + tmp+rename + save queue).
 
+import {
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { ComposerDraftListItem, StoredComposerDraft } from "@skipper/shared";
+import { repoKey, type ComposerDraftListItem, type StoredComposerDraft } from "@skipper/shared";
 
 /** A draft id is a UUID today, but the file name is sanitized all the same. */
 export function draftFileName(draftId: string): string {
@@ -44,9 +52,28 @@ export async function saveComposerDraftFile(dir: string, draft: StoredComposerDr
   }
 }
 
+/** The quit path (#272) writes outside the save queue on purpose: `before-quit`
+ *  cannot await, and by then nothing else is writing drafts. */
+export function saveComposerDraftFileSync(dir: string, draft: StoredComposerDraft): void {
+  const path = draftFilePath(dir, draft.draftId);
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, JSON.stringify(draft, null, 2), "utf-8");
+  renameSync(tmp, path);
+}
+
 async function readDraftPath(path: string): Promise<StoredComposerDraft | null> {
   try {
     const parsed = JSON.parse(await readFile(path, "utf-8")) as StoredComposerDraft;
+    return parsed.version === 1 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function readDraftPathSync(path: string): StoredComposerDraft | null {
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf-8")) as StoredComposerDraft;
     return parsed.version === 1 ? parsed : null;
   } catch {
     return null;
@@ -69,6 +96,67 @@ export async function deleteComposerDraftFile(dir: string, draftId: string): Pro
   }
 }
 
+/**
+ * Keep at most one unfinished draft per repo (#272): drop every other unfinished
+ * file of `repoKeyStr` except `keepIds` (the one just written, plus the drafts
+ * live records still hold). Explicit drafts are never touched.
+ */
+export async function deleteUnfinishedDraftFiles(
+  dir: string,
+  repoKeyStr: string,
+  keepIds: Set<string>,
+): Promise<boolean> {
+  let files: string[];
+  try {
+    files = await readdir(dir);
+  } catch {
+    return false;
+  }
+  let deleted = false;
+  for (const file of files) {
+    if (!file.endsWith(".json")) continue;
+    const path = join(dir, file);
+    const draft = await readDraftPath(path);
+    if (!draft?.unfinished) continue;
+    if (keepIds.has(draft.draftId) || repoKey(draft.repo) !== repoKeyStr) continue;
+    try {
+      await unlink(path);
+      deleted = true;
+    } catch {
+      /* a file that cannot be removed stays listed — the next capture retries */
+    }
+  }
+  return deleted;
+}
+
+export function deleteUnfinishedDraftFilesSync(
+  dir: string,
+  repoKeyStr: string,
+  keepIds: Set<string>,
+): boolean {
+  let files: string[];
+  try {
+    files = readdirSync(dir);
+  } catch {
+    return false;
+  }
+  let deleted = false;
+  for (const file of files) {
+    if (!file.endsWith(".json")) continue;
+    const path = join(dir, file);
+    const draft = readDraftPathSync(path);
+    if (!draft?.unfinished) continue;
+    if (keepIds.has(draft.draftId) || repoKey(draft.repo) !== repoKeyStr) continue;
+    try {
+      unlinkSync(path);
+      deleted = true;
+    } catch {
+      /* same as the async twin: best-effort */
+    }
+  }
+  return deleted;
+}
+
 /** Most recently touched first — the list is a resume surface, not an archive. */
 export async function listComposerDrafts(dir: string): Promise<ComposerDraftListItem[]> {
   let files: string[];
@@ -87,6 +175,8 @@ export async function listComposerDrafts(dir: string): Promise<ComposerDraftList
       repo: draft.repo,
       title: draft.title,
       updatedAt: draft.updatedAt,
+      ...(draft.unfinished ? { unfinished: true } : {}),
+      ...(draft.messages.length === 0 ? { quick: true } : {}),
     });
   }
   return items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));

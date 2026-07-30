@@ -5,11 +5,14 @@ import { join } from "node:path";
 import type { StoredComposerDraft } from "@skipper/shared";
 import {
   deleteComposerDraftFile,
+  deleteUnfinishedDraftFiles,
+  deleteUnfinishedDraftFilesSync,
   draftFileName,
   draftFilePath,
   listComposerDrafts,
   readComposerDraftFile,
   saveComposerDraftFile,
+  saveComposerDraftFileSync,
 } from "./composer-draft-store";
 
 let dir: string;
@@ -103,6 +106,90 @@ describe("saveComposerDraftFile / readComposerDraftFile", () => {
   });
 });
 
+// The quit path (#272) writes outside the async queue: same bytes, same atomicity.
+describe("saveComposerDraftFileSync", () => {
+  it("round-trips a draft the async reader can pick up", async () => {
+    const draft = makeDraft({ unfinished: true });
+    saveComposerDraftFileSync(dir, draft);
+    expect(await readComposerDraftFile(dir, "draft-1")).toEqual(draft);
+  });
+
+  it("leaves no temp file behind", async () => {
+    saveComposerDraftFileSync(dir, makeDraft());
+    expect((await readdir(dir)).some((f) => f.endsWith(".tmp"))).toBe(false);
+  });
+
+  it("creates the drafts directory on first write", async () => {
+    const fresh = join(dir, "never-created");
+    saveComposerDraftFileSync(fresh, makeDraft());
+    expect((await readComposerDraftFile(fresh, "draft-1"))?.draftId).toBe("draft-1");
+  });
+});
+
+describe("deleteUnfinishedDraftFiles", () => {
+  async function seed(): Promise<void> {
+    await saveComposerDraftFile(dir, makeDraft({ draftId: "u1", chatId: "u1", unfinished: true }));
+    await saveComposerDraftFile(dir, makeDraft({ draftId: "u2", chatId: "u2", unfinished: true }));
+    await saveComposerDraftFile(dir, makeDraft({ draftId: "explicit", chatId: "explicit" }));
+    await saveComposerDraftFile(
+      dir,
+      makeDraft({
+        draftId: "other-repo",
+        chatId: "other-repo",
+        unfinished: true,
+        repo: { owner: "acme", name: "rocket" },
+      }),
+    );
+  }
+
+  it("drops the repo's other unfinished drafts and nothing else", async () => {
+    await seed();
+    expect(await deleteUnfinishedDraftFiles(dir, "acme/widgets", new Set(["u2"]))).toBe(true);
+    expect(await readComposerDraftFile(dir, "u1")).toBeNull();
+    expect(await readComposerDraftFile(dir, "u2")).not.toBeNull();
+    expect(await readComposerDraftFile(dir, "explicit")).not.toBeNull();
+    expect(await readComposerDraftFile(dir, "other-repo")).not.toBeNull();
+  });
+
+  it("deletes nothing when every unfinished draft is on the keep list", async () => {
+    await seed();
+    expect(await deleteUnfinishedDraftFiles(dir, "acme/widgets", new Set(["u1", "u2"]))).toBe(false);
+    expect(await readComposerDraftFile(dir, "u1")).not.toBeNull();
+  });
+
+  it("matches the repo the way repoKey does, case included", async () => {
+    await saveComposerDraftFile(
+      dir,
+      makeDraft({
+        draftId: "mixed",
+        chatId: "mixed",
+        unfinished: true,
+        repo: { owner: "Acme", name: "Widgets" },
+      }),
+    );
+    expect(await deleteUnfinishedDraftFiles(dir, "acme/widgets", new Set())).toBe(true);
+    expect(await readComposerDraftFile(dir, "mixed")).toBeNull();
+  });
+
+  it("reports nothing deleted when the directory does not exist", async () => {
+    expect(
+      await deleteUnfinishedDraftFiles(join(dir, "never-created"), "acme/widgets", new Set()),
+    ).toBe(false);
+  });
+
+  it("sync twin honours the same flag, repo and keep rules", async () => {
+    await seed();
+    expect(deleteUnfinishedDraftFilesSync(dir, "acme/widgets", new Set(["u2"]))).toBe(true);
+    expect(await readComposerDraftFile(dir, "u1")).toBeNull();
+    expect(await readComposerDraftFile(dir, "u2")).not.toBeNull();
+    expect(await readComposerDraftFile(dir, "explicit")).not.toBeNull();
+    expect(await readComposerDraftFile(dir, "other-repo")).not.toBeNull();
+    expect(deleteUnfinishedDraftFilesSync(join(dir, "never-created"), "acme/widgets", new Set())).toBe(
+      false,
+    );
+  });
+});
+
 describe("deleteComposerDraftFile", () => {
   it("removes the file and reports it", async () => {
     await saveComposerDraftFile(dir, makeDraft());
@@ -126,6 +213,32 @@ describe("listComposerDrafts", () => {
         updatedAt: "2026-07-25T10:00:00.000Z",
       },
     ]);
+  });
+
+  // The list is what /drafts renders: the tag comes from the flag, the mode the
+  // Resume link opens comes from the absence of a transcript (#272).
+  it("flags an unfinished draft and infers the quick shape from an empty transcript", async () => {
+    await saveComposerDraftFile(
+      dir,
+      makeDraft({ draftId: "quick", chatId: "quick", unfinished: true, messages: [] }),
+    );
+    expect(await listComposerDrafts(dir)).toEqual([
+      {
+        draftId: "quick",
+        repo: { owner: "acme", name: "widgets" },
+        title: "web:feat: rate-limit the webhook",
+        updatedAt: "2026-07-25T10:00:00.000Z",
+        unfinished: true,
+        quick: true,
+      },
+    ]);
+  });
+
+  it("keeps an unfinished chat draft out of the quick bucket", async () => {
+    await saveComposerDraftFile(dir, makeDraft({ unfinished: true }));
+    const [item] = await listComposerDrafts(dir);
+    expect(item.unfinished).toBe(true);
+    expect(item.quick).toBeUndefined();
   });
 
   it("sorts by updatedAt, most recently touched first", async () => {

@@ -115,6 +115,7 @@ describe("skipper:drafts:list", () => {
       repo: REPO,
       title: "web:feat: rate-limit the webhook",
       updatedAt: "2026-07-28T09:00:00.000Z",
+      quick: true,
     });
   });
 

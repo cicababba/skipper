@@ -27,7 +27,13 @@ import {
   type StartComposerChatResult,
   type StoredComposerDraft,
 } from "@skipper/shared";
-import { readComposerDraftFile, saveComposerDraftFile } from "./composer-draft-store";
+import {
+  deleteUnfinishedDraftFiles,
+  deleteUnfinishedDraftFilesSync,
+  readComposerDraftFile,
+  saveComposerDraftFile,
+  saveComposerDraftFileSync,
+} from "./composer-draft-store";
 import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
 import { buildLlm, injectedBundle, modelForRole, providerCacheKey, type LlmBundle } from "./llm-settings";
 
@@ -70,6 +76,12 @@ interface ComposerChatRecord {
   editedFlags?: ComposerEditedFlags;
   /** Set once the chat is promoted (#138); its presence is what arms autosave. */
   draftId?: string;
+  /** The draft behind this record was auto-saved on abandonment (#272), not
+   *  saved on purpose — an explicit save is what clears it. */
+  unfinished?: boolean;
+  /** The content is deliberately gone (published, or a confirmed mode switch):
+   *  dispose must not resurrect it as an unfinished draft (#272). */
+  discarded?: boolean;
   createdAt?: string;
 }
 
@@ -155,10 +167,75 @@ export function cancelComposerChat(repo: RepoRef, chatId: string): void {
   inFlight.get(chatKey(repo, chatId))?.abort();
 }
 
-export function disposeComposerChat(repo: RepoRef, chatId: string): void {
+/** Worth keeping when the user walks away: a discussion, or hand-written issue
+ *  content in a draft that was never distilled from one. */
+function hasCaptureContent(record: ComposerChatRecord): boolean {
+  if (record.messages.length > 0) return true;
+  return record.draft?.issues.some((i) => i.title.trim() !== "" || i.body.trim() !== "") ?? false;
+}
+
+/** Drafts no unfinished sweep may delete: the capture just written plus every
+ *  draft a live record still autosaves into. */
+function unfinishedKeepIds(capturedId: string): Set<string> {
+  const keep = new Set<string>([capturedId]);
+  for (const record of chats.values()) if (record.draftId) keep.add(record.draftId);
+  return keep;
+}
+
+/**
+ * Drop the chat record. An unpromoted session with content is auto-saved as an
+ * unfinished draft first (#272) so leaving the composer stops losing work;
+ * `discard` (publish, confirmed mode switch) says the content is meant to go.
+ * The map delete stays synchronous — the send/distill paths read `chats.has` as
+ * their cancellation signal.
+ */
+export async function disposeComposerChat(
+  repo: RepoRef,
+  chatId: string,
+  opts?: { discard?: boolean },
+): Promise<void> {
   const key = chatKey(repo, chatId);
   inFlight.get(key)?.abort();
+  const record = chats.get(key);
   chats.delete(key);
+  if (!deps || !record) return;
+  if (opts?.discard || record.discarded || record.draftId || !hasCaptureContent(record)) return;
+  record.unfinished = true;
+  try {
+    await saveComposerDraftFile(deps.draftsDir, storedFrom(record, chatId));
+    await deleteUnfinishedDraftFiles(deps.draftsDir, repoKey(record.repo), unfinishedKeepIds(chatId));
+    deps.onDraftsChanged();
+  } catch {
+    /* capture is best-effort, like autosave — a lost one leaves the list as it was */
+  }
+}
+
+/**
+ * App quit (#272): `dispose` never runs, so sweep the live unpromoted sessions
+ * here. Synchronous by necessity — `before-quit` cannot await, and the failsafe
+ * force-exits shortly after. One capture per repo, most recently started wins.
+ */
+export function flushUnfinishedComposerChats(): void {
+  if (!deps) return;
+  const promoted = new Set<string>();
+  const eligible = new Map<string, ComposerChatRecord>();
+  for (const record of chats.values()) {
+    if (record.draftId) {
+      promoted.add(record.draftId);
+      continue;
+    }
+    if (record.discarded || !hasCaptureContent(record)) continue;
+    eligible.set(repoKey(record.repo), record);
+  }
+  for (const [key, record] of eligible) {
+    record.unfinished = true;
+    try {
+      saveComposerDraftFileSync(deps.draftsDir, storedFrom(record, record.chatId));
+    } catch {
+      continue;
+    }
+    deleteUnfinishedDraftFilesSync(deps.draftsDir, key, new Set([record.chatId, ...promoted]));
+  }
 }
 
 /** The draft's first issue names it; before a distillation the opening question
@@ -185,6 +262,7 @@ function storedFrom(record: ComposerChatRecord, draftId: string): StoredComposer
     messages: record.messages,
     ...(record.draft ? { draft: record.draft } : {}),
     ...(record.editedFlags ? { editedFlags: record.editedFlags } : {}),
+    ...(record.unfinished ? { unfinished: true } : {}),
     createdAt: record.createdAt ?? now,
     updatedAt: now,
   };
@@ -212,6 +290,10 @@ export async function saveComposerDraft(
   const record = chats.get(chatKey(repo, chatId));
   if (!record) return { ok: false, error: "unknown composer chat" };
   const draftId = record.draftId ?? chatId;
+  // An explicit save is what makes a draft permanent: it leaves the unfinished
+  // overwrite pool (#272), on disk and in the record.
+  delete record.unfinished;
+  delete record.discarded;
   const stored = storedFrom(record, draftId);
   try {
     await saveComposerDraftFile(deps.draftsDir, stored);
@@ -250,17 +332,26 @@ export async function resumeComposerChat(
     ...(stored.draft ? { draft: stored.draft } : {}),
     ...(stored.editedFlags ? { editedFlags: stored.editedFlags } : {}),
     draftId: stored.draftId,
+    ...(stored.unfinished ? { unfinished: true } : {}),
     createdAt: stored.createdAt,
   });
   deps.emitEvent(key, { kind: "status", phase: "fetching", detail: "composer resume" });
-  return { ok: true, chatId: stored.chatId };
+  return {
+    ok: true,
+    chatId: stored.chatId,
+    ...(stored.unfinished ? { unfinished: true } : {}),
+  };
 }
 
 /** Drop the draft link from whichever live chat holds it (#138): without this a
  *  deleted draft would be resurrected by the next autosave. */
 export function demoteComposerDraft(draftId: string): void {
   for (const record of chats.values()) {
-    if (record.draftId === draftId) delete record.draftId;
+    if (record.draftId !== draftId) continue;
+    delete record.draftId;
+    // The draft was deleted or published: dispose must not capture it back as an
+    // unfinished draft (#272).
+    record.discarded = true;
   }
 }
 

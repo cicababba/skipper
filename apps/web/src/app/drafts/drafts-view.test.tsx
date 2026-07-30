@@ -28,6 +28,24 @@ const DRAFTS: ComposerDraftListItem[] = [
   },
 ];
 
+/** An abandoned quick session (#272): auto-saved, so it carries both flags. */
+const UNFINISHED_QUICK: ComposerDraftListItem = {
+  draftId: "draft-3",
+  repo: { owner: "acme", name: "widgets" },
+  title: "web:fix: the topbar jumps",
+  updatedAt: hoursAgo(1),
+  unfinished: true,
+  quick: true,
+};
+
+const UNFINISHED_CHAT: ComposerDraftListItem = {
+  draftId: "draft-4",
+  repo: { owner: "acme", name: "widgets" },
+  title: "web:feat: shepherd the PR",
+  updatedAt: hoursAgo(1),
+  unfinished: true,
+};
+
 function installSkipper(opts: { drafts?: ComposerDraftListItem[]; removeOk?: boolean } = {}) {
   const list = vi.fn().mockResolvedValue(opts.drafts ?? DRAFTS);
   const remove = vi.fn().mockResolvedValue({ ok: opts.removeOk ?? true });
@@ -118,6 +136,36 @@ describe("DraftsView", () => {
 
     fireEvent.click(await screen.findByText("web:feat: rate-limit the webhook"));
     expect(push).toHaveBeenCalledWith("/compose?owner=acme&name=widgets&draft=draft-1");
+  });
+
+  // An auto-saved draft (#272) sits in the same list, tagged so the user can
+  // tell what they chose to keep from what the app kept for them.
+  it("tags the unfinished rows and leaves the saved ones bare", async () => {
+    installSkipper({ drafts: [UNFINISHED_QUICK, DRAFTS[0]] });
+    await renderDrafts();
+    await screen.findByText("web:fix: the topbar jumps");
+
+    expect(screen.getAllByText("unfinished")).toHaveLength(1);
+    const saved = screen.getByText("web:feat: rate-limit the webhook").closest("td")!;
+    expect(within(saved).queryByText("unfinished")).toBeNull();
+  });
+
+  it("resumes an unfinished quick draft back into the quick path", async () => {
+    installSkipper({ drafts: [UNFINISHED_QUICK] });
+    await renderDrafts();
+    await screen.findByText("web:fix: the topbar jumps");
+
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    expect(push).toHaveBeenCalledWith("/compose?owner=acme&name=widgets&mode=quick&draft=draft-3");
+  });
+
+  it("resumes an unfinished chat draft into the chat path", async () => {
+    installSkipper({ drafts: [UNFINISHED_CHAT] });
+    await renderDrafts();
+    await screen.findByText("web:feat: shepherd the PR");
+
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    expect(push).toHaveBeenCalledWith("/compose?owner=acme&name=widgets&draft=draft-4");
   });
 
   it("asks before deleting and does nothing until confirmed", async () => {

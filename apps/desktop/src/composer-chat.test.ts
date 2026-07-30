@@ -12,10 +12,12 @@ import type {
 } from "@skipper/shared";
 import { CHAT_TURN_DETAILS, DEFAULT_LLM_SETTINGS, isPlanChatText } from "@skipper/shared";
 import type { GraphifyContext, LLMProviderInterface, LLMResponse } from "@skipper/core";
+import { existsSync } from "node:fs";
 import {
   cancelComposerChat,
   demoteComposerDraft,
   disposeComposerChat,
+  flushUnfinishedComposerChats,
   generateComposerDraft,
   getComposerChat,
   initComposerChat,
@@ -26,9 +28,15 @@ import {
   updateComposerDraft,
   type ComposerChatDeps,
 } from "./composer-chat";
-import { readComposerDraftFile, saveComposerDraftFile } from "./composer-draft-store";
+import {
+  deleteComposerDraftFile,
+  draftFilePath,
+  readComposerDraftFile,
+  saveComposerDraftFile,
+} from "./composer-draft-store";
 
 const REPO: RepoRef = { owner: "acme", name: "widgets" };
+const OTHER_REPO: RepoRef = { owner: "acme", name: "rocket" };
 
 let draftsDir: string;
 
@@ -115,11 +123,16 @@ function fakeProvider(
   } as unknown as LLMProviderInterface & { agent: ReturnType<typeof vi.fn> };
 }
 
-function start(): string {
-  const res = startComposerChat(REPO);
+function start(repo: RepoRef = REPO): string {
+  const res = startComposerChat(repo);
   if (!res.ok) throw new Error(res.error);
   return res.chatId;
 }
+
+const QUICK_DRAFT: ComposerDraft = {
+  issues: [{ title: "web:fix: the topbar jumps", body: "", acceptanceCriteria: [], labels: [] }],
+  relations: [],
+};
 
 function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void } {
   let resolve!: (v: T) => void;
@@ -408,7 +421,7 @@ describe("disposeComposerChat", () => {
     const h = makeHarness();
     initComposerChat(h.deps, fakeProvider());
     const chatId = start();
-    disposeComposerChat(REPO, chatId);
+    await disposeComposerChat(REPO, chatId);
     expect(getComposerChat(REPO, chatId)).toBeNull();
   });
 
@@ -420,9 +433,233 @@ describe("disposeComposerChat", () => {
     await sendComposerChatMessage(REPO, chatId, "keep me");
     await saveComposerDraft(REPO, chatId);
 
-    disposeComposerChat(REPO, chatId);
+    await disposeComposerChat(REPO, chatId);
     expect(getComposerChat(REPO, chatId)).toBeNull();
     expect(await readComposerDraftFile(draftsDir, chatId)).not.toBeNull();
+  });
+});
+
+// Abandonment (#272): leaving the composer auto-saves the session as an
+// unfinished draft, at most one per repo, until an explicit save or a publish
+// takes it out of the pool.
+describe("unfinished capture", () => {
+  async function abandoned(repo: RepoRef = REPO, text = "rate-limit the webhook"): Promise<string> {
+    const chatId = start(repo);
+    await sendComposerChatMessage(repo, chatId, text);
+    await disposeComposerChat(repo, chatId);
+    return chatId;
+  }
+
+  it("writes the abandoned chat as an unfinished draft and pings the list", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "rate-limit the webhook");
+
+    await disposeComposerChat(REPO, chatId);
+
+    const stored = await readComposerDraftFile(draftsDir, chatId);
+    expect(stored).toMatchObject({
+      version: 1,
+      draftId: chatId,
+      chatId,
+      repo: REPO,
+      unfinished: true,
+      title: "rate-limit the webhook",
+    });
+    expect(stored?.messages.filter(isPlanChatText).map((m) => m.text)).toEqual([
+      "rate-limit the webhook",
+      "an answer",
+    ]);
+    expect(h.draftChanges.count).toBe(1);
+    expect(getComposerChat(REPO, chatId)).toBeNull();
+  });
+
+  // The quick path (#137) never discusses anything: its content is the card.
+  it("captures a quick-shaped session that only ever had card content", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    updateComposerDraft(REPO, chatId, QUICK_DRAFT, {});
+
+    await disposeComposerChat(REPO, chatId);
+
+    const stored = await readComposerDraftFile(draftsDir, chatId);
+    expect(stored?.unfinished).toBe(true);
+    expect(stored?.messages).toEqual([]);
+    expect(stored?.title).toBe("web:fix: the topbar jumps");
+  });
+
+  it("writes nothing for a session that holds no content", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const empty = start();
+    const blank = start();
+    updateComposerDraft(
+      REPO,
+      blank,
+      { issues: [{ title: "  ", body: "\n", acceptanceCriteria: [], labels: [] }], relations: [] },
+      {},
+    );
+
+    await disposeComposerChat(REPO, empty);
+    await disposeComposerChat(REPO, blank);
+    await settle();
+
+    expect(await readComposerDraftFile(draftsDir, empty)).toBeNull();
+    expect(await readComposerDraftFile(draftsDir, blank)).toBeNull();
+    expect(h.draftChanges.count).toBe(0);
+  });
+
+  it("writes nothing when the renderer says the content was discarded", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "published already");
+
+    await disposeComposerChat(REPO, chatId, { discard: true });
+    await settle();
+
+    expect(await readComposerDraftFile(draftsDir, chatId)).toBeNull();
+    expect(h.draftChanges.count).toBe(0);
+  });
+
+  it("keeps one unfinished draft per repo and never touches the explicit ones", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    // An explicit draft in the same repo: saved on purpose, off the pool.
+    const explicit = start();
+    await sendComposerChatMessage(REPO, explicit, "keep me on purpose");
+    await saveComposerDraft(REPO, explicit);
+    await disposeComposerChat(REPO, explicit);
+    const other = await abandoned(OTHER_REPO, "another repo entirely");
+
+    const first = await abandoned(REPO, "one");
+    const second = await abandoned(REPO, "two");
+
+    expect(await readComposerDraftFile(draftsDir, first)).toBeNull();
+    expect((await readComposerDraftFile(draftsDir, second))?.unfinished).toBe(true);
+    expect((await readComposerDraftFile(draftsDir, explicit))?.unfinished).toBeUndefined();
+    expect((await readComposerDraftFile(draftsDir, other))?.unfinished).toBe(true);
+  });
+
+  // A resumed session autosaves into its own file: the sweep must not delete the
+  // draft another live mount is still writing.
+  it("spares the unfinished draft a live record still holds", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const resumed = await abandoned(REPO, "one");
+    await resumeComposerChat(REPO, resumed);
+
+    const second = await abandoned(REPO, "two");
+
+    expect(await readComposerDraftFile(draftsDir, resumed)).not.toBeNull();
+    expect(await readComposerDraftFile(draftsDir, second)).not.toBeNull();
+  });
+
+  it("reports the flag on resume and keeps it through the autosaves", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = await abandoned();
+
+    expect(await resumeComposerChat(REPO, chatId)).toEqual({ ok: true, chatId, unfinished: true });
+
+    await sendComposerChatMessage(REPO, chatId, "one more");
+    const after = await waitForDraft(chatId, (d) => d.messages.length === 4);
+    expect(after.unfinished).toBe(true);
+  });
+
+  it("clears the flag on an explicit save and takes the draft off the pool", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = await abandoned();
+    await resumeComposerChat(REPO, chatId);
+
+    expect(await saveComposerDraft(REPO, chatId)).toEqual({ ok: true, draftId: chatId });
+    expect((await readComposerDraftFile(draftsDir, chatId))?.unfinished).toBeUndefined();
+
+    // Promoted now, so its own dispose captures nothing and the next abandoned
+    // session in the repo has no claim on it either.
+    await disposeComposerChat(REPO, chatId);
+    const later = await abandoned(REPO, "a later session");
+
+    expect(await readComposerDraftFile(draftsDir, chatId)).not.toBeNull();
+    expect((await readComposerDraftFile(draftsDir, later))?.unfinished).toBe(true);
+  });
+
+  // The publish path deletes the file and demotes the record; the dispose that
+  // follows must not bring it back.
+  it("captures nothing once the draft was demoted", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "published already");
+    await saveComposerDraft(REPO, chatId);
+
+    demoteComposerDraft(chatId);
+    await deleteComposerDraftFile(draftsDir, chatId);
+    await disposeComposerChat(REPO, chatId);
+    await settle();
+
+    expect(await readComposerDraftFile(draftsDir, chatId)).toBeNull();
+  });
+});
+
+// Quit (#272): dispose never runs, so the sweep is the last chance — and it has
+// to finish before the process goes, hence synchronous.
+describe("flushUnfinishedComposerChats", () => {
+  it("writes the eligible records synchronously and skips the rest", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const contentful = start();
+    await sendComposerChatMessage(REPO, contentful, "still typing when it quit");
+    const empty = start(OTHER_REPO);
+    const promoted = start(OTHER_REPO);
+    await sendComposerChatMessage(OTHER_REPO, promoted, "already saved");
+    await saveComposerDraft(OTHER_REPO, promoted);
+    const changesBefore = h.draftChanges.count;
+
+    flushUnfinishedComposerChats();
+
+    // Sync write: the file is there before anything is awaited.
+    expect(existsSync(draftFilePath(draftsDir, contentful))).toBe(true);
+    expect((await readComposerDraftFile(draftsDir, contentful))?.unfinished).toBe(true);
+    expect(await readComposerDraftFile(draftsDir, empty)).toBeNull();
+    expect((await readComposerDraftFile(draftsDir, promoted))?.unfinished).toBeUndefined();
+    // The renderer is going away with the process: no broadcast to make.
+    expect(h.draftChanges.count).toBe(changesBefore);
+  });
+
+  it("leaves a discarded record alone", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const chatId = start();
+    await sendComposerChatMessage(REPO, chatId, "published already");
+    await saveComposerDraft(REPO, chatId);
+    demoteComposerDraft(chatId);
+    await deleteComposerDraftFile(draftsDir, chatId);
+
+    flushUnfinishedComposerChats();
+
+    expect(await readComposerDraftFile(draftsDir, chatId)).toBeNull();
+  });
+
+  it("still ends up with one unfinished draft per repo", async () => {
+    const h = makeHarness();
+    initComposerChat(h.deps, fakeProvider());
+    const stale = await (async () => {
+      const id = start();
+      await sendComposerChatMessage(REPO, id, "abandoned earlier");
+      await disposeComposerChat(REPO, id);
+      return id;
+    })();
+    const live = start();
+    await sendComposerChatMessage(REPO, live, "live at quit");
+
+    flushUnfinishedComposerChats();
+
+    expect(await readComposerDraftFile(draftsDir, stale)).toBeNull();
+    expect((await readComposerDraftFile(draftsDir, live))?.unfinished).toBe(true);
   });
 });
 

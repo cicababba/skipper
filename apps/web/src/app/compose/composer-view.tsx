@@ -23,9 +23,12 @@ export function ComposerView() {
 
   const [storedMode, setStoredMode] = useStoredState("composer.mode", "chat", "local");
   const urlMode = params.get("mode");
-  // A saved draft is a chat session (#138) — resuming one settles the mode.
+  // A saved draft settles the mode (#138): the path it came from, which the
+  // /drafts link spells out — a transcript-less draft is a quick one (#272).
   const mode: ComposeMode = draftId
-    ? "chat"
+    ? urlMode === "quick"
+      ? "quick"
+      : "chat"
     : urlMode === "quick" || urlMode === "chat"
       ? urlMode
       : storedMode === "quick"
@@ -41,7 +44,7 @@ export function ComposerView() {
   );
 
   return mode === "quick" ? (
-    <QuickView repo={repo} mode={mode} onSwitch={switchMode} />
+    <QuickView repo={repo} mode={mode} onSwitch={switchMode} draftId={draftId} />
   ) : (
     <ChatView repo={repo} mode={mode} onSwitch={switchMode} draftId={draftId} />
   );
