@@ -238,6 +238,15 @@ export function NowRail({
           <ExternalLink size={12} className="shrink-0" />
           {n.remoteIssue}
         </button>
+        {item.pr && (
+          <button
+            onClick={() => void window.skipper?.openExternal(item.pr!.url)}
+            className="flex items-center gap-1.5 text-muted hover:text-foreground transition-colors"
+          >
+            <ExternalLink size={12} className="shrink-0" />
+            {n.pr(item.pr.number)}
+          </button>
+        )}
       </div>
     </div>
     {closeOpen && (
