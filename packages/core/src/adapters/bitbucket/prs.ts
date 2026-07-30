@@ -48,7 +48,7 @@ export async function createPullRequest(
 }
 
 /** Bitbucket query language string literal: wrap in quotes, escaping `\` and `"`. */
-function bbqlString(value: string): string {
+export function bbqlString(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 

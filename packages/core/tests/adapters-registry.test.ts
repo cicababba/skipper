@@ -7,7 +7,7 @@ import {
   issueSourceFor,
   issueSourceForAuthProvider,
 } from "../src/adapters";
-import { bitbucketCodeHost } from "../src/adapters/bitbucket";
+import { bitbucketCodeHost, bitbucketIssueSource } from "../src/adapters/bitbucket";
 import { githubCodeHost, githubIssueSource } from "../src/adapters/github";
 import { gitlabCodeHost, gitlabIssueSource } from "../src/adapters/gitlab";
 import { jiraIssueSource } from "../src/adapters/jira";
@@ -39,6 +39,19 @@ describe("issue-source registry", () => {
     expect(issueSourceFor("openproject")).toBe(openprojectIssueSource);
   });
 
+  it("registers the Bitbucket adapter under its self-declared platform (#274)", () => {
+    expect(issueSources.bitbucket).toBe(bitbucketIssueSource);
+    expect(bitbucketIssueSource.id).toBe("bitbucket");
+    expect(bitbucketIssueSource.authProvider).toBe("bitbucket");
+    expect(issueSourceFor("bitbucket")).toBe(bitbucketIssueSource);
+  });
+
+  it("leaves Bitbucket without closeIssue and fetchDependencies (future work)", () => {
+    expect(bitbucketIssueSource.closeIssue).toBeUndefined();
+    expect(bitbucketIssueSource.fetchDependencies).toBeUndefined();
+    expect(typeof bitbucketIssueSource.fetchComments).toBe("function");
+  });
+
   it("resolves an issue source from the auth provider", () => {
     expect(issueSourceForAuthProvider("github")).toBe(githubIssueSource);
     expect(issueSourceForAuthProvider("gitlab")).toBe(gitlabIssueSource);
@@ -64,11 +77,12 @@ describe("issue-source registry", () => {
     expect(openprojectIssueSource.closeIssue).toBeUndefined();
   });
 
-  it("exposes createIssue on GitHub but not GitLab, Jira, or OpenProject (#134)", () => {
+  it("exposes createIssue on every source (#274)", () => {
     expect(typeof githubIssueSource.createIssue).toBe("function");
-    expect(gitlabIssueSource.createIssue).toBeUndefined();
-    expect(jiraIssueSource.createIssue).toBeUndefined();
-    expect(openprojectIssueSource.createIssue).toBeUndefined();
+    expect(typeof gitlabIssueSource.createIssue).toBe("function");
+    expect(typeof jiraIssueSource.createIssue).toBe("function");
+    expect(typeof openprojectIssueSource.createIssue).toBe("function");
+    expect(typeof bitbucketIssueSource.createIssue).toBe("function");
   });
 
   it("exposes fetchComments on the OpenProject adapter (#144)", () => {
@@ -111,7 +125,7 @@ describe("code-host registry", () => {
     expect(codeHostForProvider("openproject")).toBeUndefined();
   });
 
-  it("has no issue source for the Bitbucket auth provider", () => {
-    expect(issueSourceForAuthProvider("bitbucket")).toBeUndefined();
+  it("resolves the Bitbucket issue source from its auth provider (#274)", () => {
+    expect(issueSourceForAuthProvider("bitbucket")).toBe(bitbucketIssueSource);
   });
 });

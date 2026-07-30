@@ -44,6 +44,7 @@ function installSkipper(opts: { created?: unknown; chat?: unknown } = {}) {
     opts.created ?? {
       ok: true,
       id: "12",
+      key: "12",
       number: 12,
       url: "https://github.com/acme/widgets/issues/12",
     },
@@ -172,6 +173,7 @@ describe("QuickView", () => {
     createIssueOnTracker.mockResolvedValue({
       ok: true,
       id: "13",
+      key: "13",
       number: 13,
       url: "https://github.com/acme/widgets/issues/13",
     });

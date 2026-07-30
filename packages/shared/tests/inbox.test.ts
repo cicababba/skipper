@@ -4,6 +4,7 @@ import {
   mappingHost,
   parseProjectMappingKey,
   parseRepoMappingValue,
+  projectForRepo,
   projectMappingKey,
   sourceRefKey,
 } from "../src";
@@ -108,5 +109,94 @@ describe("parseRepoMappingValue / formatRepoMappingValue", () => {
       const parsed = parseRepoMappingValue(value)!;
       expect(formatRepoMappingValue(parsed.codeHost, parsed.repo)).toBe(value);
     }
+  });
+});
+
+describe("projectForRepo", () => {
+  const repo = { owner: "Acme", name: "Widgets" };
+  const mappings = {
+    "jira:acme.atlassian.net:PROJ": "acme/widgets",
+    "jira:acme.atlassian.net:OTHER": "acme/other",
+    "openproject:op.acme.dev:5": "acme/widgets",
+  };
+
+  it("finds the project mapped to the repo for that source and host", () => {
+    expect(projectForRepo(mappings, { source: "jira", host: "acme.atlassian.net", repo })).toEqual({
+      ok: true,
+      projectKey: "PROJ",
+    });
+  });
+
+  it("scopes the lookup by source", () => {
+    expect(
+      projectForRepo(mappings, { source: "openproject", host: "op.acme.dev", repo }),
+    ).toEqual({ ok: true, projectKey: "5" });
+  });
+
+  it("reports unmapped when the repo has no mapping for that source", () => {
+    expect(
+      projectForRepo(mappings, { source: "jira", host: "acme.atlassian.net", repo: { owner: "acme", name: "nope" } }),
+    ).toEqual({ ok: false, reason: "unmapped" });
+  });
+
+  it("reports unmapped when the host does not match", () => {
+    expect(
+      projectForRepo(mappings, { source: "jira", host: "other.atlassian.net", repo }),
+    ).toEqual({ ok: false, reason: "unmapped" });
+  });
+
+  it("reports unmapped when the source does not match", () => {
+    expect(projectForRepo(mappings, { source: "openproject", host: "acme.atlassian.net", repo })).toEqual({
+      ok: false,
+      reason: "unmapped",
+    });
+  });
+
+  it("matches repo and host case-insensitively", () => {
+    expect(
+      projectForRepo(
+        { "jira:ACME.atlassian.net:PROJ": "ACME/Widgets" },
+        { source: "jira", host: "acme.ATLASSIAN.net", repo: { owner: "acme", name: "widgets" } },
+      ),
+    ).toEqual({ ok: true, projectKey: "PROJ" });
+  });
+
+  it("ignores the code-host prefix in the mapping value", () => {
+    expect(
+      projectForRepo(
+        { "jira:acme.atlassian.net:PROJ": "gitlab:acme/widgets" },
+        { source: "jira", host: "acme.atlassian.net", repo },
+      ),
+    ).toEqual({ ok: true, projectKey: "PROJ" });
+  });
+
+  it("matches a nested-group GitLab path", () => {
+    expect(
+      projectForRepo(
+        { "jira:acme.atlassian.net:PROJ": "gitlab:group/sub/proj" },
+        { source: "jira", host: "acme.atlassian.net", repo: { owner: "group/sub", name: "proj" } },
+      ),
+    ).toEqual({ ok: true, projectKey: "PROJ" });
+  });
+
+  it("reports every candidate, sorted, when two projects map to the same repo", () => {
+    expect(
+      projectForRepo(
+        {
+          "jira:acme.atlassian.net:ZETA": "acme/widgets",
+          "jira:acme.atlassian.net:ALPHA": "acme/widgets",
+        },
+        { source: "jira", host: "acme.atlassian.net", repo },
+      ),
+    ).toEqual({ ok: false, reason: "ambiguous", candidates: ["ALPHA", "ZETA"] });
+  });
+
+  it("ignores malformed mapping keys and values", () => {
+    expect(
+      projectForRepo(
+        { "not-a-key": "acme/widgets", "jira:acme.atlassian.net:PROJ": "bogus" },
+        { source: "jira", host: "acme.atlassian.net", repo },
+      ),
+    ).toEqual({ ok: false, reason: "unmapped" });
   });
 });

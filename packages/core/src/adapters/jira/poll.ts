@@ -19,7 +19,7 @@ const SINCE_OVERLAP_MS = 120_000;
 const MAX_DELTA_WINDOW_MINUTES = 7 * 24 * 60;
 const CLOUD_PAGE_SIZE = 100;
 const DC_PAGE_SIZE = 50;
-const FIELDS =
+export const JIRA_ISSUE_FIELDS =
   "summary,description,labels,components,assignee,reporter,status,project,created,updated";
 
 interface CloudSearchPage {
@@ -62,7 +62,7 @@ async function searchIssues(
       const params = new URLSearchParams({
         jql,
         maxResults: String(CLOUD_PAGE_SIZE),
-        fields: FIELDS,
+        fields: JIRA_ISSUE_FIELDS,
       });
       if (nextPageToken) params.set("nextPageToken", nextPageToken);
       const page = await jiraGet<CloudSearchPage>(
@@ -82,7 +82,7 @@ async function searchIssues(
         jql,
         startAt: String(startAt),
         maxResults: String(DC_PAGE_SIZE),
-        fields: FIELDS,
+        fields: JIRA_ISSUE_FIELDS,
       });
       const page = await jiraGet<DcSearchPage>(
         `${base}/rest/api/2/search?${params.toString()}`,

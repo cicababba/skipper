@@ -674,7 +674,9 @@ export interface CreateIssueOnTrackerParams {
 }
 
 export type CreateIssueOnTrackerResult =
-  | { ok: true; id: string; number: number; url: string }
+  // `key` is the tracker's display key ("42" on GitHub, "PROJ-123" on Jira) and is
+  // always present; `number` only when the tracker numbers its issues.
+  | { ok: true; id: string; key: string; number?: number; url: string }
   | { ok: false; error: string };
 
 // Dirty-worktree cleanup (#204): reset the item's worktree to its base ref +

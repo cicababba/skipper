@@ -1,5 +1,5 @@
 import type { AuthProviderId, CodeHostId, IssueSourceId } from "@skipper/shared";
-import { bitbucketCodeHost } from "./bitbucket";
+import { bitbucketCodeHost, bitbucketIssueSource } from "./bitbucket";
 import { githubCodeHost, githubIssueSource } from "./github";
 import { gitlabCodeHost, gitlabIssueSource } from "./gitlab";
 import { jiraIssueSource } from "./jira";
@@ -15,6 +15,7 @@ export const issueSources = {
   gitlab: gitlabIssueSource,
   jira: jiraIssueSource,
   openproject: openprojectIssueSource,
+  bitbucket: bitbucketIssueSource,
 } satisfies Record<IssueSourceId, IssueSource>;
 
 export function issueSourceFor(source: IssueSourceId): IssueSource {

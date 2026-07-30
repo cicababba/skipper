@@ -25,3 +25,11 @@ export function jiraApiBase(target: JiraTarget): string {
 export async function jiraGet<T>(url: string, getToken: JiraTokenProvider): Promise<T> {
   return (await vendorRequest<T>(CONFIG, "GET", url, getToken)).body as T;
 }
+
+export async function jiraPost<T>(
+  url: string,
+  getToken: JiraTokenProvider,
+  body: unknown,
+): Promise<T> {
+  return (await vendorRequest<T>(CONFIG, "POST", url, getToken, { body })).body as T;
+}

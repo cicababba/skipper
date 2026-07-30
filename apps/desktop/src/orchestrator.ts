@@ -1757,6 +1757,7 @@ export function initOrchestrator(
     getAccounts: () => deps?.getAccounts() ?? [],
     getToken: (key, force) => deps!.getToken(key, force),
     sourceForProvider: issueSourceForAuthProvider,
+    getProjectMappings: async () => (await ensureManifest()).projectMappings,
   });
   // Open the draft PR from human-review, or push a fix round's updates (#11).
   ipcMain.handle("skipper:orchestrator:openPr", async (_e, itemId: string) => {

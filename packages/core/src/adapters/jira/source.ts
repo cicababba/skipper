@@ -1,6 +1,7 @@
 import type { Issue } from "@skipper/shared";
 import { fetchJiraComments } from "./comments";
-import type { IssueComment, IssueSource, TokenProvider } from "../types";
+import { createJiraIssue } from "./create";
+import type { CreateIssueParams, IssueComment, IssueSource, TokenProvider } from "../types";
 import { pollJiraAccount } from "./poll";
 import type { JiraAccountCursor, JiraPollOptions, JiraPollResult } from "./types";
 
@@ -18,5 +19,13 @@ export const jiraIssueSource: IssueSource<JiraAccountCursor> = {
     cloudId?: string,
   ): Promise<IssueComment[]> {
     return fetchJiraComments(issue, getToken, baseUrl, cloudId);
+  },
+  createIssue(
+    params: CreateIssueParams,
+    getToken: TokenProvider,
+    baseUrl?: string,
+    cloudId?: string,
+  ): Promise<Issue> {
+    return createJiraIssue(params, getToken, baseUrl, cloudId);
   },
 };
