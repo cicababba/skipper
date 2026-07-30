@@ -596,7 +596,7 @@ memory
 
 // ---------- run confinement guard (#196): PreToolUse hook for confined agent runs ----------
 
-function collectDeny(value: string, previous: string[]): string[] {
+function collectPath(value: string, previous: string[]): string[] {
   previous.push(value);
   return previous;
 }
@@ -607,9 +607,15 @@ program
     "PreToolUse guard hook (#196): block an Edit/Write/Bash tool call that would escape the run's worktree",
   )
   .requiredOption("--root <path>", "Absolute run root — Edit/Write must resolve inside it")
-  .option("--deny <path>", "Absolute deny root a Bash command must not reference (repeatable)", collectDeny, [])
+  .option("--deny <path>", "Absolute deny root a Bash command must not reference (repeatable)", collectPath, [])
+  .option(
+    "--protect <path>",
+    "Absolute root a Bash command may only touch inside the run root (repeatable)",
+    collectPath,
+    [],
+  )
   .action(async (options) => {
-    await runGuardCommand({ root: options.root, deny: options.deny });
+    await runGuardCommand({ root: options.root, deny: options.deny, protect: options.protect });
   });
 
 // ===== Session handoff (cross-machine) =====

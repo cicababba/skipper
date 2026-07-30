@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   AGENT_MAX_TURNS_BACKSTOP,
@@ -1078,6 +1078,8 @@ describe("coder confinement tripwire (#196)", () => {
     const conf = runner.mock.calls[0][0].confinement!;
     expect(conf.runRoot).toBe("/wt/repo/issue-1");
     expect(conf.denyRoots).toEqual(["/repo"]);
+    // #278: the guard's Bash branch confines writes to the run root within these.
+    expect(conf.protectRoots).toEqual([homedir()]);
   });
 
   it("fails the run and skips completeCoding when the run left new dirt in the checkout", async () => {

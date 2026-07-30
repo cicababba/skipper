@@ -3,7 +3,8 @@ import { realpathSync } from "node:fs";
 
 // PreToolUse guard hook (#196), layer 2. Invoked by the claude CLI before every
 // Edit/Write/Bash tool call during a confined run, launched as
-// `process.execPath <skipper.bundle.cjs> guard --root <runRoot> --deny <checkout>`.
+// `process.execPath <skipper.bundle.cjs> guard --root <runRoot> --deny <checkout>
+// [--protect <home>]`.
 // It reads the hook payload from stdin and exits 2 (with a message on stderr the
 // model sees) to block a call, or 0 to allow it. Fail-open by contract: any
 // parse/shape problem exits 0 so a guard bug can't brick every run — layer 1
@@ -20,6 +21,9 @@ export interface GuardOptions {
   root: string;
   /** Absolute deny roots — a Bash command referencing one is blocked. */
   deny: string[];
+  /** Absolute protect roots — a Bash command path token under one of them that is
+   *  not inside the run root is blocked. The run root itself is the carve-out. */
+  protect: string[];
 }
 
 export interface GuardVerdict {
@@ -62,6 +66,53 @@ function commandReferencesRoot(command: string, denyRoot: string): boolean {
   return normalizeForCompare(command).includes(root);
 }
 
+// Shell delimiters that can't be part of a path token, so a path ends at them.
+const TOKEN_BOUNDARY = /[\s"'`;|&<>()]/;
+const HOME_PREFIXES = ["~/", "$home/", "%userprofile%/"];
+
+function normalizeRoot(root: string): string {
+  return normalizeForCompare(root.replace(/[/\\]+$/, ""));
+}
+
+/** Containment on already-normalized text — no resolve(), so a win32 literal can
+ *  be checked on any host (the Bash branch never touches the filesystem). */
+function isInsideNormalized(root: string, candidate: string): boolean {
+  const r = normalizeRoot(root);
+  const c = normalizeRoot(candidate);
+  return c === r || c.startsWith(`${r}/`);
+}
+
+function pathTokenAt(command: string, index: number): string {
+  const rest = command.slice(index);
+  const end = rest.search(TOKEN_BOUNDARY);
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
+function expandHomePrefix(token: string, homeRoot: string): string | undefined {
+  const lower = token.toLowerCase();
+  const prefix = HOME_PREFIXES.find((p) => lower.startsWith(p));
+  return prefix ? `${homeRoot}/${token.slice(prefix.length)}` : undefined;
+}
+
+/** First path token in the command that lands under a protect root — directly or
+ *  through a home shorthand — without staying inside the run root. */
+function protectEscape(command: string, runRoot: string, protectRoots: string[]): string | undefined {
+  const roots = protectRoots.map(normalizeRoot).filter((root) => root !== "");
+  if (roots.length === 0) return undefined;
+  const text = normalizeForCompare(command);
+  const candidates: string[] = [];
+  for (const root of roots) {
+    for (let i = text.indexOf(root); i !== -1; i = text.indexOf(root, i + root.length)) {
+      candidates.push(pathTokenAt(text, i));
+    }
+  }
+  for (const token of text.split(TOKEN_BOUNDARY)) {
+    const expanded = token === "" ? undefined : expandHomePrefix(token, roots[0]);
+    if (expanded) candidates.push(expanded);
+  }
+  return candidates.find((candidate) => !isInsideNormalized(runRoot, candidate));
+}
+
 /** Pure verdict for a hook payload — extracted for direct testing. */
 export function evaluateGuard(input: GuardHookInput, opts: GuardOptions): GuardVerdict {
   const tool = input.tool_name;
@@ -85,6 +136,13 @@ export function evaluateGuard(input: GuardHookInput, opts: GuardOptions): GuardV
       return {
         block: true,
         message: `Skipper confinement: refusing a Bash command that references the linked checkout (${hit}). Operate only inside your worktree using relative paths.`,
+      };
+    }
+    const escape = protectEscape(command, opts.root, opts.protect);
+    if (escape) {
+      return {
+        block: true,
+        message: `Skipper confinement: refusing a Bash command that reaches outside the worktree (${opts.root}): ${escape}. Operate only inside your worktree using relative paths.`,
       };
     }
     return { block: false };

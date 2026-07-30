@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
 import type { spawn } from "node:child_process";
 import type { CodingEvent } from "@skipper/shared";
@@ -42,7 +42,18 @@ function baseOpts(onEvent: (e: CodingEvent) => void = () => {}) {
   return { prompt: "implement it", cwd: "/tmp/wt", model: "opus", onEvent };
 }
 
+// The write-rule shape is platform-dependent (#278), so every argv assertion over
+// it pins the platform instead of inheriting the host's.
+const hostPlatform = process.platform;
+function stubPlatform(platform: NodeJS.Platform): void {
+  Object.defineProperty(process, "platform", { value: platform, configurable: true });
+}
+
 describe("runCodingAgent", () => {
+  afterEach(() => {
+    stubPlatform(hostPlatform);
+  });
+
   // #240: role models are Claude aliases, so a runtime running on something else
   // is built without one and the flag must disappear rather than ship "--model ".
   it("passes --model only when the caller set one", async () => {
@@ -61,6 +72,7 @@ describe("runCodingAgent", () => {
   });
 
   it("builds write-capable streaming argv without session persistence opt-out", async () => {
+    stubPlatform("linux");
     const { child, spawnImpl, calls } = fakeSpawn();
     const promise = runCodingAgent(
       { ...baseOpts(), sessionId: "22222222-2222-4222-8222-222222222222", systemPrompt: "sys" },
@@ -120,6 +132,7 @@ describe("runCodingAgent", () => {
   });
 
   it("scopes writes but adds no guard hook when confinement has no CLI bundle (#196)", async () => {
+    stubPlatform("linux");
     const { child, spawnImpl, calls } = fakeSpawn();
     const promise = runCodingAgent(
       { ...baseOpts(), confinement: { runRoot: "/tmp/wt", denyRoots: ["/home/me/repo"] } },
@@ -133,6 +146,58 @@ describe("runCodingAgent", () => {
     expect(args).not.toContain("--settings");
     const allowed = args[args.indexOf("--allowedTools") + 1].split(",");
     expect(allowed).toContain("Write(//tmp/wt/**)");
+  });
+
+  // #278: no drive-letter rule shape matches on Windows (upstream
+  // anthropics/claude-code#67849), so the write grant there is bare + guard-enforced.
+  it("grants bare Edit/Write on win32 when the guard hook is active (#278)", async () => {
+    stubPlatform("win32");
+    const { child, spawnImpl, calls } = fakeSpawn();
+    const promise = runCodingAgent(
+      {
+        ...baseOpts(),
+        cwd: "C:\\wt\\issue-1",
+        confinement: {
+          runRoot: "C:\\wt\\issue-1",
+          denyRoots: ["C:\\repo"],
+          protectRoots: ["C:\\Users\\me"],
+          cliBundlePath: "C:\\app\\skipper.bundle.cjs",
+        },
+      },
+      spawnImpl,
+    );
+    child.stdout.emit("data", Buffer.from(`${okResultLine}\n`));
+    child.emit("close", 0);
+    await promise;
+
+    const { args } = calls[0];
+    const allowed = args[args.indexOf("--allowedTools") + 1].split(",");
+    expect(allowed).toContain("Edit");
+    expect(allowed).toContain("Write");
+    expect(allowed.some((rule) => rule.startsWith("Edit("))).toBe(false);
+    expect(args[args.indexOf("--settings") + 1]).toContain("--protect");
+  });
+
+  it("keeps the scoped drive-letter rules on win32 without a guard hook (#278)", async () => {
+    stubPlatform("win32");
+    const { child, spawnImpl, calls } = fakeSpawn();
+    const promise = runCodingAgent(
+      {
+        ...baseOpts(),
+        cwd: "C:\\wt\\issue-1",
+        confinement: { runRoot: "C:\\wt\\issue-1", denyRoots: ["C:\\repo"] },
+      },
+      spawnImpl,
+    );
+    child.stdout.emit("data", Buffer.from(`${okResultLine}\n`));
+    child.emit("close", 0);
+    await promise;
+
+    const allowed = calls[0].args[calls[0].args.indexOf("--allowedTools") + 1].split(",");
+    expect(allowed).toContain("Edit(//C:/wt/issue-1/**)");
+    expect(allowed).toContain("Write(//C:/wt/issue-1/**)");
+    expect(allowed).not.toContain("Edit");
+    expect(allowed).not.toContain("Write");
   });
 
   it("uses --resume for re-entry", async () => {
