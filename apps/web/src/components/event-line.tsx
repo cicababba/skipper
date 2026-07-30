@@ -41,6 +41,10 @@ export function EventLine({ event }: { event: CodingEvent }) {
       );
     case "text":
       return <ConsoleMarkdown content={event.text} />;
+    // Partial-message increments (#277) drive only the live draft bubble, not
+    // the activity console — filtered out upstream, rendered as nothing here.
+    case "text-delta":
+      return null;
     case "tool-use":
       return <ToolUseLine event={event} />;
     case "result":

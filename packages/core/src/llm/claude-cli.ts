@@ -382,7 +382,7 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       "-",
       "--output-format",
       opts.onEvent ? "stream-json" : "json",
-      ...(opts.onEvent ? ["--verbose"] : []), // stream-json requires it in print mode
+      ...(opts.onEvent ? ["--verbose", "--include-partial-messages"] : []), // stream-json requires --verbose in print mode; partial messages stream token deltas (#277)
       "--model",
       this.model,
       "--max-turns",

@@ -3,6 +3,11 @@ import type { CodingEvent } from "@skipper/shared";
 const SUMMARY_MAX = 2000;
 const DETAIL_MAX = 120;
 const INPUT_MAX = 2000;
+// Coalesce partial-message text deltas until this many chars accumulate, then
+// flush one `text-delta` event (#277). Bounds envelope count so a long streamed
+// reply cannot fill the desktop replay buffer (EVENT_BUFFER_MAX = 500) and evict
+// the turn opener; small enough that the draft bubble still grows smoothly.
+const DELTA_FLUSH_CHARS = 64;
 
 // Tolerant by design: unknown types and malformed lines map to null so CLI
 // schema drift degrades to fewer events, never a crash.
@@ -134,12 +139,53 @@ export function createStreamJsonParser(
   onEvent: (event: CodingEvent) => void,
   onLine?: (line: Record<string, unknown>) => void,
 ): StreamJsonParser {
+  let deltaBuffer = "";
+  // True once the current message streamed text deltas — suppress the redundant
+  // block-level `text` on the next assistant line so it is not shown twice.
+  let streamedText = false;
+
+  const flushDelta = () => {
+    if (!deltaBuffer) return;
+    onEvent({ kind: "text-delta", text: deltaBuffer });
+    deltaBuffer = "";
+  };
+
   return createNdjsonFeeder((line) => {
     onLine?.(line);
-    if (line.type === "assistant") {
-      for (const event of mapAssistantLine(line)) onEvent(event);
+
+    // With --include-partial-messages the CLI interleaves Anthropic SSE deltas
+    // as `stream_event` lines (#277); coalesce their text_delta chunks.
+    if (line.type === "stream_event") {
+      const event = line.event as Record<string, unknown> | undefined;
+      if (typeof event !== "object" || event === null) return;
+      if (event.type === "content_block_delta") {
+        const delta = event.delta as Record<string, unknown> | undefined;
+        if (delta?.type === "text_delta" && typeof delta.text === "string") {
+          deltaBuffer += delta.text;
+          streamedText = true;
+          if (deltaBuffer.length >= DELTA_FLUSH_CHARS) flushDelta();
+        }
+        return;
+      }
+      if (event.type === "content_block_stop" || event.type === "message_stop") {
+        flushDelta();
+      }
       return;
     }
+
+    if (line.type === "assistant") {
+      const wasStreamed = streamedText;
+      // A new assistant message closes the delta stream and resets suppression.
+      flushDelta();
+      streamedText = false;
+      for (const event of mapAssistantLine(line)) {
+        // The reply text already streamed as deltas — drop the duplicate block.
+        if (wasStreamed && event.kind === "text") continue;
+        onEvent(event);
+      }
+      return;
+    }
+
     const event = mapStreamLine(line);
     if (event) onEvent(event);
   });
