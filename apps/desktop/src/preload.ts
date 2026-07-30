@@ -45,6 +45,7 @@ import type {
   RepoSettingsRow,
   RepoUnlinkResult,
   ResumeRiteAction,
+  RuntimeAvailability,
   SaveMarkdownResult,
   SaveWorktreeFileResult,
   SetRepoBaseBranchResult,
@@ -542,6 +543,11 @@ const api = {
     status: (): Promise<CliStatus> => ipcRenderer.invoke("skipper:cli:status"),
     install: (): Promise<CliStatus> => ipcRenderer.invoke("skipper:cli:install"),
     uninstall: (): Promise<CliStatus> => ipcRenderer.invoke("skipper:cli:uninstall"),
+  },
+
+  // Which agent CLIs are installed (#287)
+  runtimes: {
+    status: (): Promise<RuntimeAvailability> => ipcRenderer.invoke("skipper:runtimes:status"),
   },
 
   // Terminal

@@ -37,6 +37,7 @@ import { registerGitHandlers } from "./git";
 import { registerTerminalHandlers, type TerminalApi } from "./terminal";
 import { registerExportHandlers } from "./export-ipc";
 import { registerSettingsHandlers } from "./settings-ipc";
+import { registerRuntimesHandlers } from "./runtimes-ipc";
 import { registerAppProtocol } from "./app-protocol";
 import { assertInsideWorktrees as assertInsideWorktreesRoot, looksBinary } from "./fs-guard";
 
@@ -422,6 +423,16 @@ registerExportHandlers({
 });
 
 registerSettingsHandlers({ ipcMain, settingsDir: getLlmSettingsDir });
+
+registerRuntimesHandlers({
+  ipcMain,
+  exec: (cmd) => {
+    execSync(cmd, { stdio: "ignore", windowsHide: true });
+  },
+  fileExists: existsSync,
+  platform: process.platform,
+  env: process.env,
+});
 
 function killAllPtySessions(): void {
   publicTerminal.killAllPtySessions();

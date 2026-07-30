@@ -1,4 +1,4 @@
-import type { AuthProviderId, AuthProviderMeta, AuthState } from "./types";
+import type { AgentRuntimeId, AuthProviderId, AuthProviderMeta, AuthState } from "./types";
 import type {
   ArchiveItemResult,
   CleanWorktreeResult,
@@ -119,6 +119,10 @@ export interface CliStatus {
   /** True when target exists but points at the wrong place (e.g. app moved). */
   stale: boolean;
 }
+
+/** Which agent CLIs are reachable right now (#287) — probed per call against the
+ *  main process' PATH, so a CLI installed mid-session shows up after a restart. */
+export type RuntimeAvailability = Record<AgentRuntimeId, boolean>;
 
 /** Markdown export save-dialog result (#216). canceled = user dismissed the dialog. */
 export type SaveMarkdownResult = { ok: true; canceled?: boolean } | { ok: false; error: string };
@@ -477,5 +481,8 @@ export interface WindowSkipper {
     status: () => Promise<CliStatus>;
     install: () => Promise<CliStatus>;
     uninstall: () => Promise<CliStatus>;
+  };
+  runtimes: {
+    status: () => Promise<RuntimeAvailability>;
   };
 }
