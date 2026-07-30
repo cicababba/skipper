@@ -6,7 +6,9 @@ import { repoKey as repoKeyOf, type ComposerDraft, type RepoRef } from "@skipper
 import { useT } from "@/lib/app-i18n";
 import { useAuth } from "@/lib/auth-context";
 import { useOrchestrator } from "@/lib/orchestrator-context";
+import { useToast } from "@/lib/toast-context";
 import { useStoredState } from "@/lib/use-stored-state";
+import { truncateLabel } from "@/lib/inbox/transition-toasts";
 import { accountCandidates } from "@/lib/composer/derive-account";
 import { renderDraftBody } from "@/lib/composer/render-issue-body";
 import { relationsForIssue, type RelationLabels } from "@/lib/composer/relations-text";
@@ -46,6 +48,7 @@ export function DraftPane({
   const c = t.composer;
   const { authState } = useAuth();
   const { state } = useOrchestrator();
+  const { toast } = useToast();
   const key = repoKeyOf(repo);
 
   const [selfAssignStored, setSelfAssignStored] = useStoredState("composer.selfAssign", "false", "local");
@@ -107,8 +110,24 @@ export function DraftPane({
           });
           return res;
         },
-        onState: (index, cardState) =>
-          setCreateStates((prev) => ({ ...prev, [index]: cardState })),
+        onState: (index, cardState) => {
+          setCreateStates((prev) => ({ ...prev, [index]: cardState }));
+          // Created issues never enter the manifest, so the snapshot diff behind the
+          // orchestrator toasts can't see them — this is their only announcement.
+          if (cardState.status === "created") {
+            toast({
+              id: `compose-created-${cardState.url}`,
+              variant: "success",
+              title: c.toastCreated(cardState.number),
+              message: truncateLabel(draft.issues[index].title),
+              action: {
+                label: c.toastView,
+                onClick: () => void window.skipper?.openExternal(cardState.url),
+              },
+              durationMs: 5000,
+            });
+          }
+        },
       });
     } finally {
       setCreating(false);
