@@ -49,12 +49,6 @@ import type {
   MemoryPhase,
   OrchestratorState,
   PrReviewComment,
-  RepoInstructionsDoc,
-  GetRepoInstructionsResult,
-  SetRepoInstructionsResult,
-  RegenerateRepoInstructionsResult,
-  GetRepoGraphifyResult,
-  ReindexRepoGraphifyResult,
   RepoRef,
   ResolvedRepoIntakeSettings,
   ResolvedRepoOrchestratorSettings,
@@ -81,6 +75,7 @@ import { makeManifestWriters } from "./manifest-writers";
 import { activeItemsForRepo } from "./repo-follow";
 import { registerRepoFollowHandlers } from "./repo-follow-ipc";
 import { registerReposHandlers } from "./repos-ipc";
+import { registerRepoConfigHandlers } from "./repo-config-ipc";
 import { registerMemoryHandlers } from "./memory-ipc";
 import { registerCreateIssueHandlers } from "./create-issue-ipc";
 import { registerComposerHandlers } from "./composer-ipc";
@@ -90,17 +85,11 @@ import { registerWorktreeDiffHandlers } from "./worktree-diff-ipc";
 import { readLlmSettings, readLlmSettingsSync, buildLlm } from "./llm-settings";
 import {
   isInstructionsGenerating,
-  loadRepoInstructions,
   markStaleGenerations,
   readReadyInstructions,
-  saveRepoInstructions,
   seedRepoInstructions,
 } from "./repo-instructions";
-import {
-  isGraphifyRunning,
-  loadGraphifyDoc,
-  markStaleGraphifyRuns,
-} from "./graphify-store";
+import { markStaleGraphifyRuns } from "./graphify-store";
 import { ensureGraphIndexed, graphifyForPlanning, type GraphifyDeps } from "./graphify";
 import { readStoredPlan, updateStoredPlan } from "./plan-store";
 import { readStoredCoderReport } from "./report-store";
@@ -911,86 +900,6 @@ export function initOrchestrator(
     pokeCoder();
     return { ok: true as const, item: m.items[itemId] };
   });
-  ipcMain.handle(
-    "skipper:orchestrator:getRepoInstructions",
-    async (_e, owner: string, name: string): Promise<GetRepoInstructionsResult> => {
-      try {
-        const doc = await loadRepoInstructions(deps!.repoInstructionsDir, repoKey({ owner, name }));
-        return { ok: true, doc };
-      } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
-  ipcMain.handle(
-    "skipper:orchestrator:setRepoInstructions",
-    async (_e, owner: string, name: string, content: string): Promise<SetRepoInstructionsResult> => {
-      try {
-        if (typeof content !== "string") return { ok: false, error: "content must be a string" };
-        const doc: RepoInstructionsDoc = {
-          version: 1,
-          content: content.slice(0, 100_000),
-          updatedAt: new Date().toISOString(),
-          source: "edited",
-          status: "ready",
-        };
-        await saveRepoInstructions(deps!.repoInstructionsDir, repoKey({ owner, name }), doc);
-        broadcast();
-        pokePlanner();
-        return { ok: true, doc };
-      } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
-  ipcMain.handle(
-    "skipper:orchestrator:regenerateRepoInstructions",
-    async (_e, owner: string, name: string): Promise<RegenerateRepoInstructionsResult> => {
-      try {
-        const links = await ensureRepoLinks();
-        const link = links.repos[repoKey({ owner, name })];
-        if (!link) return { ok: false, error: "repo not linked" };
-        if (isInstructionsGenerating(repoKey({ owner, name }))) {
-          return { ok: false, error: "generation already running" };
-        }
-        void seedInstructions({ owner, name }, link.localPath, true);
-        broadcast();
-        return { ok: true };
-      } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
-  ipcMain.handle(
-    "skipper:orchestrator:getRepoGraphify",
-    async (_e, owner: string, name: string): Promise<GetRepoGraphifyResult> => {
-      try {
-        const doc = await loadGraphifyDoc(deps!.graphsDir, repoKey({ owner, name }));
-        return { ok: true, doc };
-      } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
-  ipcMain.handle(
-    "skipper:orchestrator:reindexRepoGraphify",
-    async (_e, owner: string, name: string): Promise<ReindexRepoGraphifyResult> => {
-      try {
-        const key = repoKey({ owner, name });
-        const links = await ensureRepoLinks();
-        if (!links.repos[key]?.localPath) return { ok: false, error: "repo not linked" };
-        const m = await ensureManifest();
-        if (!resolveRepoIntakeSettings(m.repoSettings[key]).graphify) {
-          return { ok: false, error: "Graphify is off for this repo" };
-        }
-        if (isGraphifyRunning(key)) return { ok: false, error: "indexing already running" };
-        kickGraphify({ owner, name });
-        return { ok: true };
-      } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
   ipcMain.handle("skipper:orchestrator:getPlan", async (_e, itemId: string) => {
     const m = await ensureManifest();
     const ref = m.items[itemId]?.plan?.ref;
@@ -1139,6 +1048,17 @@ export function initOrchestrator(
       for (const item of poller.allCached()) if (item.repo) yield item.repo;
     },
     getDefaultModel: () => readLlmSettingsSync(deps!.dataDir).claudeModel,
+  });
+  registerRepoConfigHandlers({
+    ipcMain,
+    repoInstructionsDir: orchestratorDeps.repoInstructionsDir,
+    graphsDir: orchestratorDeps.graphsDir,
+    ensureManifest,
+    ensureRepoLinks,
+    broadcast,
+    pokePlanner,
+    seedInstructions,
+    kickGraphify,
   });
   registerWorktreeDiffHandlers({ ipcMain, ensureManifest });
   registerCreateIssueHandlers({
