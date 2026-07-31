@@ -1,9 +1,19 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Sparkles, Cpu, Trophy, ArrowRight, Loader2 } from "lucide-react";
+import {
+  AGENT_RUNTIME_IDS,
+  DEFAULT_AGENT_RUNTIME,
+  type AgentRuntimeId,
+  type AgentSelection,
+} from "@skipper/shared";
 import { useT } from "@/lib/app-i18n";
 import { ModelSelect } from "@/components/model-select";
+import { RuntimeSelect } from "@/components/runtime-select";
+import { RuntimeAuthHint } from "@/components/runtime-auth-hint";
+import { claudeModelMirror, resetModel } from "@/lib/agents/model-options";
+import { getRuntimeAvailability } from "@/lib/runtime-availability";
 import { updateAppSettings } from "@/lib/app-settings";
 
 type Step =
@@ -14,6 +24,8 @@ type Step =
 const MODAL_STEPS: Step[] = ["welcome", "settings", "celebrate"];
 const PROGRESS_STEPS: Step[] = ["welcome", "settings"];
 
+const CLAUDE_DEFAULT_MODEL = "sonnet";
+
 export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
   const { t } = useT();
   const to = t.wiki.onboarding;
@@ -21,8 +33,23 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
   const [transitioning, setTransitioning] = useState(false);
 
   // Settings state
-  const [claudeModel, setClaudeModel] = useState("sonnet");
+  const [pair, setPair] = useState<AgentSelection>({
+    runtime: DEFAULT_AGENT_RUNTIME,
+    model: CLAUDE_DEFAULT_MODEL,
+  });
   const [savingSettings, setSavingSettings] = useState(false);
+
+  // Preselect a CLI the user actually has. Claude stays the default when it is
+  // installed, when nothing could be probed, and when nothing at all is
+  // installed — in that last case RuntimeSelect says so and the step still
+  // saves, because onboarding must never dead-end on a missing CLI.
+  useEffect(() => {
+    void getRuntimeAvailability().then((availability) => {
+      if (!availability || availability[DEFAULT_AGENT_RUNTIME]) return;
+      const installed = AGENT_RUNTIME_IDS.find((id) => availability[id]);
+      if (installed) setPair({ runtime: installed, model: resetModel() });
+    });
+  }, []);
 
   const next = useCallback((to: Step) => {
     setTransitioning(true);
@@ -43,8 +70,19 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
 
   async function handleSaveSettings() {
     setSavingSettings(true);
+    // llm.provider stays pinned to claude-cli: it is the completions backend the
+    // roles fall back to for structured/repair rounds, not the agent that runs
+    // them — that one is the pair written to defaultAgent below.
+    const mirror = claudeModelMirror(pair);
     try {
-      await updateAppSettings({ llm: { provider: "claude-cli", claudeModel } });
+      await updateAppSettings({
+        llm: { provider: "claude-cli", ...(mirror ? { claudeModel: mirror } : {}) },
+      });
+      try {
+        await window.skipper?.orchestrator.updateSettings({ defaultAgent: pair });
+      } catch {
+        /* ignore */
+      }
       void finishOnboarding();
     } catch {
       /* ignore */
@@ -123,24 +161,38 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
               </p>
             </div>
 
-            {/* No provider cards: claude-cli is the only backend that drives
-                the planner and the coder end-to-end. */}
             <div className="p-5 rounded-2xl bg-card border border-border space-y-4">
-              <div>
-                <label className="block text-[11px] text-muted/70 uppercase tracking-wider mb-2">
-                  {to.model}
-                </label>
-                <ModelSelect
-                  value={claudeModel}
-                  onChange={setClaudeModel}
-                  className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
-                />
-                <p className="text-[10px] text-muted/40 mt-2">
-                  {to.claudeAuth1}{" "}
-                  <code className="text-accent/60">claude auth login</code>{" "}
-                  {to.claudeAuth2}
-                </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] text-muted/70 uppercase tracking-wider mb-2">
+                    {to.runtime}
+                  </label>
+                  <RuntimeSelect
+                    value={pair.runtime}
+                    onChange={(runtime: AgentRuntimeId) =>
+                      // Claude lists aliases only — no empty option — so it lands
+                      // back on the initial default instead of the Custom… input.
+                      setPair({
+                        runtime,
+                        model: runtime === "claude-cli" ? CLAUDE_DEFAULT_MODEL : resetModel(),
+                      })
+                    }
+                    className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-muted/70 uppercase tracking-wider mb-2">
+                    {to.model}
+                  </label>
+                  <ModelSelect
+                    value={pair.model ?? ""}
+                    runtime={pair.runtime}
+                    onChange={(model) => setPair({ runtime: pair.runtime, model: model || undefined })}
+                    className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
+                  />
+                </div>
               </div>
+              <RuntimeAuthHint runtime={pair.runtime} />
             </div>
 
             <div className="flex justify-between items-center">
