@@ -7,6 +7,7 @@ import type {
 import { isPlanChatText } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
 import type { AgentRuntime } from "../runtime/types";
+import { structuredCall } from "../runtime/structured";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import type { GraphifyContext } from "../llm/graphify-mcp";
 import type { RunConfinement } from "../llm/confinement";
@@ -109,9 +110,11 @@ function buildRepairPrompt(raw: string, error: string): string {
   ].join("\n");
 }
 
-/** Validate the agent's final JSON reply, with one cheap askStructured repair
- *  round for format slips (mirrors validatePlanReply). */
+/** Validate the agent's final JSON reply, with one cheap structured repair round
+ *  for format slips — on the composer's own runtime when it has one (mirrors
+ *  validatePlanReply). */
 async function validateDraftReply(
+  runtime: AgentRuntime | undefined,
   llm: LLMProviderInterface,
   raw: string,
   signal?: AbortSignal,
@@ -119,7 +122,9 @@ async function validateDraftReply(
   const first = tryParseDraft(raw);
   if (first.ok) return first.draft;
 
-  const repaired = await llm.askStructured<unknown>(
+  const repaired = await structuredCall<unknown>(
+    runtime,
+    llm,
     buildRepairPrompt(raw, first.error),
     COMPOSER_DRAFT_JSON_SCHEMA,
     signal ? { signal } : undefined,
@@ -166,7 +171,7 @@ export async function distillComposerDraft(
   if (opts.resumeSessionId) {
     if (!runtime) throw new Error("resuming a composer session needs an agent-capable runtime");
     const reply = await runtime.agent(prompt, { ...common, resumeSessionId: opts.resumeSessionId });
-    const draft = await validateDraftReply(llm, reply.text, opts.signal);
+    const draft = await validateDraftReply(runtime, llm, reply.text, opts.signal);
     return { draft, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
   }
 
@@ -175,7 +180,7 @@ export async function distillComposerDraft(
       ...common,
       ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
     });
-    const draft = await validateDraftReply(llm, reply.text, opts.signal);
+    const draft = await validateDraftReply(runtime, llm, reply.text, opts.signal);
     return { draft, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
   }
 
@@ -184,6 +189,6 @@ export async function distillComposerDraft(
     COMPOSER_DRAFT_JSON_SCHEMA,
     opts.signal ? { signal: opts.signal } : undefined,
   );
-  const draft = await validateDraftReply(llm, JSON.stringify(raw), opts.signal);
+  const draft = await validateDraftReply(runtime, llm, JSON.stringify(raw), opts.signal);
   return { draft };
 }

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { CoderReport } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
+import type { AgentRuntime } from "../runtime/types";
+import { structuredCall } from "../runtime/structured";
 import { parseJsonReply } from "../llm/json";
 import { buildRepairPrompt } from "../planner/prompt";
 import { summarizeZodError } from "../planner/generate";
@@ -66,17 +68,21 @@ export function tryParseCoderReport(
 }
 
 /**
- * One askStructured repair round for a coder report the deterministic ladder
- * could not recover. Split from tryParseCoderReport so the happy path stays
+ * One structured repair round for a coder report the deterministic ladder could
+ * not recover — on the coder's own runtime when it has one, else on the
+ * completions provider. Split from tryParseCoderReport so the happy path stays
  * provider-free. Throws CoderReportParseError (carrying the raw text) on a
  * second failure.
  */
 export async function repairCoderReport(
+  runtime: AgentRuntime | undefined,
   llm: LLMProviderInterface,
   raw: string,
   parseError: string,
 ): Promise<CoderReport> {
-  const repaired = await llm.askStructured<unknown>(
+  const repaired = await structuredCall<unknown>(
+    runtime,
+    llm,
     buildRepairPrompt(raw, parseError),
     coderReportJsonSchema(),
   );

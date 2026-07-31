@@ -8,7 +8,7 @@ import { runCritic, type CriticPriorRound } from "../confidence";
 // component, artifactKind "diff". Core stays git-free — the diff arrives
 // as a string; capture lives in the desktop layer.
 
-/** Bound the prompt even though the diff reviewer runs askStructured in
+/** Bound the prompt even though the diff reviewer runs its structured call in
  *  bounded-tools mode (Read/Grep/Glob) — the diff itself is the artifact. ~30k tokens. */
 export const DIFF_CHAR_BUDGET = 120_000;
 
@@ -86,7 +86,9 @@ export async function critiqueDiff(
     .join("\n");
 
   // Repo-inspecting critic only when a session is minted AND a runtime can host
-  // the tools-enabled call (#238); otherwise the plain diff critic.
+  // the tools-enabled call (#238); otherwise the plain diff critic — which still
+  // runs on the reviewer's own runtime when it has one, so only a runtime-less
+  // reviewer falls back to the completions provider.
   const inspect = args.session !== undefined && runtime !== undefined;
   return runCritic(
     {
@@ -100,6 +102,8 @@ export async function critiqueDiff(
     llm,
     inspect
       ? { runtime, cwd: args.session!.cwd, sessionId: args.session!.id, tools: "Read,Grep,Glob", maxTurns: 8 }
-      : undefined,
+      : runtime
+        ? { runtime }
+        : undefined,
   );
 }

@@ -32,9 +32,9 @@ export interface ComputeConfidenceOptions {
   issue: PlanIssueInput;
   repoPath: string;
   llm: LLMProviderInterface;
-  /** Agentic runtime feeding the convergence extra plan runs (#238). Optional:
-   *  the critic (askStructured) needs only llm, so a score with convergence
-   *  skipped/disabled runs without it. */
+  /** Agentic runtime feeding the convergence extra plan runs (#238) and the plan
+   *  critic's structured call. Optional: without it the critic falls back to the
+   *  completions provider and convergence goes unscored. */
   runtime?: AgentRuntime;
   /** Extra generatePlan runs feeding convergence (N total = 1 + this). */
   extraPlanRuns?: number;
@@ -66,7 +66,7 @@ export interface ComputeConfidenceOptions {
   repoInstructions?: string;
   /** The repo's Graphify index (#233), threaded into the convergence extra plan
    *  runs so they explore under the same graph as the primary plan. Reaches only
-   *  the extra runs — critiquePlan uses askStructured, which has no MCP path. */
+   *  the extra runs — the plan critic runs tool-less, so it has no MCP path. */
   graphify?: GraphifyContext;
   deps?: { generatePlan?: typeof realGeneratePlan };
 }
@@ -137,7 +137,10 @@ export async function computeConfidence(
     scoreGroundedness(opts.plan, opts.repoPath)
       .then((s) => void (report.signals.groundedness = s))
       .catch((err) => void report.errors.push(`groundedness: ${message(err)}`)),
-    critiquePlan(opts.plan, opts.issue, opts.llm, opts.signal)
+    critiquePlan(opts.plan, opts.issue, opts.llm, {
+      ...(opts.signal ? { signal: opts.signal } : {}),
+      ...(opts.runtime ? { runtime: opts.runtime } : {}),
+    })
       .then((s) => void (report.signals.critic = s))
       .catch((err) => void report.errors.push(`critic: ${message(err)}`)),
   ]);

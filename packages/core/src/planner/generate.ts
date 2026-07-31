@@ -3,6 +3,7 @@ import type { IssueComment } from "../adapters/types";
 import type { LLMProviderInterface, LLMResponse } from "../llm/provider";
 import { AgentAbortError } from "../llm/provider";
 import type { AgentRuntime } from "../runtime/types";
+import { structuredCall } from "../runtime/structured";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import { renderGraphifySection, type GraphifyContext } from "../llm/graphify-mcp";
 import type { RunConfinement } from "../llm/confinement";
@@ -38,7 +39,8 @@ export interface GeneratePlanOptions {
   repoPath: string;
   /** Agentic runtime that runs the exploration (#238). */
   runtime: AgentRuntime;
-  /** Completions provider for the cheap askStructured repair round. */
+  /** Completions provider — the fallback for the cheap structured repair round;
+   *  the runtime above runs it whenever it is present. */
   llm: LLMProviderInterface;
   maxTurns?: number;
   /** Wall-clock budget for the primary run (#194); on expiry the salvage path
@@ -97,10 +99,12 @@ function tryParsePlan(text: string): { ok: true; plan: IssuePlan } | { ok: false
 
 /**
  * Validate an agent's final JSON reply against the plan schema, with one cheap
- * askStructured repair round for format slips. Shared by generatePlan and the
+ * structured repair round for format slips — on the role's own runtime when it
+ * has one, else on the completions provider. Shared by generatePlan and the
  * conversational plan-review apply flow (#145).
  */
 export async function validatePlanReply(
+  runtime: AgentRuntime | undefined,
   llm: LLMProviderInterface,
   raw: string,
   signal?: AbortSignal,
@@ -108,7 +112,9 @@ export async function validatePlanReply(
   const first = tryParsePlan(raw);
   if (first.ok) return first.plan;
 
-  const repaired = await llm.askStructured<unknown>(
+  const repaired = await structuredCall<unknown>(
+    runtime,
+    llm,
     buildRepairPrompt(raw, first.error),
     planJsonSchema(),
     signal ? { signal } : undefined,
@@ -124,8 +130,8 @@ export async function validatePlanReply(
 
 /**
  * Generate one structured implementation plan by letting the agent explore
- * the repo, then validating its final JSON reply. One cheap repair round via
- * askStructured covers format slips without re-exploring. Pure and callable
+ * the repo, then validating its final JSON reply. One cheap structured repair
+ * round covers format slips without re-exploring. Pure and callable
  * N times — #8's convergence signal builds on that.
  */
 export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan> {
@@ -172,5 +178,5 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<IssuePlan
     }
   }
 
-  return validatePlanReply(opts.llm, reply.text, opts.signal);
+  return validatePlanReply(opts.runtime, opts.llm, reply.text, opts.signal);
 }

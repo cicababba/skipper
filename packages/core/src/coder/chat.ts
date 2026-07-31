@@ -9,6 +9,7 @@ import type {
 } from "@skipper/shared";
 import type { LLMProviderInterface } from "../llm/provider";
 import type { AgentRuntime } from "../runtime/types";
+import { structuredCall } from "../runtime/structured";
 import type { MemoryMcp } from "../llm/memory-mcp";
 import type { RunConfinement } from "../llm/confinement";
 import type { PlanIssueInput } from "../planner/generate";
@@ -363,9 +364,11 @@ function buildInstructionsRepairPrompt(raw: string, error: string): string {
 
 /**
  * Validate an agent's final JSON reply against the instructions shape, with one
- * cheap askStructured repair round for format slips (mirrors validatePlanReply).
+ * cheap structured repair round for format slips — on the role's own runtime
+ * when it has one (mirrors validatePlanReply).
  */
 async function validateInstructionsReply(
+  runtime: AgentRuntime | undefined,
   llm: LLMProviderInterface,
   raw: string,
   signal?: AbortSignal,
@@ -373,7 +376,9 @@ async function validateInstructionsReply(
   const first = tryParseInstructions(raw);
   if (first.ok) return first.instructions;
 
-  const repaired = await llm.askStructured<unknown>(
+  const repaired = await structuredCall<unknown>(
+    runtime,
+    llm,
     buildInstructionsRepairPrompt(raw, first.error),
     CODER_INSTRUCTIONS_SCHEMA,
     signal ? { signal } : undefined,
@@ -414,7 +419,7 @@ export async function distillCoderChatInstructions(
       ...(opts.signal ? { signal: opts.signal } : {}),
       ...(opts.confinement ? { confinement: opts.confinement } : {}),
     });
-    const instructions = await validateInstructionsReply(llm, reply.text, opts.signal);
+    const instructions = await validateInstructionsReply(runtime, llm, reply.text, opts.signal);
     return { instructions, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
   }
 
@@ -430,7 +435,7 @@ export async function distillCoderChatInstructions(
       ...(opts.signal ? { signal: opts.signal } : {}),
       ...(opts.confinement ? { confinement: opts.confinement } : {}),
     });
-    const instructions = await validateInstructionsReply(llm, reply.text, opts.signal);
+    const instructions = await validateInstructionsReply(runtime, llm, reply.text, opts.signal);
     return { instructions, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
   }
 
@@ -439,6 +444,6 @@ export async function distillCoderChatInstructions(
     CODER_INSTRUCTIONS_SCHEMA,
     opts.signal ? { signal: opts.signal } : undefined,
   );
-  const instructions = await validateInstructionsReply(llm, JSON.stringify(raw), opts.signal);
+  const instructions = await validateInstructionsReply(runtime, llm, JSON.stringify(raw), opts.signal);
   return { instructions };
 }

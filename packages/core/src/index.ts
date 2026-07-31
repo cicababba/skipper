@@ -27,6 +27,7 @@ export {
   GeminiCliRuntime,
   GEMINI_CLI_CAPABILITIES,
   RUNTIME_CAPABILITIES,
+  structuredCall,
 } from "./runtime";
 export type { AgentRuntime, RuntimeCapabilities, RuntimeStructuredOptions } from "./runtime";
 

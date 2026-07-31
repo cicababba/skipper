@@ -54,6 +54,7 @@ function fakeLLM(opts: FakeOpts): {
   llm: LLMProviderInterface;
   runtime: AgentRuntime | undefined;
   agent: ReturnType<typeof vi.fn>;
+  structured: ReturnType<typeof vi.fn>;
   askStructured: ReturnType<typeof vi.fn>;
 } {
   const agent = vi.fn(
@@ -62,19 +63,22 @@ function fakeLLM(opts: FakeOpts): {
       sessionId: "resolved-session",
     }),
   );
+  const structured = vi.fn(async (): Promise<unknown> => opts.structuredReply);
   const askStructured = vi.fn(async (): Promise<unknown> => opts.structuredReply);
   const llm = {
     name: "claude-cli",
     ask: vi.fn(async (): Promise<LLMResponse> => ({ text: "" })),
     askStructured,
   } as unknown as LLMProviderInterface;
-  const runtime = opts.noAgent ? undefined : ({ id: "claude-cli", agent } as unknown as AgentRuntime);
-  return { llm, runtime, agent, askStructured };
+  const runtime = opts.noAgent
+    ? undefined
+    : ({ id: "claude-cli", agent, structured } as unknown as AgentRuntime);
+  return { llm, runtime, agent, structured, askStructured };
 }
 
 describe("distillCoderChatInstructions", () => {
   it("resume path: prompt demands JSON + schema, carries no issue/plan, threads resumeSessionId", async () => {
-    const { llm, runtime, agent, askStructured } = fakeLLM({ agentReply: JSON.stringify(INSTRUCTIONS) });
+    const { llm, runtime, agent, structured } = fakeLLM({ agentReply: JSON.stringify(INSTRUCTIONS) });
     const res = await distillCoderChatInstructions({
       llm,
       runtime,
@@ -83,7 +87,7 @@ describe("distillCoderChatInstructions", () => {
     });
     expect(res.instructions).toEqual(INSTRUCTIONS.instructions);
     expect(res.sessionId).toBe("resolved-session");
-    expect(askStructured).not.toHaveBeenCalled();
+    expect(structured).not.toHaveBeenCalled();
     const [prompt, o] = agent.mock.calls[0] as [string, AgentOptions];
     expect(prompt).toContain("Distill the conclusions of this discussion");
     expect(prompt).toContain("FINAL message must be ONLY a single JSON object");
@@ -112,15 +116,22 @@ describe("distillCoderChatInstructions", () => {
     expect(o.resumeSessionId).toBeUndefined();
   });
 
-  it("spends the repair round when the agent reply is not valid instructions JSON", async () => {
-    const { llm, runtime, agent, askStructured } = fakeLLM({
+  it("spends the repair round on the runtime, never on the completions provider", async () => {
+    const { llm, runtime, agent, structured, askStructured } = fakeLLM({
       agentReply: "here you go: not json at all",
       structuredReply: { instructions: [{ body: "repaired instruction" }] },
     });
     const res = await distillCoderChatInstructions({ llm, runtime, cwd: "/wt", resumeSessionId: "sess-1" });
     expect(res.instructions).toEqual([{ body: "repaired instruction" }]);
     expect(agent).toHaveBeenCalledOnce();
-    expect(askStructured).toHaveBeenCalledOnce();
+    expect(structured).toHaveBeenCalledOnce();
+    expect(askStructured).not.toHaveBeenCalled();
+    const [, , structuredOpts] = structured.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+      { tools: string },
+    ];
+    expect(structuredOpts.tools).toBe("");
   });
 
   it("throws when the repair round also fails validation", async () => {

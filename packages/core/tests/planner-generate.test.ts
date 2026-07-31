@@ -41,9 +41,13 @@ const VALID_PLAN: IssuePlan = {
   estimatedSize: "s",
 };
 
-/** The agentic surface moved behind AgentRuntime (#238) — wrap a fake agent fn. */
-function asRuntime(agent: (prompt: string, opts?: AgentOptions) => Promise<LLMResponse>): AgentRuntime {
-  return { id: "claude-cli", agent } as unknown as AgentRuntime;
+/** The agentic surface moved behind AgentRuntime (#238) — wrap a fake agent fn.
+ *  The repair round is runtime-first, so the fake carries `structured` too. */
+function asRuntime(
+  agent: (prompt: string, opts?: AgentOptions) => Promise<LLMResponse>,
+  structured: () => Promise<unknown> = async () => undefined,
+): AgentRuntime {
+  return { id: "claude-cli", agent, structured } as unknown as AgentRuntime;
 }
 
 interface FakeLLMOptions {
@@ -55,6 +59,7 @@ function fakeLLM(opts: FakeLLMOptions): {
   llm: LLMProviderInterface;
   runtime: AgentRuntime;
   agent: ReturnType<typeof vi.fn>;
+  structured: ReturnType<typeof vi.fn>;
   askStructured: ReturnType<typeof vi.fn>;
 } {
   const agent = vi.fn(
@@ -62,13 +67,14 @@ function fakeLLM(opts: FakeLLMOptions): {
       text: opts.agentReply ?? "",
     }),
   );
+  const structured = vi.fn(async (): Promise<unknown> => opts.structuredReply);
   const askStructured = vi.fn(async (): Promise<unknown> => opts.structuredReply);
   const llm = {
     name: "claude-cli",
     ask: async (): Promise<LLMResponse> => ({ text: "" }),
     askStructured,
   } as unknown as LLMProviderInterface;
-  return { llm, runtime: asRuntime(agent), agent, askStructured };
+  return { llm, runtime: asRuntime(agent, structured), agent, structured, askStructured };
 }
 
 describe("IssuePlanSchema — new required generation fields (#143)", () => {
@@ -91,41 +97,41 @@ describe("IssuePlanSchema — new required generation fields (#143)", () => {
 
 describe("generatePlan — deterministic repair (#50)", () => {
   it("repairs a fenced reply without spending the LLM repair round", async () => {
-    const { llm, runtime, askStructured } = fakeLLM({
+    const { llm, runtime, structured } = fakeLLM({
       agentReply: "Here is the plan:\n\n```json\n" + JSON.stringify(VALID_PLAN) + "\n```\n\nHope that helps!",
     });
     const plan = await generatePlan({ issue: ISSUE, repoPath: "/repo", llm, runtime });
     expect(plan).toEqual(VALID_PLAN);
-    expect(askStructured).not.toHaveBeenCalled();
+    expect(structured).not.toHaveBeenCalled();
   });
 
   it("repairs trailing commas without spending the LLM repair round", async () => {
-    const { llm, runtime, askStructured } = fakeLLM({
+    const { llm, runtime, structured } = fakeLLM({
       agentReply: JSON.stringify(VALID_PLAN).replace(/}$/, ",}"),
     });
     const plan = await generatePlan({ issue: ISSUE, repoPath: "/repo", llm, runtime });
     expect(plan).toEqual(VALID_PLAN);
-    expect(askStructured).not.toHaveBeenCalled();
+    expect(structured).not.toHaveBeenCalled();
   });
 
   it("still pays for the repair round when the JSON is valid but the content is not", async () => {
-    const { llm, runtime, askStructured } = fakeLLM({
+    const { llm, runtime, structured } = fakeLLM({
       agentReply: '{"summary":"missing every other field"}',
       structuredReply: VALID_PLAN,
     });
     const plan = await generatePlan({ issue: ISSUE, repoPath: "/repo", llm, runtime });
     expect(plan).toEqual(VALID_PLAN);
-    expect(askStructured).toHaveBeenCalledTimes(1);
+    expect(structured).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("generatePlan", () => {
   it("parses a clean JSON reply", async () => {
-    const { llm, runtime, agent, askStructured } = fakeLLM({ agentReply: JSON.stringify(VALID_PLAN) });
+    const { llm, runtime, agent, structured } = fakeLLM({ agentReply: JSON.stringify(VALID_PLAN) });
     const plan = await generatePlan({ issue: ISSUE, repoPath: "/repo", llm, runtime });
     expect(plan).toEqual(VALID_PLAN);
     expect(agent).toHaveBeenCalledOnce();
-    expect(askStructured).not.toHaveBeenCalled();
+    expect(structured).not.toHaveBeenCalled();
   });
 
   it("parses a fenced JSON reply", async () => {
@@ -186,18 +192,24 @@ describe("generatePlan", () => {
     expect("onEvent" in agentOpts).toBe(false);
   });
 
-  it("repairs a schema-invalid reply via askStructured", async () => {
+  it("repairs a schema-invalid reply on the runtime's structured call, never the provider", async () => {
     const invalid = JSON.stringify({ ...VALID_PLAN, steps: [] });
-    const { llm, runtime, askStructured } = fakeLLM({
+    const { llm, runtime, structured, askStructured } = fakeLLM({
       agentReply: invalid,
       structuredReply: VALID_PLAN,
     });
     const plan = await generatePlan({ issue: ISSUE, repoPath: "/repo", llm, runtime });
     expect(plan).toEqual(VALID_PLAN);
-    expect(askStructured).toHaveBeenCalledOnce();
-    const [repairPrompt] = askStructured.mock.calls[0] as [string];
+    expect(structured).toHaveBeenCalledOnce();
+    expect(askStructured).not.toHaveBeenCalled();
+    const [repairPrompt, , structuredOpts] = structured.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+      { tools: string },
+    ];
     expect(repairPrompt).toContain(invalid);
     expect(repairPrompt).toContain("steps");
+    expect(structuredOpts.tools).toBe("");
   });
 
   it("throws PlanGenerationError when the repair is also invalid", async () => {

@@ -5,3 +5,4 @@ export { CopilotCliRuntime, COPILOT_CLI_CAPABILITIES } from "./copilot-cli-runti
 export { GeminiCliRuntime, GEMINI_CLI_CAPABILITIES } from "./gemini-cli-runtime";
 export { RUNTIME_CAPABILITIES } from "./capabilities";
 export { createRuntime } from "./factory";
+export { structuredCall } from "./structured";

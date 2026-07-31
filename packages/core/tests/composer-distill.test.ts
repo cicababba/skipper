@@ -43,6 +43,7 @@ function fakeLLM(opts: { agentReply?: string; structuredReply?: unknown; noAgent
   llm: LLMProviderInterface;
   runtime: AgentRuntime | undefined;
   agent: ReturnType<typeof vi.fn>;
+  structured: ReturnType<typeof vi.fn>;
   askStructured: ReturnType<typeof vi.fn>;
 } {
   const agent = vi.fn(
@@ -51,25 +52,28 @@ function fakeLLM(opts: { agentReply?: string; structuredReply?: unknown; noAgent
       sessionId: "resolved-session",
     }),
   );
+  const structured = vi.fn(async (): Promise<unknown> => opts.structuredReply);
   const askStructured = vi.fn(async (): Promise<unknown> => opts.structuredReply);
   const llm = {
     name: "claude-cli",
     ask: vi.fn(async (): Promise<LLMResponse> => ({ text: "" })),
     askStructured,
   } as unknown as LLMProviderInterface;
-  const runtime = opts.noAgent ? undefined : ({ id: "claude-cli", agent } as unknown as AgentRuntime);
-  return { llm, runtime, agent, askStructured };
+  const runtime = opts.noAgent
+    ? undefined
+    : ({ id: "claude-cli", agent, structured } as unknown as AgentRuntime);
+  return { llm, runtime, agent, structured, askStructured };
 }
 
 describe("distillComposerDraft", () => {
   it("resume path: parses the draft, trims titles, threads the session", async () => {
-    const { llm, runtime, agent, askStructured } = fakeLLM({ agentReply: JSON.stringify(REPLY) });
+    const { llm, runtime, agent, structured } = fakeLLM({ agentReply: JSON.stringify(REPLY) });
     const res = await distillComposerDraft({ llm, runtime, cwd: "/repo", resumeSessionId: "sess-1" });
     expect(res.draft.issues).toHaveLength(2);
     expect(res.draft.issues[0].title).toBe("web:feat: rate-limit the webhook");
     expect(res.draft.relations).toEqual([{ from: 1, to: 0, kind: "blocks" }]);
     expect(res.sessionId).toBe("resolved-session");
-    expect(askStructured).not.toHaveBeenCalled();
+    expect(structured).not.toHaveBeenCalled();
     const [prompt, o] = agent.mock.calls[0] as [string, AgentOptions];
     expect(prompt).toContain("Distill this discussion into the issues to open");
     expect(prompt).toContain("FINAL message must be ONLY a single JSON object");
@@ -108,15 +112,22 @@ describe("distillComposerDraft", () => {
     expect(o.resumeSessionId).toBeUndefined();
   });
 
-  it("spends the repair round when the agent reply is not valid draft JSON", async () => {
-    const { llm, runtime, agent, askStructured } = fakeLLM({
+  it("spends the repair round on the runtime, never on the completions provider", async () => {
+    const { llm, runtime, agent, structured, askStructured } = fakeLLM({
       agentReply: "here you go: not json at all",
       structuredReply: REPLY,
     });
     const res = await distillComposerDraft({ llm, runtime, cwd: "/repo", resumeSessionId: "s" });
     expect(res.draft.issues).toHaveLength(2);
     expect(agent).toHaveBeenCalledOnce();
-    expect(askStructured).toHaveBeenCalledOnce();
+    expect(structured).toHaveBeenCalledOnce();
+    expect(askStructured).not.toHaveBeenCalled();
+    const [, , structuredOpts] = structured.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+      { tools: string },
+    ];
+    expect(structuredOpts.tools).toBe("");
   });
 
   it("throws when the repair round also fails validation", async () => {

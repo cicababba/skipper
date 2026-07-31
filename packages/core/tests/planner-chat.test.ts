@@ -84,6 +84,7 @@ function fakeLLM(opts: FakeOpts): {
   llm: LLMProviderInterface;
   runtime: AgentRuntime | undefined;
   agent: ReturnType<typeof vi.fn>;
+  structured: ReturnType<typeof vi.fn>;
   ask: ReturnType<typeof vi.fn>;
   askStructured: ReturnType<typeof vi.fn>;
 } {
@@ -93,6 +94,7 @@ function fakeLLM(opts: FakeOpts): {
       sessionId: "resolved-session",
     }),
   );
+  const structured = vi.fn(async (): Promise<unknown> => opts.structuredReply);
   const ask = vi.fn(async (): Promise<LLMResponse> => ({ text: opts.askReply ?? "" }));
   const askStructured = vi.fn(async (): Promise<unknown> => opts.structuredReply);
   const llm = {
@@ -100,8 +102,10 @@ function fakeLLM(opts: FakeOpts): {
     ask,
     askStructured,
   } as unknown as LLMProviderInterface;
-  const runtime = opts.noAgent ? undefined : ({ id: "claude-cli", agent } as unknown as AgentRuntime);
-  return { llm, runtime, agent, ask, askStructured };
+  const runtime = opts.noAgent
+    ? undefined
+    : ({ id: "claude-cli", agent, structured } as unknown as AgentRuntime);
+  return { llm, runtime, agent, structured, ask, askStructured };
 }
 
 describe("renderConfidenceBlock", () => {
@@ -242,7 +246,7 @@ describe("discussPlan", () => {
 describe("applyPlanFromDiscussion", () => {
   it("resume path: embeds the current plan JSON + schema and validates the reply", async () => {
     const amended = { ...PLAN, summary: "Add retry with jittered backoff" };
-    const { llm, runtime, agent, askStructured } = fakeLLM({ agentReply: JSON.stringify(amended) });
+    const { llm, runtime, agent, structured } = fakeLLM({ agentReply: JSON.stringify(amended) });
     const res = await applyPlanFromDiscussion({
       llm,
       runtime,
@@ -252,15 +256,15 @@ describe("applyPlanFromDiscussion", () => {
     });
     expect(res.plan).toEqual(amended);
     expect(res.sessionId).toBe("resolved-session");
-    expect(askStructured).not.toHaveBeenCalled();
+    expect(structured).not.toHaveBeenCalled();
     const [prompt] = agent.mock.calls[0] as [string];
     expect(prompt).toContain("Add retry with backoff to the poller"); // current plan embedded
     expect(prompt).toContain("Schema:");
   });
 
-  it("resume path: spends the repair round when the agent reply is schema-invalid", async () => {
+  it("resume path: spends the repair round on the runtime, not the provider", async () => {
     const amended = { ...PLAN, summary: "repaired" };
-    const { llm, runtime, askStructured } = fakeLLM({
+    const { llm, runtime, structured, askStructured } = fakeLLM({
       agentReply: JSON.stringify({ ...amended, steps: [] }),
       structuredReply: amended,
     });
@@ -272,7 +276,32 @@ describe("applyPlanFromDiscussion", () => {
       resumeSessionId: "sess-1",
     });
     expect(res.plan).toEqual(amended);
-    expect(askStructured).toHaveBeenCalledOnce();
+    expect(structured).toHaveBeenCalledOnce();
+    expect(askStructured).not.toHaveBeenCalled();
+    const [, , structuredOpts] = structured.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+      { tools: string },
+    ];
+    expect(structuredOpts.tools).toBe("");
+  });
+
+  it("no-runtime path: the repair round stays on the completions provider", async () => {
+    const amended = { ...PLAN, summary: "repaired" };
+    const { llm, runtime, askStructured } = fakeLLM({ noAgent: true });
+    askStructured
+      .mockResolvedValueOnce({ ...amended, steps: [] })
+      .mockResolvedValueOnce(amended);
+    const res = await applyPlanFromDiscussion({
+      llm,
+      runtime,
+      cwd: "/wt",
+      plan: PLAN,
+      issue: ISSUE,
+      history: HISTORY,
+    });
+    expect(res.plan).toEqual(amended);
+    expect(askStructured).toHaveBeenCalledTimes(2);
   });
 
   it("throws when no session and no fallback context", async () => {

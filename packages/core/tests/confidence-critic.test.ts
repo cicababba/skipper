@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { CriticObjection, IssuePlan } from "@skipper/shared";
 import type { LLMProviderInterface, LLMResponse } from "../src/llm/provider";
+import type { AgentRuntime } from "../src/runtime";
 import type { PlanIssueInput } from "../src/planner";
 import {
   buildCriticPrompt,
@@ -103,6 +104,54 @@ describe("runCritic / critiquePlan", () => {
     expect(prompt).toContain("diff");
     expect(prompt).toContain("--- a/x.ts");
     expect(prompt).toContain("Issue #7: fix x");
+  });
+
+  // Runtime-first: the plan critic runs on the role's own CLI when it has one,
+  // so a non-Claude default agent never spawns the claude binary for it.
+  it("runs the plan critic on the runtime with no tools when one is present", async () => {
+    const { llm, askStructured } = fakeLLM({ verdict: "approve", objections: [] });
+    const structured = vi.fn(async (): Promise<unknown> => ({ verdict: "approve", objections: [] }));
+    const runtime = { id: "codex-cli", structured } as unknown as AgentRuntime;
+    const s = await critiquePlan(PLAN, ISSUE, llm, { runtime });
+    expect(s.verdict).toBe("approve");
+    expect(askStructured).not.toHaveBeenCalled();
+    const [prompt, , opts] = structured.mock.calls[0] as unknown as [
+      string,
+      Record<string, unknown>,
+      { tools: string; cwd?: string; sessionId?: string; maxTurns?: number },
+    ];
+    expect(prompt).toContain("DEMOLISH");
+    expect(opts.tools).toBe("");
+    expect(opts.cwd).toBeUndefined();
+    expect(opts.sessionId).toBeUndefined();
+    expect(opts.maxTurns).toBeUndefined();
+  });
+
+  it("keeps the tools-mode options on the repo-inspecting critic", async () => {
+    const { llm } = fakeLLM({ verdict: "approve", objections: [] });
+    const structured = vi.fn(async (): Promise<unknown> => ({ verdict: "approve", objections: [] }));
+    const runtime = { id: "claude-cli", structured } as unknown as AgentRuntime;
+    await runCritic(
+      {
+        artifactKind: "diff",
+        artifactLabel: "diff for PR #7",
+        artifact: "--- a/x.ts",
+        context: "Issue #7",
+      },
+      llm,
+      { runtime, tools: "Read,Grep,Glob", cwd: "/wt", sessionId: "sess-1", maxTurns: 8 },
+    );
+    const [, , opts] = structured.mock.calls[0] as unknown as [
+      string,
+      Record<string, unknown>,
+      { tools: string; cwd?: string; sessionId?: string; maxTurns?: number },
+    ];
+    expect(opts).toMatchObject({
+      tools: "Read,Grep,Glob",
+      cwd: "/wt",
+      sessionId: "sess-1",
+      maxTurns: 8,
+    });
   });
 
   it("includes the plan kind label in the prompt", () => {
