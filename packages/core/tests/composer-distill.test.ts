@@ -81,6 +81,30 @@ describe("distillComposerDraft", () => {
     expect(o.resumeSessionId).toBe("sess-1");
   });
 
+  // The references the discussion turned up die with the conversation unless the
+  // distillation is told to carry them into the bodies (#280).
+  it("asks for the discussed commits, issues and PRs on both paths", async () => {
+    const clause =
+      "Carry the commits, issues and pull requests identified during the discussion into the bodies, cited by sha or number.";
+    const resume = fakeLLM({ agentReply: JSON.stringify(REPLY) });
+    await distillComposerDraft({
+      llm: resume.llm,
+      runtime: resume.runtime,
+      cwd: "/repo",
+      resumeSessionId: "sess-1",
+    });
+    expect(resume.agent.mock.calls[0][0] as string).toContain(clause);
+
+    const fresh = fakeLLM({ agentReply: JSON.stringify(REPLY) });
+    await distillComposerDraft({
+      llm: fresh.llm,
+      runtime: fresh.runtime,
+      cwd: "/repo",
+      context: { history: HISTORY },
+    });
+    expect(fresh.agent.mock.calls[0][0] as string).toContain(clause);
+  });
+
   it("embeds the prior draft plus its edit markers and the preserve instruction", async () => {
     const { llm, runtime, agent } = fakeLLM({ agentReply: JSON.stringify(REPLY) });
     await distillComposerDraft({

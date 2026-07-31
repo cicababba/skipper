@@ -86,7 +86,7 @@ Ground every objection in what is verifiable from the provided context and artif
 
 const CONTINUITY_INSTRUCTION = `For each objection you raise, set status: "persisting" when it re-raises one of the P1..Pn above that the current artifact still exhibits, otherwise "new". In "resolved", list the labels (e.g. "P2") of previous objections the current artifact genuinely fixed — not merely reworded. Never both resolve and re-raise the same prior objection, and do not re-raise a resolved objection just to acknowledge it. Re-verify each persisting objection against the current artifact and context; drop a prior the provided context refutes rather than escalating it.`;
 
-const INSPECT_REPO_INSTRUCTION = `You have Read, Grep and Glob over the working tree. Verify any repo-fact claim — a convention, a theme token, an existing pattern — against the tree before raising it; a claim you could not verify stays non-blocking.`;
+const INSPECT_REPO_INSTRUCTION = `You can read, search and list files across the working tree. Verify any repo-fact claim — a convention, a theme token, an existing pattern — against the tree before raising it; a claim you could not verify stays non-blocking.`;
 
 function priorSection(prior: CriticPriorRound): string[] {
   const lines = [

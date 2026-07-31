@@ -195,10 +195,18 @@ describe("critic grounding & blocking bar (#226)", () => {
 
   it("adds the inspect-repo instruction only when canInspectRepo is set", () => {
     expect(buildCriticPrompt(base)).not.toContain(
-      "You have Read, Grep and Glob over the working tree.",
+      "You can read, search and list files across the working tree.",
     );
     expect(buildCriticPrompt({ ...base, canInspectRepo: true })).toContain(
-      "You have Read, Grep and Glob over the working tree.",
+      "You can read, search and list files across the working tree.",
+    );
+  });
+
+  // The critic runs on the role's own runtime (#280), so its wording may name no
+  // CLI's tools.
+  it("names no claude tool", () => {
+    expect(buildCriticPrompt({ ...base, canInspectRepo: true })).not.toMatch(
+      /\bRead\b|\bGrep\b|\bGlob\b|\bBash\b/,
     );
   });
 });

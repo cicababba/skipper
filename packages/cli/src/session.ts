@@ -126,7 +126,7 @@ async function readHead(dir: string, name: string, max = 4000): Promise<string> 
 const SYS_SAVE =
   "You are a senior engineer writing the definitive handoff doc so another engineer (or AI) can take over this project on a " +
   "different machine and be productive immediately — as if they'd been working on it all along.\n\n" +
-  "You have tools (Read, Grep, Glob, Bash). USE THEM: actually explore the repo before writing — read the entry points, the " +
+  "You have file reading, search and shell tools. USE THEM: actually explore the repo before writing — read the entry points, the " +
   "build/config files (package.json, *.xcodeproj/project.pbxproj, Cargo.toml, pyproject, etc.), the main modules, the README, " +
   "and recent diffs. Do not guess from filenames.\n\n" +
   "Then write a DENSE, concrete brief covering:\n" +
@@ -227,8 +227,8 @@ export async function saveSession(projectDir: string, { llm, runtime, log }: Ses
 }
 
 const SYS_RESUME =
-  "You brief an engineer (or AI assistant) about to resume a project on THIS machine. You have the handoff summary plus tools " +
-  "(Read, Grep, Glob, Bash) — use them to ground the briefing in the CURRENT code in this directory (and reconcile any noted " +
+  "You brief an engineer (or AI assistant) about to resume a project on THIS machine. You have the handoff summary plus file " +
+  "reading, search and shell tools — use them to ground the briefing in the CURRENT code in this directory (and reconcile any noted " +
   "divergence between the summary and the local checkout). Produce a tight, concrete resumption briefing: what the app does, " +
   "how to build/run it, the current state, what was in progress, the EXACT next steps, the key files to open (with paths), and " +
   "the gotchas — so they continue as if they never left. No preamble. Markdown.";
