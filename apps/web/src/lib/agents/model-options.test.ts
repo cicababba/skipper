@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { CLI_DEFAULT, isListedModel, modelOptionsFor, resetModel } from "./model-options";
+import {
+  CLI_DEFAULT,
+  claudeModelMirror,
+  isListedModel,
+  modelOptionsFor,
+  resetModel,
+} from "./model-options";
 
 describe("modelOptionsFor", () => {
   it("offers the four Claude aliases for claude-cli", () => {
@@ -49,5 +55,22 @@ describe("resetModel", () => {
   // always lands on that CLI's own default.
   it("drops the model on a runtime switch", () => {
     expect(resetModel()).toBeUndefined();
+  });
+});
+
+describe("claudeModelMirror", () => {
+  it("mirrors an explicit Claude model", () => {
+    expect(claudeModelMirror({ runtime: "claude-cli", model: "opus" })).toBe("opus");
+  });
+
+  it("mirrors nothing when the claude pair has no model of its own", () => {
+    expect(claudeModelMirror({ runtime: "claude-cli", model: undefined })).toBeUndefined();
+    expect(claudeModelMirror({ runtime: "claude-cli", model: CLI_DEFAULT })).toBeUndefined();
+  });
+
+  // llm.claudeModel is the floor for claude pairs only — another vendor's model
+  // must never land there.
+  it("mirrors nothing for a non-claude runtime", () => {
+    expect(claudeModelMirror({ runtime: "codex-cli", model: "gpt-5-codex" })).toBeUndefined();
   });
 });

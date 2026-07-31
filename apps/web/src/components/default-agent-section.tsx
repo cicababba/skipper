@@ -5,7 +5,8 @@ import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { updateAppSettings } from "@/lib/app-settings";
 import { AgentPairSelect } from "@/components/agent-pair-select";
-import { authHintFor } from "@/lib/agents/auth-hints";
+import { RuntimeAuthHint } from "@/components/runtime-auth-hint";
+import { claudeModelMirror } from "@/lib/agents/model-options";
 
 /**
  * Settings → Default agent: the pair every orchestration role inherits, so it
@@ -26,16 +27,13 @@ export function DefaultAgentSection({
 
   const stored = state?.settings.defaultAgent;
   const pair: AgentSelection = stored ?? { runtime: DEFAULT_AGENT_RUNTIME, model: claudeFloor };
-  const hint = authHintFor(pair.runtime);
 
   function apply(next: AgentSelection) {
     void updateSettings({ defaultAgent: next });
-    // Mirror an explicit Claude model onto llm.claudeModel: it stays the floor for
-    // every claude pair without a model of its own, and the CLI's knowledge tools
-    // read it straight out of settings.json.
-    if (next.runtime === "claude-cli" && next.model) {
-      onClaudeModelChange(next.model);
-      void updateAppSettings({ llm: { claudeModel: next.model } });
+    const mirror = claudeModelMirror(next);
+    if (mirror) {
+      onClaudeModelChange(mirror);
+      void updateAppSettings({ llm: { claudeModel: mirror } });
     }
   }
 
@@ -65,11 +63,7 @@ export function DefaultAgentSection({
             />
           )}
         </div>
-        <p className="text-[11px] text-muted/40 leading-relaxed">
-          {t.settings.llm.authHintBefore(r[hint.runtimeLabelKey])}{" "}
-          <code className="text-accent/60 bg-accent/5 px-1 rounded">{hint.command}</code>{" "}
-          {t.settings.llm[hint.afterKey]}
-        </p>
+        <RuntimeAuthHint runtime={pair.runtime} />
       </div>
     </section>
   );

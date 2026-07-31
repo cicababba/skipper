@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RuntimeAvailability } from "@skipper/shared";
-import { noneInstalled, runtimeOptionsFor } from "./runtime-options";
+import { missingRuntimes, noneInstalled, runtimeOptionsFor } from "./runtime-options";
 
 const availability = (installed: string[]): RuntimeAvailability => ({
   "claude-cli": installed.includes("claude-cli"),
@@ -51,5 +51,27 @@ describe("noneInstalled", () => {
 
   it("is false when availability is unknown", () => {
     expect(noneInstalled(null)).toBe(false);
+  });
+});
+
+describe("missingRuntimes", () => {
+  // Nothing to probe means every runtime is on offer, so the hint has nothing
+  // left to advertise.
+  it("is empty when availability is unknown", () => {
+    expect(missingRuntimes(null)).toEqual([]);
+  });
+
+  it("is empty when every CLI is installed", () => {
+    expect(
+      missingRuntimes(availability(["claude-cli", "codex-cli", "copilot-cli", "gemini-cli"])),
+    ).toEqual([]);
+  });
+
+  it("names exactly the absent runtimes in menu order", () => {
+    expect(missingRuntimes(availability(["codex-cli"]))).toEqual([
+      { value: "claude-cli", labelKey: "runtimeClaude", installed: false },
+      { value: "copilot-cli", labelKey: "runtimeCopilot", installed: false },
+      { value: "gemini-cli", labelKey: "runtimeGemini", installed: false },
+    ]);
   });
 });
