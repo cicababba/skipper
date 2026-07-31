@@ -37,3 +37,17 @@ export function runtimeOptionsFor(
 export function noneInstalled(availability: RuntimeAvailability | null): boolean {
   return availability !== null && AGENT_RUNTIME_IDS.every((id) => !availability[id]);
 }
+
+/** The runtimes the picker can't offer because their CLI is absent — what the
+ *  "also works with" hint names. Unknown availability offers them all, so
+ *  nothing is missing. */
+export function missingRuntimes(
+  availability: RuntimeAvailability | null,
+): readonly RuntimeOption[] {
+  if (availability === null) return [];
+  return AGENT_RUNTIME_IDS.filter((id) => !availability[id]).map((id) => ({
+    value: id,
+    labelKey: LABEL_KEYS[id],
+    installed: false,
+  }));
+}

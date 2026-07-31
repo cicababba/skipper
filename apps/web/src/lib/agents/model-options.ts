@@ -1,4 +1,4 @@
-import type { AgentRuntimeId } from "@skipper/shared";
+import type { AgentRuntimeId, AgentSelection } from "@skipper/shared";
 
 // Which models a runtime offers. The pair is runtime-first: the model menu is
 // derived from the selected runtime, so a Claude alias can never be attached to a
@@ -50,4 +50,12 @@ export function isListedModel(runtime: AgentRuntimeId, value: string): boolean {
  *  cross-vendor mismatch the pair exists to prevent. */
 export function resetModel(): string | undefined {
   return undefined;
+}
+
+/** The value a pair mirrors onto llm.claudeModel, or undefined when it mirrors
+ *  nothing: only an explicit Claude model belongs there — it stays the floor for
+ *  every claude pair without a model of its own, and the CLI's knowledge tools
+ *  read it straight out of settings.json. */
+export function claudeModelMirror(pair: AgentSelection): string | undefined {
+  return pair.runtime === "claude-cli" && pair.model ? pair.model : undefined;
 }
