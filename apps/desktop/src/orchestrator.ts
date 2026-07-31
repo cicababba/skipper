@@ -13,7 +13,6 @@ import {
   listJiraProjects,
   listOpenProjectProjects,
   codeHostFor,
-  codeHostForProvider,
   resolveGate,
   reconcileMemoryIndex,
   generateRepoInstructions,
@@ -31,7 +30,6 @@ import {
   mappingHost,
   parseProjectMappingKey,
   parseRepoMappingValue,
-  parseRepoPath,
   projectMappingKey,
   repoKey,
   resolveRepoIntakeSettings,
@@ -48,7 +46,6 @@ import type {
   FollowCandidatesResult,
   Issue,
   LifecycleState,
-  ListRepoBranchesResult,
   MemoryPhase,
   OrchestratorState,
   PrReviewComment,
@@ -58,9 +55,7 @@ import type {
   RegenerateRepoInstructionsResult,
   GetRepoGraphifyResult,
   ReindexRepoGraphifyResult,
-  RepoIntakeSettings,
   RepoRef,
-  RepoSettingsRow,
   ResolvedRepoIntakeSettings,
   ResolvedRepoOrchestratorSettings,
   ResumeRiteAction,
@@ -76,28 +71,16 @@ import type {
 } from "@skipper/shared";
 import { loadCursors, saveCursors } from "./inbox-cursor-store";
 import { runGit } from "./git";
-import {
-  branchesForLocalClone,
-  cloneRepo,
-  detectHostForLocalPath,
-  listRemoteHeads,
-  loadRepoLinks,
-  saveRepoLinks,
-  type RepoLinksFile,
-} from "./repo-links";
-import { resolveBaseChangeActions, type WorktreeProbe } from "./base-change";
+import { loadRepoLinks, saveRepoLinks, type RepoLinksFile } from "./repo-links";
 import { makeEventStream } from "./event-stream";
 import { discardItemWorktreeUnderLock, archivePlanAndDeleteChats } from "./item-teardown";
 import { makeRepoGitLock } from "./git-lock";
-import { applySettingsPatch, applyRepoSettingsPatch } from "./settings-validators";
+import { applySettingsPatch } from "./settings-validators";
 import { makePoller } from "./poll";
 import { makeManifestWriters } from "./manifest-writers";
-import {
-  activeItemsForRepo,
-  guardFollowedPatch,
-  markRepoFollowed,
-} from "./repo-follow";
+import { activeItemsForRepo } from "./repo-follow";
 import { registerRepoFollowHandlers } from "./repo-follow-ipc";
+import { registerReposHandlers } from "./repos-ipc";
 import { registerMemoryHandlers } from "./memory-ipc";
 import { registerCreateIssueHandlers } from "./create-issue-ipc";
 import { registerComposerHandlers } from "./composer-ipc";
@@ -765,65 +748,6 @@ export function initOrchestrator(
     },
   );
   ipcMain.handle(
-    "skipper:orchestrator:setRepoSettings",
-    async (_e, owner: string, name: string, patch: Partial<RepoIntakeSettings>) => {
-      const m = await ensureManifest();
-      const key = repoKey({ owner, name });
-      const followedBefore = resolveRepoIntakeSettings(m.repoSettings[key]).followed;
-      const graphifyBefore = resolveRepoIntakeSettings(m.repoSettings[key]).graphify;
-      // Generic patch endpoint — it must not become a way around the unfollow
-      // guard; the user-facing refusal belongs to setRepoFollowed.
-      const merged = guardFollowedPatch(m, key, applyRepoSettingsPatch(m.repoSettings[key], patch));
-      if (Object.keys(merged).length === 0) delete m.repoSettings[key];
-      else m.repoSettings[key] = merged;
-      await saveOrchestratorManifest(deps!.manifestFilePath, m);
-      // Turned on: kick a first index so the graph is ready before the next plan (#233).
-      if (!graphifyBefore && resolveRepoIntakeSettings(m.repoSettings[key]).graphify) {
-        kickGraphify({ owner, name });
-      }
-      if (!followedBefore && resolveRepoIntakeSettings(m.repoSettings[key]).followed) {
-        // Re-followed: cached issues admit retroactively, like a fresh repo link.
-        await poller.reconcileFromCache();
-      } else {
-        broadcast();
-        pokePlanner();
-        pokeCoder();
-      }
-      return snapshot();
-    },
-  );
-  ipcMain.handle("skipper:orchestrator:listRepoSettings", async (): Promise<RepoSettingsRow[]> => {
-    const m = await ensureManifest();
-    const links = await ensureRepoLinks();
-    const repos = new Map<string, RepoRef>();
-    const put = (key: string, repo: RepoRef): void => {
-      if (!repos.has(key)) repos.set(key, repo);
-    };
-    // Poll cache + tracked items carry proper-case RepoRefs; keys reconstructed
-    // from links/settings fall back to the lowercased form.
-    for (const item of poller.allCached()) {
-      if (item.repo) put(repoKey(item.repo), item.repo);
-    }
-    for (const item of Object.values(m.items)) {
-      put(repoKey(item.repo), item.repo);
-    }
-    for (const key of [...Object.keys(links.repos), ...Object.keys(m.repoSettings)]) {
-      const [owner, name] = key.split("/");
-      if (owner && name) put(key, { owner, name });
-    }
-    const defaultModel = readLlmSettingsSync(deps!.dataDir).claudeModel;
-    return [...repos.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, repo]) => ({
-        key,
-        repo,
-        linked: Boolean(links.repos[key]),
-        localPath: links.repos[key]?.localPath,
-        settings: m.repoSettings[key] ?? {},
-        resolved: resolveRepoOrchestratorSettings(m.repoSettings[key], m.settings, defaultModel),
-      }));
-  });
-  ipcMain.handle(
     "skipper:orchestrator:listFollowCandidates",
     async (_e, accountId?: string, providerId?: AuthProviderId): Promise<FollowCandidatesResult> => {
       try {
@@ -988,269 +912,6 @@ export function initOrchestrator(
     return { ok: true as const, item: m.items[itemId] };
   });
   ipcMain.handle(
-    "skipper:orchestrator:linkRepo",
-    async (_e, owner: string, name: string, localPath: string, baseBranch?: string) => {
-      try {
-        await detectHostForLocalPath(deps!.getAccounts(), owner, name, localPath);
-        const trimmed = baseBranch?.trim();
-        if (trimmed) {
-          const onOrigin = async (): Promise<boolean> =>
-            (await runGit(localPath, ["rev-parse", "--verify", "--quiet", `origin/${trimmed}`]))
-              .code === 0;
-          if (!(await onOrigin())) {
-            await fetchOrigin(localPath).catch(() => {});
-            if (!(await onOrigin())) {
-              return { ok: false as const, error: `branch '${trimmed}' not found on origin` };
-            }
-          }
-        }
-        const links = await ensureRepoLinks();
-        links.repos[repoKey({ owner, name })] = {
-          localPath,
-          linkedAt: new Date().toISOString(),
-          ...(trimmed ? { baseBranch: trimmed } : {}),
-        };
-        await saveRepoLinks(deps!.repoLinksFilePath, links);
-        // Linking is a stronger act of intent than ticking the follow box (#15) —
-        // persist it before the reconcile so the cached issues admit in that pass.
-        const m = await ensureManifest();
-        markRepoFollowed(m, { owner, name });
-        await saveOrchestratorManifest(deps!.manifestFilePath, m);
-        // Seed before reconcile so an admitted triage item hits the gate while a
-        // generation is in flight (#227); seeding failure never fails the link.
-        await seedInstructions({ owner, name }, localPath).catch(() => {});
-        await poller.reconcileFromCache();
-        return { ok: true as const, localPath };
-      } catch (err) {
-        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
-  ipcMain.handle(
-    "skipper:orchestrator:cloneRepo",
-    async (
-      _e,
-      owner: string,
-      name: string,
-      destParent: string,
-      accountId?: string,
-      baseBranch?: string,
-    ) => {
-      try {
-        const account = accountForRepo(owner, name, accountId);
-        const token = account ? await deps!.getToken(account.key) : null;
-        if (!token) throw new Error("no account token available for this repo");
-        const hostId = account ? (codeHostForProvider(account.provider) ?? "github") : "github";
-        const host = codeHostFor(hostId);
-        const localPath = await cloneRepo(
-          host,
-          { owner, name },
-          destParent,
-          host.pushCredentials(token),
-          account?.baseUrl,
-        );
-        // Fresh full clone carries every remote branch — one rev-parse settles it.
-        const trimmed = baseBranch?.trim();
-        if (trimmed) {
-          const onOrigin =
-            (await runGit(localPath, ["rev-parse", "--verify", "--quiet", `origin/${trimmed}`]))
-              .code === 0;
-          if (!onOrigin) {
-            return { ok: false as const, error: `branch '${trimmed}' not found on origin` };
-          }
-        }
-        const links = await ensureRepoLinks();
-        links.repos[repoKey({ owner, name })] = {
-          localPath,
-          linkedAt: new Date().toISOString(),
-          ...(trimmed ? { baseBranch: trimmed } : {}),
-        };
-        await saveRepoLinks(deps!.repoLinksFilePath, links);
-        // Linking is a stronger act of intent than ticking the follow box (#15) —
-        // persist it before the reconcile so the cached issues admit in that pass.
-        const m = await ensureManifest();
-        markRepoFollowed(m, { owner, name });
-        await saveOrchestratorManifest(deps!.manifestFilePath, m);
-        // Seed before reconcile so an admitted triage item hits the gate while a
-        // generation is in flight (#227); seeding failure never fails the clone.
-        await seedInstructions({ owner, name }, localPath).catch(() => {});
-        await poller.reconcileFromCache();
-        return { ok: true as const, localPath };
-      } catch (err) {
-        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
-  ipcMain.handle(
-    "skipper:orchestrator:inspectLinkTarget",
-    async (
-      _e,
-      owner: string,
-      name: string,
-      localPath: string,
-    ): Promise<ListRepoBranchesResult> => {
-      try {
-        await detectHostForLocalPath(deps!.getAccounts(), owner, name, localPath);
-        // Best-effort authed fetch so the branch list + default are current; a
-        // fetch failure never fails the inspect (offline link still works).
-        const account = accountForRepo(owner, name);
-        const token = account ? await deps!.getToken(account.key) : null;
-        const creds =
-          token && account
-            ? codeHostFor(codeHostForProvider(account.provider) ?? "github").pushCredentials(token)
-            : undefined;
-        await fetchOrigin(localPath, creds, 60_000).catch(() => {});
-        return await branchesForLocalClone(localPath);
-      } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
-  ipcMain.handle(
-    "skipper:orchestrator:listRemoteBranches",
-    async (
-      _e,
-      owner: string,
-      name: string,
-      accountId?: string,
-    ): Promise<ListRepoBranchesResult> => {
-      try {
-        const account = accountForRepo(owner, name, accountId);
-        const token = account ? await deps!.getToken(account.key) : null;
-        if (!token || !account) {
-          return { ok: false, error: "no account token available for this repo" };
-        }
-        const host = codeHostFor(codeHostForProvider(account.provider) ?? "github");
-        const { branches, defaultBranch } = await listRemoteHeads(
-          host,
-          { owner, name },
-          host.pushCredentials(token),
-          account.baseUrl,
-        );
-        return { ok: true, branches, defaultBranch };
-      } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
-  ipcMain.handle("skipper:orchestrator:unlinkRepo", async (_e, owner: string, name: string) => {
-    try {
-      const links = await ensureRepoLinks();
-      delete links.repos[repoKey({ owner, name })];
-      await saveRepoLinks(deps!.repoLinksFilePath, links);
-      // Keep the instructions doc (#227): user edits survive unlink→relink, and a
-      // ready doc makes relink skip reseeding.
-      return { ok: true as const };
-    } catch (err) {
-      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  ipcMain.handle(
-    "skipper:orchestrator:setRepoBaseBranch",
-    async (_e, owner: string, name: string, baseBranch: string | null) => {
-      try {
-        const links = await ensureRepoLinks();
-        const key = repoKey({ owner, name });
-        const link = links.repos[key];
-        if (!link) return { ok: false as const, error: "repo not linked" };
-        const repo = { owner, name };
-
-        const oldBase = link.baseBranch;
-        const trimmed = baseBranch?.trim() ?? "";
-        const newBase = trimmed === "" ? undefined : trimmed;
-
-        if (newBase) {
-          const onOrigin = async (): Promise<boolean> =>
-            (await runGit(link.localPath, ["rev-parse", "--verify", "--quiet", `origin/${newBase}`]))
-              .code === 0;
-          if (!(await onOrigin())) {
-            await fetchOrigin(link.localPath).catch(() => {});
-            if (!(await onOrigin())) {
-              return { ok: false as const, error: `branch '${newBase}' not found on origin` };
-            }
-          }
-        }
-
-        // Effective-change check: only the resolved ref matters (setting the
-        // override to what origin/HEAD already points at is a no-op). A throw on
-        // either side is treated as a change so the reaction still runs.
-        const resolveEff = (ref?: string): Promise<string | null> =>
-          resolveBaseRef(link.localPath, ref).catch(() => null);
-        const [oldEff, newEff] = await Promise.all([resolveEff(oldBase), resolveEff(newBase)]);
-        const changed = oldEff === null || newEff === null || oldEff !== newEff;
-
-        // Persist first so any planning that starts now already cuts from the new base.
-        if (newBase) link.baseBranch = newBase;
-        else delete link.baseBranch;
-        await saveRepoLinks(deps!.repoLinksFilePath, links);
-        if (!changed) return { ok: true as const };
-
-        const m = await ensureManifest();
-        // Probe + discard under one repo git lock (nesting requestTransition here
-        // would self-deadlock via the planner's prepareWorktreeFor).
-        const actions = await withRepoGitLock(repo, async () => {
-          const oldBaseRef = await resolveBaseRef(link.localPath, oldBase).catch(() => null);
-          const probes = new Map<string, WorktreeProbe>();
-          for (const item of Object.values(m.items)) {
-            if (repoKey(item.repo) !== key || !item.worktree) continue;
-            const dirtyFiles = await worktreeDirtyFiles(item.worktree.path);
-            const dirty = dirtyFiles === null ? null : dirtyFiles.length > 0;
-            let aheadOfOldBase: number | null = null;
-            if (oldBaseRef) {
-              const rl = await runGit(link.localPath, [
-                "rev-list",
-                "--count",
-                `${oldBaseRef}..refs/heads/${item.worktree.branch}`,
-              ]);
-              aheadOfOldBase = rl.code === 0 ? parseInt(rl.stdout.trim(), 10) : null;
-            }
-            probes.set(item.id, { dirty, aheadOfOldBase });
-          }
-          const resolved = resolveBaseChangeActions(Object.values(m.items), key, probes);
-          for (const d of resolved.discard) {
-            await discardWorktree({
-              repoPath: link.localPath,
-              worktreePath: d.worktree.path,
-              branch: d.worktree.branch,
-              baseRef: oldBaseRef ?? undefined,
-            }).catch((err) =>
-              console.warn(`base-change discard failed for ${d.worktree.path}: ${err}`),
-            );
-          }
-          return resolved;
-        });
-
-        // Clear the worktree record on discarded items in one manifest pass.
-        if (actions.discard.length > 0) {
-          for (const d of actions.discard) {
-            const item = m.items[d.id];
-            if (item) m.items[d.id] = { ...item, worktree: undefined, updatedAt: new Date().toISOString() };
-          }
-          await saveOrchestratorManifest(deps!.manifestFilePath, m);
-          broadcast();
-        }
-
-        // Transitions AFTER the lock (requestTransition pokes the planner, which
-        // takes the same lock). Each poke re-enqueues the item on the new base.
-        const replanned: string[] = [];
-        const skipped = [...actions.skipped];
-        for (const id of actions.replan) {
-          const item = m.items[id];
-          if (!item) continue;
-          try {
-            await requestTransition(id, "planning", "user", "base branch changed");
-            replanned.push(id);
-          } catch {
-            skipped.push({ id, key: item.key, reason: "illegal-transition" });
-          }
-        }
-        return { ok: true as const, replan: { replanned, skipped } };
-      } catch (err) {
-        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
-  ipcMain.handle(
     "skipper:orchestrator:getRepoInstructions",
     async (_e, owner: string, name: string): Promise<GetRepoInstructionsResult> => {
       try {
@@ -1330,45 +991,6 @@ export function initOrchestrator(
       }
     },
   );
-  ipcMain.handle(
-    "skipper:orchestrator:listRepoBranches",
-    async (_e, owner: string, name: string): Promise<ListRepoBranchesResult> => {
-      try {
-        const links = await ensureRepoLinks();
-        const link = links.repos[repoKey({ owner, name })];
-        if (!link) return { ok: false, error: "repo not linked" };
-        return await branchesForLocalClone(link.localPath);
-      } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
-  ipcMain.handle("skipper:orchestrator:listRepos", async () => {
-    const links = await ensureRepoLinks();
-    const m = await ensureManifest();
-    const seen = new Map<string, RepoRef>();
-    for (const item of poller.allCached()) {
-      if (item.repo) seen.set(repoKey(item.repo), item.repo);
-    }
-    // A followed repo the poller never saw (manual owner/name add, tracker-first
-    // setups) still needs a row here — this is the only place linking happens.
-    for (const [key, settings] of Object.entries(m.repoSettings)) {
-      if (seen.has(key) || !resolveRepoIntakeSettings(settings).followed) continue;
-      const repo = parseRepoPath(key);
-      if (repo) seen.set(key, repo);
-    }
-    const linked = Object.entries(links.repos).map(([key, link]) => ({
-      key,
-      localPath: link.localPath,
-      linkedAt: link.linkedAt,
-      baseBranch: link.baseBranch,
-      linked: true as const,
-    }));
-    const unlinked = [...seen.entries()]
-      .filter(([key]) => !links.repos[key])
-      .map(([key, repo]) => ({ key, repo, linked: false as const }));
-    return { linked, unlinked };
-  });
   ipcMain.handle("skipper:orchestrator:getPlan", async (_e, itemId: string) => {
     const m = await ensureManifest();
     const ref = m.items[itemId]?.plan?.ref;
@@ -1494,6 +1116,29 @@ export function initOrchestrator(
     reconcileFromCache: () => poller.reconcileFromCache(),
     broadcast,
     snapshot,
+  });
+  registerReposHandlers({
+    ipcMain,
+    ensureManifest,
+    saveManifest: (m) => saveOrchestratorManifest(deps!.manifestFilePath, m),
+    ensureRepoLinks,
+    saveLinks: (links) => saveRepoLinks(deps!.repoLinksFilePath, links),
+    getAccounts: () => deps?.getAccounts() ?? [],
+    getToken: (key, force) => deps!.getToken(key, force),
+    snapshot,
+    broadcast,
+    reconcileFromCache: () => poller.reconcileFromCache(),
+    pokePlanner,
+    pokeCoder,
+    withRepoGitLock,
+    requestTransition,
+    seedInstructions,
+    kickGraphify,
+    accountForRepo,
+    cachedRepos: function* () {
+      for (const item of poller.allCached()) if (item.repo) yield item.repo;
+    },
+    getDefaultModel: () => readLlmSettingsSync(deps!.dataDir).claudeModel,
   });
   registerWorktreeDiffHandlers({ ipcMain, ensureManifest });
   registerCreateIssueHandlers({
