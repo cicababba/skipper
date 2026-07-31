@@ -4,9 +4,7 @@ import {
   issueSourceForAuthProvider,
   issueSourceFor,
   issueSources,
-  reconcile,
   remapProjectItems,
-  resolveProjectRepos,
   applyTransition,
   loadOrCreateOrchestratorManifest,
   saveOrchestratorManifest,
@@ -52,10 +50,8 @@ import type {
   LifecycleState,
   ListRepoBranchesResult,
   MemoryPhase,
-  OrchestratorAccountState,
   OrchestratorState,
   PrReviewComment,
-  PullRequest,
   RepoInstructionsDoc,
   GetRepoInstructionsResult,
   SetRepoInstructionsResult,
@@ -68,11 +64,9 @@ import type {
   ResolvedRepoIntakeSettings,
   ResolvedRepoOrchestratorSettings,
   ResumeRiteAction,
-  SourceRef,
   TrackedItem,
   TrackerProjectsResult,
   TransitionActor,
-  UnmappedProject,
   ArchiveItemResult,
   UntrackItemResult,
   CloseItemOnTrackerResult,
@@ -80,7 +74,7 @@ import type {
   IssueSourceCapabilities,
   IssueSourceId,
 } from "@skipper/shared";
-import { loadCursors, saveCursors, type InboxCursorFile } from "./inbox-cursor-store";
+import { loadCursors, saveCursors } from "./inbox-cursor-store";
 import { runGit } from "./git";
 import {
   branchesForLocalClone,
@@ -96,12 +90,7 @@ import { makeEventStream } from "./event-stream";
 import { discardItemWorktreeUnderLock, archivePlanAndDeleteChats } from "./item-teardown";
 import { makeRepoGitLock } from "./git-lock";
 import { applySettingsPatch, applyRepoSettingsPatch } from "./settings-validators";
-import {
-  admissionPolicy,
-  shouldSkipPoll,
-  selectPollCursor,
-  pollFailurePatch,
-} from "./poll-policy";
+import { makePoller } from "./poll";
 import { makeManifestWriters } from "./manifest-writers";
 import {
   activeItemsForRepo,
@@ -212,26 +201,12 @@ export interface OrchestratorDeps {
 
 const FIRST_POLL_DELAY_MS = 10_000;
 const POLL_EVERY_MS = 3 * 60_000;
-const FULL_WALK_EVERY_MS = 6 * 60 * 60_000;
 const POKE_DEBOUNCE_MS = 1500;
-// Per-poll ceiling on dependency fetches (#85): one API call per target, so cap
-// the fan-out. Admission candidates are fetched before tracked items.
-const DEP_FETCH_CAP = 30;
 
-let status: "idle" | "polling" = "idle";
-let accountsState: Record<string, OrchestratorAccountState> = {};
 let deps: OrchestratorDeps | null = null;
 let getWindow: () => BrowserWindow | null = () => null;
-let cursors: InboxCursorFile | null = null;
 let manifest: OrchestratorManifest | null = null;
 let repoLinks: RepoLinksFile | null = null;
-let polling = false;
-// item maps survive delta polls; state arrays are derived snapshots
-const items = new Map<string, Map<string, Issue | PullRequest>>();
-const lastFullWalkAt = new Map<string, number>();
-// accountId → tracker projects with open, still-repo-less issues (#79). In-memory
-// only (stale across restarts otherwise); recomputed from the full derived cache.
-const unmappedProjects = new Map<string, UnmappedProject[]>();
 
 // Per-source capability flags (#132), derived once from the adapter registry —
 // truthful because it reads the actual method presence on each source.
@@ -245,10 +220,28 @@ const SOURCE_CAPABILITIES = Object.fromEntries(
   ]),
 ) as Record<IssueSourceId, IssueSourceCapabilities>;
 
+const poller = makePoller({
+  getAccounts: () => issueAccounts(),
+  getToken: (key, force) => deps!.getToken(key, force),
+  loadCursors: () => loadCursors(deps!.cursorFilePath),
+  saveCursors: (c) => saveCursors(deps!.cursorFilePath, c),
+  ensureManifest,
+  saveManifest: (m) => saveOrchestratorManifest(deps!.manifestFilePath, m),
+  ensureRepoLinks,
+  broadcast: () => broadcast(),
+  pokeDrivers: () => {
+    pokePlanner();
+    pokeCoder();
+    pokeReviewer();
+    pokeShepherd();
+  },
+  sweepStaleness: () => void sweepStaleness(),
+});
+
 function snapshot(): OrchestratorState {
   const tracked = Object.values(manifest?.items ?? {});
   return {
-    status,
+    status: poller.status(),
     intakePaused: manifest?.settings.intakePaused ?? false,
     parkedCount: Object.keys(manifest?.parked ?? {}).length,
     queue: {
@@ -257,11 +250,11 @@ function snapshot(): OrchestratorState {
       wipLimitPerRepo: manifest?.settings.codingWipPerRepo ?? 1,
     },
     items: tracked,
-    accounts: accountsState,
+    accounts: poller.accountsState(),
     repoSettings: manifest?.repoSettings ?? {},
     projectMappings: manifest?.projectMappings ?? {},
-    unmappedProjects: [...unmappedProjects.values()]
-      .flat()
+    unmappedProjects: poller
+      .unmappedProjects()
       .sort((a, b) => `${a.host}:${a.projectKey}`.localeCompare(`${b.host}:${b.projectKey}`)),
     resumeRite: manifest?.resumeRite ? { itemIds: [...manifest.resumeRite.itemIds] } : null,
     settings: manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
@@ -364,17 +357,6 @@ async function resetMemoryUse(itemId: string, phase: MemoryPhase): Promise<void>
   if (!item?.usedMemory?.[phase]?.length) return;
   item.usedMemory = { ...item.usedMemory, [phase]: [] };
   await saveOrchestratorManifest(deps!.manifestFilePath, m);
-  broadcast();
-}
-
-function patchAccount(accountId: string, patch: Partial<OrchestratorAccountState>): void {
-  const current: OrchestratorAccountState = accountsState[accountId] ?? {
-    accountId,
-    status: "idle",
-    issues: [],
-    pullRequests: [],
-  };
-  accountsState = { ...accountsState, [accountId]: { ...current, ...patch } };
   broadcast();
 }
 
@@ -508,7 +490,7 @@ function codeHostAccountFor(codeHost: CodeHostId, preferKey?: string): Account |
 function fetchIssueCommentsFor(item: TrackedItem): Promise<IssueComment[]> {
   const account = deps?.getAccounts().find((a) => a.key === item.accountId);
   const source = account ? issueSourceForAuthProvider(account.provider) : undefined;
-  const cached = items.get(item.accountId)?.get(item.id);
+  const cached = poller.getCached(item.accountId, item.id);
   if (!account || !source?.fetchComments || cached?.kind !== "issue") return Promise.resolve([]);
   return source.fetchComments(
     cached,
@@ -552,7 +534,7 @@ function accountForRepo(owner: string, name: string, accountKey?: string): Accou
     return deps.getAccounts().find((a) => a.key === accountKey);
   }
   const key = repoKey({ owner, name });
-  for (const [acctKey, map] of items) {
+  for (const [acctKey, map] of poller.cachedByAccount()) {
     for (const item of map.values()) {
       if (item.repo && repoKey(item.repo) === key) {
         return codeHostAccountFor(item.codeHost, acctKey);
@@ -600,267 +582,6 @@ function prepareWorktreeFor(
     }
     return wt;
   });
-}
-
-function byUpdatedAtDesc(a: { updatedAt: string }, b: { updatedAt: string }): number {
-  return b.updatedAt.localeCompare(a.updatedAt);
-}
-
-function deriveArrays(accountId: string): { issues: Issue[]; pullRequests: PullRequest[] } {
-  const map = items.get(accountId) ?? new Map();
-  const issues: Issue[] = [];
-  const pullRequests: PullRequest[] = [];
-  for (const item of map.values()) {
-    if (item.kind === "issue") issues.push(item);
-    else pullRequests.push(item);
-  }
-  return { issues: issues.sort(byUpdatedAtDesc), pullRequests: pullRequests.sort(byUpdatedAtDesc) };
-}
-
-/**
- * Fills repo-less tracker issues from the project→repo mapping before reconcile
- * (#79), and refreshes this account's unmappedProjects warning surface. The
- * returned issues drive reconcile (delta-correct — closed deltas are preserved);
- * the warning counts come from the full derived cache so a delta poll never
- * understates them.
- */
-function resolveAccountIssues(
-  accountId: string,
-  issues: Issue[],
-  m: OrchestratorManifest,
-): Issue[] {
-  const account = deps?.getAccounts().find((a) => a.key === accountId);
-  const host = mappingHost(account?.baseUrl);
-  const resolved = resolveProjectRepos(issues, { accountId, host }, m.projectMappings).issues;
-  const { unmapped } = resolveProjectRepos(
-    deriveArrays(accountId).issues,
-    { accountId, host },
-    m.projectMappings,
-  );
-  if (unmapped.length) unmappedProjects.set(accountId, unmapped);
-  else unmappedProjects.delete(accountId);
-  return resolved;
-}
-
-async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<void> {
-  if (!deps || !cursors) return;
-  const source = issueSourceForAuthProvider(account.provider);
-  if (!source) return;
-  // The account key is the identity: item maps, accountsState, cursors and the
-  // manifest's accountId are all keyed by it (#101).
-  const accountId = account.key;
-  const existing = accountsState[accountId];
-  if (shouldSkipPoll(existing, Date.now(), ignoreBackoff)) return;
-
-  const { cursor } = selectPollCursor({
-    now: Date.now(),
-    lastFullWalkAt: lastFullWalkAt.get(accountId) ?? 0,
-    storedCursor: cursors.platforms[source.id]?.[accountId],
-    fullWalkEveryMs: FULL_WALK_EVERY_MS,
-  });
-
-  patchAccount(accountId, { status: "polling" });
-  try {
-    const m = await ensureManifest();
-    // Tracked PRs (#11): reviews/CI don't bump updated_at, so deltas alone
-    // would never surface them — hydrate them unconditionally each poll.
-    const deepHydrate = Object.values(m.items)
-      .filter(
-        (i) =>
-          i.accountId === accountId &&
-          i.pr &&
-          (i.state === "pr-open" || i.state === "in-review" || i.state === "changes-requested"),
-      )
-      .map((i) => ({ owner: i.repo.owner, name: i.repo.name, number: i.pr!.number }));
-
-    const result = await source.poll({
-      accountId,
-      getToken: (force) => deps!.getToken(accountId, force),
-      baseUrl: account.baseUrl,
-      cloudId: account.cloudId,
-      authMethod: account.authMethod,
-      cursor,
-      deepHydrate,
-    });
-
-    let map = items.get(accountId);
-    if (result.mode === "full" || !map) {
-      map = new Map();
-      items.set(accountId, map);
-      lastFullWalkAt.set(accountId, Date.now());
-    }
-    for (const item of [...result.issues, ...result.pullRequests]) {
-      if (item.kind === "pull-request") {
-        // The same PR can arrive under its issue-record id (list streams) or its
-        // pull-record id (deep hydration) — evict the other id before upserting.
-        for (const [id, existing] of map) {
-          if (
-            id !== item.id &&
-            existing.kind === "pull-request" &&
-            existing.number === item.number &&
-            existing.repo.owner === item.repo.owner &&
-            existing.repo.name === item.repo.name
-          ) {
-            map.delete(id);
-          }
-        }
-      }
-      map.set(item.id, item);
-    }
-    // Closed issues leave the inbox; closed/merged PRs stay (terminal state
-    // is signal for shepherding/review).
-    for (const [id, item] of map) {
-      if (item.kind === "issue" && item.state === "closed") map.delete(id);
-    }
-
-    await ensureRepoLinks();
-
-    // Fill repo-less tracker issues from the project→repo mapping (#79) and
-    // refresh the unmapped-projects warning surface before reconcile.
-    const resolvedIssues = resolveAccountIssues(accountId, result.issues, m);
-
-    // Dependency evidence (#85): fetch "blocked by" for admission candidates and
-    // resting/blocked tracked items, so reconcile can park/release in this round.
-    // Candidates first; per-target failure leaves the key absent (stored stands).
-    let dependencies: Record<string, SourceRef[]> | undefined;
-    if (source.fetchDependencies) {
-      const policy = admissionPolicy(m);
-      const candidates = resolvedIssues.filter((iss) => {
-        if (iss.state !== "open") return false;
-        const t = m.items[iss.id];
-        if (t) {
-          return (
-            t.state === "triage" ||
-            t.state === "plan-gate" ||
-            t.state === "queued" ||
-            t.state === "blocked"
-          );
-        }
-        return !m.settings.intakePaused && policy.shouldAdmit(iss);
-      });
-      candidates.sort((a, b) => Number(Boolean(m.items[a.id])) - Number(Boolean(m.items[b.id])));
-      dependencies = {};
-      for (const iss of candidates.slice(0, DEP_FETCH_CAP)) {
-        try {
-          dependencies[iss.id] = await source.fetchDependencies(
-            iss,
-            (force) => deps!.getToken(accountId, force),
-            account.baseUrl,
-          );
-        } catch (err) {
-          console.warn(`[orchestrator] dependency fetch failed for ${iss.id}: ${String(err)}`);
-        }
-      }
-    }
-
-    const outcome = reconcile(
-      m,
-      accountId,
-      {
-        mode: result.mode,
-        issues: resolvedIssues,
-        pullRequests: result.pullRequests,
-        dependencies,
-      },
-      admissionPolicy(m),
-    );
-    for (const conflict of outcome.conflicts) {
-      console.warn(`[orchestrator] conflict on ${conflict.itemId}: ${conflict.detail}`);
-    }
-    await saveOrchestratorManifest(deps.manifestFilePath, m);
-
-    (cursors.platforms[source.id] ??= {})[accountId] = result.cursor;
-    await saveCursors(deps.cursorFilePath, cursors);
-
-    patchAccount(accountId, {
-      status: "idle",
-      lastSyncAt: Date.now(),
-      nextPollAt: undefined,
-      error: undefined,
-      ...deriveArrays(accountId),
-    });
-  } catch (err) {
-    patchAccount(accountId, pollFailurePatch(err, Date.now()));
-  }
-}
-
-async function pollNow(ignoreBackoff = false): Promise<void> {
-  if (!deps || polling) return;
-  polling = true;
-  status = "polling";
-  broadcast();
-  try {
-    if (!cursors) cursors = await loadCursors(deps.cursorFilePath);
-    await ensureManifest();
-
-    const accounts = issueAccounts();
-    const known = new Set(accounts.map((a) => a.key));
-
-    // Accounts signed out since the last tick: prune poll state + cursors.
-    // Manifest items survive sign-out so lifecycle state outlives re-login.
-    let pruned = false;
-    for (const accountId of Object.keys(accountsState)) {
-      if (!known.has(accountId)) {
-        const { [accountId]: _gone, ...rest } = accountsState;
-        accountsState = rest;
-        items.delete(accountId);
-        unmappedProjects.delete(accountId);
-        for (const perPlatform of Object.values(cursors.platforms)) {
-          delete perPlatform?.[accountId];
-        }
-        pruned = true;
-      }
-    }
-    if (pruned) {
-      await saveCursors(deps.cursorFilePath, cursors);
-      broadcast();
-    }
-
-    for (const account of accounts) {
-      await pollAccount(account, ignoreBackoff);
-    }
-  } finally {
-    polling = false;
-    status = "idle";
-    broadcast();
-    pokePlanner();
-    pokeCoder();
-    pokeReviewer();
-    pokeShepherd();
-    void sweepStaleness();
-  }
-}
-
-/**
- * Re-runs reconcile from the cached per-account item maps — used after a repo
- * link/clone so already-seen issues admit retroactively without waiting for
- * the next delta poll (which would not re-send unchanged items). Delta mode:
- * the absence walk must never fire on a partial cache.
- */
-async function reconcileFromCache(): Promise<void> {
-  if (!deps) return;
-  const m = await ensureManifest();
-  await ensureRepoLinks();
-  let changed = false;
-  for (const accountId of items.keys()) {
-    const { issues, pullRequests } = deriveArrays(accountId);
-    const resolvedIssues = resolveAccountIssues(accountId, issues, m);
-    const outcome = reconcile(
-      m,
-      accountId,
-      { mode: "delta", issues: resolvedIssues, pullRequests },
-      admissionPolicy(m),
-    );
-    if (outcome.admitted.length > 0 || outcome.transitions.length > 0) changed = true;
-  }
-  if (changed) {
-    await saveOrchestratorManifest(deps.manifestFilePath, m);
-  }
-  broadcast();
-  pokePlanner();
-  pokeCoder();
-  pokeReviewer();
-  pokeShepherd();
 }
 
 const writers = makeManifestWriters({
@@ -915,7 +636,7 @@ export async function setIntakePaused(paused: boolean): Promise<void> {
   if (!paused) {
     // Resume (#15): drain cached parked issues now (they admit held from
     // auto-plan and surface the rite prompt); a poll picks up the rest.
-    await reconcileFromCache();
+    await poller.reconcileFromCache();
     pokeOrchestrator();
   }
 }
@@ -963,7 +684,7 @@ export function pokeOrchestrator(): void {
   if (pokeTimer) clearTimeout(pokeTimer);
   pokeTimer = setTimeout(() => {
     pokeTimer = null;
-    void pollNow().catch(() => {
+    void poller.pollNow().catch(() => {
       /* per-account errors already captured */
     });
   }, POKE_DEBOUNCE_MS);
@@ -1005,13 +726,8 @@ export function initOrchestrator(
   // makes the reset crash-safe. If a poll is already running pollNow no-ops; the
   // next one runs full anyway since lastFullWalkAt is cleared.
   ipcMain.handle("skipper:orchestrator:refresh", async (_e, full?: boolean) => {
-    if (full) {
-      if (!cursors) cursors = await loadCursors(deps!.cursorFilePath);
-      cursors.platforms = {};
-      lastFullWalkAt.clear();
-      await saveCursors(deps!.cursorFilePath, cursors);
-    }
-    await pollNow(true);
+    if (full) await poller.resetForFullWalk();
+    await poller.pollNow(true);
     return snapshot();
   });
   ipcMain.handle(
@@ -1067,7 +783,7 @@ export function initOrchestrator(
       }
       if (!followedBefore && resolveRepoIntakeSettings(m.repoSettings[key]).followed) {
         // Re-followed: cached issues admit retroactively, like a fresh repo link.
-        await reconcileFromCache();
+        await poller.reconcileFromCache();
       } else {
         broadcast();
         pokePlanner();
@@ -1085,8 +801,8 @@ export function initOrchestrator(
     };
     // Poll cache + tracked items carry proper-case RepoRefs; keys reconstructed
     // from links/settings fall back to the lowercased form.
-    for (const map of items.values()) {
-      for (const item of map.values()) if (item.repo) put(repoKey(item.repo), item.repo);
+    for (const item of poller.allCached()) {
+      if (item.repo) put(repoKey(item.repo), item.repo);
     }
     for (const item of Object.values(m.items)) {
       put(repoKey(item.repo), item.repo);
@@ -1165,7 +881,7 @@ export function initOrchestrator(
 
         // Public repos assigned via general visibility never show in the
         // installation/membership lists — merge what this account's poller saw.
-        const polled = items.get(account.key);
+        const polled = poller.cachedFor(account.key);
         if (polled) {
           for (const item of polled.values()) {
             if (!item.repo) continue;
@@ -1215,7 +931,7 @@ export function initOrchestrator(
         delete m.projectMappings[key];
       }
       await saveOrchestratorManifest(deps!.manifestFilePath, m);
-      await reconcileFromCache();
+      await poller.reconcileFromCache();
       return snapshot();
     },
   );
@@ -1303,7 +1019,7 @@ export function initOrchestrator(
         // Seed before reconcile so an admitted triage item hits the gate while a
         // generation is in flight (#227); seeding failure never fails the link.
         await seedInstructions({ owner, name }, localPath).catch(() => {});
-        await reconcileFromCache();
+        await poller.reconcileFromCache();
         return { ok: true as const, localPath };
       } catch (err) {
         return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
@@ -1358,7 +1074,7 @@ export function initOrchestrator(
         // Seed before reconcile so an admitted triage item hits the gate while a
         // generation is in flight (#227); seeding failure never fails the clone.
         await seedInstructions({ owner, name }, localPath).catch(() => {});
-        await reconcileFromCache();
+        await poller.reconcileFromCache();
         return { ok: true as const, localPath };
       } catch (err) {
         return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
@@ -1631,10 +1347,8 @@ export function initOrchestrator(
     const links = await ensureRepoLinks();
     const m = await ensureManifest();
     const seen = new Map<string, RepoRef>();
-    for (const map of items.values()) {
-      for (const item of map.values()) {
-        if (item.repo) seen.set(repoKey(item.repo), item.repo);
-      }
+    for (const item of poller.allCached()) {
+      if (item.repo) seen.set(repoKey(item.repo), item.repo);
     }
     // A followed repo the poller never saw (manual owner/name add, tracker-first
     // setups) still needs a row here — this is the only place linking happens.
@@ -1776,10 +1490,8 @@ export function initOrchestrator(
     ipcMain,
     ensureManifest,
     saveManifest: (m) => saveOrchestratorManifest(deps!.manifestFilePath, m),
-    cachedItems: function* () {
-      for (const map of items.values()) yield* map.values();
-    },
-    reconcileFromCache,
+    cachedItems: () => poller.allCached(),
+    reconcileFromCache: () => poller.reconcileFromCache(),
     broadcast,
     snapshot,
   });
@@ -1899,8 +1611,7 @@ export function initOrchestrator(
 
       // Drop from the raw cache so reconcileFromCache (mapping change, link/clone,
       // re-follow) doesn't instantly re-admit it.
-      items.get(item.accountId)?.delete(itemId);
-      patchAccount(item.accountId, deriveArrays(item.accountId));
+      poller.dropCached(item.accountId, itemId);
 
       await saveOrchestratorManifest(deps!.manifestFilePath, m);
       broadcast();
@@ -1961,7 +1672,7 @@ export function initOrchestrator(
         return { ok: false, error: `closing on the tracker is not supported for ${item.source}` };
       }
 
-      const cached = items.get(item.accountId)?.get(item.id);
+      const cached = poller.getCached(item.accountId, item.id);
       const issue = cached?.kind === "issue" ? cached : synthesizeIssue(item);
       try {
         await source.closeIssue(
@@ -1973,12 +1684,8 @@ export function initOrchestrator(
         return { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
 
-      if (cached?.kind === "issue") {
-        cached.state = "closed";
-        cached.updatedAt = new Date().toISOString();
-        patchAccount(item.accountId, deriveArrays(item.accountId));
-      }
-      await reconcileFromCache();
+      if (cached?.kind === "issue") poller.markCachedIssueClosed(item.accountId, item.id);
+      await poller.reconcileFromCache();
       return { ok: true };
     },
   );
@@ -1987,7 +1694,7 @@ export function initOrchestrator(
     listItems: () => Object.values(manifest?.items ?? {}),
     getItem: (itemId) => manifest?.items[itemId],
     getIssue: (item) => {
-      const cached = items.get(item.accountId)?.get(item.id);
+      const cached = poller.getCached(item.accountId, item.id);
       return cached?.kind === "issue" ? cached : undefined;
     },
     fetchIssueComments: fetchIssueCommentsFor,
@@ -2020,7 +1727,7 @@ export function initOrchestrator(
   initPlanChat({
     getItem: (itemId) => manifest?.items[itemId],
     getIssue: (item) => {
-      const cached = items.get(item.accountId)?.get(item.id);
+      const cached = poller.getCached(item.accountId, item.id);
       return cached?.kind === "issue" ? cached : undefined;
     },
     getRepoPath: repoPathFor,
@@ -2045,7 +1752,7 @@ export function initOrchestrator(
   initAgentChat({
     getItem: (itemId) => manifest?.items[itemId],
     getIssue: (item) => {
-      const cached = items.get(item.accountId)?.get(item.id);
+      const cached = poller.getCached(item.accountId, item.id);
       return cached?.kind === "issue" ? cached : undefined;
     },
     getRepoPath: repoPathFor,
@@ -2095,7 +1802,7 @@ export function initOrchestrator(
   initRescore({
     getItem: (itemId) => manifest?.items[itemId],
     getIssue: (item) => {
-      const cached = items.get(item.accountId)?.get(item.id);
+      const cached = poller.getCached(item.accountId, item.id);
       return cached?.kind === "issue" ? cached : undefined;
     },
     fetchIssueComments: fetchIssueCommentsFor,
@@ -2114,7 +1821,7 @@ export function initOrchestrator(
     listItems: () => Object.values(manifest?.items ?? {}),
     getItem: (itemId) => manifest?.items[itemId],
     getIssue: (item) => {
-      const cached = items.get(item.accountId)?.get(item.id);
+      const cached = poller.getCached(item.accountId, item.id);
       return cached?.kind === "issue" ? cached : undefined;
     },
     fetchIssueComments: fetchIssueCommentsFor,
@@ -2147,7 +1854,7 @@ export function initOrchestrator(
     listItems: () => Object.values(manifest?.items ?? {}),
     getItem: (itemId) => manifest?.items[itemId],
     getIssue: (item) => {
-      const cached = items.get(item.accountId)?.get(item.id);
+      const cached = poller.getCached(item.accountId, item.id);
       return cached?.kind === "issue" ? cached : undefined;
     },
     getPlan: async (item) => {
@@ -2214,14 +1921,14 @@ export function initOrchestrator(
 
   setTimeout(
     () =>
-      void pollNow().catch(() => {
+      void poller.pollNow().catch(() => {
         /* keep loop alive */
       }),
     FIRST_POLL_DELAY_MS,
   );
   setInterval(
     () =>
-      void pollNow().catch(() => {
+      void poller.pollNow().catch(() => {
         /* keep loop alive */
       }),
     POLL_EVERY_MS,
