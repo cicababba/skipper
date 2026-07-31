@@ -48,7 +48,6 @@ import type {
   LifecycleState,
   MemoryPhase,
   OrchestratorState,
-  PrReviewComment,
   RepoRef,
   ResolvedRepoIntakeSettings,
   ResolvedRepoOrchestratorSettings,
@@ -76,6 +75,7 @@ import { activeItemsForRepo } from "./repo-follow";
 import { registerRepoFollowHandlers } from "./repo-follow-ipc";
 import { registerReposHandlers } from "./repos-ipc";
 import { registerRepoConfigHandlers } from "./repo-config-ipc";
+import { registerChatHandlers } from "./chat-ipc";
 import { registerMemoryHandlers } from "./memory-ipc";
 import { registerCreateIssueHandlers } from "./create-issue-ipc";
 import { registerComposerHandlers } from "./composer-ipc";
@@ -93,28 +93,10 @@ import { markStaleGraphifyRuns } from "./graphify-store";
 import { ensureGraphIndexed, graphifyForPlanning, type GraphifyDeps } from "./graphify";
 import { readStoredPlan, updateStoredPlan } from "./plan-store";
 import { readStoredCoderReport } from "./report-store";
-import {
-  initPlanChat,
-  sendPlanChatMessage,
-  applyPlanChatUpdate,
-  getPlanChatHistory,
-  cancelPlanChat,
-} from "./plan-chat";
-import {
-  initAgentChat,
-  sendAgentChatMessage,
-  getAgentChatHistory,
-  prepareCoderChatApply,
-  confirmCoderChatApply,
-  cancelAgentChat,
-} from "./agent-chat";
+import { initPlanChat, cancelPlanChat } from "./plan-chat";
+import { initAgentChat, cancelAgentChat } from "./agent-chat";
 import { flushUnfinishedComposerChats, initComposerChat } from "./composer-chat";
-import {
-  initRescore,
-  startRescore,
-  cancelRescore,
-  killAllRescores,
-} from "./rescore";
+import { initRescore, cancelRescore, killAllRescores } from "./rescore";
 import { initPlanner, pokePlanner, cancelPlanningRun, killAllPlanningRuns } from "./planner";
 import { initCoder, pokeCoder, cancelCodingRun, killAllCodingRuns } from "./coder";
 import { initReviewer, pokeReviewer } from "./reviewer";
@@ -934,64 +916,12 @@ export function initOrchestrator(
     cancelRescore(itemId);
     return { ok: true as const, stored };
   });
-  // Conversational plan review (#145): chat with the planning session at the
-  // gate. Guards (state, plan, busy) live in plan-chat.ts.
-  ipcMain.handle("skipper:planChat:send", (_e, itemId: string, text: string) =>
-    sendPlanChatMessage(itemId, text),
-  );
-  ipcMain.handle("skipper:planChat:apply", async (_e, itemId: string) => {
-    const res = await applyPlanChatUpdate(itemId);
-    // Apply re-emitted the plan — re-score it in a detached run (#164). The old
-    // confidence report described the plan the discussion just rewrote.
-    if (res.ok) startRescore(itemId, res.stored);
-    return res;
-  });
-  ipcMain.handle("skipper:planChat:getHistory", (_e, itemId: string) =>
-    getPlanChatHistory(itemId),
-  );
-  ipcMain.handle("skipper:planChat:cancel", (_e, itemId: string) => {
-    cancelPlanChat(itemId);
-  });
-  // Per-tab agent chat (#170): interrogate the coder / reviewer at their tabs.
-  // Guards (availability, binding, busy) live in agent-chat.ts.
-  ipcMain.handle(
-    "skipper:agentChat:send",
-    (_e, kind: unknown, itemId: string, text: string, ctx?: { selectedFile?: string }) => {
-      if (kind !== "coder" && kind !== "reviewer") {
-        return { ok: false as const, error: `invalid chat kind ${String(kind)}` };
-      }
-      return sendAgentChatMessage(kind, itemId, text, ctx);
-    },
-  );
-  ipcMain.handle("skipper:agentChat:getHistory", (_e, kind: unknown, itemId: string) => {
-    if (kind !== "coder" && kind !== "reviewer") return [];
-    return getAgentChatHistory(kind, itemId);
-  });
-  ipcMain.handle("skipper:agentChat:cancel", (_e, kind: unknown, itemId: string) => {
-    if (kind !== "coder" && kind !== "reviewer") return;
-    cancelAgentChat(kind, itemId);
-  });
-  // Coder-chat Apply (#188): distill → preview, then confirm → coding re-entry.
-  ipcMain.handle("skipper:agentChat:prepareApply", (_e, itemId: string) =>
-    prepareCoderChatApply(itemId),
-  );
-  ipcMain.handle(
-    "skipper:agentChat:confirmApply",
-    (_e, itemId: string, instructions: PrReviewComment[]) =>
-      confirmCoderChatApply(itemId, instructions),
-  );
-  // Replay for renderers that mount mid-run; live events ride the per-item channel.
-  ipcMain.handle("skipper:coding:getEvents", (_e, itemId: string) => {
-    return codingStream.getEvents(itemId);
-  });
-  ipcMain.handle("skipper:planning:getEvents", (_e, itemId: string) => {
-    return planningStream.getEvents(itemId);
-  });
-  ipcMain.handle("skipper:review:getEvents", (_e, itemId: string) => {
-    return reviewStream.getEvents(itemId);
-  });
-  ipcMain.handle("skipper:composer:getEvents", (_e, key: string) => {
-    return composerStream.getEvents(key);
+  registerChatHandlers({
+    ipcMain,
+    codingStream,
+    planningStream,
+    reviewStream,
+    composerStream,
   });
   registerComposerHandlers({
     ipcMain,
