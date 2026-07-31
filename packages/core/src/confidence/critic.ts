@@ -157,19 +157,23 @@ export async function runCritic(
     runtime?: AgentRuntime;
   },
 ): Promise<CriticSignal> {
-  // Tools mode (a repo-inspecting critic) needs the runtime's structured call;
-  // the plain plan critic uses the completions provider (#238). Either way the
-  // reply is the final verdict JSON.
-  const ask = <T>(prompt: string, schema: Record<string, unknown>): Promise<T> =>
-    opts?.runtime && opts.tools
-      ? opts.runtime.structured<T>(prompt, schema, {
-          tools: opts.tools,
-          ...(opts.cwd ? { cwd: opts.cwd } : {}),
-          ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
-          ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}),
-          ...(opts.signal ? { signal: opts.signal } : {}),
-        })
-      : llm.askStructured<T>(prompt, schema, opts?.signal ? { signal: opts.signal } : undefined);
+  // Runtime-first: whenever the caller has a runtime the verdict is asked on it —
+  // tools-enabled for the repo-inspecting critic, plain (no tools, single turn)
+  // for the plan critic. The completions provider is the no-runtime fallback.
+  // Either way the reply is the final verdict JSON.
+  const ask = <T>(prompt: string, schema: Record<string, unknown>): Promise<T> => {
+    if (!opts?.runtime) {
+      return llm.askStructured<T>(prompt, schema, opts?.signal ? { signal: opts.signal } : undefined);
+    }
+    const tools = opts.tools ?? "";
+    return opts.runtime.structured<T>(prompt, schema, {
+      tools,
+      ...(tools && opts.cwd ? { cwd: opts.cwd } : {}),
+      ...(tools && opts.sessionId ? { sessionId: opts.sessionId } : {}),
+      ...(tools && opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    });
+  };
   if (input.prior) {
     const schema = z.toJSONSchema(CriticContinuityVerdictSchema) as Record<string, unknown>;
     const reply = await ask<unknown>(buildCriticPrompt(input), schema);
@@ -199,7 +203,7 @@ export async function critiquePlan(
   plan: IssuePlan,
   issue: PlanIssueInput,
   llm: LLMProviderInterface,
-  signal?: AbortSignal,
+  opts?: { signal?: AbortSignal; runtime?: AgentRuntime },
 ): Promise<CriticSignal> {
   return runCritic(
     {
@@ -215,6 +219,9 @@ export async function critiquePlan(
         .join("\n"),
     },
     llm,
-    signal ? { signal } : undefined,
+    {
+      ...(opts?.signal ? { signal: opts.signal } : {}),
+      ...(opts?.runtime ? { runtime: opts.runtime } : {}),
+    },
   );
 }

@@ -520,8 +520,8 @@ async function run(itemId: string, repoKey: string): Promise<void> {
         const first = tryParseCoderReport(raw);
         if (first.ok) {
           report = first.report;
-        } else if (repairProvider) {
-          report = await repairCoderReport(repairProvider, raw, first.error);
+        } else {
+          report = await repairCoderReport(runtime, repairProvider, raw, first.error);
           // Repair awaited — the item may have moved or been superseded.
           if (!live()) return;
         }

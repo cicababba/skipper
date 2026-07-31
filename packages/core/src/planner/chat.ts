@@ -341,7 +341,7 @@ export async function applyPlanFromDiscussion(
       ...(opts.signal ? { signal: opts.signal } : {}),
       ...(opts.confinement ? { confinement: opts.confinement } : {}),
     });
-    const updated = await validatePlanReply(llm, reply.text, opts.signal);
+    const updated = await validatePlanReply(runtime, llm, reply.text, opts.signal);
     return { plan: updated, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
   }
 
@@ -361,10 +361,10 @@ export async function applyPlanFromDiscussion(
       ...(opts.signal ? { signal: opts.signal } : {}),
       ...(opts.confinement ? { confinement: opts.confinement } : {}),
     });
-    const updated = await validatePlanReply(llm, reply.text, opts.signal);
+    const updated = await validatePlanReply(runtime, llm, reply.text, opts.signal);
     return { plan: updated, ...(reply.sessionId ? { sessionId: reply.sessionId } : {}) };
   }
   const raw = await llm.askStructured<unknown>(prompt, schema, opts.signal ? { signal: opts.signal } : undefined);
-  const updated = await validatePlanReply(llm, JSON.stringify(raw), opts.signal);
+  const updated = await validatePlanReply(runtime, llm, JSON.stringify(raw), opts.signal);
   return { plan: updated };
 }

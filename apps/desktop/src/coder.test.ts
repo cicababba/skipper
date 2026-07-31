@@ -963,6 +963,38 @@ describe("structured coder report (#146)", () => {
     expect(h.items.get("github:1")!.coderReport).toBeUndefined();
   });
 
+  it("repairs an unparseable report on the coder's runtime, not the completions provider", async () => {
+    const h = makeHarness();
+    const runner = vi.fn(async (opts: RunCodingAgentOptions): Promise<CodingRunResult> => {
+      opts.onEvent({ kind: "result", ok: true, summary: "just prose, no JSON here" });
+      return {
+        ok: true,
+        summary: "just prose, no JSON here",
+        resultText: "just prose, no JSON here",
+        sessionId: opts.sessionId ?? "",
+      };
+    });
+    const structured = vi.fn(async () => validReport);
+    const runtime = { ...runtimeOf(runner), structured } as unknown as AgentRuntime;
+    const rejectingProvider = {
+      name: "fake",
+      ask: vi.fn(),
+      askStructured: vi.fn(async () => {
+        throw new Error("the completions provider must not be used");
+      }),
+    } as unknown as LLMProviderInterface;
+    initCoder(h.deps, runtime, rejectingProvider);
+    h.items.set("github:1", makeItem(1, "queued"));
+
+    pokeCoder();
+    await settle();
+
+    expect(structured).toHaveBeenCalledOnce();
+    expect((structured.mock.calls[0] as unknown as [string, unknown, { tools: string }])[2].tools).toBe("");
+    expect(h.reports[0].reportRef).toBe(reportFileName("github:1"));
+    expect(h.items.get("github:1")!.coderReport).toEqual({ ref: reportFileName("github:1") });
+  });
+
   it("writes a report on a fix round too", async () => {
     const h = makeHarness();
     initCoder(h.deps, runtimeOf(okRunner()));

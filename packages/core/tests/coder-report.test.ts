@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { LLMProviderInterface } from "../src/llm";
+import type { AgentRuntime } from "../src/runtime";
 import {
   tryParseCoderReport,
   repairCoderReport,
@@ -53,24 +54,26 @@ describe("tryParseCoderReport", () => {
 
 function fakeLLM(reply: unknown) {
   const askStructured = vi.fn(async () => reply);
+  const structured = vi.fn(async () => reply);
   const llm: LLMProviderInterface = {
     name: "fake",
     ask: vi.fn(),
     askStructured,
   } as unknown as LLMProviderInterface;
-  return { llm, askStructured };
+  const runtime = { id: "codex-cli", structured } as unknown as AgentRuntime;
+  return { llm, runtime, structured, askStructured };
 }
 
 describe("repairCoderReport", () => {
-  it("returns the repaired report when askStructured produces valid JSON", async () => {
+  it("returns the repaired report when the repair round produces valid JSON", async () => {
     const { llm } = fakeLLM(valid);
-    const report = await repairCoderReport(llm, "garbage in", "parse error");
+    const report = await repairCoderReport(undefined, llm, "garbage in", "parse error");
     expect(report.done[0].path).toBe("src/a.ts");
   });
 
   it("throws CoderReportParseError when the repair is still invalid", async () => {
     const { llm } = fakeLLM({ done: "still wrong" });
-    await expect(repairCoderReport(llm, "garbage", "err")).rejects.toBeInstanceOf(
+    await expect(repairCoderReport(undefined, llm, "garbage", "err")).rejects.toBeInstanceOf(
       CoderReportParseError,
     );
   });
@@ -78,12 +81,26 @@ describe("repairCoderReport", () => {
   it("carries the raw text and passes it into the repair prompt", async () => {
     const { llm, askStructured } = fakeLLM({ done: "wrong" });
     try {
-      await repairCoderReport(llm, "the-raw-final-message", "err");
+      await repairCoderReport(undefined, llm, "the-raw-final-message", "err");
       expect.unreachable();
     } catch (err) {
       expect(err).toBeInstanceOf(CoderReportParseError);
       expect((err as CoderReportParseError).raw).toBe("the-raw-final-message");
     }
     expect(askStructured.mock.calls[0][0]).toContain("the-raw-final-message");
+  });
+
+  it("repairs on the coder's runtime when it has one, never on the provider", async () => {
+    const { llm, runtime, structured, askStructured } = fakeLLM(valid);
+    const report = await repairCoderReport(runtime, llm, "garbage in", "parse error");
+    expect(report.done[0].path).toBe("src/a.ts");
+    expect(askStructured).not.toHaveBeenCalled();
+    const [prompt, , opts] = structured.mock.calls[0] as unknown as [
+      string,
+      Record<string, unknown>,
+      { tools: string },
+    ];
+    expect(prompt).toContain("garbage in");
+    expect(opts.tools).toBe("");
   });
 });

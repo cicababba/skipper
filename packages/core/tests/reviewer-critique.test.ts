@@ -126,12 +126,36 @@ describe("critiqueDiff", () => {
     expect(prompt).toContain("You have Read, Grep and Glob over the working tree.");
   });
 
-  it("passes no opts and no inspect-repo instruction when session is absent", async () => {
+  it("passes no opts and no inspect-repo instruction when session and runtime are absent", async () => {
     const { llm, askStructured } = fakeLLM();
     await critiqueDiff({ diff: "+1", issue, acceptance: [] }, llm);
     expect(askStructured.mock.calls[0][2]).toBeUndefined();
     const prompt = askStructured.mock.calls[0][0] as string;
     expect(prompt).not.toContain("You have Read, Grep and Glob over the working tree.");
+  });
+
+  // Runtime-first: a reviewer that has a runtime never spends the completions
+  // provider, even without a session to unlock the inspection toolset.
+  it("runs the plain diff critic on the runtime with no tools when there is no session", async () => {
+    const { llm, askStructured } = fakeLLM();
+    const { runtime, structured } = fakeRuntime();
+    const signal = await critiqueDiff({ diff: "+1", issue, acceptance: [] }, llm, runtime);
+    expect(signal.verdict).toBe("approve");
+    expect(askStructured).not.toHaveBeenCalled();
+    expect(structured.mock.calls[0][2]).toEqual({ tools: "" });
+    const prompt = structured.mock.calls[0][0] as string;
+    expect(prompt).toContain("DEMOLISH the diff");
+    expect(prompt).not.toContain("You have Read, Grep and Glob over the working tree.");
+  });
+
+  it("falls back to the completions provider when the reviewer has no runtime", async () => {
+    const { llm, askStructured } = fakeLLM();
+    const signal = await critiqueDiff(
+      { diff: "+1", issue, acceptance: [], session: { id: "sid-1", cwd: "/wt/issue-1" } },
+      llm,
+    );
+    expect(signal.verdict).toBe("approve");
+    expect(askStructured).toHaveBeenCalledOnce();
   });
 
   // #226: the planner's verified facts ground the reviewer against its own guesses.
