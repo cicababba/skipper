@@ -9,7 +9,8 @@ import { repoKey, type BaseChangeSkipReason, type TrackedItem } from "@skipper/s
 export interface WorktreeProbe {
   /** null = dir gone / git failed (nothing to lose). */
   dirty: boolean | null;
-  /** null = base ref unresolved / rev-list failed. */
+  /** null = base ref unresolved / rev-list failed. NaN counts as unresolved too:
+   *  the type admits it, and treating it as "not ahead" would discard the worktree. */
   aheadOfOldBase: number | null;
 }
 
@@ -60,7 +61,7 @@ export function resolveBaseChangeActions(
       if (dirty === true) {
         skip = "dirty";
       } else if (dirty === false) {
-        if (ahead === null) skip = "unresolved-base";
+        if (ahead === null || !Number.isFinite(ahead)) skip = "unresolved-base";
         else if (ahead > 0) skip = "own-commits";
       }
       // dirty === null (dir gone) falls through with no skip → discard.

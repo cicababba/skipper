@@ -426,6 +426,32 @@ describe("setRepoBaseBranch", () => {
     expect(h.m.items["github:1"]!.worktree).toEqual({ path: "/wt/1", branch: "feature/issue-1" });
   });
 
+  // An unparseable rev-list count must read as "unresolved", never as "not ahead" —
+  // the latter would destroy the worktree.
+  it("skips a worktree whose ahead-count comes back unparseable", async () => {
+    const item = trackedItem({
+      id: "github:1",
+      state: "plan-gate",
+      worktree: { path: "/wt/1", branch: "feature/issue-1" },
+    });
+    const m = manifest({ items: { "github:1": item } });
+    const h = setup({ links: linkedRepo(), manifest: m });
+    runGitMock.mockResolvedValue({ code: 0, stdout: "", stderr: "" });
+    resolveBaseRefMock
+      .mockResolvedValueOnce("origin/main")
+      .mockResolvedValueOnce("origin/develop")
+      .mockResolvedValue("origin/main");
+
+    const res = await handlerOf(h.handlers, CHANNEL)(null, "acme", "widgets", "develop");
+
+    expect(res).toEqual({
+      ok: true,
+      replan: { replanned: [], skipped: [{ id: "github:1", key: "1", reason: "unresolved-base" }] },
+    });
+    expect(discardWorktreeMock).not.toHaveBeenCalled();
+    expect(h.m.items["github:1"]!.worktree).toEqual({ path: "/wt/1", branch: "feature/issue-1" });
+  });
+
   it("skips a dirty worktree", async () => {
     const item = trackedItem({
       id: "github:1",

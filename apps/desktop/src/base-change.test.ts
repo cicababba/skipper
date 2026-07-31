@@ -132,6 +132,18 @@ describe("resolveBaseChangeActions", () => {
     expect(r.skipped).toEqual([{ id: item.id, key: "1", reason: "unresolved-base" }]);
   });
 
+  it("skips when the ahead-count is NaN rather than discarding the worktree", () => {
+    const item = makeItem({ state: "plan-gate" });
+    const r = resolveBaseChangeActions(
+      [item],
+      "owner/repo",
+      probesFor(item, { dirty: false, aheadOfOldBase: NaN }),
+    );
+    expect(r.discard).toEqual([]);
+    expect(r.replan).toEqual([]);
+    expect(r.skipped).toEqual([{ id: item.id, key: "1", reason: "unresolved-base" }]);
+  });
+
   it("replans a needs-input item only when it has a plan", () => {
     const withPlan = makeItem({ state: "needs-input", plan: { ref: "github_1.json" } });
     const withoutPlan = makeItem({ state: "needs-input" });

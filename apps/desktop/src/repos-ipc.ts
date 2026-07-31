@@ -341,7 +341,8 @@ export function registerReposHandlers(deps: ReposIpcDeps): void {
                 "--count",
                 `${oldBaseRef}..refs/heads/${item.worktree.branch}`,
               ]);
-              aheadOfOldBase = rl.code === 0 ? parseInt(rl.stdout.trim(), 10) : null;
+              const parsed = rl.code === 0 ? parseInt(rl.stdout.trim(), 10) : NaN;
+              aheadOfOldBase = Number.isFinite(parsed) ? parsed : null;
             }
             probes.set(item.id, { dirty, aheadOfOldBase });
           }
