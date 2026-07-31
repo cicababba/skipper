@@ -3,8 +3,10 @@ import { pollJiraAccount } from "../src/adapters/jira/poll";
 import { ApiError } from "../src/adapters/types";
 
 const token = async () => "tok";
+// issuelinks joined the field list in #299 — it carries the native "is blocked by"
+// links, so dependencies need no extra request.
 const FIELDS =
-  "summary,description,labels,components,assignee,reporter,status,project,created,updated";
+  "summary,description,labels,components,assignee,reporter,status,project,created,updated,issuelinks";
 
 function jsonResponse(status: number, body: unknown, headers?: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {

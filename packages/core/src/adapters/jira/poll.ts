@@ -20,7 +20,7 @@ const MAX_DELTA_WINDOW_MINUTES = 7 * 24 * 60;
 const CLOUD_PAGE_SIZE = 100;
 const DC_PAGE_SIZE = 50;
 export const JIRA_ISSUE_FIELDS =
-  "summary,description,labels,components,assignee,reporter,status,project,created,updated";
+  "summary,description,labels,components,assignee,reporter,status,project,created,updated,issuelinks";
 
 interface CloudSearchPage {
   issues?: JiraIssuePayload[];

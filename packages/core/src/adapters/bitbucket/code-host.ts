@@ -71,6 +71,7 @@ export const bitbucketCodeHost: CodeHost = {
   // Bitbucket has no PR-body issue-closing keyword; real Jira linkage rides the
   // issue key in the branch name, so this is a plain human-readable reference.
   linkIssueText: (key) => `Refs ${key}`,
+  linkIssueUrlText: (url) => `Refs ${url}`,
   pushCredentials: (token) => ({ username: "x-token-auth", password: token }),
   cloneUrl: (repo) => `${BITBUCKET_BASE_URL}/${repo.owner}/${repo.name}.git`,
   parseOrigin: (remoteUrl) => parseBitbucketOrigin(remoteUrl),

@@ -1,4 +1,4 @@
-import type { Issue } from "@skipper/shared";
+import type { Issue, SourceRef } from "@skipper/shared";
 import { adfToMarkdown } from "./adf";
 
 /** Jira user shapes differ across deployments: Cloud carries `accountId`, Data
@@ -24,6 +24,13 @@ export interface JiraIssuePayload {
     project?: { key?: string } | null;
     created?: string;
     updated?: string;
+    issuelinks?: Array<{
+      type?: { inward?: string; outward?: string } | null;
+      /** Present on the side that is blocked; the "blocks" direction carries
+       *  `outwardIssue` instead, with the same `type.inward` label. */
+      inwardIssue?: { key?: string } | null;
+      outwardIssue?: { key?: string } | null;
+    }> | null;
   };
 }
 
@@ -47,6 +54,18 @@ function trimTrailingSlash(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
+/** Inward "is blocked by" links only — the outward "blocks" direction names issues
+ *  this one blocks, which is not a prerequisite of it. */
+function mapBlockedBy(links: JiraIssuePayload["fields"]["issuelinks"]): SourceRef[] {
+  const out: SourceRef[] = [];
+  for (const link of links ?? []) {
+    const key = link.inwardIssue?.key;
+    if (!key || link.type?.inward?.toLowerCase() !== "is blocked by") continue;
+    out.push({ project: key.split("-")[0], key });
+  }
+  return out;
+}
+
 export function mapJiraIssue(
   payload: JiraIssuePayload,
   accountId: string,
@@ -58,6 +77,7 @@ export function mapJiraIssue(
     ...(fields.labels ?? []),
     ...(fields.components ?? []).map((c) => c.name),
   ];
+  const blockedBy = mapBlockedBy(fields.issuelinks);
   return {
     id: `jira:${payload.id}`,
     source: "jira",
@@ -78,5 +98,6 @@ export function mapJiraIssue(
     updatedAt: toUtcIso(fields.updated),
     kind: "issue",
     state: fields.status?.statusCategory?.key === "done" ? "closed" : "open",
+    ...(blockedBy.length > 0 ? { blockedBy } : {}),
   };
 }

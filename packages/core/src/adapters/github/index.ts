@@ -1,5 +1,5 @@
 export { pollGitHubAccount } from "./poll";
-export { fetchGitHubDependencies, parseBodyDependencies } from "./dependencies";
+export { fetchGitHubDependencies } from "./dependencies";
 export { fetchGitHubComments } from "./comments";
 export { closeGitHubIssue } from "./close";
 export { createGitHubIssue } from "./create";

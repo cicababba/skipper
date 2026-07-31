@@ -45,6 +45,7 @@ export const githubCodeHost: CodeHost = {
   fetchFailingChecks: (repo, sha, getToken, baseUrl) =>
     fetchFailingChecks(repo, sha, getToken, baseUrl),
   linkIssueText: (key) => `Closes #${key}`,
+  linkIssueUrlText: (url) => `Closes ${url}`,
   pushCredentials: (token) => ({ username: "x-access-token", password: token }),
   cloneUrl: (repo) => `https://github.com/${repo.owner}/${repo.name}.git`,
   parseOrigin: (remoteUrl) => {

@@ -127,7 +127,15 @@ function setup(opts: SetupOptions = {}): Harness {
     return results[Math.min(call++, results.length - 1)];
   });
   const fetchDependencies = opts.fetchDependencies
-    ? vi.fn(async (iss: Issue) => opts.fetchDependencies!(iss))
+    ? vi.fn(
+        async (
+          iss: Issue,
+          _getToken: unknown,
+          _baseUrl?: string,
+          _cloudId?: string,
+          _authMethod?: "oauth" | "pat",
+        ) => opts.fetchDependencies!(iss),
+      )
     : undefined;
   hoisted.source = {
     id: "github",
@@ -370,6 +378,29 @@ describe("makePoller — dependency fetching (#85)", () => {
     const targets = h.fetchDependencies!.mock.calls.map((c) => (c[0] as Issue).id);
     expect(targets[0]).toBe("github:1");
     expect(targets).not.toContain("github:0");
+  });
+
+  it("passes the account's baseUrl, cloudId and authMethod through (#299)", async () => {
+    const jiraAccount: Account = {
+      provider: "jira",
+      key: "github:1",
+      id: "1",
+      name: "cicababba",
+      baseUrl: "https://acme.atlassian.net",
+      cloudId: "cloud-1",
+      authMethod: "pat",
+    };
+    const h = setup({
+      accounts: [jiraAccount],
+      results: [{ mode: "full", issues: candidates(1), pullRequests: [], cursor: "c1" }],
+      fetchDependencies: async () => [],
+    });
+    await h.poller.pollNow();
+
+    const call = h.fetchDependencies!.mock.calls[0]!;
+    expect(call[2]).toBe("https://acme.atlassian.net");
+    expect(call[3]).toBe("cloud-1");
+    expect(call[4]).toBe("pat");
   });
 
   it("tolerates a per-target failure and leaves that key absent", async () => {

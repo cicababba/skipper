@@ -142,6 +142,12 @@ describe("githubCodeHost identity helpers", () => {
     expect(githubCodeHost.linkIssueText("42")).toBe("Closes #42");
   });
 
+  it("closes by full URL when the issue is outside the PR's repo (#299)", () => {
+    expect(githubCodeHost.linkIssueUrlText("https://github.com/acme/issues/issues/42")).toBe(
+      "Closes https://github.com/acme/issues/issues/42",
+    );
+  });
+
   it("builds the https clone URL", () => {
     expect(githubCodeHost.cloneUrl(repo)).toBe("https://github.com/octo/demo.git");
   });

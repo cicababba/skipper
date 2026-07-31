@@ -80,6 +80,7 @@ export const gitlabCodeHost: CodeHost = {
   fetchFailingChecks: (repo, sha, getToken, baseUrl) =>
     fetchFailingChecks(repo, sha, getToken, baseUrl),
   linkIssueText: (key) => `Closes #${key}`,
+  linkIssueUrlText: (url) => `Closes ${url}`,
   pushCredentials: (token) => ({ username: "oauth2", password: token }),
   cloneUrl: (repo, baseUrl) => `${baseUrl ?? GITLAB_BASE_URL}/${repo.owner}/${repo.name}.git`,
   parseOrigin: (remoteUrl, baseUrl) => parseGitLabOrigin(remoteUrl, baseUrl),

@@ -181,6 +181,10 @@ interface WorkItemBase {
 export interface Issue extends WorkItemBase {
   kind: "issue";
   state: "open" | "closed";
+  /** Native tracker-declared prerequisites, filled by adapters whose poll payload
+   *  already carries them (Jira issuelinks) — lets fetchDependencies answer without
+   *  a second request. */
+  blockedBy?: SourceRef[];
 }
 
 export interface PullRequest extends WorkItemBase {

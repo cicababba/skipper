@@ -1,6 +1,7 @@
 export { bitbucketCodeHost } from "./code-host";
 export { bitbucketGet, bitbucketPost, bitbucketPaginate } from "./client";
 export { fetchBitbucketIssueComments } from "./comments";
+export { fetchBitbucketDependencies } from "./dependencies";
 export { createBitbucketIssue } from "./create";
 export { pollBitbucketAccount } from "./poll";
 export { bitbucketIssueSource } from "./source";

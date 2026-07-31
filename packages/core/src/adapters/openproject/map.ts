@@ -27,7 +27,7 @@ export function toUtcIso(value: string | undefined): string {
 
 /** Numeric project id from a HAL project href (`/api/v3/projects/<id>`); "" when
  *  absent or unparseable. Numeric ids are immutable, unlike renameable identifiers. */
-function projectIdFromHref(href: string | null | undefined): string {
+export function projectIdFromHref(href: string | null | undefined): string {
   if (!href) return "";
   const match = /\/projects\/([^/]+)/.exec(href);
   return match ? match[1] : "";

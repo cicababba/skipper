@@ -69,8 +69,15 @@ export interface IssueSource<C = unknown> {
   poll(opts: PollOptions<C>): Promise<PollResult<C>>;
   /** Optional capability (#85): prerequisite work items ("blocked by") for one issue.
    *  Same-tracker refs only. Adapters without dependency support omit this — the
-   *  feature is then inert for that source. */
-  fetchDependencies?(issue: Issue, getToken: TokenProvider, baseUrl?: string): Promise<SourceRef[]>;
+   *  feature is then inert for that source. `cloudId` routes Jira Cloud, `authMethod`
+   *  picks the OpenProject auth header — as in fetchComments. */
+  fetchDependencies?(
+    issue: Issue,
+    getToken: TokenProvider,
+    baseUrl?: string,
+    cloudId?: string,
+    authMethod?: "oauth" | "pat",
+  ): Promise<SourceRef[]>;
   /** Optional capability (#144): the issue's comments in ascending chronological
    *  order, fetched fresh at plan/code time. `cloudId` routes Jira Cloud OAuth
    *  (api.atlassian.com/ex/jira/<cloudId>); GitHub/GitLab ignore it. */
@@ -195,6 +202,9 @@ export interface CodeHost {
   ): Promise<FailingCheck[]>;
   /** The tracker-link line in the PR body, e.g. "Closes #42" for key "42". */
   linkIssueText(key: string): string;
+  /** URL-form reference, used when the issue is native to this host but lives
+   *  outside the PR's repo — a bare "#42" would then point at the wrong issue. */
+  linkIssueUrlText(url: string): string;
   pushCredentials(token: string): PushCredentials;
   /** Clone URL for git-over-HTTPS, e.g. "https://github.com/owner/name.git". */
   cloneUrl(repo: RepoRef, baseUrl?: string): string;

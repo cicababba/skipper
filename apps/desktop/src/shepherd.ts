@@ -5,6 +5,7 @@
 
 import {
   buildCommitMessage,
+  buildIssueLink,
   buildPrBody,
   buildPrTitle,
   codeHostFor,
@@ -154,7 +155,7 @@ export async function openOrPushPr(
           item.repo,
           {
             title: buildPrTitle(item),
-            body: buildPrBody({ issueLink: host.linkIssueText(item.key), plan: stored?.plan }),
+            body: buildPrBody({ issueLink: buildIssueLink(item, host), plan: stored?.plan }),
             head: item.worktree.branch,
             base: await deps.getBaseBranch(item),
             draft: host.supportsDraft,

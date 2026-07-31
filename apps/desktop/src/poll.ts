@@ -238,6 +238,8 @@ export function makePoller(deps: PollerDeps): Poller {
               iss,
               (force) => deps.getToken(accountId, force),
               account.baseUrl,
+              account.cloudId,
+              account.authMethod,
             );
           } catch (err) {
             console.warn(`[orchestrator] dependency fetch failed for ${iss.id}: ${String(err)}`);

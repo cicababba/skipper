@@ -41,6 +41,46 @@ describe("jira map", () => {
     expect(issue.createdAt).toBe("2026-07-01T08:30:00.000Z");
   });
 
+  it("maps inward 'is blocked by' issue links to blockedBy (#299)", () => {
+    const issue = mapJiraIssue(
+      payload({
+        issuelinks: [
+          { type: { inward: "is blocked by" }, inwardIssue: { key: "PROJ-3" } },
+          { type: { inward: "is blocked by" }, inwardIssue: { key: "OPS-9" } },
+        ],
+      }),
+      "acct",
+      "https://x",
+    );
+    expect(issue.blockedBy).toEqual([
+      { project: "PROJ", key: "PROJ-3" },
+      { project: "OPS", key: "OPS-9" },
+    ]);
+  });
+
+  it("ignores the outward 'blocks' direction and links without an inward issue (#299)", () => {
+    const issue = mapJiraIssue(
+      payload({
+        issuelinks: [
+          // This issue blocks PROJ-4 — same link type, opposite direction.
+          {
+            type: { inward: "is blocked by", outward: "blocks" },
+            outwardIssue: { key: "PROJ-4" },
+          },
+          { type: { inward: "is blocked by" } },
+          { type: { inward: "relates to" }, inwardIssue: { key: "PROJ-5" } },
+        ],
+      }),
+      "acct",
+      "https://x",
+    );
+    expect(issue.blockedBy).toBeUndefined();
+  });
+
+  it("leaves blockedBy absent when the payload carries no issue links (#299)", () => {
+    expect(mapJiraIssue(payload(), "acct", "https://x").blockedBy).toBeUndefined();
+  });
+
   it("closes an issue whose statusCategory is done", () => {
     const issue = mapJiraIssue(payload({ status: { statusCategory: { key: "done" } } }), "acct", "https://x");
     expect(issue.state).toBe("closed");
