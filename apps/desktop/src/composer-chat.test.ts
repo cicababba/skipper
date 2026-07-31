@@ -910,6 +910,7 @@ describe("resumeComposerChat", () => {
 
     await sendComposerChatMessage(REPO, chatId, "and now?");
     expect((provider.agent.mock.calls[0][1] as Record<string, unknown>).resumeSessionId).toBe(minted);
+    await waitForDraft(chatId, (d) => d.messages.length === 4);
   });
 
   it("degrades to a fresh seeded run when the stored session belongs to another runtime", async () => {
@@ -925,6 +926,7 @@ describe("resumeComposerChat", () => {
     const opts = provider.agent.mock.calls[0][1] as Record<string, unknown>;
     expect(opts.resumeSessionId).toBeUndefined();
     expect(provider.agent.mock.calls[0][0] as string).toContain("--- Conversation so far ---");
+    await waitForDraft(chatId, (d) => d.messages.length === 4);
   });
 
   it("keeps autosaving the resumed chat", async () => {
