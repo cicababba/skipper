@@ -5,7 +5,6 @@ import {
   issueSourceFor,
   issueSources,
   remapProjectItems,
-  applyTransition,
   loadOrCreateOrchestratorManifest,
   saveOrchestratorManifest,
   listUserInstallationRepos,
@@ -17,7 +16,6 @@ import {
   reconcileMemoryIndex,
   generateRepoInstructions,
   DEFAULT_ORCHESTRATOR_SETTINGS,
-  IssuePlanSchema,
   type IssueComment,
   type OrchestratorManifest,
   type OrchestratorSettings,
@@ -44,21 +42,14 @@ import type {
   ConfidenceReport,
   FollowCandidate,
   FollowCandidatesResult,
-  Issue,
-  LifecycleState,
   MemoryPhase,
   OrchestratorState,
   RepoRef,
   ResolvedRepoIntakeSettings,
   ResolvedRepoOrchestratorSettings,
-  ResumeRiteAction,
   TrackedItem,
   TrackerProjectsResult,
   TransitionActor,
-  ArchiveItemResult,
-  UntrackItemResult,
-  CloseItemOnTrackerResult,
-  CleanWorktreeResult,
   IssueSourceCapabilities,
   IssueSourceId,
 } from "@skipper/shared";
@@ -66,7 +57,7 @@ import { loadCursors, saveCursors } from "./inbox-cursor-store";
 import { runGit } from "./git";
 import { loadRepoLinks, saveRepoLinks, type RepoLinksFile } from "./repo-links";
 import { makeEventStream } from "./event-stream";
-import { discardItemWorktreeUnderLock, archivePlanAndDeleteChats } from "./item-teardown";
+import { archivePlanAndDeleteChats } from "./item-teardown";
 import { makeRepoGitLock } from "./git-lock";
 import { applySettingsPatch } from "./settings-validators";
 import { makePoller } from "./poll";
@@ -76,6 +67,7 @@ import { registerRepoFollowHandlers } from "./repo-follow-ipc";
 import { registerReposHandlers } from "./repos-ipc";
 import { registerRepoConfigHandlers } from "./repo-config-ipc";
 import { registerChatHandlers } from "./chat-ipc";
+import { registerItemHandlers } from "./item-ipc";
 import { registerMemoryHandlers } from "./memory-ipc";
 import { registerCreateIssueHandlers } from "./create-issue-ipc";
 import { registerComposerHandlers } from "./composer-ipc";
@@ -100,7 +92,7 @@ import { initRescore, cancelRescore, killAllRescores } from "./rescore";
 import { initPlanner, pokePlanner, cancelPlanningRun, killAllPlanningRuns } from "./planner";
 import { initCoder, pokeCoder, cancelCodingRun, killAllCodingRuns } from "./coder";
 import { initReviewer, pokeReviewer } from "./reviewer";
-import { initShepherd, pokeShepherd, openOrPushPr } from "./shepherd";
+import { initShepherd, pokeShepherd } from "./shepherd";
 import { initDistiller, distillForRecord } from "./distiller";
 import { initStalenessSweep, sweepStaleness } from "./memory-staleness";
 import {
@@ -108,7 +100,6 @@ import {
   discardWorktree,
   ensureWorktree,
   fetchOrigin,
-  forceCleanWorktree,
   refreshWorktreeBase,
   resolveBaseRef,
   worktreeDirFor,
@@ -454,32 +445,6 @@ function fetchIssueCommentsFor(item: TrackedItem): Promise<IssueComment[]> {
     account.authMethod,
   );
 }
-
-/** Minimal Issue rebuilt from a TrackedItem for a close call when the raw poll
- *  cache lacks it (#132) — carries every field closeGitHubIssue/closeGitLabIssue
- *  read; required-unused fields get inert defaults. */
-function synthesizeIssue(item: TrackedItem): Issue {
-  return {
-    kind: "issue",
-    id: item.id,
-    source: item.source,
-    sourceRef: item.sourceRef,
-    codeHost: item.codeHost,
-    accountId: item.accountId,
-    repo: item.repo,
-    key: item.key,
-    number: item.number,
-    title: item.title,
-    body: item.body,
-    labels: [],
-    assignees: [],
-    url: item.url,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
-    state: "open",
-  };
-}
-
 /** Account for cloning: explicit account key, else the code-host account behind the
  *  item that sees the repo, else the first issue account. Carries provider + baseUrl. */
 function accountForRepo(owner: string, name: string, accountKey?: string): Account | undefined {
@@ -594,42 +559,6 @@ export async function setIntakePaused(paused: boolean): Promise<void> {
     pokeOrchestrator();
   }
 }
-
-/**
- * Resolves the one-shot resume-rite prompt (#15). Selected items move to
- * planning; the rest keep holdAutoPlan and stay in triage for manual planning.
- * Any resolution — including dismiss — clears the rite.
- */
-export async function resolveResumeRite(
-  action: ResumeRiteAction,
-  itemIds?: string[],
-): Promise<void> {
-  if (!deps) throw new Error("orchestrator not initialized");
-  const m = await ensureManifest();
-  if (!m.resumeRite) return;
-  const rite = m.resumeRite.itemIds;
-  const selected =
-    action === "plan-all"
-      ? rite
-      : action === "plan-selected"
-        ? (itemIds ?? []).filter((id) => rite.includes(id))
-        : [];
-  for (const id of selected) {
-    const item = m.items[id];
-    if (!item || item.state !== "triage") continue; // closed/moved meanwhile — skip
-    m.items[id] = applyTransition(
-      { ...item, holdAutoPlan: undefined },
-      "planning",
-      "user",
-      "resume rite",
-    );
-  }
-  delete m.resumeRite;
-  await saveOrchestratorManifest(deps.manifestFilePath, m);
-  broadcast();
-  pokePlanner();
-}
-
 let pokeTimer: NodeJS.Timeout | null = null;
 
 /** Debounced out-of-band re-poll — fired on auth changes. */
@@ -684,17 +613,6 @@ export function initOrchestrator(
     await poller.pollNow(true);
     return snapshot();
   });
-  ipcMain.handle(
-    "skipper:orchestrator:requestTransition",
-    async (_e, itemId: string, to: LifecycleState, reason?: string) => {
-      try {
-        const item = await requestTransition(itemId, to, "user", reason);
-        return { ok: true as const, item };
-      } catch (err) {
-        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
   ipcMain.handle("skipper:orchestrator:setIntakePaused", async (_e, paused: boolean) => {
     await setIntakePaused(Boolean(paused));
     return snapshot();
@@ -861,61 +779,6 @@ export function initOrchestrator(
       }
     },
   );
-  ipcMain.handle(
-    "skipper:orchestrator:resolveResumeRite",
-    async (_e, action: ResumeRiteAction, itemIds?: string[]) => {
-      await resolveResumeRite(action, itemIds);
-      return snapshot();
-    },
-  );
-  ipcMain.handle("skipper:orchestrator:setPinned", async (_e, itemId: string, pinned: boolean) => {
-    const m = await ensureManifest();
-    const item = m.items[itemId];
-    if (!item) return { ok: false as const, error: `unknown item ${itemId}` };
-    m.items[itemId] = {
-      ...item,
-      pinned: pinned ? true : undefined,
-      updatedAt: new Date().toISOString(),
-    };
-    await saveOrchestratorManifest(deps!.manifestFilePath, m);
-    broadcast();
-    pokeCoder();
-    return { ok: true as const, item: m.items[itemId] };
-  });
-  ipcMain.handle("skipper:orchestrator:getPlan", async (_e, itemId: string) => {
-    const m = await ensureManifest();
-    const ref = m.items[itemId]?.plan?.ref;
-    if (!ref) return null;
-    return readStoredPlan(deps!.plansDir, ref);
-  });
-  ipcMain.handle("skipper:orchestrator:getCoderReport", async (_e, itemId: string) => {
-    const m = await ensureManifest();
-    const ref = m.items[itemId]?.coderReport?.ref;
-    if (!ref) return null;
-    return readStoredCoderReport(deps!.plansDir, ref);
-  });
-  // Persist a user-edited plan at the gate (#13). Only legal while the item sits
-  // in plan-gate — during a replan the item is back in planning, so stale saves lose.
-  ipcMain.handle("skipper:orchestrator:updatePlan", async (_e, itemId: string, plan: unknown) => {
-    const m = await ensureManifest();
-    const item = m.items[itemId];
-    if (!item) return { ok: false as const, error: `unknown item ${itemId}` };
-    if (item.state !== "plan-gate") {
-      return { ok: false as const, error: `plan is only editable in plan-gate (item is ${item.state})` };
-    }
-    const ref = item.plan?.ref;
-    if (!ref) return { ok: false as const, error: "item has no stored plan" };
-    const parsed = IssuePlanSchema.safeParse(plan);
-    if (!parsed.success) {
-      return { ok: false as const, error: `invalid plan: ${parsed.error.issues[0]?.message ?? "schema mismatch"}` };
-    }
-    const stored = await updateStoredPlan(deps!.plansDir, ref, parsed.data, "inline-edit");
-    if (!stored) return { ok: false as const, error: "stored plan not found" };
-    // An inline edit supersedes the plan an in-flight rescore was scoring (#164):
-    // cancel it so the stale score stands rather than landing on the edited plan.
-    cancelRescore(itemId);
-    return { ok: true as const, stored };
-  });
   registerChatHandlers({
     ipcMain,
     codingStream,
@@ -990,6 +853,26 @@ export function initOrchestrator(
     seedInstructions,
     kickGraphify,
   });
+  registerItemHandlers({
+    ipcMain,
+    plansDir: orchestratorDeps.plansDir,
+    ensureManifest,
+    saveManifest: (m) => saveOrchestratorManifest(deps!.manifestFilePath, m),
+    ensureRepoLinks,
+    snapshot,
+    broadcast,
+    requestTransition,
+    pokePlanner,
+    pokeCoder,
+    reconcileFromCache: () => poller.reconcileFromCache(),
+    withRepoGitLock,
+    getAccounts: () => deps?.getAccounts() ?? [],
+    getToken: (key, force) => deps!.getToken(key, force),
+    codeHostAccountFor,
+    getCached: (accountId, itemId) => poller.getCached(accountId, itemId),
+    dropCached: (accountId, itemId) => poller.dropCached(accountId, itemId),
+    markCachedIssueClosed: (accountId, itemId) => poller.markCachedIssueClosed(accountId, itemId),
+  });
   registerWorktreeDiffHandlers({ ipcMain, ensureManifest });
   registerCreateIssueHandlers({
     ipcMain,
@@ -998,192 +881,6 @@ export function initOrchestrator(
     sourceForProvider: issueSourceForAuthProvider,
     getProjectMappings: async () => (await ensureManifest()).projectMappings,
   });
-  // Open the draft PR from human-review, or push a fix round's updates (#11).
-  ipcMain.handle("skipper:orchestrator:openPr", async (_e, itemId: string) => {
-    await ensureManifest();
-    await ensureRepoLinks();
-    return openOrPushPr(itemId, "user");
-  });
-  // Manual end-of-flow cleanup (#115): archive a closed item — discard its
-  // worktree (conservative branch delete) and archive the plan. The dirty gate
-  // needs the caller's confirmation before destroying uncommitted work.
-  ipcMain.handle(
-    "skipper:orchestrator:archiveItem",
-    async (_e, itemId: string, force?: boolean): Promise<ArchiveItemResult> => {
-      const m = await ensureManifest();
-      await ensureRepoLinks();
-      const item = m.items[itemId];
-      if (!item) return { ok: false, error: `unknown item ${itemId}` };
-      if (item.state !== "closed") {
-        return { ok: false, error: "only closed items can be archived" };
-      }
-
-      if (item.worktree) {
-        const dirty = await worktreeDirtyFiles(item.worktree.path);
-        if (dirty && dirty.length > 0 && !force) {
-          return { ok: false, needsConfirm: true, dirtyFiles: dirty.length };
-        }
-        const link = repoLinks?.repos[repoKey(item.repo)];
-        if (link) {
-          const res = await discardItemWorktreeUnderLock({
-            repo: item.repo,
-            localPath: link.localPath,
-            baseBranch: link.baseBranch,
-            worktreePath: item.worktree.path,
-            branch: item.worktree.branch,
-            withRepoGitLock,
-          });
-          if (!res.ok) return res;
-        }
-      }
-
-      const plan = await archivePlanAndDeleteChats(deps!.plansDir, itemId, item.plan);
-
-      // Re-read after the slow git ops so a concurrent update is not clobbered.
-      const current = m.items[itemId] ?? item;
-      const archived: TrackedItem = {
-        ...current,
-        worktree: undefined,
-        plan,
-        updatedAt: new Date().toISOString(),
-      };
-      m.items[itemId] = archived;
-      await saveOrchestratorManifest(deps!.manifestFilePath, m);
-      broadcast();
-      return { ok: true, item: archived };
-    },
-  );
-  // Manifest cleanup (#120): untrack an item — drop it from the manifest and the
-  // raw cache (so reconcileFromCache can't instantly resurrect it) and prune its
-  // worktree. A later real poll/full-walk may re-admit it (no ignore list). The
-  // worktree/PR gate needs confirmation before destroying uncommitted work.
-  ipcMain.handle(
-    "skipper:orchestrator:untrackItem",
-    async (_e, itemId: string, force?: boolean): Promise<UntrackItemResult> => {
-      const m = await ensureManifest();
-      await ensureRepoLinks();
-      const item = m.items[itemId];
-      if (!item) return { ok: false, error: `unknown item ${itemId}` };
-
-      if ((item.worktree || item.pr) && !force) {
-        const dirty = item.worktree ? await worktreeDirtyFiles(item.worktree.path) : null;
-        return {
-          ok: false,
-          needsConfirm: true,
-          hasWorktree: !!item.worktree,
-          dirtyFiles: dirty?.length ?? 0,
-          hasPr: !!item.pr,
-        };
-      }
-
-      if (item.state === "coding") cancelCodingRun(itemId);
-      if (item.state === "planning") cancelPlanningRun(itemId);
-      cancelRescore(itemId);
-
-      if (item.worktree) {
-        const link = repoLinks?.repos[repoKey(item.repo)];
-        if (link) {
-          const res = await discardItemWorktreeUnderLock({
-            repo: item.repo,
-            localPath: link.localPath,
-            baseBranch: link.baseBranch,
-            worktreePath: item.worktree.path,
-            branch: item.worktree.branch,
-            withRepoGitLock,
-          });
-          if (!res.ok) return res;
-        }
-      }
-
-      await archivePlanAndDeleteChats(deps!.plansDir, itemId, item.plan);
-
-      delete m.items[itemId];
-      delete m.parked[itemId];
-      if (m.resumeRite) {
-        m.resumeRite.itemIds = m.resumeRite.itemIds.filter((id) => id !== itemId);
-        if (m.resumeRite.itemIds.length === 0) delete m.resumeRite;
-      }
-
-      // Drop from the raw cache so reconcileFromCache (mapping change, link/clone,
-      // re-follow) doesn't instantly re-admit it.
-      poller.dropCached(item.accountId, itemId);
-
-      await saveOrchestratorManifest(deps!.manifestFilePath, m);
-      broadcast();
-      return { ok: true };
-    },
-  );
-  // Dirty-worktree cleanup (#204): reset the item's worktree to its base ref and
-  // clean untracked files — discards leftover uncommitted work AND local commits;
-  // worktree + branch survive. Never automatic: the renderer confirms with the
-  // file list first. Refuses while an agent run holds the worktree.
-  ipcMain.handle(
-    "skipper:orchestrator:cleanWorktree",
-    async (_e, itemId: string): Promise<CleanWorktreeResult> => {
-      const m = await ensureManifest();
-      await ensureRepoLinks();
-      const item = m.items[itemId];
-      if (!item) return { ok: false, error: `unknown item ${itemId}` };
-      if (!item.worktree) return { ok: false, error: "no worktree recorded for item" };
-      if (item.state === "coding" || item.state === "planning") {
-        return { ok: false, error: "a run is active in this worktree" };
-      }
-      const link = repoLinks?.repos[repoKey(item.repo)];
-      if (!link) {
-        return { ok: false, error: `repo ${item.repo.owner}/${item.repo.name} is not linked` };
-      }
-      const worktree = item.worktree;
-      try {
-        return await withRepoGitLock(item.repo, async () => {
-          const dirty = await worktreeDirtyFiles(worktree.path);
-          if (dirty === null) return { ok: false, error: "worktree folder is missing on disk" };
-          const account = codeHostAccountFor(item.codeHost, item.accountId);
-          const token = account ? await deps!.getToken(account.key) : null;
-          const creds = token ? codeHostFor(item.codeHost).pushCredentials(token) : undefined;
-          await fetchOrigin(link.localPath, creds).catch(() => {});
-          const baseRef = await resolveBaseRef(link.localPath, link.baseBranch);
-          await forceCleanWorktree(worktree.path, baseRef);
-          return { ok: true };
-        });
-      } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  );
-  // Close-on-tracker (#132): close the issue on its tracker via the source's
-  // closeIssue capability, then settle the item locally through reconcile's
-  // existing "closed on GitHub" path (zero extra network). Adapter errors (e.g. a
-  // 403 when the GitHub App lacks Issues: write) surface via the {ok:false} path.
-  ipcMain.handle(
-    "skipper:orchestrator:closeItemOnTracker",
-    async (_e, itemId: string): Promise<CloseItemOnTrackerResult> => {
-      const m = await ensureManifest();
-      const item = m.items[itemId];
-      if (!item) return { ok: false, error: `unknown item ${itemId}` };
-
-      const account = deps?.getAccounts().find((a) => a.key === item.accountId);
-      const source = account ? issueSourceForAuthProvider(account.provider) : undefined;
-      if (!account || !source?.closeIssue) {
-        return { ok: false, error: `closing on the tracker is not supported for ${item.source}` };
-      }
-
-      const cached = poller.getCached(item.accountId, item.id);
-      const issue = cached?.kind === "issue" ? cached : synthesizeIssue(item);
-      try {
-        await source.closeIssue(
-          issue,
-          (force) => deps!.getToken(account.key, force),
-          account.baseUrl,
-        );
-      } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : String(err) };
-      }
-
-      if (cached?.kind === "issue") poller.markCachedIssueClosed(item.accountId, item.id);
-      await poller.reconcileFromCache();
-      return { ok: true };
-    },
-  );
 
   initPlanner({
     listItems: () => Object.values(manifest?.items ?? {}),
