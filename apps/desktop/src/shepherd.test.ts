@@ -219,6 +219,32 @@ describe("openOrPushPr", () => {
     });
   });
 
+  it("writes a plain tracker reference when the issue lives on another provider (#299)", async () => {
+    const fetchMock = vi.fn(async (_url: string | URL, _init?: RequestInit) =>
+      jsonResponse(201, { id: 555, number: 9, html_url: "https://github.com/owner/repo/pull/9" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const h = makeHarness();
+    initShepherd(h.deps);
+    h.items.set(
+      "jira:1",
+      makeItem(1, "human-review", {
+        id: "jira:1",
+        source: "jira",
+        sourceRef: { project: "PROJ", key: "PROJ-7" },
+        key: "PROJ-7",
+        number: undefined,
+        url: "https://acme.atlassian.net/browse/PROJ-7",
+      }),
+    );
+
+    const result = await openOrPushPr("jira:1", "user");
+    expect(result.ok).toBe(true);
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.body).toContain("Tracker issue: https://acme.atlassian.net/browse/PROJ-7");
+    expect(body.body).not.toContain("Closes #");
+  });
+
   it("pushes updates without creating a PR when the item already has one", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

@@ -48,6 +48,7 @@ export function codeHostForProvider(provider: AuthProviderId): CodeHostId | unde
 }
 
 export * from "./types";
+export * from "./dependencies";
 export * from "./github";
 export * from "./gitlab";
 export * from "./bitbucket";

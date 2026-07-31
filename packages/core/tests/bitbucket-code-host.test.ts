@@ -252,6 +252,12 @@ describe("bitbucketCodeHost conventions and identity helpers", () => {
     expect(bitbucketCodeHost.linkIssueText("PROJ-123")).toBe("Refs PROJ-123");
   });
 
+  it("builds a plain reference from the URL form (#299)", () => {
+    expect(bitbucketCodeHost.linkIssueUrlText("https://bitbucket.org/acme/tracker/issues/42")).toBe(
+      "Refs https://bitbucket.org/acme/tracker/issues/42",
+    );
+  });
+
   it("uses the x-token-auth askpass username", () => {
     expect(bitbucketCodeHost.pushCredentials("tok")).toEqual({
       username: "x-token-auth",

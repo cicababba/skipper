@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import type { Issue } from "@skipper/shared";
-import {
-  fetchGitHubDependencies,
-  parseBodyDependencies,
-} from "../src/adapters/github/dependencies";
+import { fetchGitHubDependencies } from "../src/adapters/github/dependencies";
 
 const token = async () => "tok";
 
@@ -104,34 +101,5 @@ describe("fetchGitHubDependencies — native", () => {
   });
 });
 
-describe("parseBodyDependencies", () => {
-  it("parses a single 'Blocked by #N'", () => {
-    expect(parseBodyDependencies("Blocked by #3", "o/r")).toEqual([{ project: "o/r", key: "3" }]);
-  });
-
-  it("parses a comma/and separated list with a cross-repo ref", () => {
-    expect(parseBodyDependencies("depends on #4, #5 and o2/r2#6", "o/r")).toEqual([
-      { project: "o/r", key: "4" },
-      { project: "o/r", key: "5" },
-      { project: "o2/r2", key: "6" },
-    ]);
-  });
-
-  it("is case-insensitive", () => {
-    expect(parseBodyDependencies("BLOCKED BY #8", "o/r")).toEqual([{ project: "o/r", key: "8" }]);
-  });
-
-  it("ignores a bare ref with no phrase", () => {
-    expect(parseBodyDependencies("see #7 for context", "o/r")).toEqual([]);
-  });
-
-  it("does not swallow prose after the ref", () => {
-    expect(parseBodyDependencies("blocked by #3 see #4", "o/r")).toEqual([
-      { project: "o/r", key: "3" },
-    ]);
-  });
-
-  it("returns nothing for an empty body", () => {
-    expect(parseBodyDependencies(undefined, "o/r")).toEqual([]);
-  });
-});
+// parseBodyDependencies moved to adapters/dependencies.ts (#299) — its cases live
+// in adapters-dependencies.test.ts.

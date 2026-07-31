@@ -234,6 +234,12 @@ describe("gitlabCodeHost conventions and identity helpers", () => {
     expect(gitlabCodeHost.linkIssueText("42")).toBe("Closes #42");
   });
 
+  it("closes by full URL when the issue is outside the PR's repo (#299)", () => {
+    expect(gitlabCodeHost.linkIssueUrlText("https://gitlab.com/g/tracker/-/issues/7")).toBe(
+      "Closes https://gitlab.com/g/tracker/-/issues/7",
+    );
+  });
+
   it("uses the oauth2 askpass username", () => {
     expect(gitlabCodeHost.pushCredentials("tok")).toEqual({ username: "oauth2", password: "tok" });
   });

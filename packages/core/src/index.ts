@@ -250,7 +250,8 @@ export { runAgentDiscussion, DEFAULT_AGENT_CHAT_MAX_TURNS, AGENT_CHAT_HARD_TIMEO
 export type { RunAgentDiscussionOptions } from "./agent-chat";
 
 // Shepherd (issue #11)
-export { buildCommitMessage, buildPrTitle, buildPrBody } from "./shepherd";
+export { buildCommitMessage, buildPrTitle, buildPrBody, buildIssueLink } from "./shepherd";
+export type { IssueLinkItem } from "./shepherd";
 
 // Solutions memory — index + retrieval (issue #44)
 export {

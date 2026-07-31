@@ -46,9 +46,8 @@ describe("issue-source registry", () => {
     expect(issueSourceFor("bitbucket")).toBe(bitbucketIssueSource);
   });
 
-  it("leaves Bitbucket without closeIssue and fetchDependencies (future work)", () => {
+  it("leaves Bitbucket without closeIssue (future work)", () => {
     expect(bitbucketIssueSource.closeIssue).toBeUndefined();
-    expect(bitbucketIssueSource.fetchDependencies).toBeUndefined();
     expect(typeof bitbucketIssueSource.fetchComments).toBe("function");
   });
 
@@ -63,11 +62,12 @@ describe("issue-source registry", () => {
     expect(issueSourceForAuthProvider("google")).toBeUndefined();
   });
 
-  it("exposes fetchDependencies on GitHub but not GitLab, Jira, or OpenProject (#85)", () => {
+  it("exposes fetchDependencies on every source (#299)", () => {
     expect(typeof githubIssueSource.fetchDependencies).toBe("function");
-    expect(gitlabIssueSource.fetchDependencies).toBeUndefined();
-    expect(jiraIssueSource.fetchDependencies).toBeUndefined();
-    expect(openprojectIssueSource.fetchDependencies).toBeUndefined();
+    expect(typeof gitlabIssueSource.fetchDependencies).toBe("function");
+    expect(typeof jiraIssueSource.fetchDependencies).toBe("function");
+    expect(typeof openprojectIssueSource.fetchDependencies).toBe("function");
+    expect(typeof bitbucketIssueSource.fetchDependencies).toBe("function");
   });
 
   it("exposes closeIssue on GitHub and GitLab but not Jira or OpenProject (#132)", () => {
