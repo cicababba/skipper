@@ -7,7 +7,6 @@ import {
   loadOrCreateOrchestratorManifest,
   saveOrchestratorManifest,
   codeHostFor,
-  resolveGate,
   reconcileMemoryIndex,
   generateRepoInstructions,
   DEFAULT_ORCHESTRATOR_SETTINGS,
@@ -17,26 +16,19 @@ import {
 } from "@skipper/core";
 import {
   issueBranchFor,
-  latestCodingTransitionAt,
-  latestPlanningTransitionAt,
   repoKey,
-  resolveRepoIntakeSettings,
   resolveRepoOrchestratorSettings,
 } from "@skipper/shared";
 import type {
   Account,
-  AgentReview,
   AuthProviderId,
   CodeHostId,
   CodingEvent,
-  ConfidenceReport,
   MemoryPhase,
   OrchestratorState,
   RepoRef,
-  ResolvedRepoIntakeSettings,
   ResolvedRepoOrchestratorSettings,
   TrackedItem,
-  TransitionActor,
   IssueSourceCapabilities,
   IssueSourceId,
 } from "@skipper/shared";
@@ -321,10 +313,6 @@ async function ensureRepoLinks(): Promise<RepoLinksFile> {
 
 function repoPathFor(repo: RepoRef): string | undefined {
   return repoLinks?.repos[repoKey(repo)]?.localPath;
-}
-
-function repoIntake(repo: RepoRef): ResolvedRepoIntakeSettings {
-  return resolveRepoIntakeSettings(manifest?.repoSettings[repoKey(repo)]);
 }
 
 /** Intake settings plus every per-repo override of a global setting (#62). */
