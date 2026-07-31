@@ -22,6 +22,7 @@ export function RepoSettingsView() {
 
   const [rows, setRows] = useState<RepoSettingsRow[]>([]);
   const [busy, setBusy] = useState(false);
+  const [followError, setFollowError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!window.skipper) return;
@@ -40,6 +41,21 @@ export function RepoSettingsView() {
     setBusy(true);
     try {
       await window.skipper.orchestrator.setRepoSettings(owner, name, p);
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setFollowed = async (followed: boolean) => {
+    if (!window.skipper) return;
+    setBusy(true);
+    setFollowError(null);
+    try {
+      const res = await window.skipper.orchestrator.setRepoFollowed(owner, name, followed);
+      if (!res.ok) {
+        setFollowError(t.settings.repositories.unfollowBlocked(res.blocking.length));
+      }
       await load();
     } finally {
       setBusy(false);
@@ -73,6 +89,8 @@ export function RepoSettingsView() {
               global={global}
               busy={busy}
               onPatch={(p) => void patch(p)}
+              onSetFollowed={(followed) => void setFollowed(followed)}
+              followError={followError}
             />
           </Section>
           <Section title={t.settings.orchestration.agents} editable={false} editing={false}>

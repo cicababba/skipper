@@ -51,6 +51,7 @@ import type {
   SaveMarkdownResult,
   SaveWorktreeFileResult,
   SetRepoBaseBranchResult,
+  SetRepoFollowedResult,
   GetRepoInstructionsResult,
   SetRepoInstructionsResult,
   RegenerateRepoInstructionsResult,
@@ -173,6 +174,12 @@ const api = {
       patch: Partial<RepoIntakeSettings>,
     ): Promise<OrchestratorState> =>
       ipcRenderer.invoke("skipper:orchestrator:setRepoSettings", owner, name, patch),
+    setRepoFollowed: (
+      owner: string,
+      name: string,
+      followed: boolean,
+    ): Promise<SetRepoFollowedResult> =>
+      ipcRenderer.invoke("skipper:orchestrator:setRepoFollowed", owner, name, followed),
     listRepoSettings: (): Promise<RepoSettingsRow[]> =>
       ipcRenderer.invoke("skipper:orchestrator:listRepoSettings"),
     setProjectMapping: (mappingKey: string, repo: string | null): Promise<OrchestratorState> =>

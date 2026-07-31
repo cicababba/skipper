@@ -33,6 +33,7 @@ import {
   mappingHost,
   parseProjectMappingKey,
   parseRepoMappingValue,
+  parseRepoPath,
   projectMappingKey,
   repoKey,
   resolveRepoIntakeSettings,
@@ -95,8 +96,19 @@ import { makeEventStream } from "./event-stream";
 import { discardItemWorktreeUnderLock, archivePlanAndDeleteChats } from "./item-teardown";
 import { makeRepoGitLock } from "./git-lock";
 import { applySettingsPatch, applyRepoSettingsPatch } from "./settings-validators";
-import { shouldSkipPoll, selectPollCursor, pollFailurePatch } from "./poll-policy";
+import {
+  admissionPolicy,
+  shouldSkipPoll,
+  selectPollCursor,
+  pollFailurePatch,
+} from "./poll-policy";
 import { makeManifestWriters } from "./manifest-writers";
+import {
+  activeItemsForRepo,
+  guardFollowedPatch,
+  markRepoFollowed,
+} from "./repo-follow";
+import { registerRepoFollowHandlers } from "./repo-follow-ipc";
 import { registerMemoryHandlers } from "./memory-ipc";
 import { registerCreateIssueHandlers } from "./create-issue-ipc";
 import { registerComposerHandlers } from "./composer-ipc";
@@ -590,21 +602,6 @@ function prepareWorktreeFor(
   });
 }
 
-function admissionPolicy(m: OrchestratorManifest): {
-  intakePaused: boolean;
-  shouldAdmit: (issue: Issue) => boolean;
-} {
-  return {
-    intakePaused: m.settings.intakePaused,
-    // Follow list (#15): default-all — an absent record means followed. Ignored
-    // repos' issues stay in the raw inbox arrays; linking still gates planning.
-    // A repo-less issue (unmapped project, #79) is never followed.
-    shouldAdmit: (issue) =>
-      issue.repo !== undefined &&
-      resolveRepoIntakeSettings(m.repoSettings[repoKey(issue.repo)]).followed,
-  };
-}
-
 function byUpdatedAtDesc(a: { updatedAt: string }, b: { updatedAt: string }): number {
   return b.updatedAt.localeCompare(a.updatedAt);
 }
@@ -1058,7 +1055,9 @@ export function initOrchestrator(
       const key = repoKey({ owner, name });
       const followedBefore = resolveRepoIntakeSettings(m.repoSettings[key]).followed;
       const graphifyBefore = resolveRepoIntakeSettings(m.repoSettings[key]).graphify;
-      const merged = applyRepoSettingsPatch(m.repoSettings[key], patch);
+      // Generic patch endpoint — it must not become a way around the unfollow
+      // guard; the user-facing refusal belongs to setRepoFollowed.
+      const merged = guardFollowedPatch(m, key, applyRepoSettingsPatch(m.repoSettings[key], patch));
       if (Object.keys(merged).length === 0) delete m.repoSettings[key];
       else m.repoSettings[key] = merged;
       await saveOrchestratorManifest(deps!.manifestFilePath, m);
@@ -1125,6 +1124,7 @@ export function initOrchestrator(
         const describe = (key: string): Omit<FollowCandidate, "repo" | "source"> => ({
           followed: resolveRepoIntakeSettings(m.repoSettings[key]).followed,
           linked: Boolean(links.repos[key]),
+          activeItems: activeItemsForRepo(m, key).length,
         });
 
         let installationCount: number | undefined;
@@ -1295,6 +1295,11 @@ export function initOrchestrator(
           ...(trimmed ? { baseBranch: trimmed } : {}),
         };
         await saveRepoLinks(deps!.repoLinksFilePath, links);
+        // Linking is a stronger act of intent than ticking the follow box (#15) —
+        // persist it before the reconcile so the cached issues admit in that pass.
+        const m = await ensureManifest();
+        markRepoFollowed(m, { owner, name });
+        await saveOrchestratorManifest(deps!.manifestFilePath, m);
         // Seed before reconcile so an admitted triage item hits the gate while a
         // generation is in flight (#227); seeding failure never fails the link.
         await seedInstructions({ owner, name }, localPath).catch(() => {});
@@ -1345,6 +1350,11 @@ export function initOrchestrator(
           ...(trimmed ? { baseBranch: trimmed } : {}),
         };
         await saveRepoLinks(deps!.repoLinksFilePath, links);
+        // Linking is a stronger act of intent than ticking the follow box (#15) —
+        // persist it before the reconcile so the cached issues admit in that pass.
+        const m = await ensureManifest();
+        markRepoFollowed(m, { owner, name });
+        await saveOrchestratorManifest(deps!.manifestFilePath, m);
         // Seed before reconcile so an admitted triage item hits the gate while a
         // generation is in flight (#227); seeding failure never fails the clone.
         await seedInstructions({ owner, name }, localPath).catch(() => {});
@@ -1619,11 +1629,19 @@ export function initOrchestrator(
   );
   ipcMain.handle("skipper:orchestrator:listRepos", async () => {
     const links = await ensureRepoLinks();
+    const m = await ensureManifest();
     const seen = new Map<string, RepoRef>();
     for (const map of items.values()) {
       for (const item of map.values()) {
         if (item.repo) seen.set(repoKey(item.repo), item.repo);
       }
+    }
+    // A followed repo the poller never saw (manual owner/name add, tracker-first
+    // setups) still needs a row here — this is the only place linking happens.
+    for (const [key, settings] of Object.entries(m.repoSettings)) {
+      if (seen.has(key) || !resolveRepoIntakeSettings(settings).followed) continue;
+      const repo = parseRepoPath(key);
+      if (repo) seen.set(key, repo);
     }
     const linked = Object.entries(links.repos).map(([key, link]) => ({
       key,
@@ -1753,6 +1771,17 @@ export function initOrchestrator(
     },
     runGit: (cwd, args) => runGit(cwd, args),
     distillLesson: distillForRecord,
+  });
+  registerRepoFollowHandlers({
+    ipcMain,
+    ensureManifest,
+    saveManifest: (m) => saveOrchestratorManifest(deps!.manifestFilePath, m),
+    cachedItems: function* () {
+      for (const map of items.values()) yield* map.values();
+    },
+    reconcileFromCache,
+    broadcast,
+    snapshot,
   });
   registerWorktreeDiffHandlers({ ipcMain, ensureManifest });
   registerCreateIssueHandlers({

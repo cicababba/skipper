@@ -1,4 +1,4 @@
-import type { LifecycleState, RepoRef, TrackedItem } from "@skipper/shared";
+import type { LifecycleState, RepoRef, RepoSettingsRow, TrackedItem } from "@skipper/shared";
 
 export { repoKey } from "@skipper/shared";
 import { repoKey } from "@skipper/shared";
@@ -41,6 +41,12 @@ export function columnCounts(items: TrackedItem[]): Record<ColumnId | "attention
   };
   for (const item of items) counts[columnFor(item.state)] += 1;
   return counts;
+}
+
+/** The sidebar's repo list: exactly the repos the user chose to follow, whether
+ *  or not they carry items or a local clone. */
+export function followedRepos(rows: RepoSettingsRow[]): RepoSettingsRow[] {
+  return rows.filter((row) => row.resolved.followed);
 }
 
 export function reposOf(items: TrackedItem[]): RepoRef[] {

@@ -23,6 +23,7 @@ import type {
   ResumeRiteAction,
   SaveWorktreeFileResult,
   SetRepoBaseBranchResult,
+  SetRepoFollowedResult,
   GetRepoInstructionsResult,
   SetRepoInstructionsResult,
   TrackerProjectsResult,
@@ -249,6 +250,11 @@ export interface WindowSkipper {
       name: string,
       patch: Partial<RepoIntakeSettings>,
     ) => Promise<OrchestratorState>;
+    setRepoFollowed: (
+      owner: string,
+      name: string,
+      followed: boolean,
+    ) => Promise<SetRepoFollowedResult>;
     listRepoSettings: () => Promise<RepoSettingsRow[]>;
     setProjectMapping: (
       mappingKey: string,

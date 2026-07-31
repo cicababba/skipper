@@ -4,6 +4,7 @@ import {
   mappingHost,
   parseProjectMappingKey,
   parseRepoMappingValue,
+  parseRepoPath,
   projectForRepo,
   projectMappingKey,
   sourceRefKey,
@@ -58,6 +59,29 @@ describe("parseProjectMappingKey", () => {
     expect(parseProjectMappingKey("jira:acme.atlassian.net")).toBeNull();
     expect(parseProjectMappingKey("jira::PROJ")).toBeNull();
     expect(parseProjectMappingKey("")).toBeNull();
+  });
+});
+
+describe("parseRepoPath", () => {
+  it("splits a plain owner/name", () => {
+    expect(parseRepoPath("octo/demo")).toEqual({ owner: "octo", name: "demo" });
+  });
+
+  it("keeps a nested GitLab group by splitting at the last slash", () => {
+    expect(parseRepoPath("group/sub/proj")).toEqual({ owner: "group/sub", name: "proj" });
+  });
+
+  it("trims the input and both halves", () => {
+    expect(parseRepoPath("  octo / demo  ")).toEqual({ owner: "octo", name: "demo" });
+  });
+
+  it("rejects malformed input", () => {
+    expect(parseRepoPath("")).toBeUndefined();
+    expect(parseRepoPath("   ")).toBeUndefined();
+    expect(parseRepoPath("no-slash")).toBeUndefined();
+    expect(parseRepoPath("/demo")).toBeUndefined();
+    expect(parseRepoPath("octo/")).toBeUndefined();
+    expect(parseRepoPath("octo/   ")).toBeUndefined();
   });
 });
 

@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { LifecycleState, TrackedItem } from "@skipper/shared";
-import { TRANSITIONS } from "@skipper/shared";
+import type { LifecycleState, RepoSettingsRow, TrackedItem } from "@skipper/shared";
+import {
+  DEFAULT_ORCHESTRATOR_SETTINGS,
+  resolveRepoOrchestratorSettings,
+  TRANSITIONS,
+} from "@skipper/shared";
 import {
   ATTENTION_SECTION_STATES,
   ATTENTION_STATES,
   attentionCounts,
   columnFor,
+  followedRepos,
   KANBAN_COLUMNS,
   repoKey,
   reposOf,
@@ -77,6 +82,34 @@ describe("attentionCounts", () => {
     expect([...ATTENTION_STATES].sort()).toEqual(
       ["blocked", "failed", "human-review", "needs-input", "plan-gate"].sort(),
     );
+  });
+});
+
+describe("followedRepos", () => {
+  const row = (key: string, followed: boolean, linked = false): RepoSettingsRow => {
+    const [owner, name] = key.split("/");
+    const settings = followed ? { followed: true } : {};
+    return {
+      key,
+      repo: { owner, name },
+      linked,
+      settings,
+      resolved: resolveRepoOrchestratorSettings(settings, DEFAULT_ORCHESTRATOR_SETTINGS),
+    };
+  };
+
+  it("keeps only the repos the user chose to follow", () => {
+    const rows = [row("octo/repo", true), row("octo/seen", false), row("octo/other", true)];
+    expect(followedRepos(rows).map((r) => r.key)).toEqual(["octo/repo", "octo/other"]);
+  });
+
+  // The point of the explicit set: an empty, unlinked repo still renders.
+  it("keeps a followed repo with no items and no local clone", () => {
+    expect(followedRepos([row("octo/fresh", true, false)])).toHaveLength(1);
+  });
+
+  it("drops everything when nothing is followed", () => {
+    expect(followedRepos([row("octo/a", false), row("octo/b", false)])).toEqual([]);
   });
 });
 

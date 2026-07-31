@@ -25,11 +25,17 @@ export function RepoIntakeControls({
   global,
   busy,
   onPatch,
+  onSetFollowed,
+  followError,
 }: {
   row: RepoSettingsRow;
   global: OrchestratorSettings;
   busy: boolean;
   onPatch: (patch: Partial<RepoIntakeSettings>) => void;
+  /** Follow is its own endpoint (#15): unfollowing is refused while the repo
+   *  still has active items, and the refusal has to reach the user. */
+  onSetFollowed: (followed: boolean) => void;
+  followError?: string | null;
 }) {
   const { t } = useT();
   const r = t.settings.repositories;
@@ -82,7 +88,7 @@ export function RepoIntakeControls({
     <div className="space-y-4">
       <Row label={r.follow} busy={busy}>
         <button
-          onClick={() => onPatch({ followed: resolved.followed ? false : undefined })}
+          onClick={() => onSetFollowed(!resolved.followed)}
           disabled={busy}
           className={`relative w-10 h-[22px] rounded-full transition-colors shrink-0 ${
             resolved.followed ? "bg-accent" : "bg-border"
@@ -95,6 +101,7 @@ export function RepoIntakeControls({
           />
         </button>
       </Row>
+      {followError && <p className="text-[11px] text-danger -mt-2">{followError}</p>}
 
       <Row label={r.priority} busy={false}>
         <select
