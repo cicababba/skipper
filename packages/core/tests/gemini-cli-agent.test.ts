@@ -264,6 +264,62 @@ describe("GeminiCli.agent", () => {
     expect(flagValue(argv(), "--allowed-mcp-server-names")).toBe("skipper-none");
   });
 
+  // Read-only git (#280): default approval mode auto-denies the shell, so the
+  // git prefixes have to be allowed explicitly for the composer to reach the
+  // history. The read tools ride along because gemini-cli#15428 reports
+  // tools.allowed restricting availability, not only confirmations.
+  it("allows the read tools and the read-only git prefixes, and no write tool", async () => {
+    const cwd = makeWorktree();
+    const { child } = arm();
+    const promise = new GeminiCli("gemini-2.5-pro").agent("plan it", { cwd });
+
+    const written = JSON.parse(readFileSync(settingsPath(cwd), "utf-8"));
+    expect(written.tools.allowed).toEqual([
+      "read_file",
+      "glob",
+      "search_file_content",
+      "read_many_files",
+      "run_shell_command(git log)",
+      "run_shell_command(git blame)",
+      "run_shell_command(git show)",
+      "run_shell_command(git diff)",
+      "run_shell_command(git status)",
+    ]);
+    expect(
+      (written.tools.allowed as string[]).some((t) =>
+        /write|edit|replace|run_shell_command\((?!git )/.test(t),
+      ),
+    ).toBe(false);
+    // The rest of the file is unchanged by the allowlist.
+    expect(written.context).toEqual({ fileName: "SKIPPER_NO_CONTEXT.md" });
+
+    child.stdout.emit("data", Buffer.from(okStream));
+    child.emit("close", 0);
+    await promise;
+    expect(existsSync(settingsPath(cwd))).toBe(false);
+  });
+
+  it("keeps the allowlist alongside the MCP servers", async () => {
+    const cwd = makeWorktree();
+    const { child } = arm();
+    const promise = new GeminiCli("gemini-2.5-pro").agent("plan it", {
+      cwd,
+      memory: {
+        cliBundlePath: "/app/skipper.bundle.cjs",
+        repo: { owner: "Cicababba", name: "Skipper" },
+      },
+      graph: { mcpBinPath: "/tools/bin/graphify-mcp", graphPath: "/graphs/skipper/graph.json" },
+    });
+
+    const written = JSON.parse(readFileSync(settingsPath(cwd), "utf-8"));
+    expect(written.tools.allowed).toContain("run_shell_command(git log)");
+    expect(Object.keys(written.mcpServers)).toEqual(["skipper-memory", "graphify"]);
+
+    child.stdout.emit("data", Buffer.from(okStream));
+    child.emit("close", 0);
+    await promise;
+  });
+
   it("throws a GeminiCliError when the stream reported a failure", async () => {
     const { child } = arm();
     const promise = new GeminiCli("gemini-2.5-pro").agent("plan it");
@@ -430,6 +486,18 @@ describe("GeminiCli.structured", () => {
     // a structured call is isolated from the user's own MCP servers too.
     expect(flagValue(argv(), "--allowed-mcp-server-names")).toBe("skipper-none");
     expect(existsSync(settingsPath(cwd))).toBe(false);
+  });
+
+  // The allowlist belongs to the agent path alone: a structured call has no tools
+  // by design (#280).
+  it("writes no tools.allowed block", async () => {
+    const cwd = makeWorktree();
+    const { child } = arm();
+    const promise = new GeminiCli("gemini-2.5-pro").structured("critique it", schema, { cwd });
+    expect(JSON.parse(readFileSync(settingsPath(cwd), "utf-8")).tools).toBeUndefined();
+    child.stdout.emit("data", Buffer.from(`${messageLine('{"ok":true}')}\n`));
+    child.emit("close", 0);
+    await promise;
   });
 
   it("throws a GeminiCliError when the run failed before replying", async () => {

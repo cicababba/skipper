@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import type { PlanChatMessage } from "@skipper/shared";
-import { buildComposerFallbackPrompt, buildComposerResumePrompt } from "../src/composer";
+import {
+  buildComposerFallbackPrompt,
+  buildComposerResumePrompt,
+  buildComposerSystemPrompt,
+} from "../src/composer";
 
 // The attachment block (#281): the turn points the runtime at files saved under
 // <userData> with wording that names no tool, so every CLI's own file reader
@@ -53,6 +57,50 @@ describe.each([
     expect(attachmentSection(build())).toEqual([]);
     expect(attachmentSection(build([]))).toEqual([]);
     expect(build([])).toBe(build());
+  });
+});
+
+// Git-history grounding (#280): the system prompt is shared by every runtime, so
+// it may name no CLI's tools, and it must point the composer at the history when
+// the request is about code that already exists.
+describe("buildComposerSystemPrompt (#280)", () => {
+  const prompt = buildComposerSystemPrompt({});
+
+  it("names no claude tool", () => {
+    expect(prompt).not.toMatch(/\bRead\b|\bGrep\b|\bGlob\b|\bBash\b/);
+  });
+
+  it("asks for git log and git blame, conditionally", () => {
+    expect(prompt).toContain("git log");
+    expect(prompt).toContain("git log -- <path>");
+    expect(prompt).toContain("git blame");
+    expect(prompt).toMatch(/existing behavior, a regression, or code that already exists/);
+  });
+
+  it("asks for commit subjects as convention evidence and for cited references", () => {
+    expect(prompt).toMatch(/commit subjects/);
+    expect(prompt).toMatch(/commits, issues and pull requests[\s\S]*by sha or number/);
+  });
+
+  it("carries the no-shell fallback", () => {
+    expect(prompt).toMatch(/Skip the history silently when you have no shell tool available/);
+  });
+
+  it("keeps the do-not-modify prohibition", () => {
+    expect(prompt).toContain("Do NOT modify any file, including via your shell.");
+  });
+
+  it("survives the repo-conventions and graph sections", () => {
+    const withExtras = buildComposerSystemPrompt({
+      repoInstructions: "Use tabs.",
+      graphify: {
+        mcp: { mcpBinPath: "/tools/bin/graphify-mcp", graphPath: "/graphs/g.json" },
+        indexedSha: "abc1234",
+      },
+    });
+    expect(withExtras).toContain("git blame");
+    expect(withExtras).toContain("Use tabs.");
+    expect(withExtras).not.toMatch(/\bRead\b|\bGrep\b|\bGlob\b|\bBash\b/);
   });
 });
 

@@ -3,6 +3,7 @@ import type { CoderReport, IssuePlan, PlanChatMessage } from "@skipper/shared";
 import type { AgentOptions, LLMProviderInterface, LLMResponse } from "../src/llm/provider";
 import type { AgentRuntime } from "../src/runtime";
 import {
+  CODER_CHAT_SYSTEM_PROMPT,
   discussCoder,
   distillCoderChatInstructions,
   renderReviewBlock,
@@ -267,5 +268,21 @@ describe("discussCoder review injection (#203)", () => {
       context: { issue: ISSUE, plan: PLAN, history: HISTORY },
     });
     expect(agent2.mock.calls[0][0] as string).not.toContain("--- Review (");
+  });
+});
+
+// Runtime-neutral wording (#280): the prompt is shared by every runtime, so it
+// may name no CLI's tools, while keeping the read-only shell it already had.
+describe("CODER_CHAT_SYSTEM_PROMPT wording", () => {
+  it("names no claude tool", () => {
+    expect(CODER_CHAT_SYSTEM_PROMPT).not.toMatch(/\bRead\b|\bGrep\b|\bGlob\b|\bBash\b/);
+  });
+
+  it("keeps the read-only shell affordance and the prohibitions", () => {
+    expect(CODER_CHAT_SYSTEM_PROMPT).toContain("run read-only shell commands");
+    expect(CODER_CHAT_SYSTEM_PROMPT).toContain("Do NOT modify any files, including via your shell");
+    expect(CODER_CHAT_SYSTEM_PROMPT).toContain(
+      "never touch anything outside your working directory",
+    );
   });
 });

@@ -26,7 +26,7 @@ const DEFAULT_DISTILL_MAX_TURNS = 12;
 const DRAFT_JSON_DEMAND =
   "Your FINAL message must be ONLY a single JSON object matching this JSON Schema. No prose, no code fences, no preamble.";
 
-const DISTILL_INSTRUCTION = `Distill this discussion into the issues to open on this repository. One issue per independently shippable, reviewable change — split the work when the scope demands it, and keep it to a single issue when it does not. Each issue needs a title following the repository's conventions, a body a maintainer could act on, its acceptance criteria, and its labels. Express dependencies between the issues as relations, by 0-based index into the issues array. Do NOT modify any file.`;
+const DISTILL_INSTRUCTION = `Distill this discussion into the issues to open on this repository. One issue per independently shippable, reviewable change — split the work when the scope demands it, and keep it to a single issue when it does not. Each issue needs a title following the repository's conventions, a body a maintainer could act on, its acceptance criteria, and its labels. Express dependencies between the issues as relations, by 0-based index into the issues array. Carry the commits, issues and pull requests identified during the discussion into the bodies, cited by sha or number. Do NOT modify any file.`;
 
 const PRESERVE_INSTRUCTION =
   "Fields marked [edited by user] in the draft above were written by the user: reproduce them verbatim unless the discussion explicitly asked to change them.";

@@ -186,6 +186,26 @@ function excludeGeminiDir(cwd: string): void {
   }
 }
 
+// Read-only git for the agent path (#280): with `--approval-mode=default` a
+// headless run auto-denies every prompting tool, so the shell — and with it
+// `git log` / `git blame` — is unreachable unless the command prefix is allowed
+// here. No write tool is listed: the approval mode still auto-denies everything
+// off the list, which is what keeps a read-leaning run read-only.
+// The four read tools ride along because gemini-cli#15428 reports `tools.allowed`
+// behaving as a whitelist that restricts availability, not merely as a
+// confirmation bypass — under either semantics this list is the correct one.
+const GIT_HISTORY_ALLOWED_TOOLS = [
+  "read_file",
+  "glob",
+  "search_file_content",
+  "read_many_files",
+  "run_shell_command(git log)",
+  "run_shell_command(git blame)",
+  "run_shell_command(git show)",
+  "run_shell_command(git diff)",
+  "run_shell_command(git status)",
+];
+
 /**
  * Gemini's project settings file for one run (#243 D5). It is the only channel
  * for two things gemini has no flag for: suppressing the GEMINI.md context load
@@ -204,6 +224,7 @@ export function buildGeminiProjectSettings(
   cwd: string,
   memory?: MemoryMcp,
   graph?: GraphifyMcp,
+  opts?: { allowGitHistory?: boolean },
 ): { args: string[]; cleanup: () => void } {
   const dir = join(cwd, ".gemini");
   const file = join(dir, "settings.json");
@@ -220,6 +241,7 @@ export function buildGeminiProjectSettings(
     JSON.stringify(
       {
         context: { fileName: NO_CONTEXT_FILE },
+        ...(opts?.allowGitHistory ? { tools: { allowed: GIT_HISTORY_ALLOWED_TOOLS } } : {}),
         ...(names.length ? { mcpServers: servers } : {}),
       },
       null,
@@ -396,7 +418,9 @@ function runGeminiProcess(
  * and a structured call, both on `--approval-mode=default`. Gemini has no
  * read-only mode, but a headless run auto-denies every tool that would prompt,
  * which turns default mode into exactly that restriction: the write and shell
- * tools come back denied and the model routes around them (#243 D9). The
+ * tools come back denied and the model routes around them (#243 D9). The agent
+ * path walks that back for read-only git alone, through the settings file's
+ * `tools.allowed` (#280) — the structured call keeps no shell at all. The
  * write-capable coding run lives in coder/gemini-run.ts.
  *
  * With no cwd there is no project settings file, so a bare call still picks up
@@ -417,7 +441,7 @@ export class GeminiCli {
     // replaces it.
     const persist = Boolean(opts.sessionId || opts.resumeSessionId);
     const settings = opts.cwd
-      ? buildGeminiProjectSettings(opts.cwd, opts.memory, opts.graph)
+      ? buildGeminiProjectSettings(opts.cwd, opts.memory, opts.graph, { allowGitHistory: true })
       : undefined;
     const args = [
       ...geminiBaseArgs(),

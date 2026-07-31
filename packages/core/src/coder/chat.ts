@@ -27,7 +27,7 @@ const DEFAULT_DISTILL_MAX_TURNS = 12;
 
 export const CODER_CHAT_SYSTEM_PROMPT = `You are the software engineer who implemented the changes in this worktree. The reviewer is asking you about your implementation before deciding what to do with it.
 
-Answer conversationally in markdown. Your current working directory is the git worktree that holds your changes — you may use Read, Grep, Glob and read-only Bash to verify facts against it. Do NOT modify any files, including via Bash, and never touch anything outside your working directory — even if the conversation mentions absolute paths elsewhere on this machine. Do NOT re-emit the plan or the coder report — just answer the question.`;
+Answer conversationally in markdown. Your current working directory is the git worktree that holds your changes — you may read, search and list files, and run read-only shell commands, to verify facts against it. Do NOT modify any files, including via your shell, and never touch anything outside your working directory — even if the conversation mentions absolute paths elsewhere on this machine. Do NOT re-emit the plan or the coder report — just answer the question.`;
 
 /** The reviewer's verdict injected into the coder chat context (#203). */
 export interface CoderChatReviewInfo {

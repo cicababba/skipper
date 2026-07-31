@@ -221,6 +221,22 @@ describe("runGeminiCodingAgent project settings file (#243 D5)", () => {
     expect(existsSync(join(cwd, ".gemini"))).toBe(false);
   });
 
+  // The read-only git allowlist is wired from the read-leaning agent path only
+  // (#280): the coding run is on --approval-mode=yolo and an allowlist here would
+  // restrict it instead of widening it.
+  it("writes no tools.allowed block", async () => {
+    const cwd = makeWorktree();
+    const { child, spawnImpl, calls } = fakeSpawn();
+    const promise = runGeminiCodingAgent({ ...baseOpts(cwd), memory }, spawnImpl);
+
+    expect(JSON.parse(readFileSync(settingsPath(cwd), "utf-8")).tools).toBeUndefined();
+    expect(calls[0].args).toContain("--approval-mode=yolo");
+
+    child.stdout.emit("data", Buffer.from(okStream));
+    child.emit("close", 0);
+    await promise;
+  });
+
   it("still writes the file without memory, allowing a server name nothing matches", async () => {
     const cwd = makeWorktree();
     const { child, spawnImpl, calls } = fakeSpawn();

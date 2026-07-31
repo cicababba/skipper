@@ -123,7 +123,7 @@ describe("critiqueDiff", () => {
       runtime,
     );
     const prompt = structured.mock.calls[0][0] as string;
-    expect(prompt).toContain("You have Read, Grep and Glob over the working tree.");
+    expect(prompt).toContain("You can read, search and list files across the working tree.");
   });
 
   it("passes no opts and no inspect-repo instruction when session and runtime are absent", async () => {
@@ -131,7 +131,7 @@ describe("critiqueDiff", () => {
     await critiqueDiff({ diff: "+1", issue, acceptance: [] }, llm);
     expect(askStructured.mock.calls[0][2]).toBeUndefined();
     const prompt = askStructured.mock.calls[0][0] as string;
-    expect(prompt).not.toContain("You have Read, Grep and Glob over the working tree.");
+    expect(prompt).not.toContain("You can read, search and list files across the working tree.");
   });
 
   // Runtime-first: a reviewer that has a runtime never spends the completions
@@ -145,7 +145,7 @@ describe("critiqueDiff", () => {
     expect(structured.mock.calls[0][2]).toEqual({ tools: "" });
     const prompt = structured.mock.calls[0][0] as string;
     expect(prompt).toContain("DEMOLISH the diff");
-    expect(prompt).not.toContain("You have Read, Grep and Glob over the working tree.");
+    expect(prompt).not.toContain("You can read, search and list files across the working tree.");
   });
 
   it("falls back to the completions provider when the reviewer has no runtime", async () => {

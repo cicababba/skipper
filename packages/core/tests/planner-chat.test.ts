@@ -3,6 +3,7 @@ import type { ConfidenceReport, IssuePlan, PlanChatMessage } from "@skipper/shar
 import type { AgentOptions, LLMProviderInterface, LLMResponse } from "../src/llm/provider";
 import type { AgentRuntime } from "../src/runtime";
 import {
+  PLAN_CHAT_SYSTEM_PROMPT,
   discussPlan,
   applyPlanFromDiscussion,
   renderConfidenceBlock,
@@ -309,5 +310,26 @@ describe("applyPlanFromDiscussion", () => {
     await expect(applyPlanFromDiscussion({ llm, cwd: "/wt", plan: PLAN })).rejects.toThrow(
       /needs issue \+ history/,
     );
+  });
+});
+
+// Runtime-neutral wording (#280): the prompt is shared by every runtime, so it
+// may name no CLI's tools. The plan chat keeps its read-only affordances — it
+// gains no shell here.
+describe("PLAN_CHAT_SYSTEM_PROMPT wording", () => {
+  it("names no claude tool", () => {
+    expect(PLAN_CHAT_SYSTEM_PROMPT).not.toMatch(/\bRead\b|\bGrep\b|\bGlob\b|\bBash\b/);
+  });
+
+  it("keeps the prohibitions verbatim in force", () => {
+    expect(PLAN_CHAT_SYSTEM_PROMPT).toContain("Do NOT modify any files, including via your shell");
+    expect(PLAN_CHAT_SYSTEM_PROMPT).toContain(
+      "never touch anything outside your working directory",
+    );
+  });
+
+  it("grants no shell affordance", () => {
+    expect(PLAN_CHAT_SYSTEM_PROMPT).toMatch(/You may read, search and list files/);
+    expect(PLAN_CHAT_SYSTEM_PROMPT).not.toMatch(/run .*shell commands/);
   });
 });

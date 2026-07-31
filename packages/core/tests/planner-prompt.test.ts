@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
 import type { IssueComment } from "../src/adapters/types";
 import type { PlanIssueInput } from "../src/planner/generate";
-import { buildPlannerPrompt, renderCommentsBlock, renderDirtyFilesBlock } from "../src/planner/prompt";
+import {
+  PLANNER_SYSTEM_PROMPT,
+  buildPlannerPrompt,
+  renderCommentsBlock,
+  renderDirtyFilesBlock,
+} from "../src/planner/prompt";
+import { INSTRUCTIONS_SYSTEM_PROMPT } from "../src/instructions/generate";
 
 const SCHEMA = { type: "object" };
 
@@ -114,4 +120,29 @@ describe("renderCommentsBlock", () => {
     expect(block).toContain("[... comment truncated ...]");
     expect(block.length).toBeLessThan(5_000);
   });
+});
+
+// Runtime-neutral wording (#280): both prompts are shared by every runtime, so
+// they may name no CLI's tools while keeping their prohibitions in force.
+describe("runtime-neutral tool wording", () => {
+  for (const [label, prompt] of [
+    ["planner", PLANNER_SYSTEM_PROMPT],
+    ["instructions", INSTRUCTIONS_SYSTEM_PROMPT],
+  ] as const) {
+    describe(label, () => {
+      it("names no claude tool", () => {
+        expect(prompt).not.toMatch(/\bRead\b|\bGrep\b|\bGlob\b|\bBash\b/);
+      });
+
+      it("keeps the stay-inside-cwd prohibition", () => {
+        expect(prompt).toContain(
+          "never modify any files anywhere, including via your shell",
+        );
+      });
+
+      it("still demands exploration before writing", () => {
+        expect(prompt).toMatch(/Explore the repository — read, search and list its files —/);
+      });
+    });
+  }
 });
