@@ -231,7 +231,10 @@ const en = {
     wipLimit: "Issues in development at once (per repo)",
     wipLimitDesc: "Parallelism is across repos; within a repo, the queue respects pin, priority, confidence, then age.",
     follow: "Follow",
-    followNote: "Unfollowing stops admission of new issues only; tracked work continues.",
+    followNote:
+      "Only followed repos show in the sidebar and admit new issues. Unfollowing is refused while the repo still has active items.",
+    unfollowBlocked: (n: number) =>
+      `${n} active item${n === 1 ? "" : "s"} on this repo — finish or close ${n === 1 ? "it" : "them"} before unfollowing.`,
     priority: "Priority",
     priorityHigh: "High",
     priorityNormal: "Normal",
@@ -257,6 +260,9 @@ const en = {
       cancel: "Cancel",
       loadFailed: "Could not load repositories.",
       private: "private",
+      saveFailed: "Could not save every change.",
+      blocked: (n: number) => `${n} active item${n === 1 ? "" : "s"}`,
+      blockedHint: "This repo has work in progress — it cannot be unfollowed.",
     },
     mapping: {
       title: "Map projects to repositories",
@@ -491,7 +497,10 @@ const it: typeof en = {
     wipLimit: "Issue in sviluppo contemporaneamente (per repo)",
     wipLimitDesc: "Il parallelismo è tra repo; dentro un repo la coda rispetta pin, priorità, confidenza e poi età.",
     follow: "Segui",
-    followNote: "Smettere di seguire blocca solo l'ingresso di nuove issue; il lavoro tracciato continua.",
+    followNote:
+      "Solo i repo seguiti compaiono nella sidebar e fanno entrare nuove issue. Smettere di seguire viene rifiutato finché il repo ha elementi attivi.",
+    unfollowBlocked: (n) =>
+      `${n} element${n === 1 ? "o attivo" : "i attivi"} su questo repo — chiudil${n === 1 ? "o" : "i"} o finiscil${n === 1 ? "o" : "i"} prima di smettere di seguirlo.`,
     priority: "Priorità",
     priorityHigh: "Alta",
     priorityNormal: "Normale",
@@ -517,6 +526,9 @@ const it: typeof en = {
       cancel: "Annulla",
       loadFailed: "Impossibile caricare i repository.",
       private: "privato",
+      saveFailed: "Non tutte le modifiche sono state salvate.",
+      blocked: (n) => `${n} element${n === 1 ? "o attivo" : "i attivi"}`,
+      blockedHint: "Questo repo ha lavoro in corso — non si può smettere di seguirlo.",
     },
     mapping: {
       title: "Associa i progetti ai repository",
@@ -751,7 +763,10 @@ const fr: typeof en = {
     wipLimit: "Issues en développement simultanément (par dépôt)",
     wipLimitDesc: "Le parallélisme est entre dépôts ; au sein d'un dépôt, la file respecte épingle, priorité, confiance puis ancienneté.",
     follow: "Suivre",
-    followNote: "Ne plus suivre bloque uniquement l'admission de nouvelles issues ; le travail suivi continue.",
+    followNote:
+      "Seuls les dépôts suivis apparaissent dans la barre latérale et admettent de nouvelles issues. Ne plus suivre est refusé tant que le dépôt a des éléments actifs.",
+    unfollowBlocked: (n) =>
+      `${n} élément${n === 1 ? "" : "s"} actif${n === 1 ? "" : "s"} sur ce dépôt — terminez-le${n === 1 ? "" : "s"} ou fermez-le${n === 1 ? "" : "s"} avant de ne plus le suivre.`,
     priority: "Priorité",
     priorityHigh: "Haute",
     priorityNormal: "Normale",
@@ -777,6 +792,9 @@ const fr: typeof en = {
       cancel: "Annuler",
       loadFailed: "Impossible de charger les dépôts.",
       private: "privé",
+      saveFailed: "Toutes les modifications n'ont pas pu être enregistrées.",
+      blocked: (n) => `${n} élément${n === 1 ? "" : "s"} actif${n === 1 ? "" : "s"}`,
+      blockedHint: "Ce dépôt a du travail en cours — impossible de ne plus le suivre.",
     },
     mapping: {
       title: "Associer les projets aux dépôts",
@@ -1011,7 +1029,10 @@ const es: typeof en = {
     wipLimit: "Issues en desarrollo a la vez (por repo)",
     wipLimitDesc: "El paralelismo es entre repos; dentro de un repo la cola respeta pin, prioridad, confianza y luego antigüedad.",
     follow: "Seguir",
-    followNote: "Dejar de seguir solo bloquea la admisión de nuevas issues; el trabajo rastreado continúa.",
+    followNote:
+      "Solo los repos seguidos aparecen en la barra lateral y admiten nuevas issues. Dejar de seguir se rechaza mientras el repo tenga elementos activos.",
+    unfollowBlocked: (n) =>
+      `${n} elemento${n === 1 ? "" : "s"} activo${n === 1 ? "" : "s"} en este repo — termínal${n === 1 ? "o" : "os"} o ciérral${n === 1 ? "o" : "os"} antes de dejar de seguirlo.`,
     priority: "Prioridad",
     priorityHigh: "Alta",
     priorityNormal: "Normal",
@@ -1037,6 +1058,9 @@ const es: typeof en = {
       cancel: "Cancelar",
       loadFailed: "No se pudieron cargar los repositorios.",
       private: "privado",
+      saveFailed: "No se pudieron guardar todos los cambios.",
+      blocked: (n) => `${n} elemento${n === 1 ? "" : "s"} activo${n === 1 ? "" : "s"}`,
+      blockedHint: "Este repo tiene trabajo en curso — no se puede dejar de seguir.",
     },
     mapping: {
       title: "Asignar proyectos a repositorios",

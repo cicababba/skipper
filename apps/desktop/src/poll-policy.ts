@@ -1,5 +1,24 @@
-import { ApiError, AuthError } from "@skipper/core";
-import type { OrchestratorAccountState } from "@skipper/shared";
+import { ApiError, AuthError, type OrchestratorManifest } from "@skipper/core";
+import { repoKey, resolveRepoIntakeSettings } from "@skipper/shared";
+import type { Issue, OrchestratorAccountState } from "@skipper/shared";
+
+/**
+ * Admission filter handed to reconcile. The follow list (#15) is an explicit
+ * set — an absent record means NOT followed, so an unfollowed repo's issues stay
+ * in the raw inbox arrays and never enter the orchestrator. Linking still gates
+ * planning. A repo-less issue (unmapped project, #79) is never followed.
+ */
+export function admissionPolicy(m: OrchestratorManifest): {
+  intakePaused: boolean;
+  shouldAdmit: (issue: Issue) => boolean;
+} {
+  return {
+    intakePaused: m.settings.intakePaused,
+    shouldAdmit: (issue) =>
+      issue.repo !== undefined &&
+      resolveRepoIntakeSettings(m.repoSettings[repoKey(issue.repo)]).followed,
+  };
+}
 
 /** Backoff gate: skip this poll while the account's nextPollAt is still in the
  *  future, unless the caller forces a refetch (ignoreBackoff). */

@@ -16,7 +16,7 @@ import type { RepoSettingsRow } from "@skipper/shared";
 import { RepoManagerModal } from "./repo-manager-modal";
 import { BranchIndicator } from "./branch-indicator";
 import { useOrchestrator } from "@/lib/orchestrator-context";
-import { attentionCounts, repoKey } from "@/lib/inbox/model";
+import { attentionCounts, followedRepos, repoKey } from "@/lib/inbox/model";
 import { repoHref } from "@/lib/inbox/nav";
 import { useT } from "@/lib/app-i18n";
 import { useTheme } from "@/lib/theme-context";
@@ -239,11 +239,12 @@ function InboxNav() {
 
   const loadRepos = useCallback(() => {
     if (!window.skipper) return;
-    void window.skipper.orchestrator.listRepoSettings().then(setRows);
+    void window.skipper.orchestrator.listRepoSettings().then((all) => setRows(followedRepos(all)));
   }, []);
 
-  // Reload the linked-repo list on mount and after each orchestrator broadcast
-  // (a poll or a link change) so freshly linked repos — even empty ones — appear.
+  // Reload the followed-repo list on mount and after each orchestrator broadcast
+  // (a poll, a follow change or a link) so a freshly followed repo — even an
+  // empty, unlinked one — appears.
   useEffect(() => {
     loadRepos();
   }, [loadRepos, state]);
@@ -305,6 +306,14 @@ function InboxNav() {
               }`}
             >
               <span className="flex-1 truncate">{row.key}</span>
+              {!row.linked && (
+                <span
+                  title={t.inbox.repos.notLinkedTitle}
+                  className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border border-border text-muted/60"
+                >
+                  {t.inbox.repos.notLinked}
+                </span>
+              )}
               <AttentionBadge count={counts.byRepo.get(repoKey(row.repo)) ?? 0} />
             </Link>
           );

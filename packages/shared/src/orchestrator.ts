@@ -212,7 +212,8 @@ export const DEFAULT_ORCHESTRATOR_SETTINGS: OrchestratorSettings = {
 export const AGENT_MAX_TURNS_BACKSTOP = 300;
 
 export interface RepoIntakeSettings {
-  /** false = ignored at admission. Absent/true = followed (default-all). */
+  /** true = followed. Absent/false = not followed; the repo stays out of the
+   *  inbox and out of the sidebar. Following is an explicit, persisted choice. */
   followed?: boolean;
   priority?: RepoPriority;
   autoPlan?: AutoPlanMode;
@@ -247,7 +248,7 @@ export interface ResolvedRepoIntakeSettings {
 
 export function resolveRepoIntakeSettings(s?: RepoIntakeSettings): ResolvedRepoIntakeSettings {
   return {
-    followed: s?.followed !== false,
+    followed: s?.followed === true,
     priority: s?.priority ?? "normal",
     autoPlan: s?.autoPlan ?? "on",
     autoPlanLabel: s?.autoPlanLabel?.trim() || DEFAULT_AUTO_PLAN_LABEL,
@@ -434,6 +435,18 @@ const ACTIVE_STATES: readonly LifecycleState[] = [
 ];
 
 export const TERMINAL_STATES: readonly LifecycleState[] = ["merged"];
+
+/**
+ * States that hold no live work — no plan, no worktree, no PR under shepherd, no
+ * gate waiting on the user. Deliberately NOT the same set as TERMINAL_STATES,
+ * which is the state machine's "no outgoing edges" invariant: `closed` can
+ * re-enter triage, yet carries nothing live while it rests there.
+ */
+export const SETTLED_STATES: readonly LifecycleState[] = ["merged", "closed"];
+
+export function isSettledState(state: LifecycleState): boolean {
+  return SETTLED_STATES.includes(state);
+}
 
 export const TRANSITIONS: Record<LifecycleState, readonly LifecycleState[]> = {
   triage: ["planning", "needs-input", "blocked", "closed"],
@@ -790,6 +803,9 @@ export interface FollowCandidate {
   source: "installation" | "membership" | "polled";
   followed: boolean;
   linked: boolean;
+  /** Tracked items still holding live work on this repo — unfollowing is refused
+   *  while this is > 0. */
+  activeItems: number;
 }
 
 export type FollowCandidatesResult =
@@ -804,3 +820,17 @@ export type FollowCandidatesResult =
   | { ok: false; error: string };
 
 export type ResumeRiteAction = "plan-all" | "plan-selected" | "dismiss";
+
+/** One tracked item standing in the way of unfollowing its repo. */
+export interface BlockingItem {
+  id: string;
+  /** Display key: "42" (GitHub) or "PROJ-123" (Jira). */
+  key: string;
+  state: LifecycleState;
+}
+
+/** Explicit follow/unfollow of a repo. Unfollowing is refused while the repo has
+ *  tracked items in a non-settled state — the sidebar can never hide live work. */
+export type SetRepoFollowedResult =
+  | { ok: true; state: OrchestratorState }
+  | { ok: false; error: string; blocking: BlockingItem[] };

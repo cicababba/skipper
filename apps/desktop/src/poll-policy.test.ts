@@ -1,11 +1,73 @@
 import { describe, it, expect } from "vitest";
-import { ApiError, AuthError } from "@skipper/core";
-import type { OrchestratorAccountState } from "@skipper/shared";
-import { shouldSkipPoll, selectPollCursor, pollFailurePatch } from "./poll-policy";
+import { ApiError, AuthError, DEFAULT_ORCHESTRATOR_SETTINGS } from "@skipper/core";
+import type { OrchestratorManifest } from "@skipper/core";
+import type { Issue, OrchestratorAccountState, RepoIntakeSettings, RepoRef } from "@skipper/shared";
+import { admissionPolicy, shouldSkipPoll, selectPollCursor, pollFailurePatch } from "./poll-policy";
 
 function state(patch: Partial<OrchestratorAccountState> = {}): OrchestratorAccountState {
   return { accountId: "acct", status: "idle", issues: [], pullRequests: [], ...patch };
 }
+
+function manifest(repoSettings: Record<string, RepoIntakeSettings> = {}): OrchestratorManifest {
+  return {
+    version: 3,
+    settings: { ...DEFAULT_ORCHESTRATOR_SETTINGS },
+    items: {},
+    parked: {},
+    repoSettings,
+    projectMappings: {},
+  };
+}
+
+function issue(repo?: RepoRef): Issue {
+  return {
+    kind: "issue",
+    id: "github:1",
+    source: "github",
+    sourceRef: { project: "octo/demo", key: "1" },
+    codeHost: "github",
+    accountId: "github:1",
+    repo,
+    key: "1",
+    title: "t",
+    labels: [],
+    assignees: [],
+    url: "https://github.com/octo/demo/issues/1",
+    state: "open",
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-01T00:00:00.000Z",
+  };
+}
+
+// Following is an explicit set (#15): a repo the poller merely happened to see
+// admits nothing until the user chooses it.
+describe("admissionPolicy", () => {
+  it("does not admit an issue on a repo with no settings record", () => {
+    expect(admissionPolicy(manifest()).shouldAdmit(issue({ owner: "octo", name: "demo" }))).toBe(
+      false,
+    );
+  });
+
+  it("admits an issue on an explicitly followed repo", () => {
+    const policy = admissionPolicy(manifest({ "octo/demo": { followed: true } }));
+    expect(policy.shouldAdmit(issue({ owner: "Octo", name: "Demo" }))).toBe(true);
+  });
+
+  it("does not admit an issue on an explicitly unfollowed repo", () => {
+    const policy = admissionPolicy(manifest({ "octo/demo": { followed: false } }));
+    expect(policy.shouldAdmit(issue({ owner: "octo", name: "demo" }))).toBe(false);
+  });
+
+  it("never admits a repo-less issue", () => {
+    expect(admissionPolicy(manifest()).shouldAdmit(issue(undefined))).toBe(false);
+  });
+
+  it("mirrors the manifest's intakePaused", () => {
+    const m = manifest();
+    m.settings.intakePaused = true;
+    expect(admissionPolicy(m).intakePaused).toBe(true);
+  });
+});
 
 describe("shouldSkipPoll", () => {
   it("skips while nextPollAt is still in the future", () => {

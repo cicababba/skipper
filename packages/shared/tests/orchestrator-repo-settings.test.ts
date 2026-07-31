@@ -1,8 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_ORCHESTRATOR_SETTINGS,
+  isSettledState,
   resolveDefaultAgentPair,
+  resolveRepoIntakeSettings,
   resolveRepoOrchestratorSettings,
+  SETTLED_STATES,
+  TRANSITIONS,
+  type LifecycleState,
   type OrchestratorSettings,
   type RepoIntakeSettings,
 } from "../src/orchestrator";
@@ -15,6 +20,54 @@ const global = (overrides: Partial<OrchestratorSettings> = {}): OrchestratorSett
 
 const resolve = (repo?: RepoIntakeSettings, overrides?: Partial<OrchestratorSettings>) =>
   resolveRepoOrchestratorSettings(repo, global(overrides));
+
+// Following is an explicit, persisted set: an absent record is NOT followed, so
+// a repo the poller merely happened to see never enters the inbox or the sidebar.
+describe("resolveRepoIntakeSettings — followed", () => {
+  it("does not follow a repo with no settings record", () => {
+    expect(resolveRepoIntakeSettings(undefined).followed).toBe(false);
+    expect(resolveRepoIntakeSettings({}).followed).toBe(false);
+  });
+
+  it("does not follow a repo whose record has other keys but no followed flag", () => {
+    expect(resolveRepoIntakeSettings({ priority: "high" }).followed).toBe(false);
+  });
+
+  it("follows only on an explicit true", () => {
+    expect(resolveRepoIntakeSettings({ followed: true }).followed).toBe(true);
+    expect(resolveRepoIntakeSettings({ followed: false }).followed).toBe(false);
+  });
+
+  it("carries the same default through resolveRepoOrchestratorSettings", () => {
+    expect(resolveRepoOrchestratorSettings(undefined, global()).followed).toBe(false);
+    expect(resolveRepoOrchestratorSettings({ followed: true }, global()).followed).toBe(true);
+  });
+});
+
+describe("isSettledState", () => {
+  const ALL_STATES = Object.keys(TRANSITIONS) as LifecycleState[];
+
+  it("covers all 15 lifecycle states, settling only merged and closed", () => {
+    expect(ALL_STATES).toHaveLength(15);
+    const settled = ALL_STATES.filter(isSettledState);
+    expect(settled.sort()).toEqual(["closed", "merged"]);
+  });
+
+  it("agrees with SETTLED_STATES", () => {
+    for (const state of ALL_STATES) {
+      expect(isSettledState(state)).toBe(SETTLED_STATES.includes(state));
+    }
+  });
+
+  // Every state that waits on a human holds live work — which is what makes a
+  // repo with a pending gate un-unfollowable.
+  it.each(["plan-gate", "human-review", "needs-input", "blocked", "failed"] as const)(
+    "treats %s as unsettled",
+    (state) => {
+      expect(isSettledState(state)).toBe(false);
+    },
+  );
+});
 
 describe("resolveRepoOrchestratorSettings", () => {
   it("inherits every global-overridable field when the repo has no overrides", () => {

@@ -10,9 +10,11 @@ import { PROVIDER_ICONS, FALLBACK_PROVIDER_ICON } from "@/components/provider-ic
 // Follow-repos picker (#15): shown after an issue-source connect and from the
 // Repositories section, scoped to the connecting account. GitHub lists App
 // installation repos, GitLab lists membership projects; both merge repos the
-// account's poller already saw. Unchecked repos get followed:false (admission
-// filter). GitHub also detects the valid-token-but-no-installations case and
-// links to the App installation page instead of an inexplicably empty inbox.
+// account's poller already saw. Following is an explicit set: only ticked repos
+// enter the inbox and the sidebar. A repo with active items can't be unticked —
+// the IPC refusal is the real defense, the disabled box only spares the error.
+// GitHub also detects the valid-token-but-no-installations case and links to the
+// App installation page instead of an inexplicably empty inbox.
 export function FollowPickerModal({
   accountId,
   providerId,
@@ -23,9 +25,11 @@ export function FollowPickerModal({
   onClose: () => void;
 }) {
   const { t } = useT();
+  const p = t.settings.repositories.picker;
   const [result, setResult] = useState<FollowCandidatesResult | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setResult(null);
@@ -62,17 +66,25 @@ export function FollowPickerModal({
   const save = async () => {
     if (!window.skipper || !result?.ok) return;
     setSaving(true);
+    setSaveError(null);
     try {
+      const refused: string[] = [];
       for (const candidate of result.repos) {
         const key = keyOf(candidate);
         const wanted = selected.has(key);
         if (wanted !== candidate.followed) {
-          await window.skipper.orchestrator.setRepoSettings(
+          const res = await window.skipper.orchestrator.setRepoFollowed(
             candidate.repo.owner,
             candidate.repo.name,
-            { followed: wanted ? undefined : false },
+            wanted,
           );
+          if (!res.ok) refused.push(`${key}: ${res.error}`);
         }
+      }
+      if (refused.length > 0) {
+        setSaveError(`${p.saveFailed} ${refused.join(" · ")}`);
+        await load();
+        return;
       }
       onClose();
     } finally {
@@ -80,7 +92,6 @@ export function FollowPickerModal({
     }
   };
 
-  const p = t.settings.repositories.picker;
   const Icon = (providerId && PROVIDER_ICONS[providerId]) || FALLBACK_PROVIDER_ICON;
 
   return createPortal(
@@ -118,6 +129,12 @@ export function FollowPickerModal({
             </div>
           )}
 
+          {saveError && (
+            <p className="mb-2 rounded-md border border-danger/25 bg-danger-bg px-2.5 py-2 text-danger break-words">
+              {saveError}
+            </p>
+          )}
+
           {result?.ok && (
             <>
               <p>{p.desc}</p>
@@ -151,14 +168,23 @@ export function FollowPickerModal({
                 <ul className="mt-3 rounded-md border border-border divide-y divide-border">
                   {result.repos.map((candidate) => {
                     const key = keyOf(candidate);
+                    // Only unticking is blocked — a followed repo with live work
+                    // must stay followed; ticking it is always allowed.
+                    const blocked = candidate.activeItems > 0 && selected.has(key);
                     return (
                       <li key={key}>
-                        <label className="flex items-center gap-2 px-2.5 py-2 cursor-pointer hover:bg-card-hover">
+                        <label
+                          title={blocked ? p.blockedHint : undefined}
+                          className={`flex items-center gap-2 px-2.5 py-2 hover:bg-card-hover ${
+                            blocked ? "cursor-not-allowed" : "cursor-pointer"
+                          }`}
+                        >
                           <input
                             type="checkbox"
                             checked={selected.has(key)}
+                            disabled={blocked}
                             onChange={() => toggle(key)}
-                            className="accent-[var(--accent)]"
+                            className="accent-[var(--accent)] disabled:opacity-50"
                           />
                           <span className="text-foreground truncate">
                             {candidate.repo.owner}/{candidate.repo.name}
@@ -166,6 +192,11 @@ export function FollowPickerModal({
                           {candidate.private && (
                             <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border border-border text-muted/70">
                               {p.private}
+                            </span>
+                          )}
+                          {blocked && (
+                            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border border-border text-muted/70">
+                              {p.blocked(candidate.activeItems)}
                             </span>
                           )}
                           {candidate.linked && (
