@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BRANCH_ISSUE_RE, issueBranchFor } from "@skipper/shared";
+import { branchNamesKey, issueBranchFor } from "@skipper/shared";
 import {
   captureBranchDiff,
   captureWorktreeDiff,
@@ -72,13 +72,18 @@ describe("worktreeDirFor / issueBranchFor", () => {
 
   it("slugs tracker keys into the path", () => {
     const path = worktreeDirFor("/root", { owner: "o", name: "r" }, "PROJ-123");
-    expect(path).toBe(join("/root", "o-r", "issue-proj-123"));
+    expect(path).toBe(join("/root", "o-r", "proj-123"));
+  });
+
+  it("does not duplicate the prefix for an ISSUE-* key (#306)", () => {
+    const path = worktreeDirFor("/root", { owner: "o", name: "r" }, "ISSUE-1");
+    expect(path).toBe(join("/root", "o-r", "issue-1"));
   });
 
   it("branch matches the reconcile heuristic", () => {
     expect(issueBranchFor("42")).toBe("feature/issue-42");
-    expect(BRANCH_ISSUE_RE.exec(issueBranchFor("42"))?.[1]).toBe("42");
-    expect(BRANCH_ISSUE_RE.exec(issueBranchFor("PROJ-123"))?.[1]).toBe("proj-123");
+    expect(branchNamesKey(issueBranchFor("42"), "42")).toBe(true);
+    expect(branchNamesKey(issueBranchFor("PROJ-123"), "PROJ-123")).toBe(true);
   });
 });
 

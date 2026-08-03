@@ -315,6 +315,26 @@ describe("reconcile — pull requests", () => {
     });
   });
 
+  it("links a string-keyed item via a new-form (unprefixed) branch head (#306)", () => {
+    const m = manifest();
+    m.items["jira:900"] = tracked(42, "human-review", {
+      id: "jira:900",
+      key: "PROJ-123",
+      sourceRef: { project: "PROJ", key: "PROJ-123" },
+    });
+    reconcile(
+      m,
+      ACCOUNT,
+      poll({ pullRequests: [pull(7, { headRef: "feature/proj-123-fix-login" })] }),
+      openPolicy,
+    );
+    expect(m.items["jira:900"].pr).toEqual({
+      id: "github:pr-7",
+      number: 7,
+      url: "https://github.com/o/r/pull/7",
+    });
+  });
+
   it("does not link when the item key is only a string prefix of the branch slug", () => {
     const m = manifest();
     m.items["github:7"] = tracked(7, "triage");

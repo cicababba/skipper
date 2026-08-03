@@ -17,21 +17,37 @@ export function displayKey(key: string): string {
   return /^\d+$/.test(key) ? `#${key}` : key;
 }
 
-/** Agent branch name. GitHub "42" → "feature/issue-42" — byte-identical to the pre-#71 scheme. */
-export function issueBranchFor(key: string): string {
-  return `feature/issue-${slugKey(key)}`;
+/**
+ * Branch / worktree-dir / label leaf. Numeric keys keep the historical prefix
+ * ("42" → "issue-42"); tracker keys already carry their own project id, so
+ * prefixing would duplicate it ("PROJ-12" → "proj-12", "ISSUE-1" → "issue-1").
+ */
+export function issueSlug(key: string): string {
+  const slug = slugKey(key);
+  return /^\d+$/.test(slug) ? `issue-${slug}` : slug;
 }
 
-/** Extracts the slug tail of an issue branch: "feature/issue-71-two-axis" → "71-two-axis". */
-export const BRANCH_ISSUE_RE = /^(?:feature|fix)\/issue-([A-Za-z0-9][A-Za-z0-9-]*)/;
+/** Agent branch name. GitHub "42" → "feature/issue-42" — byte-identical to the pre-#71 scheme. */
+export function issueBranchFor(key: string): string {
+  return `feature/${issueSlug(key)}`;
+}
+
+const BRANCH_LEAF_RE = /^(?:feature|fix)\/(.+)$/;
 
 /**
- * True when a branch slug names this item: exact match, or the item's slug
- * followed by "-" (human branches append a description: feature/issue-71-two-axis-workitem).
- * The dash boundary keeps "PROJ-12" from claiming "proj-123".
+ * True when a PR head branch names this item: feature|fix/<leaf>, exact or
+ * followed by "-" (human branches append a description). The dash boundary keeps
+ * "PROJ-12" from claiming "proj-123". The legacy "issue-<slug>" leaf is accepted
+ * too, so branches cut before #306 keep linking.
  */
-export function branchSlugMatchesKey(branchSlug: string, itemKey: string): boolean {
-  const slug = branchSlug.toLowerCase();
-  const key = slugKey(itemKey);
-  return slug === key || slug.startsWith(`${key}-`);
+export function branchNamesKey(headRef: string, itemKey: string): boolean {
+  const match = BRANCH_LEAF_RE.exec(headRef);
+  if (!match) return false;
+  const slug = slugKey(itemKey);
+  if (!slug) return false;
+  const leaf = match[1].toLowerCase();
+  for (const form of new Set([issueSlug(itemKey), `issue-${slug}`])) {
+    if (leaf === form || leaf.startsWith(`${form}-`)) return true;
+  }
+  return false;
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Sparkles } from "lucide-react";
-import { slugKey, type TrackedItem, type WorktreeStatusResult } from "@skipper/shared";
+import { issueSlug, type TrackedItem, type WorktreeStatusResult } from "@skipper/shared";
 import { useTerminal } from "@/lib/terminal-context";
 import { useT } from "@/lib/app-i18n";
 
@@ -43,7 +43,7 @@ export function ResumeSessionButton({
     if (!enabled || !wtStatus || !sessionId) return;
     void openTerminal(
       wtStatus.path,
-      `claude · issue-${slugKey(item.key)}`,
+      `claude · ${issueSlug(item.key)}`,
       `claude --resume ${sessionId}`,
     );
   };
