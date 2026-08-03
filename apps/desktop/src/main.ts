@@ -136,6 +136,9 @@ const isDev = !!process.env.SKIPPER_DEV;
 const DEV_URL = process.env.SKIPPER_DEV_URL || "http://localhost:3000";
 /** Dev-only retry gap while waiting for the Next dev server to bind its port. */
 const DEV_RELOAD_DELAY_MS = 500;
+/** Backoff cap: a page that keeps failing (e.g. a Turbopack panic) must not
+ *  turn the retry into a request flood against the dev server. */
+const DEV_RELOAD_DELAY_MAX_MS = 10_000;
 
 // Must be set before app is ready so the menu bar shows "Skipper" not "Electron"
 app.setName("Skipper");
@@ -338,15 +341,28 @@ function createWindow(): void {
   // the server binds the port. The packaged path can't hit this — app:// is
   // served synchronously — and a failed load never retries on its own, leaving
   // a black window forever. Retry until the server answers.
+  let devRetryDelay = DEV_RELOAD_DELAY_MS;
   const loadDev = (): void => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    mainWindow.loadURL(url).catch(() => {
-      /* did-fail-load re-arms the retry */
-    });
+    // Reset the backoff on the resolved promise, not did-finish-load: the
+    // latter also fires for Chromium's internal error page after a failure.
+    mainWindow.loadURL(url).then(
+      () => {
+        devRetryDelay = DEV_RELOAD_DELAY_MS;
+      },
+      () => {
+        /* did-fail-load re-arms the retry */
+      },
+    );
   };
-  mainWindow.webContents.on("did-fail-load", (_e, _code, _desc, _failedUrl, isMainFrame) => {
+  mainWindow.webContents.on("did-fail-load", (_e, code, desc, _failedUrl, isMainFrame) => {
     if (!isMainFrame || !mainWindow || mainWindow.isDestroyed()) return;
-    setTimeout(loadDev, DEV_RELOAD_DELAY_MS);
+    // ERR_ABORTED: this navigation was superseded by another one (e.g. a
+    // client-side redirect) — the server is fine, reloading would loop.
+    if (code === -3) return;
+    console.warn(`[dev] load failed (${code} ${desc}) — retrying in ${devRetryDelay}ms`);
+    setTimeout(loadDev, devRetryDelay);
+    devRetryDelay = Math.min(devRetryDelay * 2, DEV_RELOAD_DELAY_MAX_MS);
   });
   loadDev();
 }
