@@ -17,7 +17,8 @@ function statusSuffix(status: CriticObjection["status"]): string {
 }
 
 function objectionLine(o: CriticObjection): string {
-  return `- ${o.blocking ? "**Blocking** " : ""}${o.kind}: ${o.detail}${statusSuffix(o.status)}`;
+  const unverified = o.unverified ? " _(unverified)_" : "";
+  return `- ${o.blocking ? "**Blocking** " : ""}${o.kind}: ${o.detail}${statusSuffix(o.status)}${unverified}`;
 }
 
 function objectionSection(heading: string, objections: CriticObjection[] | undefined): string | null {

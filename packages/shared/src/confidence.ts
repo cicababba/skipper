@@ -40,6 +40,9 @@ export interface CriticObjection {
   blocking: boolean;
   /** Continuity classification against the prior review round (#205); absent = "new". */
   status?: "new" | "persisting";
+  /** The objection depends on a repo fact the critic could not check (#308);
+   *  absent = demonstrated. */
+  unverified?: boolean;
 }
 
 export interface CriticSignal {

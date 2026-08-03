@@ -49,6 +49,7 @@ const CriticObjectionSchema = z.object({
   ]),
   detail: z.string().min(1),
   blocking: z.boolean(),
+  unverified: z.boolean().optional(),
 });
 
 export const CriticVerdictSchema = z.object({
@@ -79,14 +80,32 @@ const VERDICT_SCORE: Record<CriticVerdict, number> = {
   reject: 0.2,
 };
 const BLOCKING_PENALTY = 0.1;
+/** "concerns" made entirely of objections the critic admits it could not check
+ *  is an open question, not a demonstrated defect (#308). */
+const UNVERIFIED_CONCERNS_SCORE = 0.85;
+
+/** Score derived here, never model-emitted — keeps it reproducible. */
+function deriveScore(verdict: CriticVerdict, objections: CriticObjection[]): number {
+  const blocking = objections.filter((o) => o.blocking).length;
+  const base =
+    verdict === "concerns" &&
+    blocking === 0 &&
+    objections.length > 0 &&
+    objections.every((o) => o.unverified === true)
+      ? UNVERIFIED_CONCERNS_SCORE
+      : VERDICT_SCORE[verdict];
+  return Math.max(0, base - blocking * BLOCKING_PENALTY);
+}
 
 const BASE_VERDICT_INSTRUCTION = `Raise an objection ONLY for real, defensible problems; mark it blocking only when shipping as-is would be wrong. Verdict: "approve" if you failed to demolish it, "concerns" for non-blocking problems, "reject" if it is fundamentally flawed.
 
-Ground every objection in what is verifiable from the provided context and artifact. An objection that depends on a repo fact you were not shown — a theme token, a config value, a project convention — must be raised as a non-blocking question, never as blocking. Mark blocking only when the objection names the concrete failure: a command that would fail, a user-visible break, or a violated acceptance criterion. "Suspicious styling" or a convention hunch does not clear that bar.`;
+Ground every objection in what is verifiable from the provided context and artifact. An objection that depends on a repo fact you were not shown — a theme token, a config value, a project convention — must be raised as a non-blocking question, never as blocking. Mark blocking only when the objection names the concrete failure: a command that would fail, a user-visible break, or a violated acceptance criterion. "Suspicious styling" or a convention hunch does not clear that bar.
+
+Declare the provenance of every objection. Set "unverified": true when it rests on a repo fact you did not actually check — a script, type, symbol, config or convention you assumed rather than saw. Set "unverified": false when you saw the evidence yourself, in the artifact or in a file you read. An unverified objection is an open question, so it is never blocking.`;
 
 const CONTINUITY_INSTRUCTION = `For each objection you raise, set status: "persisting" when it re-raises one of the P1..Pn above that the current artifact still exhibits, otherwise "new". In "resolved", list the labels (e.g. "P2") of previous objections the current artifact genuinely fixed — not merely reworded. Never both resolve and re-raise the same prior objection, and do not re-raise a resolved objection just to acknowledge it. Re-verify each persisting objection against the current artifact and context; drop a prior the provided context refutes rather than escalating it.`;
 
-const INSPECT_REPO_INSTRUCTION = `You can read, search and list files across the working tree. Verify any repo-fact claim — a convention, a theme token, an existing pattern — against the tree before raising it; a claim you could not verify stays non-blocking.`;
+const INSPECT_REPO_INSTRUCTION = `You can read, search and list files across the working tree. Verify any repo-fact claim — a convention, a theme token, an existing pattern — against the tree before raising it; a claim you could not verify stays non-blocking. Spend the tool budget only on facts that would change an objection — check that the script, type or symbol you are about to doubt really is absent — not on a general audit of the repo.`;
 
 function priorSection(prior: CriticPriorRound): string[] {
   const lines = [
@@ -101,7 +120,9 @@ function priorSection(prior: CriticPriorRound): string[] {
       o.detail.length > MAX_OBJECTION_DETAIL_CHARS
         ? `${o.detail.slice(0, MAX_OBJECTION_DETAIL_CHARS)}…`
         : o.detail;
-    lines.push(`P${i + 1}. [${o.kind}]${o.blocking ? " (blocking)" : ""} ${detail}`);
+    lines.push(
+      `P${i + 1}. [${o.kind}]${o.blocking ? " (blocking)" : ""}${o.unverified ? " (unverified)" : ""} ${detail}`,
+    );
   });
   lines.push(`--- End previous review round ---`);
   return lines;
@@ -182,8 +203,7 @@ export async function runCritic(
       throw new CriticError(`critic returned an invalid verdict: ${parsed.error.message}`, reply);
     }
     const { verdict, objections, resolved } = parsed.data;
-    const blocking = objections.filter((o) => o.blocking).length;
-    const score = Math.max(0, VERDICT_SCORE[verdict] - blocking * BLOCKING_PENALTY);
+    const score = deriveScore(verdict, objections);
     return { score, verdict, objections, resolved: mapResolvedLabels(resolved, input.prior.objections) };
   }
   const schema = z.toJSONSchema(CriticVerdictSchema) as Record<string, unknown>;
@@ -193,18 +213,20 @@ export async function runCritic(
     throw new CriticError(`critic returned an invalid verdict: ${parsed.error.message}`, reply);
   }
   const { verdict, objections } = parsed.data;
-  const blocking = objections.filter((o) => o.blocking).length;
-  // Score derived here, never model-emitted — keeps it reproducible.
-  const score = Math.max(0, VERDICT_SCORE[verdict] - blocking * BLOCKING_PENALTY);
-  return { score, verdict, objections };
+  return { score: deriveScore(verdict, objections), verdict, objections };
 }
 
 export async function critiquePlan(
   plan: IssuePlan,
   issue: PlanIssueInput,
   llm: LLMProviderInterface,
-  opts?: { signal?: AbortSignal; runtime?: AgentRuntime },
+  opts?: { signal?: AbortSignal; runtime?: AgentRuntime; repoPath?: string },
 ): Promise<CriticSignal> {
+  // Repo-inspecting plan critic (#308): with a runtime to host the tools-enabled
+  // call and a cwd to read, it verifies its own repo-fact doubts instead of
+  // raising them. Ephemeral by design — no sessionId, so it stays adversarially
+  // independent of the planner's session.
+  const inspectCwd = opts?.runtime && opts.repoPath ? opts.repoPath : undefined;
   return runCritic(
     {
       artifactKind: "plan",
@@ -222,11 +244,13 @@ export async function critiquePlan(
       ]
         .filter(Boolean)
         .join("\n"),
+      ...(inspectCwd ? { canInspectRepo: true } : {}),
     },
     llm,
     {
       ...(opts?.signal ? { signal: opts.signal } : {}),
       ...(opts?.runtime ? { runtime: opts.runtime } : {}),
+      ...(inspectCwd ? { cwd: inspectCwd, tools: "Read,Grep,Glob", maxTurns: 8 } : {}),
     },
   );
 }

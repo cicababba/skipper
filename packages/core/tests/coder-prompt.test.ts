@@ -151,6 +151,29 @@ describe("buildFixPrompt", () => {
     expect(prompt).toContain("do not comply blindly");
     expect(prompt).toContain('record the evidence in the report\'s "open" array');
   });
+
+  // #308: an objection the reviewer could not check is an open question, and the
+  // coder must be told which ones those are.
+  it("marks unverified objections and explains what the marker means", () => {
+    const prompt = buildFixPrompt(issue, [
+      { kind: "risk", detail: "vitest may not resolve", blocking: false, unverified: true },
+      { kind: "acceptance-gap", detail: "toggle does not persist", blocking: true },
+      { kind: "other", detail: "seen in the diff", blocking: false, unverified: false },
+    ]);
+    expect(prompt).toContain("- [UNVERIFIED] (risk) vitest may not resolve");
+    expect(prompt).toContain("- [BLOCKING] (acceptance-gap) toggle does not persist");
+    expect(prompt).toContain("- (other) seen in the diff");
+    expect(prompt).toContain(
+      "An [UNVERIFIED] objection is the reviewer's open question, not an established defect",
+    );
+  });
+
+  it("emits both markers on a blocking objection the reviewer could not check", () => {
+    const prompt = buildFixPrompt(issue, [
+      { kind: "risk", detail: "x", blocking: true, unverified: true },
+    ]);
+    expect(prompt).toContain("- [BLOCKING] [UNVERIFIED] (risk) x");
+  });
 });
 
 describe("buildPrFixPrompt", () => {

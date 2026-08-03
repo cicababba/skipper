@@ -445,6 +445,11 @@ function AnomalyReport({ report }: { report: ConfidenceReport }) {
                 <span className="ml-1 text-[10px] uppercase tracking-wide text-danger">
                   {pop.blocking}
                 </span>
+              )}
+              {o.unverified && (
+                <span className="ml-1 text-[10px] uppercase tracking-wide text-muted/60">
+                  {pop.unverified}
+                </span>
               )}{" "}
               {o.detail}
             </p>

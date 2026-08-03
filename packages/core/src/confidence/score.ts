@@ -66,7 +66,7 @@ export interface ComputeConfidenceOptions {
   repoInstructions?: string;
   /** The repo's Graphify index (#233), threaded into the convergence extra plan
    *  runs so they explore under the same graph as the primary plan. Reaches only
-   *  the extra runs — the plan critic runs tool-less, so it has no MCP path. */
+   *  the extra runs — the plan critic gets Read/Grep/Glob (#308), never MCP. */
   graphify?: GraphifyContext;
   deps?: { generatePlan?: typeof realGeneratePlan };
 }
@@ -138,6 +138,7 @@ export async function computeConfidence(
       .then((s) => void (report.signals.groundedness = s))
       .catch((err) => void report.errors.push(`groundedness: ${message(err)}`)),
     critiquePlan(opts.plan, opts.issue, opts.llm, {
+      repoPath: opts.repoPath,
       ...(opts.signal ? { signal: opts.signal } : {}),
       ...(opts.runtime ? { runtime: opts.runtime } : {}),
     })

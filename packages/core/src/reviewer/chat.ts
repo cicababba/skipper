@@ -90,7 +90,9 @@ function reviewBlock(review: ReviewerChatContext["review"]): string {
         o.detail.length > MAX_OBJECTION_DETAIL_CHARS
           ? `${o.detail.slice(0, MAX_OBJECTION_DETAIL_CHARS)}…`
           : o.detail;
-      lines.push(`  ${i + 1}. [${o.kind}]${o.blocking ? " (blocking)" : ""} ${detail}`);
+      lines.push(
+        `  ${i + 1}. [${o.kind}]${o.blocking ? " (blocking)" : ""}${o.unverified ? " (unverified)" : ""} ${detail}`,
+      );
     });
   }
   lines.push(`--- End review outcome ---`);
