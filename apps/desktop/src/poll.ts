@@ -2,7 +2,9 @@ import {
   issueSourceForAuthProvider,
   reconcile,
   resolveProjectRepos,
+  type IssueSource,
   type OrchestratorManifest,
+  type ReconcileOutcome,
 } from "@skipper/core";
 import { mappingHost } from "@skipper/shared";
 import type {
@@ -39,6 +41,8 @@ export interface PollerDeps {
   broadcast: () => void;
   /** pokePlanner + pokeCoder + pokeReviewer + pokeShepherd, in that order. */
   pokeDrivers: () => void;
+  /** Abort a live planning run reconcile moved out of "planning" (#307). */
+  cancelPlanningRun: (itemId: string) => void;
   sweepStaleness: () => void;
   now?: () => number;
 }
@@ -134,6 +138,61 @@ export function makePoller(deps: PollerDeps): Poller {
     return resolved;
   }
 
+  /**
+   * Dependency evidence (#85): fetch "blocked by" for admission candidates and
+   * resting/blocked tracked items, so reconcile can park/release in this round.
+   * Candidates first; per-target failure leaves the key absent (stored stands).
+   * Runs on every admission path (#307) — a retroactive admission from the cache
+   * would otherwise admit a blocked issue blind and let the planner promote it.
+   */
+  async function collectDependencies(
+    accountId: string,
+    account: Account,
+    source: IssueSource,
+    resolvedIssues: Issue[],
+    m: OrchestratorManifest,
+  ): Promise<Record<string, SourceRef[]> | undefined> {
+    if (!source.fetchDependencies) return undefined;
+    const policy = admissionPolicy(m);
+    const candidates = resolvedIssues.filter((iss) => {
+      if (iss.state !== "open") return false;
+      const t = m.items[iss.id];
+      if (t) {
+        return (
+          t.state === "triage" ||
+          t.state === "plan-gate" ||
+          t.state === "queued" ||
+          t.state === "blocked"
+        );
+      }
+      return !m.settings.intakePaused && policy.shouldAdmit(iss);
+    });
+    candidates.sort((a, b) => Number(Boolean(m.items[a.id])) - Number(Boolean(m.items[b.id])));
+    const dependencies: Record<string, SourceRef[]> = {};
+    for (const iss of candidates.slice(0, DEP_FETCH_CAP)) {
+      try {
+        dependencies[iss.id] = await source.fetchDependencies(
+          iss,
+          (force) => deps.getToken(accountId, force),
+          account.baseUrl,
+          account.cloudId,
+          account.authMethod,
+        );
+      } catch (err) {
+        console.warn(`[orchestrator] dependency fetch failed for ${iss.id}: ${String(err)}`);
+      }
+    }
+    return dependencies;
+  }
+
+  /** Reconcile writes the manifest directly, so requestTransition's abort hook never
+   *  fires for it — free the planning slot of anything it moved out of planning (#307). */
+  function cancelPlanningRunsFor(outcome: ReconcileOutcome): void {
+    for (const t of outcome.transitions) {
+      if (t.from === "planning") deps.cancelPlanningRun(t.itemId);
+    }
+  }
+
   async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<void> {
     if (!cursors) return;
     const source = issueSourceForAuthProvider(account.provider);
@@ -211,41 +270,7 @@ export function makePoller(deps: PollerDeps): Poller {
       // refresh the unmapped-projects warning surface before reconcile.
       const resolvedIssues = resolveAccountIssues(accountId, result.issues, m);
 
-      // Dependency evidence (#85): fetch "blocked by" for admission candidates and
-      // resting/blocked tracked items, so reconcile can park/release in this round.
-      // Candidates first; per-target failure leaves the key absent (stored stands).
-      let dependencies: Record<string, SourceRef[]> | undefined;
-      if (source.fetchDependencies) {
-        const policy = admissionPolicy(m);
-        const candidates = resolvedIssues.filter((iss) => {
-          if (iss.state !== "open") return false;
-          const t = m.items[iss.id];
-          if (t) {
-            return (
-              t.state === "triage" ||
-              t.state === "plan-gate" ||
-              t.state === "queued" ||
-              t.state === "blocked"
-            );
-          }
-          return !m.settings.intakePaused && policy.shouldAdmit(iss);
-        });
-        candidates.sort((a, b) => Number(Boolean(m.items[a.id])) - Number(Boolean(m.items[b.id])));
-        dependencies = {};
-        for (const iss of candidates.slice(0, DEP_FETCH_CAP)) {
-          try {
-            dependencies[iss.id] = await source.fetchDependencies(
-              iss,
-              (force) => deps.getToken(accountId, force),
-              account.baseUrl,
-              account.cloudId,
-              account.authMethod,
-            );
-          } catch (err) {
-            console.warn(`[orchestrator] dependency fetch failed for ${iss.id}: ${String(err)}`);
-          }
-        }
-      }
+      const dependencies = await collectDependencies(accountId, account, source, resolvedIssues, m);
 
       const outcome = reconcile(
         m,
@@ -261,6 +286,7 @@ export function makePoller(deps: PollerDeps): Poller {
       for (const conflict of outcome.conflicts) {
         console.warn(`[orchestrator] conflict on ${conflict.itemId}: ${conflict.detail}`);
       }
+      cancelPlanningRunsFor(outcome);
       await deps.saveManifest(m);
 
       (cursors.platforms[source.id] ??= {})[accountId] = result.cursor;
@@ -333,15 +359,28 @@ export function makePoller(deps: PollerDeps): Poller {
     await deps.ensureRepoLinks();
     let changed = false;
     for (const accountId of items.keys()) {
+      const account = deps.getAccounts().find((a) => a.key === accountId);
+      const source = account ? issueSourceForAuthProvider(account.provider) : undefined;
+      if (!account || !source) continue;
       const { issues, pullRequests } = deriveArrays(accountId);
       const resolvedIssues = resolveAccountIssues(accountId, issues, m);
+      const dependencies = await collectDependencies(accountId, account, source, resolvedIssues, m);
       const outcome = reconcile(
         m,
         accountId,
-        { mode: "delta", issues: resolvedIssues, pullRequests },
+        { mode: "delta", issues: resolvedIssues, pullRequests, dependencies },
         admissionPolicy(m),
       );
-      if (outcome.admitted.length > 0 || outcome.transitions.length > 0) changed = true;
+      cancelPlanningRunsFor(outcome);
+      // Evidence can land without a transition (a dep on an untracked ref writes
+      // blockedBy and parks nothing) — that write must be persisted too.
+      if (
+        outcome.admitted.length > 0 ||
+        outcome.transitions.length > 0 ||
+        Object.keys(dependencies ?? {}).length > 0
+      ) {
+        changed = true;
+      }
     }
     if (changed) {
       await deps.saveManifest(m);

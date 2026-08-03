@@ -213,6 +213,11 @@ export async function critiquePlan(
       context: [
         `Issue ${displayKey(issue.key)}: ${issue.title}`,
         issue.labels.length > 0 ? `Labels: ${issue.labels.join(", ")}` : "",
+        issue.blockedBy?.length
+          ? `Unmerged prerequisites, implemented separately — the plan must assume their work lands, never absorb it: ${issue.blockedBy
+              .map((d) => displayKey(d.key))
+              .join(", ")}`
+          : "",
         issue.body ?? "(no issue body)",
       ]
         .filter(Boolean)

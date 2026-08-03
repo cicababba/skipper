@@ -157,6 +157,7 @@ export {
 } from "./planner";
 export type {
   GeneratePlanOptions,
+  PlanDependency,
   PlanIssueInput,
   DiscussPlanOptions,
   ApplyPlanFromDiscussionOptions,

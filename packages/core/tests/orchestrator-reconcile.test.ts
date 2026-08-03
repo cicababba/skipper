@@ -597,6 +597,67 @@ describe("reconcile — dependencies (#85)", () => {
     } as TrackedItem;
   }
 
+  // #307: the retroactive-admission path (repo link, intake resume) admits a whole
+  // batch at once. Evidence for a same-round prerequisite must park the dependent
+  // immediately — otherwise the planner promotes it before the next poll.
+  it("parks an issue admitted in the same round as its prerequisite", () => {
+    const m = manifest();
+    const outcome = reconcile(
+      m,
+      ACCOUNT,
+      poll({ issues: [issue(1), issue(2)], dependencies: { "github:2": [ref(1)] } }),
+      openPolicy,
+    );
+    expect(m.items["github:1"].state).toBe("triage");
+    expect(m.items["github:2"].state).toBe("blocked");
+    expect(m.items["github:2"].resumeTo).toBe("triage");
+    expect(outcome.transitions).toContainEqual({
+      itemId: "github:2",
+      from: "triage",
+      to: "blocked",
+      reason: "blocked by #1",
+    });
+  });
+
+  // #307: the planner can promote an item to planning on the admission tick, before
+  // any evidence lands. The sweep has to be able to pull it back out.
+  it("parks a planning item, resuming to planning", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "coding");
+    m.items["github:2"] = tracked(2, "planning");
+    const outcome = reconcile(
+      m,
+      ACCOUNT,
+      poll({ dependencies: { "github:2": [ref(1)] } }),
+      openPolicy,
+    );
+    expect(m.items["github:2"].state).toBe("blocked");
+    expect(m.items["github:2"].resumeTo).toBe("planning");
+    // The poller reads `from` to cancel the live planning run.
+    expect(outcome.transitions).toContainEqual({
+      itemId: "github:2",
+      from: "planning",
+      to: "blocked",
+      reason: "blocked by #1",
+    });
+  });
+
+  it("releases a planner-actored block when the prerequisite merges", () => {
+    const m = manifest();
+    m.items["github:1"] = tracked(1, "in-review", { pr: { id: "p", number: 10, url: "u" } });
+    m.items["github:2"] = {
+      ...tracked(2, "blocked", { blockedBy: [ref(1)], resumeTo: "planning" }),
+      transitions: [
+        { at: "2026-07-01T00:00:00.000Z", from: null, to: "triage", actor: "reconcile", reason: "admitted" },
+        { at: "2026-07-01T00:00:00.000Z", from: "planning", to: "blocked", actor: "planner", reason: "blocked by #1" },
+      ],
+    } as TrackedItem;
+    reconcile(m, ACCOUNT, poll({ pullRequests: [pull(10, { merged: true })] }), openPolicy);
+    expect(m.items["github:1"].state).toBe("merged");
+    expect(m.items["github:2"].state).toBe("planning");
+    expect(m.items["github:2"].transitions.at(-1)?.reason).toBe("prerequisites merged/closed");
+  });
+
   it("parks a triage item with an unmet prerequisite, recording resumeTo + blockers", () => {
     const m = manifest();
     m.items["github:1"] = tracked(1, "coding");

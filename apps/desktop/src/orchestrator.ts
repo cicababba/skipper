@@ -159,6 +159,7 @@ const poller = makePoller({
     pokeReviewer();
     pokeShepherd();
   },
+  cancelPlanningRun,
   sweepStaleness: () => void sweepStaleness(),
 });
 
