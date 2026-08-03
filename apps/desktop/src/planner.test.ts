@@ -46,6 +46,19 @@ function makeItem(state: LifecycleState, planningAt?: string): TrackedItem {
   };
 }
 
+/** Another tracked item in the same project — a prerequisite of github:1 (#307). */
+function prerequisite(n: number, state: LifecycleState): TrackedItem {
+  return {
+    ...makeItem(state),
+    id: `github:${n}`,
+    sourceRef: { project: "owner/repo", key: String(n) },
+    key: String(n),
+    number: n,
+    title: `issue ${n}`,
+    url: `https://github.com/owner/repo/issues/${n}`,
+  };
+}
+
 interface Harness {
   deps: PlannerDeps;
   transitions: { itemId: string; to: LifecycleState; actor: TransitionActor }[];
@@ -138,6 +151,48 @@ describe("planner auto-plan master switch (#62)", () => {
     await settle();
     expect(h.transitions).toHaveLength(1);
     expect(h.transitions[0]).toMatchObject({ itemId: "github:1", actor: "planner" });
+  });
+});
+
+// #307: the acceptance check — a blocked issue is never auto-planned, so its plan
+// can't absorb the prerequisite's work. The gate sits in the triage branch of scan(),
+// next to the other admission gates.
+describe("planner dependency gate on admission (#307)", () => {
+  const ref = { project: "owner/repo", key: "2" };
+
+  it("does not auto-plan a triage item with an unresolved prerequisite", async () => {
+    const h = makeHarness([
+      { ...makeItem("triage"), blockedBy: [ref] },
+      prerequisite(2, "coding"),
+    ]);
+    initPlanner(h.deps, {} as never);
+    pokePlanner();
+    await settle();
+    expect(h.transitions).toEqual([]);
+  });
+
+  it("auto-plans once the prerequisite is merged", async () => {
+    const h = makeHarness([
+      { ...makeItem("triage"), blockedBy: [ref] },
+      prerequisite(2, "merged"),
+    ]);
+    initPlanner(h.deps, {} as never);
+    pokePlanner();
+    await settle();
+    expect(h.transitions).toEqual([{ itemId: "github:1", to: "planning", actor: "planner" }]);
+  });
+
+  it("auto-plans when the prerequisite is waived or untracked", async () => {
+    for (const item of [
+      { ...makeItem("triage"), blockedBy: [ref], blockedByWaived: [ref] },
+      { ...makeItem("triage"), blockedBy: [{ project: "owner/repo", key: "99" }] },
+    ]) {
+      const h = makeHarness([item, prerequisite(2, "coding")]);
+      initPlanner(h.deps, {} as never);
+      pokePlanner();
+      await settle();
+      expect(h.transitions).toEqual([{ itemId: "github:1", to: "planning", actor: "planner" }]);
+    }
   });
 });
 
@@ -248,7 +303,7 @@ describe("planner worktree at planning (#110)", () => {
     agentSessionIds: (string | undefined)[];
     /** Whether a plan session was persisted before the first agent() call (crash-safe order). */
     flags: { persistedBeforeAgent: boolean };
-    transitions: { to: LifecycleState }[];
+    transitions: { to: LifecycleState; reason?: string; resumeTo?: LifecycleState }[];
     /** Resolves once run() reaches completePlan — all plansDir writes are done by then. */
     done: Promise<void>;
   }
@@ -258,8 +313,10 @@ describe("planner worktree at planning (#110)", () => {
     prepareWorktree: PlannerDeps["prepareWorktree"];
     /** Provider name gating session minting (#111). Defaults to "fake" → no mint. */
     providerName?: string;
+    /** Other tracked items listItems() sees — prerequisites, mostly (#307). */
+    extraItems?: TrackedItem[];
   }): RunHarness {
-    const items = [opts.item];
+    const items = [opts.item, ...(opts.extraItems ?? [])];
     const cwds: string[] = [];
     const setWorktreeCalls: RunHarness["setWorktreeCalls"] = [];
     const planSessionIds: string[] = [];
@@ -296,8 +353,14 @@ describe("planner worktree at planning (#110)", () => {
       checkoutDirtyPaths: async () => null,
       getRepoSettings: () =>
         resolveRepoOrchestratorSettings({}, { ...DEFAULT_ORCHESTRATOR_SETTINGS } as OrchestratorSettings),
-      requestTransition: async (itemId: string, to: LifecycleState) => {
-        transitions.push({ to });
+      requestTransition: async (
+        itemId: string,
+        to: LifecycleState,
+        _actor: TransitionActor,
+        reason?: string,
+        resumeTo?: LifecycleState,
+      ) => {
+        transitions.push({ to, reason, resumeTo });
         const idx = items.findIndex((i) => i.id === itemId);
         if (idx >= 0) items[idx] = { ...items[idx], state: to };
         return items[0];
@@ -589,6 +652,72 @@ describe("planner worktree at planning (#110)", () => {
     await h.done; // completes despite the rejection
     expect(graphs[0]).toBeUndefined();
     expect(h.transitions).toEqual([]);
+  });
+
+  // #307: an item promoted to planning before its dependency evidence landed must
+  // park itself instead of planning around a prerequisite it cannot see.
+  it("parks a planning item with an unmet prerequisite, without running the agent", async () => {
+    const h = makeRunHarness({
+      item: { ...makeItem("planning"), blockedBy: [{ project: "owner/repo", key: "2" }] },
+      extraItems: [prerequisite(2, "coding")],
+      prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+    });
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await waitFor(() => h.transitions.length > 0);
+    await settle();
+    expect(h.transitions).toEqual([
+      { to: "blocked", reason: "blocked by #2", resumeTo: "planning" },
+    ]);
+    expect(h.cwds).toEqual([]); // no plan generated, and the concurrency slot is freed
+    expect(h.setWorktreeCalls).toEqual([]);
+  });
+
+  it("still plans when the only prerequisite is merged", async () => {
+    const h = makeRunHarness({
+      item: { ...makeItem("planning"), blockedBy: [{ project: "owner/repo", key: "2" }] },
+      extraItems: [prerequisite(2, "merged")],
+      prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+    });
+    const prompts = capturePrompts(h.provider);
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await h.done;
+    expect(h.transitions).toEqual([]);
+    expect(prompts[0]).not.toContain("Prerequisites");
+  });
+
+  // A waived dep never parks — so the plan must at least be TOLD about it.
+  it("declares a waived prerequisite in the plan prompt", async () => {
+    const h = makeRunHarness({
+      item: {
+        ...makeItem("planning"),
+        blockedBy: [{ project: "owner/repo", key: "2" }],
+        blockedByWaived: [{ project: "owner/repo", key: "2" }],
+      },
+      extraItems: [prerequisite(2, "coding")],
+      prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+    });
+    const prompts = capturePrompts(h.provider);
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await h.done;
+    expect(h.transitions).toEqual([]); // waived → plans
+    expect(prompts[0]).toContain("--- Prerequisites ---");
+    expect(prompts[0]).toContain('- #2 — "issue 2" (coding)');
+  });
+
+  it("declares an untracked prerequisite in the plan prompt", async () => {
+    const h = makeRunHarness({
+      item: { ...makeItem("planning"), blockedBy: [{ project: "owner/repo", key: "99" }] },
+      prepareWorktree: async () => ({ path: "/wt/issue-1", branch: "feature/issue-1" }),
+    });
+    const prompts = capturePrompts(h.provider);
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await h.done;
+    expect(h.transitions).toEqual([]); // untracked → never parks
+    expect(prompts[0]).toContain("- #99");
   });
 });
 

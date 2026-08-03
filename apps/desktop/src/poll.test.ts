@@ -72,6 +72,20 @@ function pullRequest(overrides: Partial<PullRequest> & { id: string }): PullRequ
   };
 }
 
+function tracked(
+  id: string,
+  key: string,
+  state: string,
+  extra: Record<string, unknown> = {},
+): OrchestratorManifest["items"][string] {
+  return {
+    ...issue({ id, key }),
+    state,
+    transitions: [],
+    ...extra,
+  } as unknown as OrchestratorManifest["items"][string];
+}
+
 function manifest(overrides: Partial<OrchestratorManifest> = {}): OrchestratorManifest {
   return {
     version: 3,
@@ -112,6 +126,7 @@ interface Harness {
   saveManifest: ReturnType<typeof vi.fn>;
   broadcast: ReturnType<typeof vi.fn>;
   pokeDrivers: ReturnType<typeof vi.fn>;
+  cancelPlanningRun: ReturnType<typeof vi.fn>;
   sweepStaleness: ReturnType<typeof vi.fn>;
 }
 
@@ -147,6 +162,7 @@ function setup(opts: SetupOptions = {}): Harness {
   const saveManifest = vi.fn(async () => {});
   const broadcast = vi.fn();
   const pokeDrivers = vi.fn();
+  const cancelPlanningRun = vi.fn();
   const sweepStaleness = vi.fn();
   const deps: PollerDeps = {
     getAccounts: () => opts.accounts ?? [account],
@@ -158,6 +174,7 @@ function setup(opts: SetupOptions = {}): Harness {
     ensureRepoLinks: async () => ({}),
     broadcast,
     pokeDrivers,
+    cancelPlanningRun,
     sweepStaleness,
     ...(opts.now ? { now: opts.now } : {}),
   };
@@ -172,6 +189,7 @@ function setup(opts: SetupOptions = {}): Harness {
     saveManifest,
     broadcast,
     pokeDrivers,
+    cancelPlanningRun,
     sweepStaleness,
   };
 }
@@ -403,6 +421,56 @@ describe("makePoller — dependency fetching (#85)", () => {
     expect(call[4]).toBe("pat");
   });
 
+  // #307: the retroactive-admission path (repo link/clone, follow toggle, intake
+  // resume) used to reconcile with no dependency evidence at all, so a blocked
+  // issue was admitted blind and the planner promoted it on the same tick.
+  it("reconcileFromCache fetches evidence and parks a freshly admitted blocked issue", async () => {
+    const m = manifest({ repoSettings: {} }); // unfollowed → the poll admits nothing
+    const issues = [
+      issue({ id: "github:a", key: "1", number: 1 }),
+      issue({ id: "github:b", key: "2", number: 2 }),
+    ];
+    const h = setup({
+      manifest: m,
+      results: [{ mode: "full", issues, pullRequests: [], cursor: "c1" }],
+      fetchDependencies: async (iss) =>
+        iss.id === "github:b" ? [{ project: "acme/widgets", key: "1" }] : [],
+    });
+    await h.poller.pollNow();
+    expect(h.fetchDependencies).not.toHaveBeenCalled();
+    expect(m.items).toEqual({});
+
+    m.repoSettings["acme/widgets"] = { followed: true };
+    await h.poller.reconcileFromCache();
+
+    expect(h.fetchDependencies).toHaveBeenCalledTimes(2);
+    expect(m.items["github:a"]!.state).toBe("triage");
+    expect(m.items["github:b"]!.state).toBe("blocked");
+    expect(m.items["github:b"]!.resumeTo).toBe("triage");
+    expect(m.items["github:b"]!.transitions.at(-1)?.reason).toBe("blocked by #1");
+    expect(h.saveManifest).toHaveBeenCalled();
+  });
+
+  it("frees the planning slot of an item reconcile parked out of planning", async () => {
+    const m = manifest({
+      items: {
+        "github:a": tracked("github:a", "1", "coding"),
+        "github:b": tracked("github:b", "2", "planning", {
+          blockedBy: [{ project: "acme/widgets", key: "1" }],
+        }),
+      },
+    });
+    const h = setup({
+      manifest: m,
+      results: [{ mode: "delta", issues: [], pullRequests: [], cursor: "c1" }],
+    });
+    await h.poller.pollNow();
+
+    expect(m.items["github:b"]!.state).toBe("blocked");
+    expect(h.cancelPlanningRun).toHaveBeenCalledWith("github:b");
+    expect(h.cancelPlanningRun).toHaveBeenCalledTimes(1);
+  });
+
   it("tolerates a per-target failure and leaves that key absent", async () => {
     const issues = candidates(2);
     const h = setup({
@@ -447,6 +515,7 @@ describe("makePoller — sign-out pruning", () => {
       ensureRepoLinks: async () => ({}),
       broadcast: () => {},
       pokeDrivers: () => {},
+      cancelPlanningRun: () => {},
       sweepStaleness: () => {},
     });
 

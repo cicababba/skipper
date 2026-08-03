@@ -1,5 +1,5 @@
 export { generatePlan, validatePlanReply, PlanGenerationError } from "./generate";
-export type { GeneratePlanOptions, PlanIssueInput } from "./generate";
+export type { GeneratePlanOptions, PlanDependency, PlanIssueInput } from "./generate";
 export {
   PLAN_CHAT_SYSTEM_PROMPT,
   discussPlan,
@@ -13,5 +13,6 @@ export {
   buildPlannerPrompt,
   buildRepairPrompt,
   buildSalvagePrompt,
+  renderDependenciesBlock,
   renderDirtyFilesBlock,
 } from "./prompt";

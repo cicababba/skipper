@@ -7,11 +7,16 @@ import {
   type LLMProviderInterface,
   type MemoryMcp,
   type OrchestratorSettings,
+  type PlanDependency,
   type RunConfinement,
 } from "@skipper/core";
 import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
 import {
+  dependencyBlockReason,
+  dependencyIndex,
   latestPlanningTransitionAt,
+  pendingDependencies,
+  unmetDependencies,
   type AgentRuntimeId,
   type CodingEvent,
   type ConfidenceReport,
@@ -155,10 +160,15 @@ export function pokePlanner(): void {
 
 async function scan(): Promise<void> {
   if (!deps) return;
-  for (const item of deps.listItems()) {
+  const items = deps.listItems();
+  const index = dependencyIndex(items);
+  for (const item of items) {
     if (inFlight.has(item.id) || queued.has(item.id)) continue;
     if (item.state === "triage") {
       if (item.holdAutoPlan) continue; // resume rite (#15): wait for the user
+      // #307: never auto-plan an item whose prerequisites are still open — the plan
+      // would absorb the blocker's work. Reconcile parks it on the next evidence pass.
+      if (unmetDependencies(item, index).length) continue;
       // #62 master switch. Gates auto-plan only — the "planning" branch below still
       // has to run, or crash recovery and the user's manual Pianifica would strand.
       if (deps.getSettings().autoPlanPaused) continue;
@@ -222,6 +232,21 @@ async function run(itemId: string): Promise<void> {
   try {
     const item = deps.getItem(itemId);
     if (!item || item.state !== "planning") return;
+    // #307: an item can reach "planning" before the dependency evidence lands (the
+    // planner scan runs on the admission tick). Park it here instead of burning a
+    // run on a plan that would absorb the prerequisite's work.
+    const index = dependencyIndex(deps.listItems());
+    const blocking = unmetDependencies(item, index);
+    if (blocking.length) {
+      await deps.requestTransition(
+        itemId,
+        "blocked",
+        "planner",
+        dependencyBlockReason(item, blocking),
+        "planning",
+      );
+      return;
+    }
     planningAt = latestPlanningTransitionAt(item);
     const repoPath = deps.getRepoPath(item.repo);
     if (!repoPath) {
@@ -305,6 +330,12 @@ async function run(itemId: string): Promise<void> {
         });
       }
     }
+    // Past the guard above these are only waived refs and refs Skipper doesn't
+    // track — prerequisites that never park, and today plan blind (#307).
+    const prerequisites: PlanDependency[] = pendingDependencies(item, index).map((link) => ({
+      key: link.ref.key,
+      ...(link.item ? { title: link.item.title, state: link.item.state } : {}),
+    }));
     const issue = {
       key: item.key,
       title: item.title,
@@ -312,6 +343,7 @@ async function run(itemId: string): Promise<void> {
       labels: cached?.labels ?? [],
       body: cached?.body,
       ...(comments.length > 0 ? { comments } : {}),
+      ...(prerequisites.length > 0 ? { blockedBy: prerequisites } : {}),
     };
     // agent-start marks a fresh run — it also resets the replay buffer upstream.
     deps.emitEvent(itemId, { kind: "status", phase: "agent-start" });

@@ -10,10 +10,13 @@ import type {
 import {
   branchNamesKey,
   CI_FIX_MAX_ROUNDS,
+  dependencyBlockReason,
+  dependencyIndex,
   projectMappingKey,
   repoKey,
   resolveRepoOrchestratorSettings,
   sourceRefKey,
+  unmetDependencies,
 } from "@skipper/shared";
 import { admitItem, applyTransition } from "./machine";
 import type { OrchestratorManifest } from "./manifest";
@@ -153,8 +156,16 @@ export function reconcile(
   return outcome;
 }
 
-const DEP_PARK_STATES: readonly LifecycleState[] = ["triage", "plan-gate", "queued"];
-const DEP_RESOLVED_STATES: readonly LifecycleState[] = ["merged", "closed"];
+// "planning" is in the set on purpose (#307): an item admitted with a prerequisite
+// can be promoted by the planner in the same tick, and must still park.
+const DEP_PARK_STATES: readonly LifecycleState[] = ["triage", "planning", "plan-gate", "queued"];
+
+/** Blocks the dependency sweep owns — reconcile's parks and the planner's self-park (#307). */
+function isDependencyBlock(transition: { actor: string; reason?: string } | undefined): boolean {
+  if (!transition) return false;
+  if (transition.actor !== "reconcile" && transition.actor !== "planner") return false;
+  return transition.reason?.startsWith("blocked by") === true;
+}
 
 /** Merge two ref lists, deduped by sourceRefKey. */
 function mergeByKey(a: SourceRef[] | undefined, b: SourceRef[]): SourceRef[] {
@@ -169,19 +180,12 @@ function mergeByKey(a: SourceRef[] | undefined, b: SourceRef[]): SourceRef[] {
   return out;
 }
 
-/** "#42" when the ref's project matches the item's (case-insensitive), else "owner/repo#42". */
-function displayRef(ref: SourceRef, item: TrackedItem): string {
-  return ref.project.toLowerCase() === item.sourceRef.project.toLowerCase()
-    ? `#${ref.key}`
-    : `${ref.project}#${ref.key}`;
-}
-
 /**
  * Issue dependencies (#85). Applies fresh adapter evidence to blockedBy, then
  * parks items with unmet prerequisites (only from resting states) and releases
- * blocked items whose prerequisites are all merged/closed or gone. A ref only
- * blocks if it resolves to a tracked item that isn't merged/closed — Skipper
- * can't observe an untracked issue's merge, so untracked refs are ignored.
+ * blocked items whose prerequisites are all merged/closed or gone. Which refs
+ * block is decided by unmetDependencies in @skipper/shared — the single predicate
+ * shared with the planner guard and the inbox badge.
  *
  * Cycles (A⇄B): both park; the single-pass sweep terminates; a user resume +
  * waiver breaks the tie. Not detected by design.
@@ -210,27 +214,12 @@ function reconcileDependencies(
 
   // 2. Resolution index over ALL manifest items (account-agnostic — a prerequisite
   //    may be tracked under another account of the same tracker).
-  const index = new Map<string, LifecycleState>();
-  for (const item of Object.values(manifest.items)) {
-    index.set(`${item.source}:${sourceRefKey(item.sourceRef)}`, item.state);
-  }
-
-  // Mirrors blockingItemsFor in apps/web/src/lib/inbox/blocked.ts — keep in lockstep.
-  const unmet = (item: TrackedItem): SourceRef[] => {
-    const selfKey = sourceRefKey(item.sourceRef);
-    const waived = new Set((item.blockedByWaived ?? []).map(sourceRefKey));
-    return (item.blockedBy ?? []).filter((ref) => {
-      const key = sourceRefKey(ref);
-      if (key === selfKey || waived.has(key)) return false;
-      const state = index.get(`${item.source}:${key}`);
-      return state !== undefined && !DEP_RESOLVED_STATES.includes(state);
-    });
-  };
+  const index = dependencyIndex(Object.values(manifest.items));
 
   // 3. Sweep this account's items.
   for (const item of Object.values(manifest.items)) {
     if (item.accountId !== accountId) continue;
-    const blocking = unmet(item);
+    const blocking = unmetDependencies(item, index);
 
     if (blocking.length && DEP_PARK_STATES.includes(item.state)) {
       const last = item.transitions.at(-1);
@@ -239,21 +228,18 @@ function reconcileDependencies(
         // re-parking. A newly appearing dep still blocks (it isn't waived yet).
         manifest.items[item.id] = {
           ...item,
-          blockedByWaived: mergeByKey(item.blockedByWaived, blocking),
+          blockedByWaived: mergeByKey(
+            item.blockedByWaived,
+            blocking.map((link) => link.ref),
+          ),
         };
       } else if (canTransition(item.state, "blocked")) {
-        transition(
-          item,
-          "blocked",
-          `blocked by ${blocking.map((r) => displayRef(r, item)).join(", ")}`,
-          item.state,
-        );
+        transition(item, "blocked", dependencyBlockReason(item, blocking), item.state);
       }
     } else if (item.state === "blocked" && blocking.length === 0) {
-      // Release only blocks reconcile created (last transition into blocked was
-      // reconcile-actored with a "blocked by" reason).
+      // Release only dependency blocks (reconcile's park or the planner's self-park).
       const into = [...item.transitions].reverse().find((t) => t.to === "blocked");
-      if (into?.actor === "reconcile" && into.reason?.startsWith("blocked by")) {
+      if (isDependencyBlock(into)) {
         const to =
           item.resumeTo && canTransition("blocked", item.resumeTo) ? item.resumeTo : "triage";
         transition(item, to, "prerequisites merged/closed");

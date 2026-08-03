@@ -1,6 +1,6 @@
 import { displayKey } from "@skipper/shared";
 import type { IssueComment } from "../adapters/types";
-import type { PlanIssueInput } from "./generate";
+import type { PlanDependency, PlanIssueInput } from "./generate";
 
 const MAX_BODY_CHARS = 20_000;
 
@@ -64,6 +64,29 @@ export function renderDirtyFilesBlock(files: string[] | undefined): string | und
   ].join("\n");
 }
 
+/** Render the issue's still-open prerequisites as one prompt block, or undefined when
+ *  there are none. Keeps the plan from absorbing a blocker's work (#307). */
+export function renderDependenciesBlock(deps: PlanDependency[] | undefined): string | undefined {
+  if (!deps || deps.length === 0) return undefined;
+  const entry = (dep: PlanDependency): string => {
+    const title = dep.title ? ` — "${dep.title}"` : "";
+    const state = dep.state ? ` (${dep.state})` : "";
+    return `- ${displayKey(dep.key)}${title}${state}`;
+  };
+  return [
+    "--- Prerequisites ---",
+    "This issue declares prerequisites that are NOT merged yet:",
+    ...deps.map(entry),
+    "Their work is planned and implemented separately, on their own branches. Plan",
+    "**against** that work: assume it will land, state what this issue needs from it,",
+    "and record the assumption in the plan's context or risks. Do NOT implement,",
+    're-implement or "unblock" a prerequisite\'s work in this plan — not even when the',
+    "code you find in the repository does not contain it yet, which is expected. If the",
+    "issue cannot be planned without it, say so in openQuestions.",
+    "--- End prerequisites ---",
+  ].join("\n");
+}
+
 export const PLANNER_SYSTEM_PROMPT = `You are a senior software engineer preparing an implementation plan for an issue in the repository at your current working directory.
 
 Operate ONLY inside your current working directory and never modify any files anywhere, including via your shell — even if the issue mentions absolute paths elsewhere on this machine. You are only writing a plan, not code.
@@ -109,6 +132,7 @@ export function buildPlannerPrompt(
     body ? `--- Issue body ---\n${body}\n--- End issue body ---` : `(The issue has no body.)`,
     ``,
     renderCommentsBlock(issue.comments) ?? "",
+    renderDependenciesBlock(issue.blockedBy) ?? "",
     renderDirtyFilesBlock(preexistingChanges) ?? "",
     `--`,
     `Your FINAL message must be ONLY a single JSON object matching this JSON Schema. No prose, no code fences, no preamble.`,

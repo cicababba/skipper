@@ -22,6 +22,14 @@ const SALVAGE_MAX_TURNS = 4;
 /** Wall-clock cap for the salvage wrap-up run — it must not explore, only emit (#194). */
 const SALVAGE_HARD_TIMEOUT_MS = 5 * 60_000;
 
+/** A prerequisite work item this issue declares (#307). */
+export interface PlanDependency {
+  /** Display key of the prerequisite: "42" (GitHub) or "PROJ-123" (Jira). */
+  key: string;
+  title?: string;
+  state?: string;
+}
+
 export interface PlanIssueInput {
   /** Work-item display key: "42" (GitHub) or "PROJ-123" (Jira). */
   key: string;
@@ -31,6 +39,9 @@ export interface PlanIssueInput {
   body?: string;
   /** Issue comments in ascending chronological order, fetched at plan/code time (#144). */
   comments?: IssueComment[];
+  /** Prerequisites that are not merged yet and did not park the item — waived or
+   *  untracked refs (#307). The plan must assume their work lands separately. */
+  blockedBy?: PlanDependency[];
 }
 
 export interface GeneratePlanOptions {

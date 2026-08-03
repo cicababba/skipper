@@ -7,6 +7,7 @@ export * from "./auth-view";
 export * from "./inbox";
 export * from "./naming";
 export * from "./orchestrator";
+export * from "./dependencies";
 export * from "./plan";
 export * from "./plan-diff";
 export * from "./coder-report";

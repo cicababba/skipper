@@ -5,6 +5,7 @@ import {
   PLANNER_SYSTEM_PROMPT,
   buildPlannerPrompt,
   renderCommentsBlock,
+  renderDependenciesBlock,
   renderDirtyFilesBlock,
 } from "../src/planner/prompt";
 import { INSTRUCTIONS_SYSTEM_PROMPT } from "../src/instructions/generate";
@@ -67,6 +68,53 @@ describe("buildPlannerPrompt — pre-existing changes", () => {
   it("omits the block when no pre-existing changes are passed", () => {
     const prompt = buildPlannerPrompt(baseIssue(), SCHEMA);
     expect(prompt).not.toContain("Pre-existing uncommitted changes");
+  });
+});
+
+// #307: prerequisites that reach planning (waived or untracked) must be declared,
+// or the plan absorbs the blocker's work instead of planning against it.
+describe("buildPlannerPrompt — prerequisites", () => {
+  it("renders the block after the body and before the schema", () => {
+    const prompt = buildPlannerPrompt(
+      baseIssue({ blockedBy: [{ key: "ISSUE-3", title: "add a status filter", state: "planning" }] }),
+      SCHEMA,
+    );
+    const bodyEnd = prompt.indexOf("--- End issue body ---");
+    const block = prompt.indexOf("--- Prerequisites ---");
+    const schema = prompt.indexOf("Schema:");
+    expect(block).toBeGreaterThan(bodyEnd);
+    expect(schema).toBeGreaterThan(block);
+    expect(prompt).toContain('- ISSUE-3 — "add a status filter" (planning)');
+  });
+
+  it("omits the block when the issue declares no prerequisites", () => {
+    expect(buildPlannerPrompt(baseIssue(), SCHEMA)).not.toContain("Prerequisites");
+    expect(buildPlannerPrompt(baseIssue({ blockedBy: [] }), SCHEMA)).not.toContain("Prerequisites");
+  });
+});
+
+describe("renderDependenciesBlock", () => {
+  it("returns undefined for empty or undefined input", () => {
+    expect(renderDependenciesBlock(undefined)).toBeUndefined();
+    expect(renderDependenciesBlock([])).toBeUndefined();
+  });
+
+  it("renders key, title and state, prefixing a numeric key", () => {
+    const block = renderDependenciesBlock([{ key: "7", title: "parser rewrite", state: "coding" }])!;
+    expect(block).toContain("--- Prerequisites ---");
+    expect(block).toContain('- #7 — "parser rewrite" (coding)');
+    expect(block).toContain("--- End prerequisites ---");
+  });
+
+  it("renders an untracked prerequisite as the bare key", () => {
+    expect(renderDependenciesBlock([{ key: "ISSUE-9" }])!).toContain("- ISSUE-9\n");
+  });
+
+  it("forbids implementing the prerequisite's work", () => {
+    const block = renderDependenciesBlock([{ key: "1" }])!;
+    expect(block).toContain("are NOT merged yet");
+    expect(block).toMatch(/Do NOT implement,\nre-implement or "unblock" a prerequisite's work/);
+    expect(block).toContain("openQuestions");
   });
 });
 
