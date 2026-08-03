@@ -23,7 +23,7 @@ Without an argument it resolves the PR from the current branch. The script handl
 
 - squash-merge + delete branch for feature PRs; regular merge (no delete) for release PRs
 - 502-race safety: on merge failure it polls the PR state before retrying (a 502 can complete server-side; blind retry duplicates the squash commit)
-- parses `Closes/Fixes/Resolves #N` from the PR body; for each open issue: comment `Done in #PR`, then close (`gh issue close` has no `--comment` here), then set the board Status to Done (best-effort — a warning on stderr means set it manually)
+- parses `Closes/Fixes/Resolves #N` from the PR body. Since `develop` is the default branch, GitHub auto-closes them on merge, so most are already closed here: only a still-open issue gets a `Done in #PR` comment + `gh issue close` (which has no `--comment` here). The board Status is set to Done for **every** referenced issue that ends up closed, auto-closed ones included (best-effort — a warning on stderr means set it manually). All of them are listed in `issues_closed`
 - already-merged PR → skips the merge, still closes issues and syncs (safe re-run)
 - always ends on `develop`, pulled up to date, local + remote feature branch cleaned up
 

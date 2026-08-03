@@ -100,13 +100,7 @@ warns and never blocks the git flow. If the board is recreated, re-derive the pi
 (instructions in the script header).
 
 PRs reference issues with `Closes #N`. Since `develop` **is** the repo's default branch,
-GitHub auto-closes those issues the moment the PR merges — `/merge-pr` then finds them
-already closed and reports `issues_closed=none`. That is the normal outcome, not a failure.
-
-The catch: `/merge-pr` sets the board `Status` to Done only for the issues *it* closes, so
-an auto-closed issue is left at In Progress. Until the script handles that, set it by hand
-after the merge:
-
-```bash
-bash .claude/scripts/board.sh status <issue> Done
-```
+GitHub auto-closes those issues the moment the PR merges, so `/merge-pr` usually finds them
+already closed — that is the normal outcome, not a failure. It comments and closes only the
+issues still open, and syncs the board `Status` to Done for every referenced issue that ends
+up closed either way, reporting them all in `issues_closed`.

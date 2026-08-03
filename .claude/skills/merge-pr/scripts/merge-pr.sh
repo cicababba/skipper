@@ -77,14 +77,24 @@ ISSUES_CLOSED=()
 if ! $IS_RELEASE; then
   ISSUE_NUMBERS=$(grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]+#[0-9]+' <<<"$BODY" \
     | grep -oE '[0-9]+' | sort -un || true)
+  # `develop` IS this repo's default branch, so GitHub auto-closes `Closes #N`
+  # issues the moment the PR merges — on the normal path they are already CLOSED
+  # by the time we get here. Comment + close only what is still open (the
+  # auto-close already records "closed this as completed in #PR" in the
+  # timeline), but sync the board for every issue that ends up closed, or an
+  # auto-closed one silently stays at "In Progress".
   for n in $ISSUE_NUMBERS; do
-    if [[ "$(gh issue view "$n" --json state --jq '.state')" == "OPEN" ]]; then
+    ISSUE_STATE=$(gh issue view "$n" --json state --jq '.state' 2>/dev/null || echo "")
+    if [[ "$ISSUE_STATE" == "OPEN" ]]; then
       gh issue comment "$n" --body "Done in #$PR_NUMBER"
       gh issue close "$n"
-      ISSUES_CLOSED+=("$n")
-      bash ".claude/scripts/board.sh" status "$n" Done >/dev/null 2>&1 \
-        || echo "warning: board sync failed for #$n — set Done manually" >&2
+    elif [[ "$ISSUE_STATE" != "CLOSED" ]]; then
+      echo "warning: could not read the state of #$n — skipping" >&2
+      continue
     fi
+    ISSUES_CLOSED+=("$n")
+    bash ".claude/scripts/board.sh" status "$n" Done >/dev/null 2>&1 \
+      || echo "warning: board sync failed for #$n — set Done manually" >&2
   done
 fi
 
