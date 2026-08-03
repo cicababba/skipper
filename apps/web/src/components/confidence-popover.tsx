@@ -221,6 +221,11 @@ export function ReportBody({ report }: { report: ConfidenceReport }) {
                 <span className="ml-1 text-[10px] uppercase tracking-wide text-danger">
                   {p.blocking}
                 </span>
+              )}
+              {o.unverified && (
+                <span className="ml-1 text-[10px] uppercase tracking-wide text-muted/60">
+                  {p.unverified}
+                </span>
               )}{" "}
               {o.detail}
             </p>

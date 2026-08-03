@@ -138,7 +138,9 @@ export function renderReviewBlock(review: CoderChatReviewInfo): string {
         o.detail.length > MAX_OBJECTION_DETAIL_CHARS
           ? `${o.detail.slice(0, MAX_OBJECTION_DETAIL_CHARS)}…`
           : o.detail;
-      lines.push(`- ${o.blocking ? "[BLOCKING] " : ""}(${o.kind}) ${detail}`);
+      lines.push(
+        `- ${o.blocking ? "[BLOCKING] " : ""}${o.unverified ? "[UNVERIFIED] " : ""}(${o.kind}) ${detail}`,
+      );
     }
   } else {
     lines.push(`Objections: none.`);

@@ -194,6 +194,54 @@ describe("DecisionRail — Full report anomaly gating", () => {
     expect(text).toContain("perf regression");
   });
 
+  // #308: the badge tells the user which objections the critic could not check.
+  it("badges an unverified objection and leaves a demonstrated one bare", () => {
+    const { container } = renderRail({
+      stored: makeStored(
+        makeReport({
+          signals: {
+            groundedness: cleanGroundedness,
+            critic: {
+              score: 0.85,
+              verdict: "concerns",
+              objections: [
+                { kind: "risk", detail: "pnpm typecheck may not exist", blocking: false, unverified: true },
+                { kind: "other", detail: "arity mismatch in the assertion", blocking: false },
+              ],
+            },
+          },
+        }),
+      ),
+    });
+    fireEvent.click(fullReportToggle()!);
+    expect(screen.getAllByText("unverified")).toHaveLength(1);
+    const text = container.textContent ?? "";
+    expect(text).toContain("pnpm typecheck may not exist");
+    expect(text).toContain("arity mismatch in the assertion");
+  });
+
+  it("shows no unverified badge when every objection is demonstrated", () => {
+    renderRail({
+      stored: makeStored(
+        makeReport({
+          signals: {
+            groundedness: cleanGroundedness,
+            critic: {
+              score: 0.6,
+              verdict: "concerns",
+              objections: [
+                { kind: "risk", detail: "d1", blocking: false, unverified: false },
+                { kind: "other", detail: "d2", blocking: false },
+              ],
+            },
+          },
+        }),
+      ),
+    });
+    fireEvent.click(fullReportToggle()!);
+    expect(screen.queryByText("unverified")).toBeNull();
+  });
+
   it("shows the skip detail line for a convergence-skipped report", () => {
     const { container } = renderRail({
       stored: makeStored(

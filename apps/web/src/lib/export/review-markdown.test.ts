@@ -58,6 +58,30 @@ describe("reviewMarkdown", () => {
     expect(second).toBeGreaterThan(first);
   });
 
+  // #308: the export must preserve which objections the critic could not check.
+  it("suffixes unverified objections and composes with the status suffix", () => {
+    const md = reviewMarkdown(
+      review({
+        outcome: "concerns",
+        objections: [
+          obj("d1", { unverified: true }),
+          obj("d2", { status: "persisting", unverified: true }),
+          obj("d3", { blocking: true, status: "new", unverified: true }),
+          obj("d4", { unverified: false }),
+          obj("d5"),
+        ],
+      }),
+    );
+    expect(md).toContain("- risk: d1 _(unverified)_");
+    expect(md).toContain("- risk: d2 _(persisting)_ _(unverified)_");
+    expect(md).toContain("- **Blocking** risk: d3 _(new)_ _(unverified)_");
+    // unverified: false and an absent field both render bare.
+    expect(md).toContain("- risk: d4");
+    expect(md).not.toContain("- risk: d4 _(");
+    expect(md).toContain("- risk: d5");
+    expect(md).not.toContain("- risk: d5 _(");
+  });
+
   it("renders a resolved section from resolvedObjections", () => {
     const md = reviewMarkdown(review({ resolvedObjections: [obj("was fixed")] }));
     expect(md).toContain("### Resolved");

@@ -302,4 +302,175 @@ describe("runCritic continuity (#205)", () => {
       runCritic(diffInput({ objections: priorObjections, deliveredToCoder: true }), llm),
     ).rejects.toThrow(CriticError);
   });
+
+  // #308: a prior doubt must stay a doubt in the next round — otherwise the
+  // continuity prompt re-presents it as an established fact.
+  it("renders (unverified) on the prior P-lines and accepts the field on the reply", async () => {
+    const { llm, askStructured } = fakeLLM({
+      verdict: "concerns",
+      objections: [
+        { kind: "risk", detail: "still unsure", blocking: false, status: "persisting", unverified: true },
+      ],
+      resolved: [],
+    });
+    const signal = await runCritic(
+      diffInput({
+        objections: [
+          { kind: "risk", detail: "P-one detail", blocking: true },
+          { kind: "underspecified", detail: "P-two detail", blocking: false, unverified: true },
+        ],
+        deliveredToCoder: true,
+      }),
+      llm,
+    );
+    const prompt = askStructured.mock.calls[0][0] as string;
+    expect(prompt).toContain("P1. [risk] (blocking) P-one detail");
+    expect(prompt).toContain("P2. [underspecified] (unverified) P-two detail");
+    // The continuity schema inherits `unverified` via .extend — it survives the parse.
+    expect(signal.objections[0]).toMatchObject({ status: "persisting", unverified: true });
+    expect(signal.score).toBeCloseTo(0.85);
+  });
+
+  it("renders both markers on a prior that is blocking and unverified", async () => {
+    const { llm, askStructured } = fakeLLM({ verdict: "approve", objections: [], resolved: [] });
+    await runCritic(
+      diffInput({
+        objections: [{ kind: "risk", detail: "P-one detail", blocking: true, unverified: true }],
+        deliveredToCoder: false,
+      }),
+      llm,
+    );
+    expect(askStructured.mock.calls[0][0] as string).toContain(
+      "P1. [risk] (blocking) (unverified) P-one detail",
+    );
+  });
+});
+
+// #308: an objection the critic admits it could not check is an open question,
+// not a demonstrated defect. Same objection count, different score.
+describe("critic score: unverified objections (#308)", () => {
+  const obj = (over: Partial<CriticObjection> = {}): CriticObjection => ({
+    kind: "risk",
+    detail: "pnpm typecheck may not exist in the root package.json",
+    blocking: false,
+    ...over,
+  });
+
+  const scoreFor = async (verdict: string, objections: CriticObjection[]): Promise<number> => {
+    const { llm } = fakeLLM({ verdict, objections });
+    return (await critiquePlan(PLAN, ISSUE, llm)).score;
+  };
+
+  it("rebates concerns to 0.85 when every objection is unverified", async () => {
+    await expect(
+      scoreFor("concerns", [obj({ unverified: true }), obj({ unverified: true })]),
+    ).resolves.toBeCloseTo(0.85);
+  });
+
+  // The assertion the issue asks for: identical count, different provenance.
+  it("stays at 0.6 for the same objection count when one is demonstrated", async () => {
+    await expect(
+      scoreFor("concerns", [obj({ unverified: true }), obj({ unverified: false })]),
+    ).resolves.toBeCloseTo(0.6);
+  });
+
+  it("treats an absent unverified field as demonstrated (already-persisted reports)", async () => {
+    await expect(scoreFor("concerns", [obj(), obj()])).resolves.toBeCloseTo(0.6);
+    await expect(scoreFor("concerns", [obj({ unverified: true }), obj()])).resolves.toBeCloseTo(0.6);
+  });
+
+  it("keeps the full blocking penalty on an unverified blocking objection", async () => {
+    await expect(
+      scoreFor("concerns", [obj({ blocking: true, unverified: true })]),
+    ).resolves.toBeCloseTo(0.5);
+    await expect(
+      scoreFor("concerns", [obj({ blocking: true, unverified: true }), obj({ unverified: true })]),
+    ).resolves.toBeCloseTo(0.5);
+  });
+
+  it("leaves approve and reject untouched however the objections are flagged", async () => {
+    await expect(scoreFor("approve", [])).resolves.toBe(1);
+    await expect(scoreFor("approve", [obj({ unverified: true })])).resolves.toBeCloseTo(1);
+    await expect(scoreFor("reject", [obj({ unverified: true })])).resolves.toBeCloseTo(0.2);
+  });
+
+  it("does not rebate concerns with zero objections", async () => {
+    await expect(scoreFor("concerns", [])).resolves.toBeCloseTo(0.6);
+  });
+
+  it("carries the flag through to the signal", async () => {
+    const { llm } = fakeLLM({
+      verdict: "concerns",
+      objections: [obj({ unverified: true }), obj({ unverified: false })],
+    });
+    const signal = await critiquePlan(PLAN, ISSUE, llm);
+    expect(signal.objections.map((o) => o.unverified)).toEqual([true, false]);
+  });
+
+  it("asks the critic to declare the provenance of every objection", () => {
+    const prompt = buildCriticPrompt({
+      artifactKind: "plan",
+      artifactLabel: "plan for issue #1",
+      artifact: "{}",
+      context: "ctx",
+    });
+    expect(prompt).toContain("Declare the provenance of every objection");
+    expect(prompt).toContain('Set "unverified": true when it rests on a repo fact you did not');
+    expect(prompt).toContain("An unverified objection is an open question, so it is never blocking");
+  });
+});
+
+// #308: with a runtime to host the call and a repo to read, the plan critic
+// verifies its own repo-fact doubts instead of raising them.
+describe("repo-inspecting plan critic (#308)", () => {
+  const okReply = { verdict: "approve", objections: [] };
+  const fakeRuntime = () => {
+    const structured = vi.fn(async (): Promise<unknown> => okReply);
+    return { structured, runtime: { id: "claude-cli", structured } as unknown as AgentRuntime };
+  };
+  type StructuredOpts = { tools: string; cwd?: string; sessionId?: string; maxTurns?: number };
+
+  it("passes the read-only tool set, the repo cwd and a bounded turn budget", async () => {
+    const { llm, askStructured } = fakeLLM(okReply);
+    const { structured, runtime } = fakeRuntime();
+    await critiquePlan(PLAN, ISSUE, llm, { runtime, repoPath: "/wt/issue-42" });
+    expect(askStructured).not.toHaveBeenCalled();
+    const [prompt, , opts] = structured.mock.calls[0] as unknown as [
+      string,
+      Record<string, unknown>,
+      StructuredOpts,
+    ];
+    expect(opts).toMatchObject({
+      tools: "Read,Grep,Glob",
+      cwd: "/wt/issue-42",
+      maxTurns: 8,
+    });
+    // Ephemeral by design: the plan critic never resumes the planner's session.
+    expect(opts.sessionId).toBeUndefined();
+    expect(prompt).toContain("You can read, search and list files across the working tree.");
+    expect(prompt).toContain("Spend the tool budget only on facts that would change an objection");
+  });
+
+  it("stays tool-less when the runtime is there but no repoPath is", async () => {
+    const { llm } = fakeLLM(okReply);
+    const { structured, runtime } = fakeRuntime();
+    await critiquePlan(PLAN, ISSUE, llm, { runtime });
+    const [prompt, , opts] = structured.mock.calls[0] as unknown as [
+      string,
+      Record<string, unknown>,
+      StructuredOpts,
+    ];
+    expect(opts.tools).toBe("");
+    expect(opts.cwd).toBeUndefined();
+    expect(prompt).not.toContain("You can read, search and list files across the working tree.");
+  });
+
+  it("falls back to the completions provider when there is a repoPath but no runtime", async () => {
+    const { llm, askStructured } = fakeLLM(okReply);
+    await critiquePlan(PLAN, ISSUE, llm, { repoPath: "/wt/issue-42" });
+    expect(askStructured).toHaveBeenCalledTimes(1);
+    expect(askStructured.mock.calls[0][0] as string).not.toContain(
+      "You can read, search and list files across the working tree.",
+    );
+  });
 });

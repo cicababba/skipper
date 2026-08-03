@@ -11,6 +11,7 @@ import { CoderReportCard } from "./report-card";
 import { useItemId } from "./use-item-id";
 
 function ObjectionRow({ o }: { o: CriticObjection }) {
+  const { t } = useT();
   return (
     <li className="flex items-start gap-1.5 text-muted">
       <AlertTriangle
@@ -19,6 +20,11 @@ function ObjectionRow({ o }: { o: CriticObjection }) {
       />
       <span>
         <span className="uppercase text-[10px] text-muted/60 mr-1">{o.kind}</span>
+        {o.unverified && (
+          <span className="uppercase text-[10px] tracking-wide text-muted/60 mr-1">
+            {t.inbox.popover.unverified}
+          </span>
+        )}
         {o.detail}
       </span>
     </li>

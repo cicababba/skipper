@@ -107,9 +107,12 @@ export function buildFixPrompt(issue: PlanIssueInput, objections: CriticObjectio
     ``,
     `--- Reviewer objections ---`,
     ...objections.map(
-      (o) => `- ${o.blocking ? "[BLOCKING] " : ""}(${o.kind}) ${o.detail}`,
+      (o) =>
+        `- ${o.blocking ? "[BLOCKING] " : ""}${o.unverified ? "[UNVERIFIED] " : ""}(${o.kind}) ${o.detail}`,
     ),
     `--- End objections ---`,
+    ``,
+    `An [UNVERIFIED] objection is the reviewer's open question, not an established defect: confirm it against the tree before changing any code, and if it turns out to be wrong answer it in the report's "open" array instead.`,
     ``,
     `Inspect the working tree (git status, git diff) to see the current implementation, then fix. The same rules apply: no git commit/push/branch operations.`,
     ``,
