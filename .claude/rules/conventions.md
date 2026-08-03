@@ -99,6 +99,14 @@ Board sync lives in `.claude/scripts/board.sh` and is **best-effort**: a board f
 warns and never blocks the git flow. If the board is recreated, re-derive the pinned IDs
 (instructions in the script header).
 
-PRs reference issues with `Closes #N` for traceability, but since feature PRs merge
-into `develop` (not the default branch), GitHub does **not** auto-close them —
-`/merge-pr` closes the referenced issues explicitly.
+PRs reference issues with `Closes #N`. Since `develop` **is** the repo's default branch,
+GitHub auto-closes those issues the moment the PR merges — `/merge-pr` then finds them
+already closed and reports `issues_closed=none`. That is the normal outcome, not a failure.
+
+The catch: `/merge-pr` sets the board `Status` to Done only for the issues *it* closes, so
+an auto-closed issue is left at In Progress. Until the script handles that, set it by hand
+after the merge:
+
+```bash
+bash .claude/scripts/board.sh status <issue> Done
+```
