@@ -4,7 +4,7 @@
 import { readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve, normalize, sep } from "node:path";
 import {
-  slugKey,
+  issueSlug,
   type RepoRef,
   type WorktreeDiffTotals,
   type WorktreeFileChange,
@@ -19,9 +19,9 @@ function sanitize(component: string): string {
   return component.replace(/[^A-Za-z0-9._-]/g, "_");
 }
 
-/** <root>/<owner>-<name>/issue-<slug(key)> — every component Windows-safe. */
+/** <root>/<owner>-<name>/<issueSlug(key)> — every component Windows-safe. */
 export function worktreeDirFor(root: string, repo: RepoRef, key: string): string {
-  return join(root, `${sanitize(repo.owner)}-${sanitize(repo.name)}`, `issue-${slugKey(key)}`);
+  return join(root, `${sanitize(repo.owner)}-${sanitize(repo.name)}`, issueSlug(key));
 }
 
 /** Location + on-disk liveness of an item's worktree record (control center, #40). */

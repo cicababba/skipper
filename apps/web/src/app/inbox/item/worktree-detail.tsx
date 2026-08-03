@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, FolderX, GitBranch, Inbox, Loader2 } from "lucide-react";
-import { slugKey, type WorktreeFileChange, type WorktreeStatusResult } from "@skipper/shared";
+import { issueSlug, type WorktreeFileChange, type WorktreeStatusResult } from "@skipper/shared";
 import { useOrchestrator } from "@/lib/orchestrator-context";
 import { useT } from "@/lib/app-i18n";
 import { changeForRelPath, worktreeRelPath } from "@/lib/inbox/worktree";
@@ -151,7 +151,7 @@ export function WorktreeDetailView() {
     );
   }
 
-  const terminalLabel = `issue-${slugKey(item.key)}`;
+  const terminalLabel = issueSlug(item.key);
 
   return (
     <div className="h-full flex flex-col p-6 gap-4">

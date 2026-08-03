@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Check, Copy, ExternalLink, GitBranch, Loader2, SquareTerminal } from "lucide-react";
 import {
-  slugKey,
+  issueSlug,
   type StoredPlan,
   type TrackedItem,
   type WorktreeDiffTotals,
@@ -224,7 +224,7 @@ export function NowRail({
         )}
         {wtStatus?.present && (
           <button
-            onClick={() => void openTerminal(wtStatus.path, `issue-${slugKey(item.key)}`)}
+            onClick={() => void openTerminal(wtStatus.path, issueSlug(item.key))}
             className="flex items-center gap-1.5 text-muted hover:text-foreground transition-colors"
           >
             <SquareTerminal size={12} className="shrink-0" />

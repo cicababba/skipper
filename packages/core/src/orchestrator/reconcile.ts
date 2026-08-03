@@ -8,8 +8,7 @@ import type {
   TrackedItem,
 } from "@skipper/shared";
 import {
-  BRANCH_ISSUE_RE,
-  branchSlugMatchesKey,
+  branchNamesKey,
   CI_FIX_MAX_ROUNDS,
   projectMappingKey,
   repoKey,
@@ -293,23 +292,21 @@ function reconcilePulls(
     // Fallback link heuristic for externally opened PRs:
     // open PR whose head branch names a tracked issue in the same repo.
     if (!item && pr.state === "open" && pr.headRef) {
-      const match = BRANCH_ISSUE_RE.exec(pr.headRef);
-      if (match) {
-        const candidate = items.find(
-          (i) =>
-            !i.pr &&
-            branchSlugMatchesKey(match[1], i.key) &&
-            i.repo.owner === pr.repo.owner &&
-            i.repo.name === pr.repo.name,
-        );
-        if (candidate) {
-          // Re-read: the issues pass may have replaced this item this tick.
-          item = {
-            ...manifest.items[candidate.id],
-            pr: { id: pr.id, number: pr.number, url: pr.url },
-          };
-          manifest.items[item.id] = item;
-        }
+      const headRef = pr.headRef;
+      const candidate = items.find(
+        (i) =>
+          !i.pr &&
+          branchNamesKey(headRef, i.key) &&
+          i.repo.owner === pr.repo.owner &&
+          i.repo.name === pr.repo.name,
+      );
+      if (candidate) {
+        // Re-read: the issues pass may have replaced this item this tick.
+        item = {
+          ...manifest.items[candidate.id],
+          pr: { id: pr.id, number: pr.number, url: pr.url },
+        };
+        manifest.items[item.id] = item;
       }
     }
 
