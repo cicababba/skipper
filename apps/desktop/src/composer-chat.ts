@@ -52,6 +52,7 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
 } from "./composer-attachment-store";
 import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
+import { chatErrorKind } from "./chat-error";
 import { buildLlm, injectedBundle, modelForRole, providerCacheKey, type LlmBundle } from "./llm-settings";
 
 // Chat composer driver (#136): a repo-grounded chat that distills into a
@@ -671,7 +672,12 @@ export async function sendComposerChatMessage(
     return { ok: true, reply: reply.reply };
   } catch (err) {
     if (err instanceof AgentAbortError) return { ok: false, cancelled: true };
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    const kind = chatErrorKind(err);
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+      ...(kind ? { errorKind: kind } : {}),
+    };
   } finally {
     inFlight.delete(key);
   }

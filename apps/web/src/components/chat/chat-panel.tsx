@@ -14,6 +14,7 @@ import { X } from "lucide-react";
 import {
   isPlanChatText,
   type AttachComposerFileResult,
+  type ChatErrorKind,
   type PlanChatAttachment,
   type PlanChatMessage,
 } from "@skipper/shared";
@@ -33,6 +34,8 @@ export interface ChatSendResult {
   ok: boolean;
   reply?: string;
   error?: string;
+  /** Structured failure cause (#301) — localized here, with `error` as detail. */
+  errorKind?: ChatErrorKind;
   cancelled?: boolean;
 }
 
@@ -296,7 +299,13 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
         setNotice(chat.cancelled);
       } else {
         setFailedAt(at);
-        setError(res.error ? `${chat.failed}: ${res.error}` : chat.failed);
+        const reason =
+          res.errorKind === "turn-limit"
+            ? chat.turnLimit
+            : res.errorKind === "timeout"
+              ? chat.timedOut
+              : chat.failed;
+        setError(res.error ? `${reason}: ${res.error}` : reason);
       }
     } finally {
       setBusy(false);

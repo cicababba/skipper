@@ -143,18 +143,27 @@ const DEFAULT_AGENT_HARD_TIMEOUT_MS = 600_000;
  *  so the non-streaming branch never arms this). */
 const DEFAULT_AGENT_INACTIVITY_MS = 10 * 60_000;
 
+export type SalvageableDeathSubtype = "error_max_turns" | "error_hard_timeout" | "error_inactivity";
+
 /**
- * True for the deaths whose on-disk session can be resumed for a wrap-up salvage
- * run (#194): a max-turns death (CLI-native) and our two synthetic guard kills.
- * An AgentAbortError is never a ClaudeCliError, so a cancelled run is never salvaged.
+ * The subtype of a death whose on-disk session can be resumed for a wrap-up
+ * salvage run (#194): a max-turns death (CLI-native) and our two synthetic guard
+ * kills. Matched structurally, not by class, so any runtime that mints the same
+ * subtype qualifies (gemini-cli does). An AgentAbortError carries no subtype, so
+ * a cancelled run is never salvaged.
  */
+export function salvageableDeathSubtype(err: unknown): SalvageableDeathSubtype | undefined {
+  if (!(err instanceof Error)) return undefined;
+  const subtype = (err as { subtype?: unknown }).subtype;
+  return subtype === "error_max_turns" ||
+    subtype === "error_hard_timeout" ||
+    subtype === "error_inactivity"
+    ? subtype
+    : undefined;
+}
+
 export function isSalvageableDeath(err: unknown): boolean {
-  return (
-    err instanceof ClaudeCliError &&
-    (err.subtype === "error_max_turns" ||
-      err.subtype === "error_hard_timeout" ||
-      err.subtype === "error_inactivity")
-  );
+  return salvageableDeathSubtype(err) !== undefined;
 }
 
 // The two synthetic subtypes below are minted only by our own guard timers; the

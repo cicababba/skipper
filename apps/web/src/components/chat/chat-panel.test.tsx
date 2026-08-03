@@ -95,6 +95,39 @@ describe("ChatPanel — failure and retry (#260)", () => {
     expect(send).toHaveBeenNthCalledWith(2, "hello", undefined);
   });
 
+  it("names the cause when the turn died on its budget (#301)", async () => {
+    const send = vi
+      .fn<ChatAdapter["send"]>()
+      .mockResolvedValueOnce({
+        ok: false,
+        error: "Claude CLI error: agent hit the max-turns limit after 61 turns",
+        errorKind: "turn-limit",
+      });
+    renderPanel({ send });
+
+    type("how does the orchestrator work?");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(
+      await screen.findByText(/The agent hit its turn limit before it could finish answering/),
+    ).toBeTruthy();
+    expect(screen.getByText(/max-turns limit after 61 turns/)).toBeTruthy();
+  });
+
+  it("names a timeout death as such", async () => {
+    const send = vi
+      .fn<ChatAdapter["send"]>()
+      .mockResolvedValueOnce({ ok: false, error: "killed", errorKind: "timeout" });
+    renderPanel({ send });
+
+    type("hello");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(
+      await screen.findByText(/The agent ran out of time before it could finish answering/),
+    ).toBeTruthy();
+  });
+
   it("hands the text back to the composer on Dismiss", async () => {
     renderPanel({ send: vi.fn().mockResolvedValue({ ok: false }) });
     type("hello");

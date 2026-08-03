@@ -67,6 +67,10 @@ export interface PlanChatTextMessage {
   attachments?: PlanChatAttachment[];
 }
 
+/** Why a chat turn failed, when the cause is structured enough to explain (#301).
+ *  The renderer localizes it instead of showing only the raw runtime error. */
+export type ChatErrorKind = "turn-limit" | "timeout";
+
 /** A persisted marker recording that a discussion was applied to the plan (#201). */
 export interface PlanChatAppliedMarker {
   kind: "applied";

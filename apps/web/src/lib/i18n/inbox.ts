@@ -290,6 +290,10 @@ const en = {
       activity: "Agent activity",
       cancelled: "The chat turn was cancelled.",
       failed: "The chat turn failed",
+      turnLimit:
+        "The agent hit its turn limit before it could finish answering — try a narrower question",
+      timedOut:
+        "The agent ran out of time before it could finish answering — try a narrower question",
       applyFailed: "Could not update the plan",
       freshSession: "The planning session is gone — answering from the plan and issue.",
       open: "Discuss the plan",
@@ -882,6 +886,10 @@ const it: typeof en = {
       activity: "Attività dell'agente",
       cancelled: "Il turno di chat è stato annullato.",
       failed: "Il turno di chat è fallito",
+      turnLimit:
+        "L'agente ha esaurito i turni disponibili prima di completare la risposta — prova con una domanda più circoscritta",
+      timedOut:
+        "L'agente ha esaurito il tempo disponibile prima di completare la risposta — prova con una domanda più circoscritta",
       applyFailed: "Impossibile aggiornare il piano",
       freshSession: "La sessione di pianificazione non è più disponibile — rispondo dal piano e dalla issue.",
       open: "Discuti il piano",
@@ -1472,6 +1480,10 @@ const fr: typeof en = {
       activity: "Activité de l'agent",
       cancelled: "Le tour de discussion a été annulé.",
       failed: "Le tour de discussion a échoué",
+      turnLimit:
+        "L'agent a atteint sa limite de tours avant de pouvoir terminer sa réponse — posez une question plus ciblée",
+      timedOut:
+        "L'agent a manqué de temps avant de pouvoir terminer sa réponse — posez une question plus ciblée",
       applyFailed: "Impossible de mettre à jour le plan",
       freshSession: "La session de planification a disparu — réponse à partir du plan et de l'issue.",
       open: "Discuter du plan",
@@ -2063,6 +2075,10 @@ const es: typeof en = {
       activity: "Actividad del agente",
       cancelled: "El turno de chat se canceló.",
       failed: "El turno de chat falló",
+      turnLimit:
+        "El agente alcanzó su límite de turnos antes de poder terminar la respuesta — prueba con una pregunta más acotada",
+      timedOut:
+        "El agente se quedó sin tiempo antes de poder terminar la respuesta — prueba con una pregunta más acotada",
       applyFailed: "No se pudo actualizar el plan",
       freshSession: "La sesión de planificación ya no está disponible — respondiendo desde el plan y la issue.",
       open: "Discutir el plan",
