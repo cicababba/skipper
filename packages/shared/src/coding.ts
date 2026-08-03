@@ -48,6 +48,11 @@ export const CHAT_TURN_DETAILS = {
   composerDraft: "composer draft",
 } as const;
 
+/** Detail of the `resuming` status a chat salvage round emits (#301). It is not
+ *  a turn opener: the segmenter keeps it (and the salvage activity behind it)
+ *  inside the turn whose budget ran out. */
+export const CHAT_SALVAGE_DETAIL = "budget hit — answering from what was read";
+
 /** What rides the per-item IPC channel and the replay buffer. */
 export interface CodingEventEnvelope {
   itemId: string;

@@ -1,4 +1,4 @@
-import type { CodingEvent, CodingEventEnvelope } from "@skipper/shared";
+import { CHAT_SALVAGE_DETAIL, type CodingEvent, type CodingEventEnvelope } from "@skipper/shared";
 
 // Per-turn agent activity for the chat panel (#260). The desktop event buffer is
 // shared with run events and resets (seq 0) whenever a run restarts, so the
@@ -63,7 +63,13 @@ export function segmentTurns(
     }
     if (!current) continue;
 
-    if (event.kind === "status" && (RUN_PHASES.has(event.phase) || event.phase === "resuming")) {
+    // The salvage wrap-up (#301) resumes inside the turn whose budget ran out —
+    // it is the one `resuming` status that does not end the turn it lands in.
+    if (
+      event.kind === "status" &&
+      (RUN_PHASES.has(event.phase) ||
+        (event.phase === "resuming" && event.detail !== CHAT_SALVAGE_DETAIL))
+    ) {
       current.open = false;
       current = null;
       continue;

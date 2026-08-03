@@ -14,6 +14,7 @@ import type {
 } from "@skipper/shared";
 import { CHAT_TURN_DETAILS, DEFAULT_LLM_SETTINGS, isPlanChatText } from "@skipper/shared";
 import type { GraphifyContext, LLMProviderInterface, LLMResponse } from "@skipper/core";
+import { ClaudeCliError } from "@skipper/core";
 import { existsSync } from "node:fs";
 import {
   attachComposerFile,
@@ -243,6 +244,60 @@ describe("sendComposerChatMessage", () => {
     expect(retryOpts.resumeSessionId).toBeUndefined();
     // The fresh retry re-seeds the transcript.
     expect(provider.agent.mock.calls[2][0] as string).toContain("--- Conversation so far ---");
+  });
+
+  it("keeps the turn when core salvages a max-turns death (#301)", async () => {
+    const provider = fakeProvider(async (_prompt, opts) => {
+      if (opts?.resumeSessionId) return { text: "a partial answer" };
+      throw new ClaudeCliError("agent hit the max-turns limit after 61 turns", "error_max_turns", 61);
+    });
+    const h = makeHarness();
+    initComposerChat(h.deps, provider);
+    const chatId = start();
+
+    const res = await sendComposerChatMessage(REPO, chatId, "how does the orchestrator work?");
+    expect(res).toEqual({ ok: true, reply: "a partial answer" });
+    expect(provider.agent).toHaveBeenCalledTimes(2);
+    // The wrap-up resumes the id the driver minted and recorded before the run.
+    const minted = (provider.agent.mock.calls[0][1] as Record<string, unknown>).sessionId;
+    expect((provider.agent.mock.calls[1][1] as Record<string, unknown>).resumeSessionId).toBe(minted);
+    expect(getComposerChat(REPO, chatId)?.messages.filter(isPlanChatText).map((m) => m.text)).toEqual([
+      "how does the orchestrator work?",
+      "a partial answer",
+    ]);
+  });
+
+  it("reports a turn-limit kind and persists nothing when the salvage dies too", async () => {
+    const provider = fakeProvider(async () => {
+      throw new ClaudeCliError("agent hit the max-turns limit after 61 turns", "error_max_turns", 61);
+    });
+    const h = makeHarness();
+    initComposerChat(h.deps, provider);
+    const chatId = start();
+
+    const res = await sendComposerChatMessage(REPO, chatId, "how does the orchestrator work?");
+    expect(res).toEqual({
+      ok: false,
+      error: expect.stringContaining("max-turns limit"),
+      errorKind: "turn-limit",
+    });
+    expect(getComposerChat(REPO, chatId)?.messages).toEqual([]);
+  });
+
+  it("reports a timeout kind for a hard-timeout death", async () => {
+    const provider = fakeProvider(async () => {
+      throw new ClaudeCliError("agent run hit the time budget (8 min) — killed", "error_hard_timeout");
+    });
+    const h = makeHarness();
+    initComposerChat(h.deps, provider);
+    const chatId = start();
+
+    const res = await sendComposerChatMessage(REPO, chatId, "how does the orchestrator work?");
+    expect(res).toEqual({
+      ok: false,
+      error: expect.stringContaining("time budget"),
+      errorKind: "timeout",
+    });
   });
 
   it("busy-guards a concurrent turn on the same chat", async () => {

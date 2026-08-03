@@ -4,7 +4,7 @@
 
 import type { AgentRuntimeId } from "./types";
 import type { RepoRef } from "./inbox";
-import type { PlanChatMessage } from "./plan";
+import type { ChatErrorKind, PlanChatMessage } from "./plan";
 
 /**
  * One issue of a composer draft. acceptanceCriteria stays its own field because
@@ -52,7 +52,7 @@ export type StartComposerChatResult =
 
 export type SendComposerChatResult =
   | { ok: true; reply: string }
-  | { ok: false; error?: string; cancelled?: boolean };
+  | { ok: false; error?: string; errorKind?: ChatErrorKind; cancelled?: boolean };
 
 /** Result of attaching a file to a composer chat (#281). `supported` is false
  *  when the repo's effective composer runtime cannot read that kind of file —

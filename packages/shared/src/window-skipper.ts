@@ -50,6 +50,7 @@ import type {
 } from "./composer";
 import type {
   AgentChatKind,
+  ChatErrorKind,
   IssuePlan,
   PlanChatAttachment,
   PlanChatMessage,
@@ -382,7 +383,7 @@ export interface WindowSkipper {
       ctx?: { selectedFile?: string },
     ) => Promise<
       | { ok: true; reply: string; mode: "resumed" | "fresh" }
-      | { ok: false; error?: string; cancelled?: boolean }
+      | { ok: false; error?: string; errorKind?: ChatErrorKind; cancelled?: boolean }
     >;
     getHistory: (kind: AgentChatKind, itemId: string) => Promise<PlanChatMessage[]>;
     /** Coder-only (#188): distill the discussion into re-entry instructions for a preview. */

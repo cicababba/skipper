@@ -1,7 +1,7 @@
 export type { LLMProviderInterface, LLMResponse, AgentOptions } from "./provider";
 export { createProvider, AgentAbortError } from "./provider";
-export { ClaudeCLIProvider, ClaudeCliError, isSalvageableDeath } from "./claude-cli";
-export type { ClaudeStructuredOptions } from "./claude-cli";
+export { ClaudeCLIProvider, ClaudeCliError, isSalvageableDeath, salvageableDeathSubtype } from "./claude-cli";
+export type { ClaudeStructuredOptions, SalvageableDeathSubtype } from "./claude-cli";
 export { OpenAIProvider } from "./openai";
 export { PROMPTS } from "./prompts";
 export { MEMORY_TOOLS, buildMemoryMcpArgs, memoryServerConfig } from "./memory-mcp";

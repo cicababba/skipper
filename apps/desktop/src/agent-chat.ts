@@ -13,11 +13,13 @@ import {
   type RunConfinement,
 } from "@skipper/core";
 import { checkoutEscapeReason, newDirtyPaths } from "./worktrees";
+import { chatErrorKind } from "./chat-error";
 import {
   CHAT_TURN_DETAILS,
   CODER_CHAT_APPLY_STATES,
   sessionRuntimeOf,
   type AgentChatKind,
+  type ChatErrorKind,
   type AgentReview,
   type AgentRuntimeId,
   type CodingEvent,
@@ -71,7 +73,7 @@ export interface AgentChatDeps {
 
 export type SendAgentChatResult =
   | { ok: true; reply: string; mode: "resumed" | "fresh" }
-  | { ok: false; error?: string; cancelled?: boolean };
+  | { ok: false; error?: string; errorKind?: ChatErrorKind; cancelled?: boolean };
 
 export type PrepareCoderChatApplyResult =
   | { ok: true; instructions: PrReviewComment[] }
@@ -389,7 +391,12 @@ export async function sendAgentChatMessage(
     return { ok: true, reply: reply.reply, mode };
   } catch (err) {
     if (err instanceof AgentAbortError) return { ok: false, cancelled: true };
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    const kind = chatErrorKind(err);
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+      ...(kind ? { errorKind: kind } : {}),
+    };
   } finally {
     inFlight.delete(key);
   }

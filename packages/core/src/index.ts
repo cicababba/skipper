@@ -1,5 +1,13 @@
 export type { LLMProviderInterface, LLMResponse, AgentOptions } from "./llm";
-export { createProvider, ClaudeCLIProvider, ClaudeCliError, AgentAbortError, isSalvageableDeath } from "./llm";
+export {
+  createProvider,
+  ClaudeCLIProvider,
+  ClaudeCliError,
+  AgentAbortError,
+  isSalvageableDeath,
+  salvageableDeathSubtype,
+} from "./llm";
+export type { SalvageableDeathSubtype } from "./llm";
 export { PROMPTS } from "./llm";
 export { MEMORY_TOOLS, buildMemoryMcpArgs } from "./llm";
 export type { MemoryMcp } from "./llm";

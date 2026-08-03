@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { CHAT_TURN_DETAILS, type CodingEvent, type CodingEventEnvelope } from "@skipper/shared";
+import {
+  CHAT_SALVAGE_DETAIL,
+  CHAT_TURN_DETAILS,
+  type CodingEvent,
+  type CodingEventEnvelope,
+} from "@skipper/shared";
 import {
   EMPTY_CHAT_STREAM_STATE,
   allTurns,
@@ -80,6 +85,21 @@ describe("segmentTurns", () => {
     expect(turns).toHaveLength(1);
     expect(turns[0].open).toBe(false);
     expect(turns[0].envelopes.map((e) => e.seq)).toEqual([2]);
+  });
+
+  it("keeps the turn open across the chat salvage notice and its wrap-up (#301)", () => {
+    const turns = segmentTurns(
+      [
+        opener(1),
+        env(2, { kind: "text", text: "in turn" }),
+        env(3, { kind: "status", phase: "resuming", detail: CHAT_SALVAGE_DETAIL }),
+        env(4, { kind: "text", text: "salvaged answer" }),
+      ],
+      DETAILS,
+    );
+    expect(turns).toHaveLength(1);
+    expect(turns[0].open).toBe(true);
+    expect(turns[0].envelopes.map((e) => e.seq)).toEqual([2, 3, 4]);
   });
 
   it("closes the previous turn when a new opener arrives", () => {
