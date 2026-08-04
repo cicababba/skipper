@@ -92,6 +92,16 @@ function report(composite: number, divergent?: boolean): ConfidenceReport {
   };
 }
 
+function vetoed(composite: number): ConfidenceReport {
+  return {
+    ...report(composite),
+    veto: {
+      signal: "groundedness",
+      detail: "2 cited files and 1 symbol are absent from the repo",
+    },
+  };
+}
+
 interface Harness {
   manifest: OrchestratorManifest;
   deps: ManifestWriterDeps;
@@ -230,6 +240,28 @@ describe("completePlan gate matrix", () => {
     expect(h.manifest.items["1"].transitions.at(-1)?.reason).toBe(
       "confidence 0.70 — plans diverge, issue may be ambiguous",
     );
+  });
+
+  // #309: the veto is checked before resolveGate precisely so that autoCoding
+  // "on" — which otherwise floors every scored plan at queued — cannot override it.
+  it("veto → needs-input with resumeTo planning, even under autoCoding on", async () => {
+    const item = planningItem("1");
+    const h = makeHarness({ autoCoding: "on", items: [item] });
+    await h.writers.completePlan("1", "r", vetoed(0.95), latestPlanningTransitionAt(item));
+    const next = h.manifest.items["1"];
+    expect(next.state).toBe("needs-input");
+    expect(next.resumeTo).toBe("planning");
+    expect(next.transitions.at(-1)?.reason).toBe(
+      "confidence 0.95 — groundedness veto: 2 cited files and 1 symbol are absent from the repo",
+    );
+    expect(next.plan).toEqual({ ref: "r", confidence: 0.95 });
+  });
+
+  it("veto → needs-input under autoCoding auto too", async () => {
+    const item = planningItem("1");
+    const h = makeHarness({ autoCoding: "auto", items: [item] });
+    await h.writers.completePlan("1", "r", vetoed(0.95), latestPlanningTransitionAt(item));
+    expect(h.manifest.items["1"].state).toBe("needs-input");
   });
 
   it("strips a stale rescoring flag from the plan", async () => {

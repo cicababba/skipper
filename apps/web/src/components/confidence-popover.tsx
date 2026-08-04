@@ -164,14 +164,25 @@ export function ReportBody({ report }: { report: ConfidenceReport }) {
   const p = t.inbox.popover;
   const { groundedness, convergence, critic, clarity } = report.signals;
   const flag = (v: boolean) => (v ? p.yes : p.no);
+  const unresolved = (clarity?.ambiguities ?? []).filter((a) => !a.resolvableFromRepo);
+  const repoKnowledge = (clarity?.openQuestions ?? []).filter(
+    (q) => q.kind === "repo-knowledge",
+  ).length;
   return (
     <>
+      {report.veto && (
+        <p className="rounded border border-danger/25 bg-danger-bg px-2 py-1 text-danger">
+          <span className="text-[10px] uppercase tracking-wide">{p.veto}</span> {report.veto.detail}
+        </p>
+      )}
       {groundedness && (
         <SignalSection title={p.groundedness} score={groundedness.score}>
           <p className="text-muted">
             {p.files}: {groundedness.filesFound}/{groundedness.filesChecked} · {p.symbols}:{" "}
             {groundedness.symbolsFound}/{groundedness.symbolsChecked}
             {groundedness.newFiles.length > 0 && ` · ${groundedness.newFiles.length} ${p.newFiles}`}
+            {groundedness.coverage !== undefined &&
+              ` · ${p.coverage}: ${groundedness.coverage.toFixed(2)} → ${groundedness.score.toFixed(2)}`}
           </p>
           <TruncatedList
             label={p.missing}
@@ -234,11 +245,35 @@ export function ReportBody({ report }: { report: ConfidenceReport }) {
       )}
       {clarity && (
         <SignalSection title={p.clarity} score={clarity.score}>
-          <p className="text-muted">
-            {p.body}: {flag(clarity.bodyPresent)} · {p.acceptanceCriteria}:{" "}
-            {flag(clarity.hasAcceptanceCriteria)} · {p.reproSteps}: {flag(clarity.hasReproSteps)} ·{" "}
-            {p.openQuestions}: {clarity.openQuestionCount}
-          </p>
+          {clarity.criteria ? (
+            <>
+              <p className="text-muted">
+                {p.acceptanceCriteria}: {p.criteria[clarity.criteria]}
+                {repoKnowledge > 0 && ` · ${repoKnowledge} ${p.repoKnowledge}`}
+              </p>
+              {clarity.rationale && <p className="text-muted">{clarity.rationale}</p>}
+              {unresolved.length > 0 && (
+                <p className="text-[10px] uppercase tracking-wide text-muted/60">{p.ambiguities}</p>
+              )}
+              {unresolved.slice(0, 5).map((a, i) => (
+                <p key={i} className="text-muted">
+                  <span
+                    className={`text-[10px] uppercase tracking-wide ${a.flaggedByPlan ? "text-muted/60" : "text-warning"}`}
+                  >
+                    {a.flaggedByPlan ? p.flagged : p.silentAssumption}
+                  </span>{" "}
+                  {a.detail}
+                </p>
+              ))}
+            </>
+          ) : (
+            <p className="text-muted">
+              {p.body}: {flag(clarity.bodyPresent === true)} · {p.acceptanceCriteria}:{" "}
+              {flag(clarity.hasAcceptanceCriteria === true)} · {p.reproSteps}:{" "}
+              {flag(clarity.hasReproSteps === true)} · {p.openQuestions}:{" "}
+              {clarity.openQuestionCount ?? 0}
+            </p>
+          )}
         </SignalSection>
       )}
       <div className="pt-2 border-t border-border space-y-1">

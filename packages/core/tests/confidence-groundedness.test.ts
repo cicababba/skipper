@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IssuePlan } from "@skipper/shared";
-import { scoreGroundedness } from "../src/confidence";
+import { GROUNDEDNESS_VETO, scoreGroundedness } from "../src/confidence";
 
 let repo: string;
 
@@ -96,7 +96,8 @@ describe("scoreGroundedness", () => {
     );
     expect(s.symbolsFound).toBe(0);
     expect(s.missingSymbols).toEqual(["ghostFn"]);
-    expect(s.score).toBeCloseTo(0.7);
+    expect(s.coverage).toBeCloseTo(0.7);
+    expect(s.score).toBeCloseTo(0.4);
   });
 
   it("treats absolute and escaping paths as missing", async () => {
@@ -199,7 +200,7 @@ describe("scoreGroundedness", () => {
     );
     expect(s.symbolsChecked).toBe(1);
     expect(s.missingSymbols).toEqual(["ghostFn"]);
-    expect(s.score).toBeCloseTo(0.7);
+    expect(s.score).toBeCloseTo(0.4);
   });
 
   it("counts a mixed step's symbols as before when createdSymbols is absent", async () => {
@@ -223,7 +224,7 @@ describe("scoreGroundedness", () => {
     expect(s.symbolsChecked).toBe(1);
     expect(s.missingSymbols).toEqual(["brandNewFn"]);
     expect(s.createdSymbols).toEqual([]);
-    expect(s.score).toBeCloseTo(0.7);
+    expect(s.score).toBeCloseTo(0.4);
   });
 
   it("scores empty denominators as 1", async () => {
@@ -237,6 +238,67 @@ describe("scoreGroundedness", () => {
     expect(s.filesChecked).toBe(0);
     expect(s.symbolsChecked).toBe(0);
     expect(s.score).toBeCloseTo(1);
+  });
+});
+
+// #309: the raw coverage stays reported, but the score is rescaled onto the band
+// above the veto — below it nothing grades, because the veto already decided.
+describe("scoreGroundedness coverage transfer (#309)", () => {
+  it("vetoes at coverage 0.5", () => {
+    expect(GROUNDEDNESS_VETO).toBe(0.5);
+  });
+
+  it("keeps a perfect plan at 1.0", async () => {
+    const s = await scoreGroundedness(plan(), repo);
+    expect(s.coverage).toBeCloseTo(1);
+    expect(s.score).toBeCloseTo(1);
+  });
+
+  it("maps coverage 0.9 to 0.8", async () => {
+    const s = await scoreGroundedness(
+      plan({
+        steps: [
+          {
+            title: "t",
+            detail: "d",
+            files: ["src/poller.ts"],
+            symbols: ["pollNow", "backoff", "ghostFn"],
+          },
+        ],
+      }),
+      repo,
+    );
+    expect(s.coverage).toBeCloseTo(0.9);
+    expect(s.score).toBeCloseTo(0.8);
+  });
+
+  it("maps coverage 0.5 — the veto boundary — to 0", async () => {
+    const s = await scoreGroundedness(
+      plan({
+        files: [
+          { path: "src/poller.ts", reason: "r" },
+          { path: "src/ghost.ts", reason: "r" },
+        ],
+        steps: [
+          { title: "t", detail: "d", files: ["src/poller.ts"], symbols: ["pollNow", "ghostFn"] },
+        ],
+      }),
+      repo,
+    );
+    expect(s.coverage).toBeCloseTo(0.5);
+    expect(s.score).toBe(0);
+  });
+
+  it("floors coverage 0.3 at 0 instead of going negative", async () => {
+    const s = await scoreGroundedness(
+      plan({
+        files: [{ path: "src/ghost.ts", reason: "r" }],
+        steps: [{ title: "t", detail: "d", files: ["src/ghost.ts"], symbols: ["pollNow"] }],
+      }),
+      repo,
+    );
+    expect(s.coverage).toBeCloseTo(0.3);
+    expect(s.score).toBe(0);
   });
 });
 

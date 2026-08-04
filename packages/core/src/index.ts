@@ -180,18 +180,29 @@ export {
   scoreGroundedness,
   scoreConvergence,
   scoreClarity,
+  buildClarityPrompt,
+  deriveClarityScore,
   runCritic,
   critiquePlan,
   buildCriticPrompt,
   resolveGate,
+  ClarityError,
+  ClarityJudgmentSchema,
   CriticError,
   CriticVerdictSchema,
   CriticContinuityVerdictSchema,
   DEFAULT_CONFIDENCE_WEIGHTS,
   DEFAULT_CONFIDENCE_THRESHOLDS,
   DIVERGENCE_THRESHOLD,
+  GROUNDEDNESS_VETO,
 } from "./confidence";
-export type { CriticInput, CriticPriorRound, ComputeConfidenceOptions, GateTarget } from "./confidence";
+export type {
+  ClarityJudgment,
+  CriticInput,
+  CriticPriorRound,
+  ComputeConfidenceOptions,
+  GateTarget,
+} from "./confidence";
 
 // Coder (issue #9)
 export {

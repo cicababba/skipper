@@ -56,11 +56,22 @@ const REPORT: ConfidenceReport = {
       ],
     },
     clarity: {
-      score: 0.65,
-      bodyPresent: true,
-      hasAcceptanceCriteria: false,
-      hasReproSteps: false,
-      openQuestionCount: 0,
+      score: 0.6,
+      criteria: "partial",
+      ambiguities: [
+        {
+          detail: "whether the counter still renders once every todo is done",
+          resolvableFromRepo: false,
+          flaggedByPlan: false,
+        },
+        {
+          detail: "exact placement of the counter in the header",
+          resolvableFromRepo: true,
+          flaggedByPlan: false,
+        },
+      ],
+      openQuestions: [],
+      rationale: "outcomes are checkable, the all-done case is not",
     },
   },
   convergenceSkipped: { reason: "decisive", detail: "composite decisive for any convergence value" },
@@ -120,7 +131,7 @@ describe("renderConfidenceBlock", () => {
     expect(block).toContain('- critic 0.40 — verdict "concerns", 2 objections:');
     expect(block).toContain("1. [wrong-approach] (blocking)");
     expect(block).toContain("2. [underspecified] the backoff ceiling is unspecified");
-    expect(block).toContain("- clarity 0.65 — issue body present: yes, acceptance criteria: no");
+    expect(block).toContain('- clarity 0.60 — acceptance criteria "partial"');
     expect(block).toContain("- convergence: skipped (decisive)");
   });
 
@@ -130,9 +141,72 @@ describe("renderConfidenceBlock", () => {
       signals: { clarity: REPORT.signals.clarity },
       convergenceSkipped: undefined,
     });
-    expect(block).toContain("- clarity 0.65");
+    expect(block).toContain("- clarity 0.60");
     expect(block).not.toContain("groundedness");
     expect(block).not.toContain("critic");
+  });
+
+  // #309: the semantic judgment replaced the structural heuristic, so the block
+  // reports what the issue leaves open — and which of it the plan decided alone.
+  it("counts only unresolved ambiguities and marks the silent ones", () => {
+    const block = renderConfidenceBlock(REPORT);
+    expect(block).toContain("1 unresolved ambiguity (1 decided silently by the plan)");
+    expect(block).toContain(
+      "1. [decided silently] whether the counter still renders once every todo is done",
+    );
+    expect(block).not.toContain("exact placement of the counter in the header");
+    expect(block).toContain("outcomes are checkable, the all-done case is not");
+  });
+
+  it("marks a flagged ambiguity as flagged and reports repo-answerable questions", () => {
+    const block = renderConfidenceBlock({
+      ...REPORT,
+      signals: {
+        clarity: {
+          score: 0.35,
+          criteria: "vague",
+          ambiguities: [
+            { detail: "which priority levels", resolvableFromRepo: false, flaggedByPlan: true },
+          ],
+          openQuestions: [{ question: "where does the list live?", kind: "repo-knowledge" }],
+          rationale: "the plan raised the one real question",
+        },
+      },
+    });
+    expect(block).toContain("1. [flagged] which priority levels");
+    expect(block).toContain("1 open question(s) answerable from the repo");
+  });
+
+  it("still renders a report scored before #309 from its legacy fields", () => {
+    const block = renderConfidenceBlock({
+      ...REPORT,
+      signals: {
+        clarity: {
+          score: 0.85,
+          bodyPresent: true,
+          hasAcceptanceCriteria: true,
+          hasReproSteps: false,
+          openQuestionCount: 2,
+        },
+      },
+    });
+    expect(block).toContain(
+      "- clarity 0.85 — issue body present: yes, acceptance criteria: yes, repro steps: no, open questions: 2",
+    );
+  });
+
+  it("renders the veto ahead of the signals", () => {
+    const block = renderConfidenceBlock({
+      ...REPORT,
+      veto: { signal: "groundedness", detail: "3 cited files and 1 symbol are absent from the repo" },
+    });
+    expect(block).toContain(
+      "- VETO (groundedness): 3 cited files and 1 symbol are absent from the repo — needs-input regardless of the composite",
+    );
+  });
+
+  it("renders no veto line when the report carries none", () => {
+    expect(renderConfidenceBlock(REPORT)).not.toContain("VETO");
   });
 
   it("truncates long objection detail", () => {
