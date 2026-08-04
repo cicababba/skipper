@@ -116,17 +116,26 @@ export function chatKey(repo: RepoRef, chatId: string): string {
   return `${repoKey(repo)}:${chatId}`;
 }
 
+/** Returns the orphan sweep so a caller that cares about its outcome can await
+ *  it; it swallows its own errors, so ignoring the promise is safe. */
 export function initComposerChat(
   composerChatDeps: ComposerChatDeps,
   provider?: LLMProviderInterface,
-): void {
+): Promise<void> {
   deps = composerChatDeps;
   injected = provider !== undefined;
   injectedProvider = provider ?? null;
   chats.clear();
   bundles.clear();
   inFlight.clear();
-  void sweepOrphanAttachments(composerChatDeps);
+  return sweepOrphanAttachments(composerChatDeps);
+}
+
+/** Sanitized attachment directory names of every chat a record still holds. */
+function liveAttachmentDirs(root: string): Set<string> {
+  const live = new Set<string>();
+  for (const record of chats.values()) live.add(basename(attachmentDir(root, record.chatId)));
+  return live;
 }
 
 /** Nothing is live at init, so an attachment directory with no draft behind it
@@ -139,6 +148,9 @@ async function sweepOrphanAttachments(d: ComposerChatDeps): Promise<void> {
     const keep = new Set(chatIds.map((id) => basename(attachmentDir(d.attachmentsDir, id))));
     for (const dir of dirs) {
       if (keep.has(dir)) continue;
+      // Re-read the live records at delete time, not at listing time: a chat
+      // started while the sweep was awaiting owns its directory (#316).
+      if (liveAttachmentDirs(d.attachmentsDir).has(dir)) continue;
       await deleteAttachmentsDir(d.attachmentsDir, dir);
     }
   } catch {

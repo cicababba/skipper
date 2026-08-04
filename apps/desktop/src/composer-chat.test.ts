@@ -1319,6 +1319,40 @@ describe("attachment cleanup matrix (#281)", () => {
     expect(existsSync(dirOf(contentful))).toBe(true);
   });
 
+  // The sweep's directory listing can land after a chat was started (a busy fs
+  // threadpool is enough), which is why the live check runs at delete time. The
+  // gated listing reproduces that interleaving instead of racing for it (#316).
+  it("keeps a live chat's directory when the init sweep listed it (#316)", async () => {
+    const gate = deferred<void>();
+    vi.resetModules();
+    vi.doMock("./composer-attachment-store", async () => {
+      const actual =
+        await vi.importActual<typeof import("./composer-attachment-store")>("./composer-attachment-store");
+      return {
+        ...actual,
+        listAttachmentDirs: async (root: string) => {
+          await gate.promise;
+          return actual.listAttachmentDirs(root);
+        },
+      };
+    });
+    try {
+      const mod = await import("./composer-chat");
+      const swept = mod.initComposerChat(makeHarness().deps, fakeProvider());
+      const started = mod.startComposerChat(REPO);
+      if (!started.ok) throw new Error(started.error);
+      const attached = await mod.attachComposerFile(REPO, started.chatId, "shot.png", new Uint8Array([1]));
+      if (!attached.ok) throw new Error(attached.error);
+      gate.resolve();
+      await swept;
+
+      expect(existsSync(dirOf(started.chatId))).toBe(true);
+    } finally {
+      vi.doUnmock("./composer-attachment-store");
+      vi.resetModules();
+    }
+  });
+
   it("keeps only the surviving capture's directory when two compete at quit", async () => {
     const h = makeHarness();
     initComposerChat(h.deps, fakeProvider());
@@ -1365,8 +1399,7 @@ describe("orphan attachment sweep at init", () => {
     await mkdir(join(attachmentsDir, "orphan-chat"), { recursive: true });
     await writeFile(join(attachmentsDir, "orphan-chat", "stray.png"), "x");
 
-    initComposerChat(makeHarness().deps, fakeProvider());
-    await settle();
+    await initComposerChat(makeHarness().deps, fakeProvider());
 
     expect(existsSync(join(attachmentsDir, "orphan-chat"))).toBe(false);
     expect(existsSync(join(attachmentsDir, kept))).toBe(true);

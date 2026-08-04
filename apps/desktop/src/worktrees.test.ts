@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -33,6 +33,11 @@ import {
   worktreeStatusWithDirt,
   writeWorktreeFile,
 } from "./worktrees";
+
+// Every fixture here spawns real git processes (a clone with an origin costs
+// ~140 ms idle, up to ~4.5 s when the other packages' suites run in parallel
+// under `turbo test`). The 5 s default is a unit-test budget, not this (#316).
+vi.setConfig({ testTimeout: 20_000 });
 
 let dir: string;
 

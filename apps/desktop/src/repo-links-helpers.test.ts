@@ -10,6 +10,11 @@ import { branchesForLocalClone, detectHostForLocalPath } from "./repo-links";
 vi.mock("./git", () => ({ runGit: vi.fn() }));
 const runGitMock = vi.mocked(runGit);
 
+// The detectHostForLocalPath fixtures spawn real git (measured at 2.0–2.6 s per
+// test when the other packages' suites run in parallel under `turbo test`); the
+// 5 s default is a unit-test budget (#316).
+vi.setConfig({ testTimeout: 20_000 });
+
 const ok = (stdout: string) => ({ code: 0, stdout, stderr: "" });
 const fail = (stderr: string) => ({ code: 1, stdout: "", stderr });
 
