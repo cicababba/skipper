@@ -271,7 +271,9 @@ describe("searchMemory", () => {
 
     const hits = await searchMemory(memoryDir, "fix oauth token refresh", { repo: REPO_A });
     expect(hits.map((h) => h.id)).toEqual(["github:2", "github:1"]);
-    expect(hits[1].score).toBeCloseTo(hits[0].score * 0.5, 10);
+    // Precision 8, not bit-equality: the scores come out of the local ONNX
+    // embedder, whose reduction order is not stable under load (#316).
+    expect(hits[1].score).toBeCloseTo(hits[0].score * 0.5, 8);
   });
 
   it("leaves the score untouched for a never-measured record", async () => {
@@ -280,7 +282,7 @@ describe("searchMemory", () => {
     await reconcileMemoryIndex(memoryDir);
 
     const hits = await searchMemory(memoryDir, "fix oauth token refresh", { repo: REPO_A });
-    expect(hits[0].score).toBeCloseTo(hits[1].score, 10);
+    expect(hits[0].score).toBeCloseTo(hits[1].score, 8);
   });
 
   it("respects k", async () => {
