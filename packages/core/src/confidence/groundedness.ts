@@ -2,6 +2,13 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { isAbsolute, join, normalize, sep } from "node:path";
 import type { GroundednessSignal, IssuePlan } from "@skipper/shared";
 
+/**
+ * Coverage below this forces needs-input on its own (#309). Planners stopped
+ * hallucinating paths, so the surviving band is the only part that grades: the
+ * signal keeps a low weight and pays for itself as a hard veto instead.
+ */
+export const GROUNDEDNESS_VETO = 0.5;
+
 const SKIP_DIRS = new Set([".git", "node_modules", "dist", "release", ".next", "out", "coverage"]);
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_FILES_WALKED = 20_000;
@@ -68,8 +75,12 @@ export async function scoreGroundedness(
   const fileScore = filesChecked === 0 ? 1 : filesFound / filesChecked;
   const symbolScore = symbolsChecked === 0 ? 1 : symbolsFound / symbolsChecked;
 
+  const coverage = 0.7 * fileScore + 0.3 * symbolScore;
+
   return {
-    score: 0.7 * fileScore + 0.3 * symbolScore,
+    // Rescaled onto the band above the veto, so what survives still grades.
+    score: Math.max(0, (coverage - GROUNDEDNESS_VETO) / (1 - GROUNDEDNESS_VETO)),
+    coverage,
     filesChecked,
     filesFound,
     symbolsChecked,

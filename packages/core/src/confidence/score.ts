@@ -18,13 +18,13 @@ import { scoreClarity } from "./clarity";
 import { scoreConvergence } from "./convergence";
 import { critiquePlan } from "./critic";
 import { DEFAULT_CONFIDENCE_THRESHOLDS, resolveGate } from "./gate";
-import { assertRepoDir, scoreGroundedness } from "./groundedness";
+import { assertRepoDir, GROUNDEDNESS_VETO, scoreGroundedness } from "./groundedness";
 
 export const DEFAULT_CONFIDENCE_WEIGHTS: ConfidenceWeights = {
-  groundedness: 0.35,
+  groundedness: 0.15,
   critic: 0.3,
   convergence: 0.25,
-  clarity: 0.1,
+  clarity: 0.3,
 };
 
 export interface ComputeConfidenceOptions {
@@ -124,12 +124,6 @@ export async function computeConfidence(
     computedAt: new Date().toISOString(),
   };
 
-  try {
-    report.signals.clarity = scoreClarity(opts.issue.body, opts.plan);
-  } catch (err) {
-    report.errors.push(`clarity: ${message(err)}`);
-  }
-
   // The cheap signals settle first: they decide whether the extra plan runs can
   // still move the gate. Costs the critic's latency on the non-skip path, saves
   // two full agentic runs whenever the outcome is already pinned (#50).
@@ -144,13 +138,28 @@ export async function computeConfidence(
     })
       .then((s) => void (report.signals.critic = s))
       .catch((err) => void report.errors.push(`critic: ${message(err)}`)),
+    scoreClarity(opts.issue, opts.plan, opts.llm, {
+      ...(opts.runtime ? { runtime: opts.runtime } : {}),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    })
+      .then((s) => void (report.signals.clarity = s))
+      .catch((err) => void report.errors.push(`clarity: ${message(err)}`)),
   ]);
+
+  const veto = groundednessVeto(report.signals.groundedness);
+  if (veto) report.veto = veto;
 
   // Bail before the expensive extra plan runs if the caller aborted; the planner's
   // outer catch absorbs this into report = undefined (#159).
   if (opts.signal?.aborted) throw new AgentAbortError();
   const skip =
-    opts.skipConvergence ?? shouldSkipConvergence(report.signals, extraRuns, thresholds, autoCoding);
+    opts.skipConvergence ??
+    (veto
+      ? ({
+          reason: "decisive",
+          detail: "groundedness veto — needs-input for any convergence value",
+        } as const)
+      : shouldSkipConvergence(report.signals, extraRuns, thresholds, autoCoding));
   if (skip) {
     report.convergenceSkipped = skip;
   } else if (!opts.runtime && !opts.deps?.generatePlan) {
@@ -200,6 +209,20 @@ export async function computeConfidence(
     report.composite = present.reduce((sum, [k, s]) => sum + s.score * report.weights[k], 0);
   }
   return report;
+}
+
+/** A plan citing files and symbols that are not there is not gradeable (#309). */
+function groundednessVeto(
+  groundedness: ConfidenceReport["signals"]["groundedness"],
+): ConfidenceReport["veto"] {
+  if (!groundedness || groundedness.coverage === undefined) return undefined;
+  if (groundedness.coverage >= GROUNDEDNESS_VETO) return undefined;
+  const files = groundedness.missingFiles.length;
+  const symbols = groundedness.missingSymbols.length;
+  return {
+    signal: "groundedness",
+    detail: `${files} cited file${files === 1 ? "" : "s"} and ${symbols} symbol${symbols === 1 ? "" : "s"} are absent from the repo`,
+  };
 }
 
 function shouldSkipConvergence(

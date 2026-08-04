@@ -140,6 +140,12 @@ export function renderConfidenceBlock(report: ConfidenceReport): string {
     `Composite: ${n2(report.composite)} (weighted over available signals; weights: ${weightParts.join(", ")})`,
   );
 
+  if (report.veto) {
+    lines.push(
+      `- VETO (${report.veto.signal}): ${report.veto.detail} — needs-input regardless of the composite`,
+    );
+  }
+
   if (s.groundedness) {
     const g = s.groundedness;
     const parts = [`files ${g.filesFound}/${g.filesChecked}`, `symbols ${g.symbolsFound}/${g.symbolsChecked}`];
@@ -180,9 +186,26 @@ export function renderConfidenceBlock(report: ConfidenceReport): string {
 
   if (s.clarity) {
     const c = s.clarity;
-    lines.push(
-      `- clarity ${n2(c.score)} — issue body present: ${c.bodyPresent ? "yes" : "no"}, acceptance criteria: ${c.hasAcceptanceCriteria ? "yes" : "no"}, repro steps: ${c.hasReproSteps ? "yes" : "no"}, open questions: ${c.openQuestionCount}`,
-    );
+    if (c.criteria) {
+      const parts = [`acceptance criteria "${c.criteria}"`];
+      const unresolved = (c.ambiguities ?? []).filter((a) => !a.resolvableFromRepo);
+      const silent = unresolved.filter((a) => !a.flaggedByPlan).length;
+      if (unresolved.length > 0) {
+        parts.push(`${unresolved.length} unresolved ambiguit${unresolved.length === 1 ? "y" : "ies"} (${silent} decided silently by the plan)`);
+      }
+      const repoQuestions = (c.openQuestions ?? []).filter((q) => q.kind === "repo-knowledge").length;
+      if (repoQuestions > 0) parts.push(`${repoQuestions} open question(s) answerable from the repo`);
+      if (c.rationale) parts.push(c.rationale);
+      lines.push(`- clarity ${n2(c.score)} — ${parts.join("; ")}`);
+      unresolved.forEach((a, i) => {
+        lines.push(`  ${i + 1}. ${a.flaggedByPlan ? "[flagged]" : "[decided silently]"} ${a.detail}`);
+      });
+    } else {
+      // Reports scored before #309 carry the structural heuristic's fields.
+      lines.push(
+        `- clarity ${n2(c.score)} — issue body present: ${c.bodyPresent ? "yes" : "no"}, acceptance criteria: ${c.hasAcceptanceCriteria ? "yes" : "no"}, repro steps: ${c.hasReproSteps ? "yes" : "no"}, open questions: ${c.openQuestionCount ?? 0}`,
+      );
+    }
   }
 
   if (report.convergenceSkipped) {

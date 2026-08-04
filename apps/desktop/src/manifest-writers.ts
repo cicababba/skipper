@@ -52,15 +52,22 @@ export function makeManifestWriters(d: ManifestWriterDeps) {
     }
     // No score is a scoring *failure*, not a decision — #8's contract is the
     // conservative gate, so autoCoding:"on" deliberately does not apply here.
+    // A vetoing signal (#309) overrides the composite and autoCoding both: a plan
+    // citing things that are not in the repo is not gradeable.
     const target = confidence
-      ? resolveGate(confidence.composite, m.settings.confidence, d.getRepoAutoCoding(item.repo))
+      ? confidence.veto
+        ? "needs-input"
+        : resolveGate(confidence.composite, m.settings.confidence, d.getRepoAutoCoding(item.repo))
       : "plan-gate";
     let reason: string;
     if (confidence) {
       const divergent = confidence.signals.convergence?.divergent
         ? " — plans diverge, issue may be ambiguous"
         : "";
-      reason = `confidence ${confidence.composite.toFixed(2)}${divergent}`;
+      const veto = confidence.veto
+        ? ` — ${confidence.veto.signal} veto: ${confidence.veto.detail}`
+        : "";
+      reason = `confidence ${confidence.composite.toFixed(2)}${veto}${divergent}`;
     } else {
       reason = "plan generated (confidence unavailable)";
     }

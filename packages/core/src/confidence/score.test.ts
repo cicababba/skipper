@@ -29,12 +29,17 @@ const ISSUE: PlanIssueInput = {
   body: "the body",
 };
 
-/** Provider whose critic verdict resolves deterministically; ask/agent unused here. */
+/** Provider whose critic verdict and clarity judgment both resolve
+ *  deterministically — they share one structured seam, so it dispatches on the
+ *  schema each asks for (#309). ask/agent unused here. */
 function fakeProvider(): LLMProviderInterface {
   return {
     name: "claude-cli",
     ask: async () => ({ text: "" }),
-    askStructured: async () => ({ verdict: "approve", objections: [] }),
+    askStructured: async (_prompt: string, schema: Record<string, unknown>) =>
+      "criteria" in ((schema as { properties?: Record<string, unknown> }).properties ?? {})
+        ? { criteria: "verifiable", ambiguities: [], openQuestions: [], rationale: "clear" }
+        : { verdict: "approve", objections: [] },
     agent: async () => ({ text: "" }),
   } as unknown as LLMProviderInterface;
 }
@@ -66,6 +71,9 @@ describe("computeConfidence skipConvergence (#164)", () => {
       detail: "plan revised via chat",
     });
     expect(report.signals.convergence).toBeUndefined();
+
+    expect(report.signals.clarity?.score).toBe(1);
+    expect(report.errors).toEqual([]);
 
     // Weights renormalize over the present signals; convergence carries none.
     expect(report.weights.convergence).toBe(0);

@@ -3,8 +3,10 @@
 // ============================================================
 
 export interface GroundednessSignal {
-  /** 0..1 — weighted fraction of cited files + symbols found in the repo. */
+  /** 0..1 — the raw coverage rescaled onto the discriminating band (#309). */
   score: number;
+  /** 0..1 — weighted fraction of cited files + symbols found in the repo. */
+  coverage?: number;
   filesChecked: number;
   filesFound: number;
   symbolsChecked: number;
@@ -54,13 +56,38 @@ export interface CriticSignal {
   resolved?: CriticObjection[];
 }
 
+/** A decision the issue leaves open, as judged against the plan (#309). */
+export interface ClarityAmbiguity {
+  detail: string;
+  /** An existing repo convention settles it — no human input needed. */
+  resolvableFromRepo: boolean;
+  /** The plan raises it in openQuestions instead of silently deciding it. */
+  flaggedByPlan: boolean;
+}
+
+/** One of the plan's openQuestions, classified by what it reveals (#309). */
+export interface ClarityOpenQuestion {
+  question: string;
+  kind: "issue-ambiguity" | "repo-knowledge";
+}
+
 export interface ClaritySignal {
-  /** 0..1 — heuristic issue-clarity bonus. */
+  /** 0..1 — derived in code from the judgment below. */
   score: number;
-  bodyPresent: boolean;
-  hasAcceptanceCriteria: boolean;
-  hasReproSteps: boolean;
-  openQuestionCount: number;
+  /** Can an outsider objectively tell whether the change is done? (#309) */
+  criteria?: "verifiable" | "partial" | "vague";
+  ambiguities?: ClarityAmbiguity[];
+  openQuestions?: ClarityOpenQuestion[];
+  /** One-line justification, surfaced in the UI. */
+  rationale?: string;
+  /** @deprecated structural heuristic, kept to render reports scored before #309. */
+  bodyPresent?: boolean;
+  /** @deprecated structural heuristic, kept to render reports scored before #309. */
+  hasAcceptanceCriteria?: boolean;
+  /** @deprecated structural heuristic, kept to render reports scored before #309. */
+  hasReproSteps?: boolean;
+  /** @deprecated structural heuristic, kept to render reports scored before #309. */
+  openQuestionCount?: number;
 }
 
 export interface ConfidenceWeights {
@@ -101,6 +128,14 @@ export interface ConfidenceReport {
   convergenceSkipped?: {
     reason: "decisive" | "disabled" | "rescore";
     /** e.g. "composite in [0.87, 0.91] → queued for any convergence value". */
+    detail: string;
+  };
+  /**
+   * A signal that forces needs-input on its own, whatever the composite says
+   * (#309): a plan citing files and symbols that do not exist is not gradeable.
+   */
+  veto?: {
+    signal: "groundedness";
     detail: string;
   };
   /** Per-signal failures, e.g. "convergence: only 1 plan generated". */

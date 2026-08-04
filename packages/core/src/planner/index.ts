@@ -13,6 +13,7 @@ export {
   buildPlannerPrompt,
   buildRepairPrompt,
   buildSalvagePrompt,
+  renderCommentsBlock,
   renderDependenciesBlock,
   renderDirtyFilesBlock,
 } from "./prompt";

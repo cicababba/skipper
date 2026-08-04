@@ -6,15 +6,10 @@ import type { ConfidenceReport, IssuePlan } from "@skipper/shared";
 import type { LLMProviderInterface, LLMResponse } from "../src/llm/provider";
 import type { GraphifyContext } from "../src/llm/graphify-mcp";
 import type { PlanIssueInput } from "../src/planner";
-import {
-  computeConfidence,
-  reachableBand,
-  scoreClarity,
-  DEFAULT_CONFIDENCE_WEIGHTS,
-} from "../src/confidence";
+import { computeConfidence, reachableBand, DEFAULT_CONFIDENCE_WEIGHTS } from "../src/confidence";
 
 const ISSUE: PlanIssueInput = {
-  number: 42,
+  key: "42",
   title: "Add retry to the poller",
   url: "https://github.com/o/r/issues/42",
   labels: [],
@@ -46,33 +41,64 @@ function plan(overrides: Partial<IssuePlan> = {}): IssuePlan {
   };
 }
 
-function fakeLLM(structuredReply: unknown): LLMProviderInterface {
+const APPROVE = { verdict: "approve", objections: [] };
+/** Clarity judgment (#309) deriving score 1.0 — the neutral answer for the
+ *  gate-behaviour tests below, which are not about clarity. */
+const CLEAR = { criteria: "verifiable", ambiguities: [], openQuestions: [], rationale: "clear" };
+/** Judgment deriving 0.05: vague, with three decisions the plan made silently. */
+const VAGUE = {
+  criteria: "vague",
+  ambiguities: ["levels", "default", "control"].map((detail) => ({
+    detail,
+    resolvableFromRepo: false,
+    flaggedByPlan: false,
+  })),
+  openQuestions: [],
+  rationale: "nothing here is checkable",
+};
+
+/** The critic and the clarity judge share one structured seam, so the fake
+ *  dispatches on the schema each of them asks for (#309). */
+function isClaritySchema(schema: unknown): boolean {
+  const props = (schema as { properties?: Record<string, unknown> } | undefined)?.properties;
+  return props !== undefined && "criteria" in props;
+}
+
+function fakeLLM(structuredReply: unknown, clarityReply: unknown = CLEAR): LLMProviderInterface {
   return {
     name: "claude-cli",
     ask: async (): Promise<LLMResponse> => ({ text: "" }),
-    askStructured: vi.fn(async (): Promise<unknown> => structuredReply),
+    askStructured: vi.fn(async (_prompt: string, schema: Record<string, unknown>) =>
+      isClaritySchema(schema) ? clarityReply : structuredReply,
+    ),
   } as unknown as LLMProviderInterface;
 }
 
-const APPROVE = { verdict: "approve", objections: [] };
+/** Provider that fails a single signal's structured call and answers the other. */
+function failingLLM(which: "critic" | "clarity", detail: string): LLMProviderInterface {
+  return {
+    name: "claude-cli",
+    ask: async (): Promise<LLMResponse> => ({ text: "" }),
+    askStructured: vi.fn(async (_prompt: string, schema: Record<string, unknown>) => {
+      const clarity = isClaritySchema(schema);
+      if (clarity === (which === "clarity")) throw new Error(detail);
+      return clarity ? CLEAR : APPROVE;
+    }),
+  } as unknown as LLMProviderInterface;
+}
 
-describe("scoreClarity", () => {
-  it("rewards acceptance criteria, repro steps and a real body", () => {
-    const s = scoreClarity(
-      "Acceptance criteria:\n- [ ] works\n\nSteps to reproduce:\n1. run it. This body is long enough to count as present for the heuristic.",
-      plan(),
-    );
-    expect(s.hasAcceptanceCriteria).toBe(true);
-    expect(s.hasReproSteps).toBe(true);
-    expect(s.bodyPresent).toBe(true);
-    expect(s.score).toBe(1);
-  });
-
-  it("penalizes open questions and missing body", () => {
-    const s = scoreClarity(undefined, plan({ openQuestions: ["a?", "b?", "c?"] }));
-    expect(s.bodyPresent).toBe(false);
-    expect(s.openQuestionCount).toBe(3);
-    expect(s.score).toBeCloseTo(0.2);
+// #309 recalibration: groundedness drops to a low-weight guard backed by a veto,
+// clarity rises to carry the semantic judgment it now makes.
+describe("DEFAULT_CONFIDENCE_WEIGHTS", () => {
+  it("splits 0.15/0.30/0.25/0.30 and sums to 1", () => {
+    expect(DEFAULT_CONFIDENCE_WEIGHTS).toEqual({
+      groundedness: 0.15,
+      critic: 0.3,
+      convergence: 0.25,
+      clarity: 0.3,
+    });
+    const { groundedness, critic, convergence, clarity } = DEFAULT_CONFIDENCE_WEIGHTS;
+    expect(groundedness + critic + convergence + clarity).toBeCloseTo(1);
   });
 });
 
@@ -119,18 +145,11 @@ describe("computeConfidence", () => {
   });
 
   it("captures a critic failure in errors and scores the rest", async () => {
-    const llm = {
-      name: "claude-cli",
-      ask: async (): Promise<LLMResponse> => ({ text: "" }),
-      askStructured: vi.fn(async () => {
-        throw new Error("no cli");
-      }),
-    } as unknown as LLMProviderInterface;
     const report = await computeConfidence({
       plan: plan(),
       issue: ISSUE,
       repoPath: repo,
-      llm,
+      llm: failingLLM("critic", "no cli"),
       extraPlanRuns: 0,
     });
     expect(report.signals.critic).toBeUndefined();
@@ -138,6 +157,21 @@ describe("computeConfidence", () => {
     expect(report.signals.groundedness).toBeDefined();
     expect(report.signals.clarity).toBeDefined();
     expect(report.composite).toBeGreaterThan(0);
+  });
+
+  it("captures a clarity failure in errors and renormalizes over the rest (#309)", async () => {
+    const report = await computeConfidence({
+      plan: plan(),
+      issue: ISSUE,
+      repoPath: repo,
+      llm: failingLLM("clarity", "no cli"),
+      extraPlanRuns: 0,
+    });
+    expect(report.signals.clarity).toBeUndefined();
+    expect(report.errors).toEqual(["clarity: no cli"]);
+    expect(report.signals.critic).toBeDefined();
+    expect(report.weights.clarity).toBe(0);
+    expect(report.weights.groundedness + report.weights.critic).toBeCloseTo(1);
   });
 
   it("skips convergence entirely when extraPlanRuns is 0", async () => {
@@ -199,8 +233,8 @@ describe("reachableBand", () => {
       clarity: { score: 0.4 },
     } as ConfidenceReport["signals"];
     const band = reachableBand(signals);
-    const raw = 0.35 * 0.8 + 0.3 * 0.6 + 0.1 * 0.4;
-    const renormalized = raw / (0.35 + 0.3 + 0.1);
+    const raw = 0.15 * 0.8 + 0.3 * 0.6 + 0.3 * 0.4;
+    const renormalized = raw / (0.15 + 0.3 + 0.3);
     expect(renormalized).toBeGreaterThanOrEqual(band.min);
     expect(renormalized).toBeLessThanOrEqual(band.max);
   });
@@ -232,17 +266,22 @@ describe("computeConfidence — adaptive convergence (#50)", () => {
     const generatePlan = vi.fn(async () => plan());
     const report = await computeConfidence({
       plan: plan({
-        files: [{ path: "src/ghost.ts", reason: "r" }],
-        steps: [{ title: "t", detail: "d", files: ["src/ghost.ts"], symbols: ["noSuchSymbol"] }],
+        // Coverage 0.65: one of two files missing, the symbol found — bad enough
+        // to pin the gate, not bad enough for the veto.
+        files: [
+          { path: "src/poller.ts", reason: "r" },
+          { path: "src/ghost.ts", reason: "r" },
+        ],
         openQuestions: ["a?", "b?", "c?"],
       }),
       issue: { ...ISSUE, body: undefined },
       repoPath: repo,
-      llm: fakeLLM({ verdict: "reject", objections: [] }),
+      llm: fakeLLM({ verdict: "reject", objections: [] }, VAGUE),
       extraPlanRuns: 2,
       deps: { generatePlan },
     });
     expect(generatePlan).not.toHaveBeenCalled();
+    expect(report.veto).toBeUndefined();
     expect(report.convergenceSkipped?.reason).toBe("decisive");
     expect(report.convergenceSkipped?.detail).toContain("needs-input");
   });
@@ -318,6 +357,81 @@ describe("computeConfidence — adaptive convergence (#50)", () => {
       }),
     ).rejects.toThrow();
     expect(generatePlan).not.toHaveBeenCalled();
+  });
+});
+
+// #309: a plan citing files and symbols that are not in the repo is not gradeable.
+// The veto rides on the report and forces needs-input downstream, so the extra
+// plan runs are pointless — but scoring must still return a report, not throw.
+describe("computeConfidence — groundedness veto (#309)", () => {
+  const ghostPlan = () =>
+    plan({
+      files: [{ path: "src/ghost.ts", reason: "r" }],
+      steps: [{ title: "t", detail: "d", files: ["src/ghost.ts"], symbols: ["noSuchSymbol"] }],
+    });
+
+  it("sets the veto and skips the extra runs without throwing", async () => {
+    const generatePlan = vi.fn(async () => plan());
+    const report = await computeConfidence({
+      plan: ghostPlan(),
+      issue: ISSUE,
+      repoPath: repo,
+      llm: fakeLLM(APPROVE),
+      extraPlanRuns: 2,
+      deps: { generatePlan },
+    });
+    expect(report.veto).toEqual({
+      signal: "groundedness",
+      detail: "1 cited file and 1 symbol are absent from the repo",
+    });
+    expect(generatePlan).not.toHaveBeenCalled();
+    expect(report.convergenceSkipped?.reason).toBe("decisive");
+    expect(report.convergenceSkipped?.detail).toContain("groundedness veto");
+    expect(report.signals.groundedness?.coverage).toBe(0);
+    expect(report.errors).toEqual([]);
+  });
+
+  it("vetoes even when every other signal is perfect and autoCoding is on", async () => {
+    const generatePlan = vi.fn(async () => plan());
+    const report = await computeConfidence({
+      plan: ghostPlan(),
+      issue: ISSUE,
+      repoPath: repo,
+      llm: fakeLLM(APPROVE),
+      extraPlanRuns: 2,
+      autoCoding: "on",
+      deps: { generatePlan },
+    });
+    expect(report.veto?.signal).toBe("groundedness");
+    expect(generatePlan).not.toHaveBeenCalled();
+  });
+
+  it("leaves the veto unset above the coverage floor", async () => {
+    const generatePlan = vi.fn(async () => plan());
+    const report = await computeConfidence({
+      plan: plan(),
+      issue: ISSUE,
+      repoPath: repo,
+      llm: fakeLLM(APPROVE),
+      extraPlanRuns: 2,
+      deps: { generatePlan },
+    });
+    expect(report.veto).toBeUndefined();
+    expect(generatePlan).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps an explicit skipConvergence reason over the veto's", async () => {
+    const generatePlan = vi.fn(async () => plan());
+    const report = await computeConfidence({
+      plan: ghostPlan(),
+      issue: ISSUE,
+      repoPath: repo,
+      llm: fakeLLM(APPROVE),
+      skipConvergence: { reason: "rescore", detail: "plan revised via chat" },
+      deps: { generatePlan },
+    });
+    expect(report.veto?.signal).toBe("groundedness");
+    expect(report.convergenceSkipped?.reason).toBe("rescore");
   });
 });
 
