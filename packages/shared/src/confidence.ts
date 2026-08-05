@@ -91,8 +91,12 @@ export interface ClaritySignal {
   openQuestionCount?: number;
 }
 
+/**
+ * The weighted quality signals. Groundedness is measured but not weighted (#321):
+ * it was constant at 1.000 across the whole calibration corpus, so it carried
+ * weight on a constant. It stays an admissibility check through the veto below.
+ */
 export interface ConfidenceWeights {
-  groundedness: number;
   convergence: number;
   critic: number;
   clarity: number;

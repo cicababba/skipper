@@ -35,7 +35,7 @@ const PLAN: IssuePlan = {
 const REPORT: ConfidenceReport = {
   version: 1,
   composite: 0.7,
-  weights: { groundedness: 0.47, convergence: 0, critic: 0.4, clarity: 0.13 },
+  weights: { convergence: 0, critic: 0.75, clarity: 0.25 },
   signals: {
     groundedness: {
       score: 0.96,
@@ -124,7 +124,9 @@ describe("renderConfidenceBlock", () => {
   it("renders composite, present signals and objections", () => {
     const block = renderConfidenceBlock(REPORT);
     expect(block).toContain("Composite: 0.70");
-    expect(block).toContain("weights: groundedness 0.47, critic 0.40, clarity 0.13");
+    // groundedness is measured but not weighted (#321), so it never appears here.
+    expect(block).toContain("weights: critic 0.75, clarity 0.25");
+    expect(block).not.toContain("weights: groundedness");
     expect(block).not.toContain("convergence 0.00"); // absent signal omitted from weights
     expect(block).toContain("- groundedness 0.96 — files 8/8; symbols 29/33");
     expect(block).toContain("missing symbols: DESTRUCTIVE_ACTION_IDS, pollNow");

@@ -44,7 +44,7 @@ const GENERATED_AT = "2026-07-21T00:00:00.000Z";
 const REPORT: ConfidenceReport = {
   version: 1,
   composite: 0.7,
-  weights: { groundedness: 0.5, convergence: 0, critic: 0.5, clarity: 0 },
+  weights: { convergence: 0, critic: 1, clarity: 0 },
   signals: {
     critic: {
       score: 0.4,

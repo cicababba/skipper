@@ -17,7 +17,7 @@ function makeReport(partial: Partial<ConfidenceReport> = {}): ConfidenceReport {
   return {
     version: 1,
     composite: 0.8,
-    weights: { groundedness: 0.4, convergence: 0.2, critic: 0.3, clarity: 0.1 },
+    weights: { convergence: 0.2, critic: 0.7, clarity: 0.1 },
     signals: {},
     errors: [],
     computedAt: "2026-07-21T10:00:00.000Z",

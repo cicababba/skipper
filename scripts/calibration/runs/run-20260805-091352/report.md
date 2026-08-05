@@ -3,8 +3,8 @@
 - Samples: 12
 - Runtime / model: claude-cli / opus
 - Graphify attached: no
-- Weights: groundedness 0.15, critic 0.3, convergence 0.25, clarity 0.3
-- Generated: 2026-08-05T13:25:34.546Z
+- Weights: critic 0.3, convergence 0.25, clarity 0.3
+- Generated: 2026-08-05T14:11:17.097Z
 
 A calibration is only valid for the planner it was measured on.
 
@@ -12,35 +12,35 @@ A calibration is only valid for the planner it was measured on.
 
 | sample | ground | critic | clarity | converg | composite | veto | label |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| todos-issue-1 | 1.000 | 0.820 | 0.951 | 0.667 | 0.848 |  | approve-unread |
-| todos-filter | 1.000 | 0.820 | 0.599 | 1.000 | 0.826 |  | approve-unread |
-| skipper-251 | 1.000 | 0.580 | 0.819 | 0.677 | 0.739 |  | wants-to-read |
-| todos-due-date | 1.000 | 0.440 | 0.662 | 0.903 | 0.706 |  | wants-to-read |
-| skipper-263 | 1.000 | 0.400 | 0.696 | 0.782 | 0.674 |  | wants-to-read |
-| skipper-139 | 1.000 | 0.360 | 0.732 | 0.762 | 0.668 |  | wants-to-read |
-| skipper-67 | 1.000 | 0.580 | 0.599 | 0.511 | 0.631 |  | wants-to-read |
-| skipper-252 | 1.000 | 0.220 | 0.662 | 0.792 | 0.613 |  | wants-to-read |
-| todos-issue-2 | 1.000 | 0.700 | 0.148 | 0.794 | 0.603 |  | wants-to-read |
-| skipper-141 | 1.000 | 0.220 | 0.696 | 0.622 | 0.580 |  | wants-to-read |
-| todos-polish | 1.000 | 0.640 | 0.141 | 0.651 | 0.547 |  | not-plannable |
-| todos-slow | 1.000 | 0.440 | 0.156 | 0.608 | 0.481 |  | not-plannable |
+| todos-issue-1 | 1.000 | 0.820 | 0.951 | 0.667 | 0.821 |  | approve-unread |
+| todos-filter | 1.000 | 0.820 | 0.599 | 1.000 | 0.795 |  | approve-unread |
+| skipper-251 | 1.000 | 0.580 | 0.819 | 0.677 | 0.693 |  | wants-to-read |
+| todos-due-date | 1.000 | 0.440 | 0.662 | 0.903 | 0.655 |  | wants-to-read |
+| skipper-263 | 1.000 | 0.400 | 0.696 | 0.782 | 0.617 |  | wants-to-read |
+| skipper-139 | 1.000 | 0.360 | 0.732 | 0.762 | 0.609 |  | wants-to-read |
+| skipper-67 | 1.000 | 0.580 | 0.599 | 0.511 | 0.566 |  | wants-to-read |
+| skipper-252 | 1.000 | 0.220 | 0.662 | 0.792 | 0.544 |  | wants-to-read |
+| todos-issue-2 | 1.000 | 0.700 | 0.148 | 0.794 | 0.533 |  | wants-to-read |
+| skipper-141 | 1.000 | 0.220 | 0.696 | 0.622 | 0.506 |  | wants-to-read |
+| todos-polish | 1.000 | 0.640 | 0.141 | 0.651 | 0.467 |  | not-plannable |
+| todos-slow | 1.000 | 0.440 | 0.156 | 0.608 | 0.389 |  | not-plannable |
 
 ## Threshold sweep
 
 ### `high` — keep approve-unread above, exclude wants-to-read
 
 - Positives: 2, negatives: 8
-- Separating range: [0.74, 0.82], margin 0.087.
+- Separating range: [0.70, 0.79], margin 0.102.
 
 ### `low` — keep approve-unread + wants-to-read above, exclude not-plannable
 
 - Positives: 10, negatives: 2
-- Separating range: [0.55, 0.58], margin 0.033.
+- Separating range: [0.50, 0.50], margin 0.039.
 
 
 ## Samples
 
-### todos-issue-1 — composite 0.848 — approve-unread
+### todos-issue-1 — composite 0.821 — approve-unread
 
 - Issue: ISSUE-1 Show a count of remaining todos
 - Provenance: jira:TODOS/ISSUE-1 (dogfooding run behind #313, surgical)
@@ -60,7 +60,7 @@ A calibration is only valid for the planner it was measured on.
 - [underspecified] Step 2 tells the implementer to write a fixture factory annotated `: Todo` but never says how `Todo` is imported in the test file; the `import type` requirement is called out only for `remaining.ts` (step 1 and the risks list). `apps/web/tsconfig.json:8` includes `src`, so `remaining.test.ts` is type-checked, and `tsconfig.base.json:10` sets `verbatimModuleSyntax` — a plain `import { Todo } from "@todos/shared"` there makes `pnpm typecheck` fail. Spell out `import type { Todo } from "@todos/shared";` in step 2 as well.
 - [other] Step 4 says to give `.remaining` "the same muted treatment" as `.empty` and then specifies a different value: `.empty` is `opacity: 0.5` (verified, `apps/web/src/styles.css:92-94`), the plan writes `opacity: 0.6`. Trivial, but if the intent is consistency, use 0.5.
 
-### todos-filter — composite 0.826 — approve-unread
+### todos-filter — composite 0.795 — approve-unread
 
 - Issue: CAL-2 filter the list by status
 - Provenance: authored:#314 calibration (mid-quality)
@@ -86,7 +86,7 @@ A calibration is only valid for the planner it was measured on.
 - [underspecified] AC "Adding a todo while a filter is active still works" is resolved silently and the weakest case is never checked. With `done` selected, `onSubmit` appends an open todo (App.tsx:29) that is immediately filtered out: the input clears and nothing appears — no confirmation, no count, nothing. The plan's own risks entry admits this ("expected behaviour"), but the acceptance mapping just says "onSubmit is unchanged", and the manualChecks only exercise the easy path ("With `open` selected, add a new todo and confirm it appears"). Whether add-under-`done` should auto-switch to `all`, show a transient hint, or genuinely do nothing visible is a product decision the issue does not settle; it should be an openQuestion (the plan ships with `openQuestions: []`) or at minimum a manual check that pins the chosen behaviour.
 - [risk] Risk 3 ("apps/web has no local vitest devDependency ... if pnpm test fails to resolve either, run pnpm install") is a non-issue and misdirects debugging effort. apps/api/package.json has no vitest devDependency either, yet apps/api/src/routes.test.ts and store.test.ts already import from "vitest" and are covered by `pnpm -r typecheck` — the exact same resolution path (walk up to the root node_modules) that apps/web/src/filter.test.ts would use. The `@todos/shared` half is even less of a concern: the plan specifies `import type { Todo }`, which `verbatimModuleSyntax` (tsconfig.base.json:10) erases entirely, so nothing needs to resolve at runtime. Harmless, but it dresses a settled precedent up as an unknown.
 
-### skipper-251 — composite 0.739 — wants-to-read
+### skipper-251 — composite 0.693 — wants-to-read
 
 - Issue: 251 core:test: live E2E verification of the Gemini CLI runtime adapter
 - Provenance: github:cicababba/skipper#251
@@ -113,7 +113,7 @@ A calibration is only valid for the planner it was measured on.
 - [underspecified] The ENOENT check in Step 8 ("run with a PATH lacking it, after `invalidateResolvedGemini()` has a chance to re-resolve") misreads the resolver: on non-win32 `resolveGemini()` unconditionally returns `{ file: "gemini", argsPrefix: [] }` (gemini-cli.ts:45-49), so invalidation re-resolves to the identical value and the check is purely about spawn-time PATH. A subshell PATH edit also cannot affect a already-running Skipper — detectRuntimes and every spawn use the main process' PATH, fixed at app launch (apps/desktop/src/runtimes-ipc.ts:5-7). To exercise the desktop coder's park message you must rename the binary or relaunch the app under the stripped PATH; state which.
 - [underspecified] `packages/core/tests/fixtures/` does not exist today (verified: no files match), and Step 9 does not say how `gemini-live-capture.jsonl` is consumed — provenance-only artifact (in which case it is dead weight in the test tree, and the banner comment alone would do) or an actual test input (in which case the parse/assert wiring, and how redaction interacts with the assertions, needs specifying). Note also that `pnpm format:check` globs `{ts,tsx,js,jsx,json,md,yaml}`, so a `.jsonl` is unformatted/unchecked by the repo's own tooling.
 
-### todos-due-date — composite 0.706 — wants-to-read
+### todos-due-date — composite 0.655 — wants-to-read
 
 - Issue: CAL-1 add a due date to todos
 - Provenance: authored:#314 calibration (mid-quality)
@@ -141,7 +141,7 @@ A calibration is only valid for the planner it was measured on.
 - [acceptance-gap] CLAUDE.md:45 requires "New or changed behavior is covered by a test in the same package," and steps 6-7 add real behavior to `apps/web` (form field, per-row clear-vs-set mapping of `""`→`null`, overdue class composition) with zero tests in that package. The plan's reasoning is sound — vitest.config.ts:5 collects only `*.test.ts` and apps/web/package.json has no testing-library/jsdom — and there is no precedent for web tests in the repo, so this is consistent rather than negligent. But `isOverdue` being pure and tested does not cover the `"" → null` mapping or the class-composition expression, which are the two places this feature is most likely to break. Say so plainly in the PR rather than implying the criterion is met.
 - [other] Minor: every dateless row will render an empty date picker showing the browser's `mm/dd/yyyy` placeholder, which contradicts the plan's own manual check that "the dateless row looks unchanged" and adds visual noise to what the issue calls out as the common case ("most todos will not have one"). Step 7's `li .due` styling partly mitigates this, but the plan should decide deliberately: either accept the placeholder or render a text span when `dueDate` is absent and reveal the input on interaction.
 
-### skipper-263 — composite 0.674 — wants-to-read
+### skipper-263 — composite 0.617 — wants-to-read
 
 - Issue: 263 core,desktop:feat: dual planner + merger — two plans from shared findings synthesized into one with convergence report
 - Provenance: github:cicababba/skipper#263
@@ -173,7 +173,7 @@ A calibration is only valid for the planner it was measured on.
 - [missing-step] `updatePlanBody` in apps/desktop/src/plan-store.ts:70-81 writes `{ ...stored, plan: <new>, editedAt, revisions: [...] }` — it spreads the whole envelope. So a `merge` report survives a chat-apply or inline edit (#165) and will describe a plan body that no longer exists, while `revisions[]` snapshots carry `confidence` but not `merge`. Since #264 is meant to consume `merge`, shipping it with no clear/snapshot rule bakes in a stale-report bug. Either drop `merge` on edit (like the semantics `confidence` gets via the revision snapshot) or document that it is generation-scoped and must be checked against `editedAt`.
 - [acceptance-gap] The issue's own out-of-scope list names only "Convergence feeding the confidence band" and "UI for divergences" — it does not exclude the `Multi-agent planning` control itself, yet the plan defers it ("UI belongs to #264"), leaving the feature reachable only by hand-editing `<userData>/settings.json` or a raw IPC write. There is precedent for hand-editable-only settings (`confidence.extraPlanRuns` is documented "Hand-editable by design (#62)" at packages/shared/src/orchestrator.ts:170-171 and has no web UI), so this is defensible — but it is a scope narrowing the issue text does not grant, and it should be an explicit, stated assumption rather than an assertion that the UI belongs to another issue.
 
-### skipper-139 — composite 0.668 — wants-to-read
+### skipper-139 — composite 0.609 — wants-to-read
 
 - Issue: 139 core,web:feat: created-by-me view — poll created stream, assign-to-me action
 - Provenance: github:cicababba/skipper#139
@@ -200,7 +200,7 @@ A calibration is only valid for the planner it was measured on.
 - [wrong-approach] Issue #139 specifies the manifest carries the created items — "separate section or `role: created` flag" — and the plan discards both, keeping created issues in-memory only. The rationale (create-issue-ipc precedent, keeping `Object.values(manifest.items)` consumers clean) is strong and probably right, but it is a deliberate deviation from the written spec with a user-visible consequence: the view and its badge are empty after every restart until the first full walk completes, and there is no record that an issue was ever surfaced. The plan records this as a settled "design decision" with `openQuestions: []` rather than surfacing it for sign-off. At minimum it belongs in openQuestions.
 - [risk] Step 4's prune rule ("drop created entries whose id now exists in the assigned `items` map") is asymmetric with how the assigned map ages: deltas never remove entries from `items`, only a full walk rebuilds it (apps/desktop/src/poll.ts:238-242). So an issue you authored and were *unassigned from* between full walks stays in the stale assigned map and is therefore suppressed from the created view for up to `FULL_WALK_EVERY_MS` (6h). The plan's risk #1 covers the opposite direction (assigned-but-still-shown) but not this one; a one-line note or a freshness check would close it.
 
-### skipper-67 — composite 0.631 — wants-to-read
+### skipper-67 — composite 0.566 — wants-to-read
 
 - Issue: 67 core,shared,web:feat: codex-cli provider — agentic flows on the OpenAI family
 - Provenance: github:cicababba/skipper#67
@@ -234,7 +234,7 @@ A calibration is only valid for the planner it was measured on.
 - [underspecified] Robustness item 6 ("pin the model" — the codex default is server-driven) is demoted from a non-negotiable to an open question and left unresolved, so the plan ships with the runtime following whatever OpenAI's remote catalog says. The repo-convention argument for not pinning is sound (`CLI_DEFAULT` in `apps/web/src/lib/agents/model-options.ts`, and `CodexCli.modelArgs()` omitting `--model`), so make that the decision in the plan rather than an open question — otherwise the item quietly goes unaddressed with no record of why.
 - [missing-step] `CodexCli.structured` passes neither `hardTimeoutMs` nor `inactivityTimeoutMs` to `runCodexProcess` (`packages/core/src/llm/codex-cli.ts:389-393`), so `resetInactivity()` returns immediately and only the 600s default hard timer bounds the reviewer/repair round — the plan's context claim that "both watchdogs exist" is true for `agent()` only. Bounded, so not a hang, but with step 4's retry the worst case for a single reviewer call becomes ~20 minutes. Worth arming the inactivity timer on the structured path while that file is open.
 
-### skipper-252 — composite 0.613 — wants-to-read
+### skipper-252 — composite 0.544 — wants-to-read
 
 - Issue: 252 desktop,web:feat: surface multi-CLI runtime support — onboarding + installed-CLI detection
 - Provenance: github:cicababba/skipper#252
@@ -266,7 +266,7 @@ A calibration is only valid for the planner it was measured on.
 - [other] The install hint is rendered by three different components in one view with no ownership rule: step 6 puts it under RuntimeSelect, step 7 puts it in RuntimeAuthHint, and step 8 puts it in SupportedRuntimesCard — all three sit inside the same onboarding `settings` card (onboarding.tsx:170-195 plus the new card), so a user who picks a missing CLI sees the same `npm install -g …` line three times. In Orchestration, RuntimeSelect returns a fragment, so its new hint line lands directly in AgentPairSelect's layout for each of the per-role rows. Decide one owner for the hint (the card, or the auth-hint block) and keep RuntimeSelect to the option badge.
 - [risk] (unverified) Swapping `command -v` for `<cli> --version` trades a pure existence check for a behavioural one: the badge now says "not found" for any installed CLI whose `--version` is unsupported, exits nonzero, prompts, or is slower than the new timeout — and the plan keeps the known-locations fallback only on win32, so POSIX has no safety net. A cheap `command -v` first with `--version` only as confirmation (or a fallback to `command -v` when `--version` throws) would keep false negatives off the badge. I did not verify each vendor CLI's `--version` behaviour, so treat this as a question.
 
-### todos-issue-2 — composite 0.603 — wants-to-read
+### todos-issue-2 — composite 0.533 — wants-to-read
 
 - Issue: ISSUE-2 Support priorities on todos
 - Provenance: jira:TODOS/ISSUE-2 (dogfooding run behind #313, vague)
@@ -291,7 +291,7 @@ A calibration is only valid for the planner it was measured on.
 - [other] Step 6 casts `e.target.value as Priority` in the UI while `parsePriority` stays module-private. That mirrors the existing unexported `parseTitle`, so it is consistent — but CLAUDE.md:34 justifies shared validation as "so the frontend and the API agree on the rules," and here the frontend agrees only by convention (option list generated from `PRIORITIES`) plus an unchecked cast. Exporting `parsePriority` (or a small `isPriority()` predicate, which the parser needs internally anyway per the objection above) would let the select handler narrow instead of assert, at no extra cost.
 - [risk] "So the important ones stand out" (the issue's framing) is carried entirely by `li.priority-high span { font-weight: 600 }`. That competes directly with the existing `li.done span { text-decoration: line-through; opacity: 0.5 }` (apps/web/src/styles.css:72-75) — a done high-priority todo renders as bold-but-faded — and a 600 weight next to the default is a weak signal on its own. Consider a color or a small badge for high, and confirm the interaction with `.done` during the manual pass (the plan's third manual check touches this but only asks that strike-through still works, not that the two styles compose sensibly). Sorting by priority being out of scope is fine; the stated ACs only require show + change.
 
-### skipper-141 — composite 0.580 — wants-to-read
+### skipper-141 — composite 0.506 — wants-to-read
 
 - Issue: 141 core,web:feat: epic view — manifest grouping entity, aggregate page, inbox badges
 - Provenance: github:cicababba/skipper#141
@@ -328,7 +328,7 @@ A calibration is only valid for the planner it was measured on.
 - [underspecified] `nextUnblockedChild`'s eligibility rule is self-contradictory as written: "the first child in a startable resting state (`triage`, or `blocked`/`needs-input` excluded)". It never says whether `plan-gate`/`queued`/`failed`/`closed` children are candidates, and the conveyor action unconditionally calls `requestTransition(next.id, "planning")` — legal from triage/plan-gate/queued per TRANSITIONS, illegal from e.g. `coding`, so a wrong predicate turns into a user-facing IPC error rather than a disabled button. It also does not say whether the action should be suppressed while another child of the epic is already in flight, which is the whole point of a conveyor belt (one at a time).
 - [other] Context item is factually wrong on its evidence: apps/web/package.json:24 DOES declare `"@skipper/core": "workspace:*"`. The conclusion (shared predicates belong in packages/shared) still holds — I confirmed zero `@skipper/core` imports under apps/web/src — but the stated justification should not be relied on as a hard boundary.
 
-### todos-polish — composite 0.547 — not-plannable
+### todos-polish — composite 0.467 — not-plannable
 
 - Issue: CAL-4 make the UI less ugly
 - Provenance: authored:#314 calibration (deliberately vague control)
@@ -357,7 +357,7 @@ A calibration is only valid for the planner it was measured on.
 - [wrong-approach] The filter tabs and counts are new user-visible behaviour bolted onto an issue that asks for visual polish. CLAUDE.md's definition of done requires "New or changed behavior is covered by a test in the same package", and the plan's own out-of-scope list rules out jsdom/@testing-library — so the only part that can be tested is the pure helper, while the parts that can actually break (tab click wiring, `aria-pressed` state, the two distinct empty states, footer hide-on-zero) ship untested by construction. The helper module then exists mostly to manufacture testability for logic that is four lines of `.filter()`. Dropping the filter tabs would satisfy the issue, remove the state trap above, and remove the coverage gap; if they stay, the plan should say plainly that the wiring is manually verified only.
 - [risk] Step 4 keeps `color-scheme: light dark` (styles.css:2) while defining explicit surface tokens with a `@media (prefers-color-scheme: dark)` override. These two mechanisms must stay in lockstep: `color-scheme` drives UA-rendered chrome (checkbox default rendering, scrollbars, autofill background on the composer input), and if the token palette is not a strict mirror of the OS scheme — e.g. a "subtle gradient" light background that stays light-ish under dark tokens — you get a dark scrollbar and dark autofill on a light card. The plan lists dark-mode contrast as a risk but only prescribes eyeballing text/borders; the manual check should explicitly include autofilled input and scrollbar appearance in both schemes.
 
-### todos-slow — composite 0.481 — not-plannable
+### todos-slow — composite 0.389 — not-plannable
 
 - Issue: CAL-3 the list feels slow
 - Provenance: authored:#314 calibration (deliberately vague control)

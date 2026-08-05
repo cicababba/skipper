@@ -111,7 +111,7 @@ describe("dossierMarkdown", () => {
     const conf = {
       version: 1 as const,
       composite: 0.9,
-      weights: { groundedness: 1, convergence: 0, critic: 0, clarity: 0 },
+      weights: { convergence: 0, critic: 1, clarity: 0 },
       signals: {},
       errors: [],
       computedAt: "2026-07-23T10:00:00.000Z",

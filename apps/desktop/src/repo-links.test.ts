@@ -268,7 +268,7 @@ describe("plan store", () => {
       confidence: {
         version: 1,
         composite: 0.7,
-        weights: { groundedness: 0.35, convergence: 0.25, critic: 0.3, clarity: 0.1 },
+        weights: { convergence: 0.25, critic: 0.65, clarity: 0.1 },
         signals: {},
         errors: [],
         computedAt: "2026-07-11T10:01:00.000Z",

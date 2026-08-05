@@ -30,7 +30,7 @@ function stored(over: Partial<StoredPlan> = {}, planOver: Partial<IssuePlan> = {
 const confidence: ConfidenceReport = {
   version: 1,
   composite: 0.87,
-  weights: { groundedness: 1, convergence: 0, critic: 0, clarity: 0 },
+  weights: { convergence: 0, critic: 1, clarity: 0 },
   signals: {},
   errors: [],
   computedAt: "2026-07-23T10:00:00.000Z",

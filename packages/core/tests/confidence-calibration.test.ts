@@ -168,18 +168,25 @@ describe("replayScores", () => {
 describe("compositeOf", () => {
   const W: ConfidenceWeights = DEFAULT_CONFIDENCE_WEIGHTS;
 
-  it("is the plain weighted sum when all four signals are present", () => {
+  // #321: groundedness is replayed and reported, but it carries no weight — it
+  // must not reach the composite even when the sample scored it.
+  it("is the weighted sum over the weighted signals, ignoring groundedness", () => {
     const scores = { groundedness: 1, critic: 0.6, convergence: 0.9, clarity: 0.95 };
-    const expected =
-      1 * W.groundedness + 0.6 * W.critic + 0.9 * W.convergence + 0.95 * W.clarity;
+    const total = W.critic + W.convergence + W.clarity;
+    const expected = (0.6 * W.critic + 0.9 * W.convergence + 0.95 * W.clarity) / total;
     expect(compositeOf(scores, W)).toBeCloseTo(expected, 10);
+    expect(compositeOf({ ...scores, groundedness: 0 }, W)).toBeCloseTo(expected, 10);
   });
 
   it("renormalizes over the weights of the signals present", () => {
     const scores = { groundedness: 1, critic: 0.6, clarity: 0.95 };
-    const total = W.groundedness + W.critic + W.clarity;
-    const expected = (1 * W.groundedness + 0.6 * W.critic + 0.95 * W.clarity) / total;
+    const total = W.critic + W.clarity;
+    const expected = (0.6 * W.critic + 0.95 * W.clarity) / total;
     expect(compositeOf(scores, W)).toBeCloseTo(expected, 10);
+  });
+
+  it("is 0 when groundedness is the only scored signal", () => {
+    expect(compositeOf({ groundedness: 1 }, W)).toBe(0);
   });
 
   it("is 0 when no signal is present", () => {
@@ -229,21 +236,22 @@ describe("compositeOf", () => {
   });
 });
 
+/** Convergence carries the composite: it is weighted, and replayScores reuses its
+ *  stored score verbatim, so one signal pins the row's composite exactly. */
 function rowsFrom(entries: { id: string; composite: number; label: CalibrationLabel }[]) {
   const samples = entries.map((e) =>
     sample({
       id: e.id,
       signals: {
-        groundedness: {
+        convergence: {
           score: e.composite,
-          coverage: 1,
-          filesChecked: 0,
-          filesFound: 0,
-          symbolsChecked: 0,
-          symbolsFound: 0,
-          missingFiles: [],
-          missingSymbols: [],
-          newFiles: [],
+          planCount: 3,
+          fileJaccard: 1,
+          sizeAgreement: 1,
+          stepCountAgreement: 1,
+          divergent: false,
+          sharedFiles: [],
+          disputedFiles: [],
         },
       },
     }),
@@ -396,6 +404,9 @@ describe("renderCalibrationReport", () => {
     const md = renderCalibrationReport(rows, META);
     expect(md).toContain("# Confidence calibration — run run-1");
     expect(md).toContain("| sample | ground | critic | clarity | converg | composite | veto | label |");
+    // The signal stays in the report as evidence; only its weight is gone (#321).
+    expect(md).toContain("| s1 | 1.000 |");
+    expect(md).toContain("- Weights: critic 0.3, convergence 0.25, clarity 0.3");
     expect(md).toContain("show how many todos are left");
     expect(md).toContain("checkable outcomes, one open decision the plan flags");
     expect(md).toContain("verdict: concerns");

@@ -22,7 +22,13 @@ import { deriveCriticScore } from "./critic";
 // numbers it is meant to measure. It orchestrates the four signals itself and
 // composes them here, with the same math.
 
-export type CalibrationSignalKey = keyof ConfidenceWeights;
+/**
+ * Wider than `keyof ConfidenceWeights` on purpose: groundedness is measured but
+ * no longer weighted (#321), and the corpus must keep reporting it — it is the
+ * evidence the signal is constant. `compositeOf` iterates the weight keys, so it
+ * excludes groundedness by itself, exactly as production does.
+ */
+export type CalibrationSignalKey = "groundedness" | "critic" | "clarity" | "convergence";
 
 export type CalibrationScores = Partial<Record<CalibrationSignalKey, number>>;
 
@@ -147,7 +153,7 @@ function clarityJudgmentOf(signal: ClaritySignal): ClarityJudgment | undefined {
 
 /** Weighted sum over the signals present, renormalized over their weights. */
 export function compositeOf(scores: CalibrationScores, weights: ConfidenceWeights): number {
-  const present = (Object.keys(weights) as CalibrationSignalKey[]).filter(
+  const present = (Object.keys(weights) as (keyof ConfidenceWeights)[]).filter(
     (k) => scores[k] !== undefined,
   );
   const total = present.reduce((sum, k) => sum + weights[k], 0);
@@ -383,7 +389,7 @@ export function renderCalibrationReport(rows: CalibrationRow[], meta: Calibratio
     `- Samples: ${rows.length}`,
     `- Runtime / model: ${meta.runtime} / ${meta.model || "(CLI default)"}`,
     `- Graphify attached: ${meta.graphify ? "yes" : "no"}`,
-    `- Weights: groundedness ${w.groundedness}, critic ${w.critic}, convergence ${w.convergence}, clarity ${w.clarity}`,
+    `- Weights: critic ${w.critic}, convergence ${w.convergence}, clarity ${w.clarity}`,
     `- Generated: ${meta.generatedAt}`,
     ``,
     `A calibration is only valid for the planner it was measured on.`,
