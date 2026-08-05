@@ -84,7 +84,7 @@ describe("critiqueDiff", () => {
     });
     const signal = await critiqueDiff({ diff: "+1", issue, acceptance: [] }, llm);
     expect(signal.verdict).toBe("reject");
-    expect(signal.score).toBeCloseTo(0.1);
+    expect(signal.score).toBeCloseTo(0.2);
     expect(signal.objections[0].blocking).toBe(true);
   });
 

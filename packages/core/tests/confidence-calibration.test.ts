@@ -41,7 +41,7 @@ const CLARITY: ClaritySignal = {
 };
 
 const CRITIC: CriticSignal = {
-  score: 0.6,
+  score: 0.94,
   verdict: "concerns",
   objections: [{ kind: "underspecified", detail: "no rollback path", blocking: false }],
 };
@@ -115,7 +115,7 @@ describe("replayScores", () => {
     expect(scores.convergence).toBe(0.9);
     // verifiable 1.0 − 0.05 flagged − 0 repo-knowledge
     expect(scores.clarity).toBeCloseTo(0.95, 10);
-    expect(scores.critic).toBeCloseTo(0.6, 10);
+    expect(scores.critic).toBeCloseTo(0.94, 10);
     expect(fallbacks).toEqual([]);
   });
 
@@ -129,7 +129,7 @@ describe("replayScores", () => {
     });
     const { scores, fallbacks } = replayScores(stale);
     expect(scores.clarity).toBeCloseTo(0.95, 10);
-    expect(scores.critic).toBeCloseTo(0.6, 10);
+    expect(scores.critic).toBeCloseTo(0.94, 10);
     expect(fallbacks).toEqual([]);
   });
 

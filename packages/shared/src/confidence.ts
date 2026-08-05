@@ -48,7 +48,8 @@ export interface CriticObjection {
 }
 
 export interface CriticSignal {
-  /** 0..1 — derived deterministically from verdict + blocking objections. */
+  /** 0..1 — derived deterministically by weighting the objections (#319); the
+   *  verdict only caps a "reject". */
   score: number;
   verdict: CriticVerdict;
   objections: CriticObjection[];
