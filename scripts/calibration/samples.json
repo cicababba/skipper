@@ -1,0 +1,199 @@
+{
+  "comment": "Threshold-calibration corpus (#314). Twelve samples: six open skipper issues spanning thin to thick bodies, six on cicababba/todos including two deliberately vague controls. Epics (#131, #235, #261) are excluded on purpose: an epic is meant to be split, so planning one is a degenerate case that says nothing about the gate.",
+  "placeholders": "todos-issue-1 and todos-issue-2 are the two Jira issues from the #313 dogfooding run. Their bodies live behind Electron safeStorage (auth.enc) and are unreachable from a plain node script, so they ship as placeholders — collect refuses to run them until the real text is pasted in. Transcriptions of both are in packages/core/tests/confidence-clarity.test.ts (ISSUE_1 / ISSUE_2) if the Jira originals are not at hand.",
+  "samples": [
+    {
+      "id": "skipper-139",
+      "repo": "cicababba/skipper",
+      "repoPath": "/Users/cicababba/Develop/personal/skipper/skipper",
+      "baseRef": "origin/develop",
+      "provenance": "github:cicababba/skipper#139",
+      "issue": {
+        "key": "139",
+        "title": "core,web:feat: created-by-me view — poll created stream, assign-to-me action",
+        "url": "https://github.com/cicababba/skipper/issues/139",
+        "labels": [
+          "enhancement",
+          "web",
+          "core"
+        ],
+        "body": "Part of #131.\n\nReporter view: issues you authored but are not assigned to (created inside or outside the app).\n\n- Populate from the `filter=created` stream the GitHub poll already fetches (`packages/core/src/adapters/github/poll.ts` — today it only splits PRs out of it and discards created issues).\n- Manifest: separate section or `role: created` flag — **excluded from admission/WIP/planning** (no eager planning: tokens on issues possibly meant for others).\n- UI: entry in the new nav section (see drafts sub-issue in #130), flat list with repo indicator + issue state. One action: **\"Assign to me\"** → assignee write + optimistic manifest injection → normal loop entry.\n"
+      }
+    },
+    {
+      "id": "skipper-141",
+      "repo": "cicababba/skipper",
+      "repoPath": "/Users/cicababba/Develop/personal/skipper/skipper",
+      "baseRef": "origin/develop",
+      "provenance": "github:cicababba/skipper#141",
+      "issue": {
+        "key": "141",
+        "title": "core,web:feat: epic view — manifest grouping entity, aggregate page, inbox badges",
+        "url": "https://github.com/cicababba/skipper/issues/141",
+        "labels": [
+          "enhancement",
+          "web",
+          "core"
+        ],
+        "body": "Part of #131.\n\nAggregate view over an epic's children.\n\n- Epic = **grouping entity in the manifest**, not a WorkItem (stays out of planning/queue); children carry an `epicKey`. App-created epics are known at birth; for external epics detect the parent from the poll (GitHub sub-issues payload — verify at plan time).\n- Epic page: progress (n/m merged), children table with state + confidence, visible dependency chain, aggregate actions — including \"assign me the next unblocked one\" (the epic as a conveyor belt).\n- Inbox: \"part of [epic]\" badge on children + group-by-epic toggle in the table view. Kanban swimlanes: out of scope.\n- Open point (decide at plan time or later): auto-closing an app-created epic when the last child merges is a write beyond the creation perimeter — candidate rule: \"create + close what the app created\".\n"
+      }
+    },
+    {
+      "id": "skipper-263",
+      "repo": "cicababba/skipper",
+      "repoPath": "/Users/cicababba/Develop/personal/skipper/skipper",
+      "baseRef": "origin/develop",
+      "provenance": "github:cicababba/skipper#263",
+      "issue": {
+        "key": "263",
+        "title": "core,desktop:feat: dual planner + merger — two plans from shared findings synthesized into one with convergence report",
+        "url": "https://github.com/cicababba/skipper/issues/263",
+        "labels": [
+          "enhancement",
+          "desktop",
+          "core"
+        ],
+        "body": "Part of #261. Depends on the explorer fan-out sub-issue.\n\n## What\n\nTwo planner runs in parallel over identical input (issue + aggregated findings), then a merger call that synthesizes the single final plan and reports how much the two plans agree.\n\n## Scope\n\n- Dual planner: two independent `agent()` planner runs, same prompt, same findings. Strong-model slot per role selection (#253).\n- Merger as a structured `ask()` (no tools): findings + plan A + plan B in the prompt; structured output `plan` (final, canonical — the only plan the user ever sees), `convergence` (score), `divergences[]` (where A and B disagree).\n- Deterministic sanity check computed in code: Jaccard overlap on the two plans' touched-file sets, stored alongside the merger's convergence score.\n- The final plan flows into the existing plan-store/gate path unchanged.\n- Behind the `Multi-agent planning` toggle; driver-loop tests for both branches.\n\n## Out of scope\n\nConvergence feeding the confidence band (next sub-issue), UI for divergences.\n"
+      }
+    },
+    {
+      "id": "skipper-252",
+      "repo": "cicababba/skipper",
+      "repoPath": "/Users/cicababba/Develop/personal/skipper/skipper",
+      "baseRef": "origin/develop",
+      "provenance": "github:cicababba/skipper#252",
+      "issue": {
+        "key": "252",
+        "title": "desktop,web:feat: surface multi-CLI runtime support — onboarding + installed-CLI detection",
+        "url": "https://github.com/cicababba/skipper/issues/252",
+        "labels": [
+          "enhancement",
+          "desktop",
+          "web"
+        ],
+        "body": "Follow-up to epic #236: four runtimes (Claude Code, Codex, Copilot, Gemini) sit behind the AgentRuntime seam, but the UI barely surfaces them — the only mention is the \"Runtimes\" card at the bottom of Settings → Orchestration and the per-repo override rows. A new user has no way to learn Skipper can drive all four CLIs, and no feedback on whether a selected CLI is actually usable.\n\n## What\n\nMake multi-CLI support discoverable and self-diagnosing.\n\n## How\n\n- **Onboarding**: a card/step presenting the four supported agent CLIs, with the default (Claude Code) preselected and a link to the Runtimes settings. `onboarding.tsx` currently has no provider surface at all.\n- **Installed-CLI detection**: a main-process probe (spawn `<cli> --version` per runtime, cheap + cached, re-run on settings open) exposed over IPC; the existing `resolveClaude`/`resolveCodex`/`resolveCopilot`/`resolveGemini` ladders already encode where to look.\n- **Badges on the runtime selects** (global + per-repo): installed / not found per option, with the install hint (e.g. `npm install -g @google/gemini-cli`) shown for missing ones instead of letting the first run park in needs-input.\n- Keep the selects un-gated: selecting a missing CLI stays allowed (the user may install it later); the badge is information, not a lock.\n\n## Done when\n\n- A fresh user sees during onboarding that four agent CLIs are supported.\n- The Runtimes settings show per-CLI availability without starting a run.\n"
+      }
+    },
+    {
+      "id": "skipper-251",
+      "repo": "cicababba/skipper",
+      "repoPath": "/Users/cicababba/Develop/personal/skipper/skipper",
+      "baseRef": "origin/develop",
+      "provenance": "github:cicababba/skipper#251",
+      "issue": {
+        "key": "251",
+        "title": "core:test: live E2E verification of the Gemini CLI runtime adapter",
+        "url": "https://github.com/cicababba/skipper/issues/251",
+        "labels": [
+          "core",
+          "testing"
+        ],
+        "body": "Follow-up to #243 (epic #236). The Gemini CLI adapter shipped with stream shapes, flags and behaviors derived from the CLI's docs + source (`output/types.ts` @ v0.52.0) — never exercised against the real binary, which was not installed on the dev machine (deliberate #243 decision D2). The #243 \"done when\" criterion \"a coding run on a Gemini-selected repo produces the normalized CodingEvent flow\" is therefore still unverified.\n\n## What\n\nInstall and authenticate the Gemini CLI, run a real coding loop on a Gemini-selected repo, and confirm the adapter's docs-derived assumptions hold.\n\n## Checklist\n\n- [ ] `npm install -g @google/gemini-cli` + auth (Google login or `GEMINI_API_KEY`)\n- [ ] Coding run on a Gemini-selected repo: normalized `CodingEvent` flow in the console (init → text/tool-use → result), sessionId captured\n- [ ] Stream schema: field names match `mapGeminiLine` expectations (`session_id`, `tool_name`, `parameters`, `stats.input_tokens/output_tokens`); delta handling doesn't duplicate text (a stream emitting deltas AND a final cumulative `content` would — one-line fix in `messageText()` if so)\n- [ ] MCP FQN prefix really is `mcp_<server>_<tool>` → memories-used card populates\n- [ ] `--skip-trust`, `--approval-mode=yolo|default`, `--session-id`/`--resume` headless, non-TTY stdin-as-prompt all behave as assumed\n- [ ] `.gemini/settings.json` lifecycle: GEMINI.md suppression works, backup/restore clean, file never lands in a commit (info/exclude path incl. linked worktrees)\n- [ ] Resume across coder re-entry (same worktree cwd) works\n- [ ] ENOENT parking with install hint when the CLI is missing (quick negative check)\n\n## Out of scope\n\n- Windows resolution ladder (`resolveGemini` shim branches) — tracked with the general Windows E4 pass\n- Any capability-matrix change unless a fact is disproven\n"
+      }
+    },
+    {
+      "id": "skipper-67",
+      "repo": "cicababba/skipper",
+      "repoPath": "/Users/cicababba/Develop/personal/skipper/skipper",
+      "baseRef": "origin/develop",
+      "provenance": "github:cicababba/skipper#67",
+      "issue": {
+        "key": "67",
+        "title": "core,shared,web:feat: codex-cli provider — agentic flows on the OpenAI family",
+        "url": "https://github.com/cicababba/skipper/issues/67",
+        "labels": [
+          "enhancement",
+          "web",
+          "core",
+          "shared",
+          "delayed"
+        ],
+        "body": "## Context\n\n`claude-cli` is the only provider that powers the agentic flows. #59 routed the planner and reviewer through `createProvider()`, so the provider is now selectable — but `OpenAIProvider` has no `agent()`, so selecting OpenAI parks every planned item in `needs-input`:\n\n> `planning needs a provider with agent mode (claude-cli or ollama) — \"openai\" has none.`\n\n**Codex CLI** is OpenAI's terminal coding agent. Wrapping it is the same trick `ClaudeCLIProvider` already pulls with `claude`: we inherit OpenAI's agent harness — tool loop, multi-platform sandbox, approvals — instead of building one.\n\nThis is the counter-proposal to #60 (`agent()` loop for OpenAI provider). See \"Relationship to #60\" below.\n\n## Goal\n\nA 4th provider, `codex-cli`, wrapping `codex exec`, implementing `ask` / `askStructured` / `agent`. The #59 seam then lights up the **planner** and **reviewer** on it with no driver changes. The coder is a follow-up (see Out of scope).\n\n## Research — verified against codex `0.144.4` (2026-07-15)\n\nRead from the Rust clap definitions, not the prose docs (`docs/install.md` is stale — its \"Windows 11 via WSL2\" line is an unmaintained leftover; native Windows is supported now).\n\nIt maps onto our `AgentOptions` contract almost 1:1:\n\n| Skipper needs | codex flag |\n|---|---|\n| `--setting-sources \"\"` (no user-config hijack) | `--ignore-user-config` |\n| `--no-session-persistence` | `--ephemeral` |\n| `--session-id` / `--resume` (shepherd #11) | `codex exec resume <ID>`, `thread_id` |\n| `cwd` | `-C` / `--cd` |\n| `stream-json` + `--verbose` | `--json` (JSONL; **stable** — `--experimental-json` is now just an alias) |\n| `askStructured` schema | `--output-schema <FILE>` — better than our prompt-inlined schema |\n| planner's read-leaning `--tools` | `--sandbox read-only` |\n| coder's `--tools` w/ Edit,Write,Bash | `--sandbox workspace-write` |\n| `--mcp-config` inline JSON (#45 memory) | `-c mcp_servers.<id>.command=...` (**unconfirmed**, see below) |\n| `--system-prompt` | `-c developer_instructions=\"...\"` (**unconfirmed**, see below) |\n| `--max-turns` | **nothing — does not exist** |\n\nOther facts that matter here:\n\n- **Native binary, native Windows + macOS.** Rust; `install.ps1` / brew cask / curl / standalone. So `resolveCodex()` is far simpler than `resolveClaude()` (`claude-cli.ts:28-72`) — no npm shim, no `ELECTRON_RUN_AS_NODE` trick. **Except** via `npm install -g @openai/codex`, which is a thin Node shim (`bin/codex.js`) spawning the real binary — that path re-introduces the shim problem.\n- **API key alone is sufficient**, metered at standard API rates, no ChatGPT plan needed. The docs explicitly endorse `codex exec` + API key for programmatic use, so no terms obstacle.\n- **Approvals are already `Never` in `exec`** — headless by default, no flag needed. `--full-auto` is **removed** (deprecated trap that warns).\n- **`.git` is read-only inside writable roots** — codex protects `.git`/`.codex`/`.agents` against `.git/hooks` privilege escalation, and it resolves worktree `gitdir:` pointer files, so our `worktrees/` layout is explicitly covered. **This does not bite us**: the coder leaves the tree dirty, the reviewer diffs uncommitted-vs-HEAD, and the **shepherd** commits via our own git backend (`shepherd.ts:126` → `commitWorktree`). Commit already lives outside the agent. Keep it that way.\n\n## Design\n\n- **`packages/shared`**: add `\"codex-cli\"` to the `LLMProvider` union (`types.ts:6`); add `codexModel` + `codexApiKey` to `LlmSettings` (added in #59). Pin a default model explicitly — see robustness.\n- **`packages/core/src/llm/codex-cli.ts`**: `CodexCLIProvider implements LLMProviderInterface`. Mirrors `claude-cli.ts` in shape. `askStructured` should use `--output-schema` + `-o <file>` and still run the reply through `parseJsonReply()` (`llm/json.ts`) for free tolerance.\n- **`packages/core/src/llm/stream-codex.ts`**: map codex `ThreadEvent` JSONL → our `CodingEvent`. `CodingEvent` is already provider-neutral, so **no UI changes** — the planner console and coding console work as-is. Mirror `stream.ts`'s tolerance (\"unknown types map to null so CLI schema drift degrades to fewer events, never a crash\") — doubly important here given the churn.\n  - `thread.started{thread_id}` → `agent-init{sessionId}`\n  - `item.completed{agent_message}` → `text`\n  - `command_execution` / `file_change` / `mcp_tool_call` → `tool-use`\n  - `turn.completed{usage}` → `result` (+ token usage)\n  - `turn.failed{error}` / `error` → `error`\n- **`packages/core/src/llm/provider.ts`**: one more `case` in `createProvider()`.\n- **`apps/web`**: provider dropdown + model field in Settings (otherwise it is unselectable).\n\n## Robustness — non-negotiable\n\nThree **open** codex bugs land squarely on our use case. Each can silently corrupt an orchestration run — a hang, a false success, a false empty answer. For a product whose premise is a *verifiable confidence score*, these are aimed at the value prop. Design for them up front:\n\n1. **Close stdin.** `codex exec \"<prompt>\"` deadlocks forever when stdin is a non-TTY pipe with no writer (#20919 — \"a deterministic deadlock, not a flake\"). Use `stdio: ['ignore','pipe','pipe']`, or write-then-`stdin.end()` like the official SDK.\n2. **`--json` always. Never parse plain stdout.** Unrelated session traces + `MEMORY.md` contents leak into stdout undelimited (#32266), and the message goes to both stderr and stdout when stdout is not a TTY (#12664).\n3. **Never trust the exit code.** `codex exec` exits **0 even when the run failed** (#15536). Derive success from a terminal `turn.completed`.\n4. **Empty stdout = failure, not an empty answer.** Silent 0-byte stdout on long prompts when detached from a TTY (#19945).\n5. **Wall-clock watchdog is mandatory** — there is no `--max-turns` and no config equivalent. We already have `DEFAULT_INACTIVITY_TIMEOUT_MS` + `DEFAULT_HARD_TIMEOUT_MS` in `coder/run.ts`; the provider needs its own bound too.\n6. **Pin the model.** The default is **server-driven** — resolved from a remote list cached 300s, no hardcoded constant. OpenAI can shift it under us with no release on our side. (`gpt-5-codex` is gone from the catalog entirely; `gpt-5.6-sol` is today's default.)\n7. `windowsHide: true` + kill by process group — killing a command does not kill its descendant tree (#32742).\n8. **Pin the CLI version and smoke-test on bumps.** ~16 stable releases in 35 days (one every ~2.3 days), a minor roughly weekly, and **no breaking-change log** — `--full-auto`, `wire_api=\"chat\"`, and the old `[profiles.*]` shape have all already been removed. We cannot subscribe to breakage.\n\nPrefer a hand-rolled spawn over `@openai/codex-sdk`: its JSONL parser throws on large lines (#23131), it drops `phase` fidelity, and it does not bundle the CLI.\n\n## Unconfirmed — smoke-test before building on them\n\n- **`-c developer_instructions=\"...\"` as the `--system-prompt` seam.** `exec` explicitly sets `developer_instructions: None` in its overrides and defines no flag; the TOML key exists. Verify it reaches the model end-to-end. (`-c instructions=` is more doubtful — exec's override path names `base_instructions`. `model_instructions_file` is \"STRONGLY DISCOURAGED\" in-source.)\n- **Injecting the #45 memory MCP purely via `-c mcp_servers.skipper-memory.command=...`.** `mcp_servers` uses a custom deserializer, so a fully-formed server injected via `-c` may not initialize. Fallback: write a temp `config.toml` per run. Note a *required* MCP server that fails to init exits 1.\n- **`CODEX_API_KEY` vs `OPENAI_API_KEY`.** `CODEX_API_KEY` is confirmed for `exec` (\"only supported in `codex exec`; set it inline rather than job-wide\") and is what the official SDK sets. Whether bare `OPENAI_API_KEY` authenticates `exec` without a prior `codex login` is unconfirmed.\n- Whether a third-party app may drive a user's **ChatGPT-plan** credentials is addressed nowhere. Inference from silence, not permission. **Make the API key the supported path**; treat plan auth as user-owned/at-own-risk.\n- Whether `AGENTS.md` in the target repo can be suppressed. `--ignore-user-config` covers `$CODEX_HOME/config.toml`; the planner deliberately runs with `--setting-sources \"\"` so a project's `CLAUDE.md` cannot hijack the run, and we want the same guarantee here.\n\n## Relationship to #60\n\n#60 proposes building `agent()` for `OpenAIProvider` — a tool loop we own. It is really two jobs under one title:\n\n- **Planner-grade** (read-only tools) — small; would mirror `ollama.ts:90`, whose `agent()` exposes only `list_directory` / `read_file` / `search_text` / `web_fetch`.\n- **Coder-grade** (Edit/Write/Bash + sandbox + turn cap + session resume) — enormous. Writing a multi-platform sandbox is a security project, not a feature. Codex ships Seatbelt (macOS), bubblewrap+seccomp (Linux), and a native Windows sandbox.\n\nThe no-binary path is also a **dead end**: ollama already has `agent()` and its planner works, yet its coder never has — `runCoder()` spawns `claude` directly (`coder/run.ts:65`). A no-install user would plan, score confidence, and never reach a PR. Half a product.\n\n**So #60 should be closed as superseded once this proves out — not built, and not before.** Until then it stays open as the only tracked owner of the planner+openai gap; if codex disappoints, #60 is the fallback.\n\n## Out of scope\n\n- **The coder.** It spawns `claude` directly (`coder/run.ts:65`) rather than going through the provider seam, and it carries the sharp edges: session resume (`codex exec resume` ↔ `--session-id`/`--resume`, the #11 shepherding re-entry seam), the missing turn cap vs our `coderMaxTurns` setting, and kill-tree behaviour. Own follow-up issue. #60's open question — unify the coder behind `agent()` or keep a per-provider spawn path — belongs there.\n- Bundling/shipping the codex binary. Users install it themselves, exactly as with `claude` today.\n\n## Acceptance\n\n- [ ] `codex-cli` selectable in Settings; planner and reviewer both run on it end-to-end\n- [ ] Planner explores the repo read-only and returns a schema-valid plan; confidence scoring works\n- [ ] Planner console streams live events (mapper produces `CodingEvent`s)\n- [ ] Reviewer critiques a diff through `askStructured`\n- [ ] A failed run surfaces as a failure — not a false success (exit-code lie), not a hang, not a false empty answer\n- [ ] Works on Windows and macOS\n"
+      }
+    },
+    {
+      "id": "todos-issue-1",
+      "repo": "cicababba/todos",
+      "repoPath": "/Users/cicababba/Develop/personal/skipper/todos",
+      "baseRef": "origin/main",
+      "provenance": "jira:TODOS/ISSUE-1 (dogfooding run behind #313, surgical)",
+      "issue": {
+        "key": "ISSUE-1",
+        "title": "mostrare quanti todo restano",
+        "url": "https://cicababba.atlassian.net/browse/ISSUE-1",
+        "labels": [],
+        "body": "TODO: paste the Jira issue body before running"
+      }
+    },
+    {
+      "id": "todos-issue-2",
+      "repo": "cicababba/todos",
+      "repoPath": "/Users/cicababba/Develop/personal/skipper/todos",
+      "baseRef": "origin/main",
+      "provenance": "jira:TODOS/ISSUE-2 (dogfooding run behind #313, vague)",
+      "issue": {
+        "key": "ISSUE-2",
+        "title": "todo priority",
+        "url": "https://cicababba.atlassian.net/browse/ISSUE-2",
+        "labels": [],
+        "body": "TODO: paste the Jira issue body before running"
+      }
+    },
+    {
+      "id": "todos-due-date",
+      "repo": "cicababba/todos",
+      "repoPath": "/Users/cicababba/Develop/personal/skipper/todos",
+      "baseRef": "origin/main",
+      "provenance": "authored:#314 calibration (mid-quality)",
+      "issue": {
+        "key": "CAL-1",
+        "title": "add a due date to todos",
+        "url": "https://example.invalid/todos/cal-1",
+        "labels": [],
+        "body": "A todo is only a title and a done flag today. I want to say when something is due.\n\n- A todo can carry a due date. It is optional — most todos will not have one.\n- The add form lets me set one, and I can change it later from the row.\n- The row shows the due date next to the title.\n- Todos that are past due should stand out in the list.\n\nInput validation belongs in `packages/shared` next to the title rules, and the API\nmust keep rejecting bad input with `400 { error }`."
+      }
+    },
+    {
+      "id": "todos-filter",
+      "repo": "cicababba/todos",
+      "repoPath": "/Users/cicababba/Develop/personal/skipper/todos",
+      "baseRef": "origin/main",
+      "provenance": "authored:#314 calibration (mid-quality)",
+      "issue": {
+        "key": "CAL-2",
+        "title": "filter the list by status",
+        "url": "https://example.invalid/todos/cal-2",
+        "labels": [],
+        "body": "Past a handful of todos the list gets noisy. I want to see only the open ones.\n\nAcceptance criteria\n\n- Three filters: all, open, done. The app starts on all.\n- Switching filter does not refetch — it filters what is already loaded.\n- With a filter active and nothing matching, the \"nothing here yet\" message is wrong\n  and must say something else.\n- Adding a todo while a filter is active still works.\n\nFrontend only: no API change, no change to the shared types."
+      }
+    },
+    {
+      "id": "todos-slow",
+      "repo": "cicababba/todos",
+      "repoPath": "/Users/cicababba/Develop/personal/skipper/todos",
+      "baseRef": "origin/main",
+      "provenance": "authored:#314 calibration (deliberately vague control)",
+      "issue": {
+        "key": "CAL-3",
+        "title": "the list feels slow",
+        "url": "https://example.invalid/todos/cal-3",
+        "labels": [],
+        "body": "When there are a lot of todos the app feels sluggish. Ticking one off takes a moment\nbefore anything happens on screen. Make it better."
+      }
+    },
+    {
+      "id": "todos-polish",
+      "repo": "cicababba/todos",
+      "repoPath": "/Users/cicababba/Develop/personal/skipper/todos",
+      "baseRef": "origin/main",
+      "provenance": "authored:#314 calibration (deliberately vague control)",
+      "issue": {
+        "key": "CAL-4",
+        "title": "make the UI less ugly",
+        "url": "https://example.invalid/todos/cal-4",
+        "labels": [],
+        "body": "The app looks like an unstyled prototype. Give it a proper look — it should feel like\na real product, not a test page. Use your judgement."
+      }
+    }
+  ]
+}

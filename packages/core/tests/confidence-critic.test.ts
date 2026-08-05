@@ -8,6 +8,7 @@ import {
   critiquePlan,
   runCritic,
   CriticError,
+  PLAN_CRITIC_MAX_TURNS,
   type CriticPriorRound,
 } from "../src/confidence";
 
@@ -139,7 +140,7 @@ describe("runCritic / critiquePlan", () => {
         context: "Issue #7",
       },
       llm,
-      { runtime, tools: "Read,Grep,Glob", cwd: "/wt", sessionId: "sess-1", maxTurns: 8 },
+      { runtime, tools: "Read,Grep,Glob", cwd: "/wt", sessionId: "sess-1", maxTurns: PLAN_CRITIC_MAX_TURNS },
     );
     const [, , opts] = structured.mock.calls[0] as unknown as [
       string,
@@ -150,7 +151,7 @@ describe("runCritic / critiquePlan", () => {
       tools: "Read,Grep,Glob",
       cwd: "/wt",
       sessionId: "sess-1",
-      maxTurns: 8,
+      maxTurns: PLAN_CRITIC_MAX_TURNS,
     });
   });
 
@@ -443,7 +444,7 @@ describe("repo-inspecting plan critic (#308)", () => {
     expect(opts).toMatchObject({
       tools: "Read,Grep,Glob",
       cwd: "/wt/issue-42",
-      maxTurns: 8,
+      maxTurns: PLAN_CRITIC_MAX_TURNS,
     });
     // Ephemeral by design: the plan critic never resumes the planner's session.
     expect(opts.sessionId).toBeUndefined();
@@ -472,5 +473,142 @@ describe("repo-inspecting plan critic (#308)", () => {
     expect(askStructured.mock.calls[0][0] as string).not.toContain(
       "You can read, search and list files across the working tree.",
     );
+  });
+});
+
+// #314: the cold-start plan critic can exhaust its turn budget. Losing the whole
+// 0.30-weight signal renormalizes the composite over three signals — strictly
+// worse than the pre-#312 verdict whose repo-fact doubts stay unverified.
+describe("tool-less degradation on a salvageable death (#314)", () => {
+  const okReply = { verdict: "concerns", objections: [{ kind: "risk", detail: "d", blocking: false }] };
+  type StructuredOpts = { tools: string; cwd?: string; sessionId?: string; maxTurns?: number };
+
+  function maxTurnsDeath(): Error {
+    const err = new Error("agent hit the max-turns limit after 21 turns");
+    (err as Error & { subtype: string }).subtype = "error_max_turns";
+    return err;
+  }
+
+  it("retries tool-less and returns a valid signal", async () => {
+    const { llm } = fakeLLM(okReply);
+    const structured = vi
+      .fn<(p: string, s: unknown, o: unknown) => Promise<unknown>>()
+      .mockRejectedValueOnce(maxTurnsDeath())
+      .mockResolvedValueOnce(okReply);
+    const runtime = { id: "claude-cli", structured } as unknown as AgentRuntime;
+    const degraded: string[] = [];
+
+    const s = await critiquePlan(PLAN, ISSUE, llm, {
+      runtime,
+      repoPath: "/wt/issue-42",
+      onDegraded: (r) => degraded.push(r),
+    });
+
+    expect(s.verdict).toBe("concerns");
+    expect(s.score).toBeCloseTo(0.6);
+    expect(structured).toHaveBeenCalledTimes(2);
+
+    // The retry drops the tools, the cwd and the budget — and the prompt stops
+    // telling the critic to verify against a tree it can no longer read.
+    const [firstPrompt, , firstOpts] = structured.mock.calls[0] as unknown as [string, unknown, StructuredOpts];
+    const [retryPrompt, , retryOpts] = structured.mock.calls[1] as unknown as [string, unknown, StructuredOpts];
+    expect(firstOpts).toMatchObject({ tools: "Read,Grep,Glob", maxTurns: PLAN_CRITIC_MAX_TURNS });
+    expect(firstPrompt).toContain("You can read, search and list files across the working tree.");
+    expect(retryOpts.tools).toBe("");
+    expect(retryOpts.cwd).toBeUndefined();
+    expect(retryOpts.maxTurns).toBeUndefined();
+    expect(retryPrompt).not.toContain("You can read, search and list files across the working tree.");
+
+    // Quiet, but not invisible.
+    expect(degraded).toHaveLength(1);
+    expect(degraded[0]).toContain("degraded to tool-less");
+    expect(degraded[0]).toContain("max-turns");
+  });
+
+  it("degrades on the other salvageable deaths too", async () => {
+    for (const subtype of ["error_hard_timeout", "error_inactivity"]) {
+      const { llm } = fakeLLM(okReply);
+      const err = new Error(`killed: ${subtype}`);
+      (err as Error & { subtype: string }).subtype = subtype;
+      const structured = vi
+        .fn<(p: string, s: unknown, o: unknown) => Promise<unknown>>()
+        .mockRejectedValueOnce(err)
+        .mockResolvedValueOnce(okReply);
+      const runtime = { id: "claude-cli", structured } as unknown as AgentRuntime;
+      const s = await critiquePlan(PLAN, ISSUE, llm, { runtime, repoPath: "/wt/issue-42" });
+      expect(s.verdict).toBe("concerns");
+      expect(structured).toHaveBeenCalledTimes(2);
+    }
+  });
+
+  // The fallback is opt-in per call site, never a property of runCritic. A diff
+  // critic death already parks the item at human-review with a visible error
+  // (apps/desktop/src/reviewer.ts) — a human reads the code either way, so
+  // degrading there would trade review rigor for automation.
+  it("still throws for a diff-critic-shaped call that did not opt in", async () => {
+    const { llm } = fakeLLM(okReply);
+    const structured = vi
+      .fn<(p: string, s: unknown, o: unknown) => Promise<unknown>>()
+      .mockRejectedValue(maxTurnsDeath());
+    const runtime = { id: "claude-cli", structured } as unknown as AgentRuntime;
+    await expect(
+      runCritic(
+        {
+          artifactKind: "diff",
+          artifactLabel: "working-tree diff for issue #7",
+          artifact: "--- a/x.ts",
+          context: "Issue #7",
+          canInspectRepo: true,
+        },
+        llm,
+        { runtime, cwd: "/wt", sessionId: "sess-1", tools: "Read,Grep,Glob", maxTurns: 8 },
+      ),
+    ).rejects.toThrow("max-turns");
+    expect(structured).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates a non-salvageable error untouched", async () => {
+    const { llm } = fakeLLM(okReply);
+    const structured = vi
+      .fn<(p: string, s: unknown, o: unknown) => Promise<unknown>>()
+      .mockRejectedValue(new Error("claude: command not found"));
+    const runtime = { id: "claude-cli", structured } as unknown as AgentRuntime;
+    await expect(
+      critiquePlan(PLAN, ISSUE, llm, { runtime, repoPath: "/wt/issue-42" }),
+    ).rejects.toThrow("claude: command not found");
+    expect(structured).toHaveBeenCalledTimes(1);
+  });
+
+  it("still throws CriticError when the tool-less retry returns an invalid verdict", async () => {
+    const { llm } = fakeLLM(okReply);
+    const structured = vi
+      .fn<(p: string, s: unknown, o: unknown) => Promise<unknown>>()
+      .mockRejectedValueOnce(maxTurnsDeath())
+      .mockResolvedValueOnce({ verdict: "maybe" });
+    const runtime = { id: "claude-cli", structured } as unknown as AgentRuntime;
+    await expect(
+      critiquePlan(PLAN, ISSUE, llm, { runtime, repoPath: "/wt/issue-42" }),
+    ).rejects.toBeInstanceOf(CriticError);
+  });
+
+  // An abort must never be swallowed into a fallback (#159).
+  it("rejects instead of degrading when the caller aborted", async () => {
+    const { llm } = fakeLLM(okReply);
+    const controller = new AbortController();
+    const structured = vi
+      .fn<(p: string, s: unknown, o: unknown) => Promise<unknown>>()
+      .mockImplementationOnce(async () => {
+        controller.abort();
+        throw maxTurnsDeath();
+      });
+    const runtime = { id: "claude-cli", structured } as unknown as AgentRuntime;
+    await expect(
+      critiquePlan(PLAN, ISSUE, llm, {
+        runtime,
+        repoPath: "/wt/issue-42",
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("max-turns");
+    expect(structured).toHaveBeenCalledTimes(1);
   });
 });

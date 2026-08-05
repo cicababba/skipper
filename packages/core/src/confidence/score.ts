@@ -133,6 +133,9 @@ export async function computeConfidence(
       .catch((err) => void report.errors.push(`groundedness: ${message(err)}`)),
     critiquePlan(opts.plan, opts.issue, opts.llm, {
       repoPath: opts.repoPath,
+      // A degraded critic still scores, so it never reaches the catch below —
+      // record it here or the fallback is invisible (#314).
+      onDegraded: (reason) => void report.errors.push(`critic: ${reason}`),
       ...(opts.signal ? { signal: opts.signal } : {}),
       ...(opts.runtime ? { runtime: opts.runtime } : {}),
     })

@@ -185,6 +185,8 @@ export {
   runCritic,
   critiquePlan,
   buildCriticPrompt,
+  deriveCriticScore,
+  PLAN_CRITIC_MAX_TURNS,
   resolveGate,
   ClarityError,
   ClarityJudgmentSchema,
@@ -200,8 +202,42 @@ export type {
   ClarityJudgment,
   CriticInput,
   CriticPriorRound,
+  RunCriticOptions,
   ComputeConfidenceOptions,
   GateTarget,
+} from "./confidence";
+
+// Threshold calibration harness (issue #314)
+export {
+  planDigest,
+  replayScores,
+  compositeOf,
+  buildCalibrationRows,
+  sweepThresholds,
+  defaultThresholdGrid,
+  renderCalibrationReport,
+  porcelainPaths,
+  worktreeDirtyError,
+  missingSignals,
+  findIncompleteSamples,
+  renderIncompleteWarning,
+} from "./confidence";
+export type {
+  CalibrationLabel,
+  IncompleteSample,
+  CalibrationMeta,
+  CalibrationPlanDigest,
+  CalibrationRow,
+  CalibrationSample,
+  CalibrationScores,
+  CalibrationSignalKey,
+  CalibrationTimings,
+  ReplayOptions,
+  ReplayResult,
+  SweepOptions,
+  SweepResult,
+  ThresholdCandidate,
+  ThresholdSweep,
 } from "./confidence";
 
 // Coder (issue #9)

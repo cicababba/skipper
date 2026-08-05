@@ -6,7 +6,7 @@ import {
   type CriticVerdict,
   type IssuePlan,
 } from "@skipper/shared";
-import type { LLMProviderInterface } from "../llm";
+import { isSalvageableDeath, type LLMProviderInterface } from "../llm";
 import type { AgentRuntime } from "../runtime/types";
 import type { PlanIssueInput } from "../planner";
 
@@ -15,6 +15,20 @@ import type { PlanIssueInput } from "../planner";
 
 /** Detail cap when priors are quoted back into the continuity prompt (#205). */
 const MAX_OBJECTION_DETAIL_CHARS = 400;
+
+/**
+ * Turn budget for the repo-inspecting plan critic (#314). The diff critic gets
+ * by on 8 because it resumes the coder's session (#226) and starts warm, with
+ * the tree already in context. The plan critic is ephemeral by design — no
+ * sessionId, so it stays adversarially independent of the planner (#312) — so it
+ * starts cold and must locate every cited file before it can verify one, then
+ * spend a turn on the verdict. Measured against a 9-file plan on a cold
+ * worktree: 8 and 12 both died, 16 completed — so the need is 13..16 and this
+ * leaves headroom for a larger plan. A ceiling, not a target: the critic stops
+ * as soon as it has a verdict, and an under-estimate is no longer fatal since
+ * askVerdict degrades to the tool-less prompt.
+ */
+export const PLAN_CRITIC_MAX_TURNS = 20;
 
 /** Prior review round handed to a continuity critique (#205). */
 export interface CriticPriorRound {
@@ -85,7 +99,7 @@ const BLOCKING_PENALTY = 0.1;
 const UNVERIFIED_CONCERNS_SCORE = 0.85;
 
 /** Score derived here, never model-emitted — keeps it reproducible. */
-function deriveScore(verdict: CriticVerdict, objections: CriticObjection[]): number {
+export function deriveCriticScore(verdict: CriticVerdict, objections: CriticObjection[]): number {
   const blocking = objections.filter((o) => o.blocking).length;
   const base =
     verdict === "concerns" &&
@@ -166,61 +180,112 @@ function mapResolvedLabels(labels: string[], prior: CriticObjection[]): CriticOb
   return out;
 }
 
+export interface RunCriticOptions {
+  cwd?: string;
+  sessionId?: string;
+  signal?: AbortSignal;
+  tools?: string;
+  maxTurns?: number;
+  runtime?: AgentRuntime;
+  /**
+   * Retry tool-less when the tools-enabled call dies a salvageable death,
+   * instead of throwing (#314). Opt-in per call site, because what a death costs
+   * differs: the plan critic would otherwise lose a 0.30-weight signal and let
+   * the composite renormalize over the remaining three, silently distorting the
+   * number the gate reads — degrading is strictly better. A diff-critic death
+   * already parks the item at human-review with a visible error, which is safe
+   * and gets human eyes on the code; degrading there would trade review rigor
+   * for automation nobody asked for.
+   */
+  degradeOnBudgetDeath?: boolean;
+  /** Called when the tool-less retry took over, so the caller can record the
+   *  degradation instead of losing it. Reporting only — never the opt-in. */
+  onDegraded?: (reason: string) => void;
+}
+
+/**
+ * Runtime-first: whenever the caller has a runtime the verdict is asked on it —
+ * tools-enabled for the repo-inspecting critic, plain (no tools, single turn)
+ * otherwise. The completions provider is the no-runtime fallback. Either way the
+ * reply is the final verdict JSON.
+ *
+ * With degradeOnBudgetDeath, a tools-enabled call that exhausts its budget
+ * retries against the tool-less prompt. An abort or a malformed verdict still
+ * propagates — only a salvageable death is retried.
+ */
+async function askVerdict<T>(
+  input: CriticInput,
+  schema: Record<string, unknown>,
+  llm: LLMProviderInterface,
+  opts?: RunCriticOptions,
+): Promise<T> {
+  if (!opts?.runtime) {
+    return llm.askStructured<T>(
+      buildCriticPrompt(input),
+      schema,
+      opts?.signal ? { signal: opts.signal } : undefined,
+    );
+  }
+  const runtime = opts.runtime;
+  const toolLess = (): Promise<T> =>
+    runtime.structured<T>(buildCriticPrompt({ ...input, canInspectRepo: false }), schema, {
+      tools: "",
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    });
+  const tools = opts.tools ?? "";
+  if (!tools) return toolLess();
+  try {
+    return await runtime.structured<T>(buildCriticPrompt(input), schema, {
+      tools,
+      ...(opts.cwd ? { cwd: opts.cwd } : {}),
+      ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
+      ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    });
+  } catch (err) {
+    if (!opts.degradeOnBudgetDeath || opts.signal?.aborted || !isSalvageableDeath(err)) throw err;
+    const reason = err instanceof Error ? err.message : String(err);
+    opts.onDegraded?.(`repo-inspecting critic degraded to tool-less: ${reason}`);
+    return toolLess();
+  }
+}
+
 export async function runCritic(
   input: CriticInput,
   llm: LLMProviderInterface,
-  opts?: {
-    cwd?: string;
-    sessionId?: string;
-    signal?: AbortSignal;
-    tools?: string;
-    maxTurns?: number;
-    runtime?: AgentRuntime;
-  },
+  opts?: RunCriticOptions,
 ): Promise<CriticSignal> {
-  // Runtime-first: whenever the caller has a runtime the verdict is asked on it —
-  // tools-enabled for the repo-inspecting critic, plain (no tools, single turn)
-  // for the plan critic. The completions provider is the no-runtime fallback.
-  // Either way the reply is the final verdict JSON.
-  const ask = <T>(prompt: string, schema: Record<string, unknown>): Promise<T> => {
-    if (!opts?.runtime) {
-      return llm.askStructured<T>(prompt, schema, opts?.signal ? { signal: opts.signal } : undefined);
-    }
-    const tools = opts.tools ?? "";
-    return opts.runtime.structured<T>(prompt, schema, {
-      tools,
-      ...(tools && opts.cwd ? { cwd: opts.cwd } : {}),
-      ...(tools && opts.sessionId ? { sessionId: opts.sessionId } : {}),
-      ...(tools && opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}),
-      ...(opts.signal ? { signal: opts.signal } : {}),
-    });
-  };
   if (input.prior) {
     const schema = z.toJSONSchema(CriticContinuityVerdictSchema) as Record<string, unknown>;
-    const reply = await ask<unknown>(buildCriticPrompt(input), schema);
+    const reply = await askVerdict<unknown>(input, schema, llm, opts);
     const parsed = CriticContinuityVerdictSchema.safeParse(reply);
     if (!parsed.success) {
       throw new CriticError(`critic returned an invalid verdict: ${parsed.error.message}`, reply);
     }
     const { verdict, objections, resolved } = parsed.data;
-    const score = deriveScore(verdict, objections);
+    const score = deriveCriticScore(verdict, objections);
     return { score, verdict, objections, resolved: mapResolvedLabels(resolved, input.prior.objections) };
   }
   const schema = z.toJSONSchema(CriticVerdictSchema) as Record<string, unknown>;
-  const reply = await ask<unknown>(buildCriticPrompt(input), schema);
+  const reply = await askVerdict<unknown>(input, schema, llm, opts);
   const parsed = CriticVerdictSchema.safeParse(reply);
   if (!parsed.success) {
     throw new CriticError(`critic returned an invalid verdict: ${parsed.error.message}`, reply);
   }
   const { verdict, objections } = parsed.data;
-  return { score: deriveScore(verdict, objections), verdict, objections };
+  return { score: deriveCriticScore(verdict, objections), verdict, objections };
 }
 
 export async function critiquePlan(
   plan: IssuePlan,
   issue: PlanIssueInput,
   llm: LLMProviderInterface,
-  opts?: { signal?: AbortSignal; runtime?: AgentRuntime; repoPath?: string },
+  opts?: {
+    signal?: AbortSignal;
+    runtime?: AgentRuntime;
+    repoPath?: string;
+    onDegraded?: (reason: string) => void;
+  },
 ): Promise<CriticSignal> {
   // Repo-inspecting plan critic (#308): with a runtime to host the tools-enabled
   // call and a cwd to read, it verifies its own repo-fact doubts instead of
@@ -250,7 +315,17 @@ export async function critiquePlan(
     {
       ...(opts?.signal ? { signal: opts.signal } : {}),
       ...(opts?.runtime ? { runtime: opts.runtime } : {}),
-      ...(inspectCwd ? { cwd: inspectCwd, tools: "Read,Grep,Glob", maxTurns: 8 } : {}),
+      ...(opts?.onDegraded ? { onDegraded: opts.onDegraded } : {}),
+      // Opt in to the tool-less retry: losing this signal distorts the composite
+      // the gate reads, which is worse than an unverified verdict (#314).
+      ...(inspectCwd
+        ? {
+            cwd: inspectCwd,
+            tools: "Read,Grep,Glob",
+            maxTurns: PLAN_CRITIC_MAX_TURNS,
+            degradeOnBudgetDeath: true,
+          }
+        : {}),
     },
   );
 }
