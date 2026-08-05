@@ -45,7 +45,7 @@ const APPROVE = { verdict: "approve", objections: [] };
 /** Clarity judgment (#309) deriving score 1.0 — the neutral answer for the
  *  gate-behaviour tests below, which are not about clarity. */
 const CLEAR = { criteria: "verifiable", ambiguities: [], openQuestions: [], rationale: "clear" };
-/** Judgment deriving 0.05: vague, with three decisions the plan made silently. */
+/** Judgment deriving 0.172: vague, with three decisions the plan made silently. */
 const VAGUE = {
   criteria: "vague",
   ambiguities: ["levels", "default", "control"].map((detail) => ({
@@ -294,15 +294,20 @@ describe("computeConfidence — adaptive convergence (#50)", () => {
   });
 
   it("skips when the plan is decisively bad, without paying for more plans", async () => {
+    await writeFile(join(repo, "src", "backoff.ts"), "export function wait() {}\n", "utf-8");
+    await writeFile(join(repo, "src", "retry.ts"), "export function retry() {}\n", "utf-8");
     const generatePlan = vi.fn(async () => plan());
     const report = await computeConfidence({
       plan: plan({
-        // Coverage 0.65: one of two files missing, the symbol found — bad enough
-        // to pin the gate, not bad enough for the veto.
+        // Coverage 0.525: one of four files missing and the symbol absent — bad
+        // enough to pin the gate, just above the veto.
         files: [
           { path: "src/poller.ts", reason: "r" },
+          { path: "src/backoff.ts", reason: "r" },
+          { path: "src/retry.ts", reason: "r" },
           { path: "src/ghost.ts", reason: "r" },
         ],
+        steps: [{ title: "t", detail: "d", files: ["src/poller.ts"], symbols: ["pollLater"] }],
         openQuestions: ["a?", "b?", "c?"],
       }),
       issue: { ...ISSUE, body: undefined },

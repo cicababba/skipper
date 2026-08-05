@@ -113,8 +113,8 @@ describe("replayScores", () => {
     const { scores, fallbacks } = replayScores(sample());
     expect(scores.groundedness).toBe(1);
     expect(scores.convergence).toBe(0.9);
-    // verifiable 1.0 − 0.05 flagged − 0 repo-knowledge
-    expect(scores.clarity).toBeCloseTo(0.95, 10);
+    // verifiable 1.0 decayed by one flagged ambiguity, no repo-knowledge question
+    expect(scores.clarity).toBeCloseTo(Math.exp(-0.05 / 3), 10);
     expect(scores.critic).toBeCloseTo(0.94, 10);
     expect(fallbacks).toEqual([]);
   });
@@ -128,7 +128,7 @@ describe("replayScores", () => {
       },
     });
     const { scores, fallbacks } = replayScores(stale);
-    expect(scores.clarity).toBeCloseTo(0.95, 10);
+    expect(scores.clarity).toBeCloseTo(Math.exp(-0.05 / 3), 10);
     expect(scores.critic).toBeCloseTo(0.94, 10);
     expect(fallbacks).toEqual([]);
   });
