@@ -1,0 +1,160 @@
+{
+  "version": 1,
+  "id": "todos-issue-2",
+  "repo": "cicababba/todos",
+  "provenance": "jira:TODOS/ISSUE-2 (dogfooding run behind #313, vague)",
+  "issueKey": "ISSUE-2",
+  "issueTitle": "Support priorities on todos",
+  "issueUrl": "https://cicababba.atlassian.net/browse/ISSUE-2",
+  "plan": {
+    "summary": "Add a three-level `priority` field to todos end-to-end: shared type + validation in `@todos/shared`, defaulting and partial-update support in the in-memory `TodoStore`, and a priority selector in the React UI (both when creating and when editing an existing todo). Routes need no change beyond what `parse*` already gives them, since validation lives in shared.",
+    "fileCount": 8,
+    "stepCount": 7,
+    "estimatedSize": "s",
+    "openQuestions": []
+  },
+  "signals": {
+    "convergence": {
+      "score": 0.7943055555555556,
+      "planCount": 3,
+      "fileJaccard": 0.7925925925925927,
+      "sizeAgreement": 0.75,
+      "stepCountAgreement": 0.875,
+      "divergent": false,
+      "sharedFiles": [
+        "apps/api/src/routes.test.ts",
+        "apps/api/src/store.test.ts",
+        "apps/api/src/store.ts",
+        "apps/web/src/App.tsx",
+        "apps/web/src/styles.css",
+        "packages/shared/src/index.test.ts",
+        "packages/shared/src/index.ts"
+      ],
+      "disputedFiles": [
+        "README.md",
+        "apps/api/src/routes.ts",
+        "apps/web/src/api.ts"
+      ]
+    },
+    "groundedness": {
+      "score": 1,
+      "coverage": 1,
+      "filesChecked": 8,
+      "filesFound": 8,
+      "symbolsChecked": 16,
+      "symbolsFound": 16,
+      "missingFiles": [],
+      "missingSymbols": [],
+      "newFiles": [],
+      "createdSymbols": [
+        "DEFAULT_PRIORITY",
+        "PRIORITIES",
+        "Priority",
+        "onPriorityChange",
+        "parsePriority"
+      ]
+    },
+    "clarity": {
+      "score": 0,
+      "criteria": "vague",
+      "ambiguities": [
+        {
+          "detail": "The set of priority levels is unspecified — the plan chose three levels (a `Priority` union in `@todos/shared` with a `PRIORITIES` list); the issue never says how many or what they are named.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "The default priority for newly created todos is unspecified — the plan invented `DEFAULT_PRIORITY` applied in `TodoStore.create()`.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether priority is required or optional on create/update input — the plan made it optional on `CreateTodoInput`/`UpdateTodoInput` to preserve existing callers.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "What 'existing todos keep working' means concretely: back-filling already-stored todos that lack a priority vs. only keeping old request shapes valid. The plan interpreted it as request-shape compatibility plus store-level defaulting.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "How the UI 'shows' priority — the plan picked a `<select>` per todo plus one on the add form, and added visual emphasis in `styles.css`; the issue only says the important ones should 'stand out'.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether 'stand out' implies sorting/filtering by priority, or only visual styling. The plan silently chose styling only, with no ordering change.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Behaviour on an invalid priority value from the API — the plan derived a `parsePriority` returning a 400 `{ error }`, an outcome the issue never states.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether priority can be set at creation time at all, or only edited afterwards — the plan supports both.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        }
+      ],
+      "openQuestions": [],
+      "rationale": "The issue names the feature but fixes no priority levels, default, ordering, or visual treatment, so 'shows it' and 'stand out' are judgment calls; the plan settled every one of those silently and raised no questions."
+    },
+    "critic": {
+      "score": 0.6,
+      "verdict": "concerns",
+      "objections": [
+        {
+          "kind": "underspecified",
+          "detail": "Step 2 prescribes `(PRIORITIES as readonly string[]).includes(...)` on a parameter typed `unknown`. `Array.prototype.includes` on `readonly string[]` takes a `string`, so passing an `unknown` is a compile error under `strict` (tsconfig.base.json:7), and `.includes()` does not narrow the value to `Priority` either, so the success branch `{ ok: true, value: priority }` needs a cast or a type predicate. As literally written, `pnpm typecheck` fails. The fix is one line — guard `typeof priority !== \"string\"` first (which also gives a better error for `priority: 3`/`null` than the generic \"must be one of ...\"), then narrow via `PRIORITIES.includes(priority as Priority)` or a `isPriority()` predicate — but the plan should say so rather than leaving the implementer to rediscover it.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "Step 3 test (b) — \"omitting priority yields a value with no `priority` key\" — does not test what it claims. Vitest's `toEqual` treats `{ title: \"x\" }` and `{ title: \"x\", priority: undefined }` as equal (only `toStrictEqual` distinguishes them). Since `parseCreateTodoInput` returning an explicit `priority: undefined` would then be JSON-serialized away by `api.ts`/Fastify anyway, this is mostly cosmetic, but the test as specified is a no-op guard. Use `toStrictEqual`, or assert `\"priority\" in result.value === false`. Note the file currently uses `toEqual` throughout (packages/shared/src/index.test.ts:6,13,25,31,35), so switching one assertion to `toStrictEqual` is a small, deliberate deviation worth calling out.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "acceptance-gap",
+          "detail": "CLAUDE.md:45 (\"New or changed behavior is covered by a test in the same package\") and CLAUDE.md:46-47 (\"the API and the UI stay in sync\") are both cited by the plan, yet the entire second acceptance criterion — \"The UI shows it and lets you change it\" — lands in `apps/web/src/App.tsx` with zero automated coverage, verified only by the manual checks. The plan's justification is accurate (vitest.config.ts:5 includes only `*.test.ts`, and apps/web/package.json has no jsdom/@testing-library dependency), and apps/web has no tests today, so this is defensible — but it means the AC that is most likely to regress is the one nothing enforces. If adding `jsdom` + `@testing-library/react` and widening the include glob to `*.test.tsx` is off the table, say explicitly in the PR that this criterion is manually verified only.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "other",
+          "detail": "Step 6 casts `e.target.value as Priority` in the UI while `parsePriority` stays module-private. That mirrors the existing unexported `parseTitle`, so it is consistent — but CLAUDE.md:34 justifies shared validation as \"so the frontend and the API agree on the rules,\" and here the frontend agrees only by convention (option list generated from `PRIORITIES`) plus an unchecked cast. Exporting `parsePriority` (or a small `isPriority()` predicate, which the parser needs internally anyway per the objection above) would let the select handler narrow instead of assert, at no extra cost.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "\"So the important ones stand out\" (the issue's framing) is carried entirely by `li.priority-high span { font-weight: 600 }`. That competes directly with the existing `li.done span { text-decoration: line-through; opacity: 0.5 }` (apps/web/src/styles.css:72-75) — a done high-priority todo renders as bold-but-faded — and a 600 weight next to the default is a weak signal on its own. Consider a color or a small badge for high, and confirm the interaction with `.done` during the manual pass (the plan's third manual check touches this but only asks that strike-through still works, not that the two styles compose sensibly). Sorting by priority being out of scope is fine; the stated ACs only require show + change.",
+          "blocking": false,
+          "unverified": false
+        }
+      ]
+    }
+  },
+  "composite": 0.5285763888888888,
+  "weights": {
+    "groundedness": 0.15,
+    "critic": 0.3,
+    "convergence": 0.25,
+    "clarity": 0.3
+  },
+  "runtime": "claude-cli",
+  "model": "opus",
+  "graphify": false,
+  "timings": {
+    "planMs": 100423,
+    "extraPlansMs": 103980,
+    "scoringMs": 131213,
+    "totalMs": 335616
+  },
+  "errors": [],
+  "collectedAt": "2026-08-05T10:08:35.418Z"
+}

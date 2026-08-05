@@ -1,0 +1,277 @@
+{
+  "version": 1,
+  "id": "skipper-141",
+  "repo": "cicababba/skipper",
+  "provenance": "github:cicababba/skipper#141",
+  "issueKey": "141",
+  "issueTitle": "core,web:feat: epic view — manifest grouping entity, aggregate page, inbox badges",
+  "issueUrl": "https://github.com/cicababba/skipper/issues/141",
+  "plan": {
+    "summary": "Introduce epics as a grouping entity in the orchestrator manifest (never a WorkItem): detect them from the GitHub poll (parent_issue_url / sub_issues_summary / GET .../parent), stamp `epicKey` on tracked children, expose `epics` on the orchestrator snapshot, and build the web surfaces — an aggregate epic page (progress, children table, dependency chain, \"start the next unblocked child\" conveyor action) plus a \"part of [epic]\" badge and a group-by-epic toggle in the inbox table.",
+    "fileCount": 31,
+    "stepCount": 10,
+    "estimatedSize": "l",
+    "openQuestions": [
+      "\"Assign me the next unblocked one\": the plan implements it as a local conveyor action (pick the next unblocked child and move it to planning), since children reaching the manifest are already assigned to the user via the `assigned` poll stream. If the intent is an actual tracker-side self-assignment write, that needs a new adapter capability and is a different (write-perimeter) decision."
+    ]
+  },
+  "signals": {
+    "convergence": {
+      "score": 0.6216349541930937,
+      "planCount": 3,
+      "fileJaccard": 0.49628552971576223,
+      "sizeAgreement": 0.75,
+      "stepCountAgreement": 0.9090909090909091,
+      "divergent": false,
+      "sharedFiles": [
+        "apps/desktop/src/orchestrator.ts",
+        "apps/desktop/src/poll.test.ts",
+        "apps/desktop/src/poll.ts",
+        "apps/web/src/app/inbox/epic-badge.tsx",
+        "apps/web/src/app/inbox/inbox-table.tsx",
+        "apps/web/src/app/inbox/inbox-view.tsx",
+        "apps/web/src/lib/i18n/inbox.ts",
+        "apps/web/src/lib/inbox/epic.test.ts",
+        "apps/web/src/lib/inbox/epic.ts",
+        "apps/web/src/lib/inbox/nav.ts",
+        "packages/core/src/adapters/github/source.ts",
+        "packages/core/src/adapters/types.ts",
+        "packages/core/src/orchestrator/manifest.ts",
+        "packages/core/src/orchestrator/reconcile.ts",
+        "packages/core/tests/orchestrator-manifest.test.ts",
+        "packages/shared/src/index.ts",
+        "packages/shared/src/orchestrator.ts"
+      ],
+      "disputedFiles": [
+        "apps/desktop/src/create-issue-ipc.test.ts",
+        "apps/desktop/src/create-issue-ipc.ts",
+        "apps/desktop/src/epic-ipc.test.ts",
+        "apps/desktop/src/epic-ipc.ts",
+        "apps/desktop/src/preload.ts",
+        "apps/web/src/app/epics/epic/epic-detail.tsx",
+        "apps/web/src/app/epics/epic/page.tsx",
+        "apps/web/src/app/epics/epic/use-epic-key.ts",
+        "apps/web/src/app/inbox/epic/epic-detail.tsx",
+        "apps/web/src/app/inbox/epic/epic-view.tsx",
+        "apps/web/src/app/inbox/epic/page.tsx",
+        "apps/web/src/app/inbox/item/item-detail.tsx",
+        "apps/web/src/lib/app-i18n.tsx",
+        "apps/web/src/lib/inbox/nav.test.ts",
+        "apps/web/src/lib/inbox/table.test.ts",
+        "apps/web/src/lib/inbox/table.ts",
+        "apps/web/src/lib/orchestrator-context.tsx",
+        "packages/core/src/adapters/github/epics.ts",
+        "packages/core/src/adapters/github/index.ts",
+        "packages/core/src/adapters/github/map.ts",
+        "packages/core/src/adapters/github/parent.ts",
+        "packages/core/src/adapters/index.ts",
+        "packages/core/src/index.ts",
+        "packages/core/src/orchestrator/index.ts",
+        "packages/core/tests/github-epics.test.ts",
+        "packages/core/tests/github-map.test.ts",
+        "packages/core/tests/github-parent.test.ts",
+        "packages/core/tests/orchestrator-epics.test.ts",
+        "packages/core/tests/orchestrator-reconcile.test.ts",
+        "packages/shared/src/epic.ts",
+        "packages/shared/src/epics.ts",
+        "packages/shared/src/inbox.ts",
+        "packages/shared/src/window-skipper.ts",
+        "packages/shared/tests/epics.test.ts"
+      ]
+    },
+    "groundedness": {
+      "score": 1,
+      "coverage": 1,
+      "filesChecked": 22,
+      "filesFound": 22,
+      "symbolsChecked": 39,
+      "symbolsFound": 39,
+      "missingFiles": [],
+      "missingSymbols": [],
+      "newFiles": [
+        "apps/web/src/app/inbox/epic-badge.tsx",
+        "apps/web/src/app/inbox/epic/epic-detail.tsx",
+        "apps/web/src/app/inbox/epic/page.tsx",
+        "apps/web/src/lib/inbox/epic.test.ts",
+        "apps/web/src/lib/inbox/epic.ts",
+        "packages/core/src/adapters/github/epics.ts",
+        "packages/core/tests/github-epics.test.ts",
+        "packages/shared/src/epics.ts",
+        "packages/shared/tests/epics.test.ts"
+      ],
+      "createdSymbols": [
+        "EPIC_FETCH_CAP",
+        "EpicBadge",
+        "EpicDetailView",
+        "EpicRecord",
+        "childrenOfEpic",
+        "epicHref",
+        "epicKeyOf",
+        "epicLabel",
+        "epicProgress",
+        "epicViewModel",
+        "fetchGitHubParentIssue",
+        "groupByEpic",
+        "isEpicIssue",
+        "nextUnblockedChild",
+        "parseIssueRefFromUrl"
+      ]
+    },
+    "clarity": {
+      "score": 0.15000000000000002,
+      "criteria": "partial",
+      "ambiguities": [
+        {
+          "detail": "What \"assign me the next unblocked one\" means: a local move-to-planning conveyor action vs. an actual tracker-side self-assignment write. The issue's phrasing implies a write to the tracker; the plan chose the local interpretation.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": true
+        },
+        {
+          "detail": "Auto-closing an app-created epic when the last child merges — the issue explicitly defers this ('decide at plan time or later') with a candidate rule 'create + close what the app created'; the plan silently drops it (only ships `createdByApp` for a future issue).",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "How external epic parents are detected from the GitHub poll — the issue says 'verify at plan time'. The plan picks `parent_issue_url` + `sub_issues_summary` plus `GET /repos/{o}/{r}/issues/{n}/parent`.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Definition of \"unblocked\" for the conveyor action, and what to do when all children are blocked or settled (the plan invents a disabled-with-reason state).",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Definition of progress 'n/m merged' — which child states count as merged/settled, and whether closed-unmerged children count in the denominator.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Manifest shape for the grouping entity: `OrchestratorManifest.epics` as an `EpicRecord` map plus an `epicKey` field on children, and exposure via the orchestrator snapshot — the issue only says 'grouping entity in the manifest' and 'children carry an epicKey'.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Lifecycle/pruning of epic records when children disappear or a parent link is removed (plan adds stamp/clear-on-change and prune-unless-createdByApp).",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Backward compatibility for pre-existing manifests and behavior for sources without hierarchy support (plan commits to backfill + silent degradation; issue is silent).",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "What the 'visible dependency chain' renders — cross-child dependencies, ordering, and presentation are unspecified.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Which 'aggregate actions' beyond the conveyor belt are in scope — the issue says 'aggregate actions — including ...', implying more than one.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether the group-by-epic toggle persists, its default state, and how ungrouped items are partitioned/ordered; also whether it interacts with existing filters/sorting (plan decides: no change to filtering/sorting).",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Routing/URL for the epic page and the badge's link target.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "What 'confidence' in the children table refers to and where it comes from.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        }
+      ],
+      "openQuestions": [
+        {
+          "question": "Is 'assign me the next unblocked one' a local conveyor action (move next unblocked child to planning) or a real tracker-side self-assignment write requiring a new adapter capability?",
+          "kind": "issue-ambiguity"
+        }
+      ],
+      "rationale": "The issue names concrete, checkable surfaces (manifest grouping entity, epicKey on children, n/m progress, children table, badge, group-by toggle, kanban out of scope) but explicitly defers the parent-detection mechanism, the auto-close rule, and leaves the conveyor action's semantics and several shape/lifecycle decisions to the implementer — the plan flags only the assignment ambiguity and silently settles the rest."
+    },
+    "critic": {
+      "score": 0.39999999999999997,
+      "verdict": "concerns",
+      "objections": [
+        {
+          "kind": "wrong-approach",
+          "detail": "The reconcile step puts the `isEpicIssue(issue)` divert at the TOP of the issues loop (\"BEFORE the untracked-issue admission branch\") with a `continue`, and explicitly keeps an already-tracked epic item alive. That `continue` bypasses everything below it in reconcile.ts:98-144 for that item: the closed-on-GitHub settlement (reconcile.ts:117-128), the reopen path (130-133) and the title/url/body refresh (135-143). Result: an issue that was admitted before it grew sub-issues can never be closed by reconcile again — it sits in triage/queued forever, and because it IS present in `poll.issues`, `reconcileFullWalkAbsence` won't settle it either. Worse, the plan pushes an `outcome.conflicts` entry for it on every tick, and poll.ts:286-288 does `console.warn` per conflict, so this logs forever every 3 minutes. Fix: divert only in the `!item` (untracked) branch, and for already-tracked epics record the epic record + stamp nothing, but let the existing tracked-item handling run (one-shot conflict, not one per poll).",
+          "blocking": true,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "`epicKey` will not refresh as the plan claims. The metadata-refresh branch it names is guarded by `if (item.title !== issue.title || item.url !== issue.url || item.body !== issue.body)` (reconcile.ts:135). A parent link that appears or disappears without a title/url/body edit — the normal case, since adding/removing a sub-issue does not change the child's title — never enters that branch, so `epicKey` is stamped at admission only and is never cleared. That directly fails the plan's own acceptance criterion \"stamped at admission and refreshed (set/cleared) when the tracker's parent link changes\". The change-detection condition must be extended to include the epicKey delta (and the write must set/delete it), which the step does not say.",
+          "blocking": true,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "Making `OrchestratorState.epics` a REQUIRED field breaks the build. apps/web/tsconfig.json includes `**/*.ts`/`**/*.tsx` (tests included) and apps/web/next.config.ts sets no `typescript.ignoreBuildErrors`, so `next build` typechecks the fixtures that construct a whole `OrchestratorState` object literal: apps/web/src/lib/inbox/transition-toasts.test.ts:72 and apps/web/src/components/orchestrator-toasts.test.tsx:53. Neither file is in the plan's file list, so `pnpm build` fails as planned. Either declare `epics?:` (optional, like the plan does for `TrackedItem.epicKey`) or list those fixtures as touched files.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "wrong-approach",
+          "detail": "`isEpicIssue(issue)` = `childCount > 0` makes EVERY assigned issue that happens to have at least one sub-issue an epic, i.e. permanently un-admittable, invisible in the inbox as work, and out of planning/queue. The issue text asks to detect the epic from the child's parent link (\"for external epics detect the parent from the poll\"); it never says any parent issue is an epic. A user who decomposes one assigned issue into a single checklist sub-issue silently loses that issue as a work item with no UI explanation. Narrow the predicate (e.g. an epic record is created from an observed child's parent ref, and an issue is only diverted from admission when it is already a known epic key) or state explicitly that this admission change is intended and surface it in the UI.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "missing-step",
+          "detail": "There are two `reconcile(...)` call sites in apps/desktop/src/poll.ts — the live poll (poll.ts:275-285) and `reconcileFromCache` (poll.ts:368-373), both of which already pass `dependencies` from `collectDependencies`. The plan says only \"pass the result as `epics` in the `reconcile(...)` call next to `dependencies`\" (singular). If only the first is wired, the retroactive-admission path (the one #307 added precisely because it otherwise admits blind) runs without epic evidence: children get admitted and stamped with an `epicKey` whose record is never hydrated, so the badge silently renders nothing until a live poll happens to catch it.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "The detection design is circular if `parent_issue_url` is not on the issues-list payload. `collectEpics` builds its target set from (a) polled issues carrying `parent` and (b) tracked items already carrying an `epicKey` — and `epicKey` itself only ever comes from `issue.parent`. So if the GitHub list/search payloads do not carry `parent_issue_url` (only the dedicated `GET /issues/{n}/parent` endpoint does), the `fetchParent` capability is never invoked for anything, no `epicKey` is ever stamped, and the whole feature is inert with no failing test — every unit test would pass because they feed synthetic payloads that DO carry the field. Worth a real captured payload before implementation, or a fallback target set (candidate/tracked issues, the way `collectDependencies` fans out over candidates regardless of payload hints).",
+          "blocking": false,
+          "unverified": true
+        },
+        {
+          "kind": "risk",
+          "detail": "The epic branch `continue`s before the parking branch (reconcile.ts:108-110) but the plan never clears `manifest.parked[issue.id]`. An issue parked while intake was paused and later grown into an epic (or parked by an older build) stays in `manifest.parked`, and the resume rite admits from that set — re-admitting the epic as a WorkItem and violating the \"never admitted, never parked\" criterion. The epic branch should `delete manifest.parked[issue.id]` the way `admit()` does.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "underspecified",
+          "detail": "`nextUnblockedChild`'s eligibility rule is self-contradictory as written: \"the first child in a startable resting state (`triage`, or `blocked`/`needs-input` excluded)\". It never says whether `plan-gate`/`queued`/`failed`/`closed` children are candidates, and the conveyor action unconditionally calls `requestTransition(next.id, \"planning\")` — legal from triage/plan-gate/queued per TRANSITIONS, illegal from e.g. `coding`, so a wrong predicate turns into a user-facing IPC error rather than a disabled button. It also does not say whether the action should be suppressed while another child of the epic is already in flight, which is the whole point of a conveyor belt (one at a time).",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "other",
+          "detail": "Context item is factually wrong on its evidence: apps/web/package.json:24 DOES declare `\"@skipper/core\": \"workspace:*\"`. The conclusion (shared predicates belong in packages/shared) still holds — I confirmed zero `@skipper/core` imports under apps/web/src — but the stated justification should not be relied on as a hard boundary.",
+          "blocking": false,
+          "unverified": false
+        }
+      ]
+    }
+  },
+  "composite": 0.47040873854827336,
+  "weights": {
+    "groundedness": 0.15,
+    "critic": 0.3,
+    "convergence": 0.25,
+    "clarity": 0.3
+  },
+  "runtime": "claude-cli",
+  "model": "opus",
+  "graphify": false,
+  "timings": {
+    "planMs": 429613,
+    "extraPlansMs": 629301,
+    "scoringMs": 316835,
+    "totalMs": 1375749
+  },
+  "errors": [],
+  "collectedAt": "2026-08-05T09:36:48.847Z"
+}

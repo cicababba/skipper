@@ -1,0 +1,207 @@
+{
+  "version": 1,
+  "id": "skipper-67",
+  "repo": "cicababba/skipper",
+  "provenance": "github:cicababba/skipper#67",
+  "issueKey": "67",
+  "issueTitle": "core,shared,web:feat: codex-cli provider — agentic flows on the OpenAI family",
+  "issueUrl": "https://github.com/cicababba/skipper/issues/67",
+  "plan": {
+    "summary": "Issue #67 (a `codex-cli` provider for the agentic flows) has already been delivered in a later shape: the `LLMProvider` union stayed completions-only and the agentic surface moved behind the `AgentRuntime` seam, where `codex-cli` is a fully wired runtime (`packages/core/src/llm/codex-cli.ts`, `packages/core/src/llm/codex-stream.ts`, `packages/core/src/runtime/codex-cli-runtime.ts`, factory + capability matrix, web runtime/model selectors, i18n, auth hints, tests). What is *not* done is the part of #67 flagged \"robustness — non-negotiable\": the run can still report a false success or a false empty answer, `--output-schema` was explicitly deferred in-code, and the spawn lacks `windowsHide`. This plan closes those verified gaps in the landed codex path and adds the tests that prove the acceptance bullet \"a failed run surfaces as a failure\". It deliberately does NOT re-add `codex-cli` to `LLMProvider`/`LlmSettings` — that half of #67 is superseded by the runtime seam.",
+    "fileCount": 5,
+    "stepCount": 5,
+    "estimatedSize": "m",
+    "openQuestions": [
+      "Should the codex model be pinned to an explicit default (issue robustness item 6, \"the default is server-driven\") or keep following the repo-wide convention that an empty model means \"the CLI's own configured default\" (`CLI_DEFAULT` in `apps/web/src/lib/agents/model-options.ts`, mirrored by `CodexCli.modelArgs()` omitting `--model`)? Pinning would make codex the only non-claude runtime with a hardcoded model and would need a bump every time OpenAI retires an id."
+    ]
+  },
+  "signals": {
+    "convergence": {
+      "score": 0.5106154714850367,
+      "planCount": 3,
+      "fileJaccard": 0.2557876905702993,
+      "sizeAgreement": 1,
+      "stepCountAgreement": 0.7142857142857143,
+      "divergent": false,
+      "sharedFiles": [
+        "packages/core/src/llm/codex-cli.ts",
+        "packages/core/src/llm/codex-stream.ts",
+        "packages/core/tests/codex-cli-agent.test.ts"
+      ],
+      "disputedFiles": [
+        "README.md",
+        "apps/desktop/src/llm-settings.ts",
+        "apps/desktop/src/settings-store.test.ts",
+        "apps/desktop/src/settings-store.ts",
+        "apps/desktop/tests/llm-settings.test.ts",
+        "apps/web/src/app/settings/page.tsx",
+        "apps/web/src/components/default-agent-section.tsx",
+        "apps/web/src/components/onboarding.tsx",
+        "apps/web/src/lib/agents/auth-hints.ts",
+        "apps/web/src/lib/agents/model-options.test.ts",
+        "apps/web/src/lib/agents/model-options.ts",
+        "apps/web/src/lib/app-settings.ts",
+        "apps/web/src/lib/i18n/settings.ts",
+        "packages/core/src/coder/codex-run.ts",
+        "packages/core/src/index.ts",
+        "packages/core/src/llm/claude-cli.ts",
+        "packages/core/src/llm/index.ts",
+        "packages/core/src/llm/provider.ts",
+        "packages/core/tests/codex-stream.test.ts",
+        "packages/shared/src/index.ts",
+        "packages/shared/src/types.ts"
+      ]
+    },
+    "groundedness": {
+      "score": 1,
+      "coverage": 1,
+      "filesChecked": 5,
+      "filesFound": 5,
+      "symbolsChecked": 13,
+      "symbolsFound": 13,
+      "missingFiles": [],
+      "missingSymbols": [],
+      "newFiles": [],
+      "createdSymbols": []
+    },
+    "clarity": {
+      "score": 0,
+      "criteria": "partial",
+      "ambiguities": [
+        {
+          "detail": "Whether the default codex model should be hardcoded/pinned (robustness item 6 says 'pin the model') or left empty so the CLI's own server-driven default applies; the issue demands pinning without naming a value or reconciling it with the repo's CLI_DEFAULT convention.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": true
+        },
+        {
+          "detail": "How `--system-prompt` should be conveyed — `-c developer_instructions=...` is explicitly unconfirmed and the issue names no fallback if the smoke test fails.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "How the #45 memory MCP server is injected: inline `-c mcp_servers.<id>.command=...` vs a per-run temp `config.toml`; the issue lists both but does not decide.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Which env var carries auth (`CODEX_API_KEY` vs `OPENAI_API_KEY`) and whether ChatGPT-plan credentials are supported at all beyond 'at own risk'.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether/how project `AGENTS.md` is suppressed to match the planner's `--setting-sources \"\"` guarantee; the issue states the goal but no mechanism is known.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Concrete watchdog values and layering for the provider's own wall-clock bound relative to the existing DEFAULT_INACTIVITY_TIMEOUT_MS / DEFAULT_HARD_TIMEOUT_MS in coder/run.ts.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Which exact CLI version to pin and how the pin is enforced/checked at runtime (hard version gate, warning, or docs only).",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "The exact success predicate: 'derive success from a terminal turn.completed' vs also accepting a real final agent message; the plan silently broadened this to 'turn.completed OR a real final message'.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Where codex-cli sits in the type system — a member of the `LLMProvider` union plus `LlmSettings` fields as the issue specifies, versus the `AgentRuntime` seam the plan asserts superseded it.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "How resolveCodex should treat the npm `@openai/codex` Node shim path that the issue flags as re-introducing the shim problem (support, detect-and-warn, or reject).",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Mapping granularity/naming for codex ThreadEvent subtypes onto CodingEvent tool-use payloads (command_execution vs file_change vs mcp_tool_call detail fields).",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether `--ephemeral` / `--ignore-user-config` are always on or configurable per flow (planner vs reviewer vs future coder).",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        }
+      ],
+      "openQuestions": [
+        {
+          "question": "Should the codex model be pinned to an explicit default (robustness item 6) or follow the repo-wide CLI_DEFAULT convention where an empty model means the CLI's own default?",
+          "kind": "issue-ambiguity"
+        }
+      ],
+      "rationale": "The acceptance checklist is largely objective (selectable provider, schema-valid plan, failure surfaces as failure, runs on Windows/macOS) but leans on unverifiable manual end-to-end judgment and an explicitly 'unconfirmed' block of flags, and the issue's own pin-the-model mandate conflicts with repo convention — a genuine open decision the plan does flag, while it silently decided the bigger one (dropping codex-cli from LLMProvider in favor of the runtime seam)."
+    },
+    "critic": {
+      "score": 0.6,
+      "verdict": "concerns",
+      "objections": [
+        {
+          "kind": "risk",
+          "detail": "Step 4's `--output-schema` fallback is unlikely to fire on the failure mode it exists for. `planJsonSchema()` is `z.toJSONSchema(IssuePlanSchema)` (`packages/core/src/planner/schema.ts:42`) over a schema with `.optional()` fields (lines 12, 23) — i.e. not an OpenAI strict-structured-output shape (no `additionalProperties: false`, not all properties required). A schema rejection of that kind does not arrive as a clap \"unknown argument\" on stderr; it arrives mid-run as a `turn.failed`/`error` stream line, which `finish()` turns into `outcome.failure` and `CodexCli.structured` already throws as `Codex CLI error: <api message>` — a message that will not mention `--output-schema`. The plan's stated trigger (\"stderr/message mentions an unknown/unsupported `--output-schema`\") therefore misses it, and the repair round in `validatePlanReply` (`packages/core/src/planner/generate.ts:126`) — which only runs when the plan already failed to parse — would hard-fail into `PlanGenerationError` where today it succeeds. If the flag is kept, gate the single retry on *any* failure of a schema-flagged call, not on string-matching the flag name.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "wrong-approach",
+          "detail": "Step 4 is the odd one out in a plan that otherwise closes verified robustness gaps. `--output-schema` was deliberately deferred in-code (`packages/core/src/llm/codex-cli.ts:373`, \"#239 D4\") and is a feature, not one of the issue's \"non-negotiable\" items; it drags in a temp-dir lifecycle, an `fs` mock rewrite in `codex-cli-agent.test.ts` (which today spreads `importOriginal` and only stubs `existsSync`, so unstubbed `mkdtempSync`/`writeFileSync` would hit the real filesystem in unit tests), and a retry that doubles latency and token spend on the reviewer/repair path. Steps 1–3 + 5 are the issue's acceptance bullet; step 4 would be cleaner as its own change once a live smoke test confirms codex accepts a zod-derived schema at all.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "underspecified",
+          "detail": "Step 3's `exitCode !== 0 && !outcome.completed` rule silently forks an existing convention: `exitCode` is `null` when the child dies on a signal, and `null !== 0`, so an externally signal-killed run with a complete agent message would now throw — while the coder path deliberately treats that case as success (`packages/core/src/coder/codex-run.ts:145`: `outcome.event.ok && (code === 0 || code === null)`). Decide explicitly and state it: either mirror the coder (`code === 0 || code === null`) or document why the read-leaning paths are stricter.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "Nothing guards the stdin write. `runCodexProcess` does `proc.stdin.write(stdin); proc.stdin.end()` (`packages/core/src/llm/codex-cli.ts:309-312`) with no `error` listener on the stdin stream. Step 4 makes the \"codex rejects the argv and exits before reading stdin\" case a designed, reachable path, and an EPIPE on a Writable with no error listener surfaces as an uncaught exception rather than the intended fallback retry. Adding `proc.stdin.on(\"error\", () => {})` (or routing the write through the existing `fail`) is a one-liner and belongs in step 2 alongside `windowsHide`.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "acceptance-gap",
+          "detail": "Robustness item 7 in the issue is two things — `windowsHide: true` *and* killing by process group — and the plan takes only the first, moving the second to a cross-cutting issue on the grounds that every runtime shares the single-process `proc.kill` shape. The deferral is defensible (I verified codex's `killTree` at `codex-cli.ts:220` and the coder's at `codex-run.ts:66` are identical single-process kills, and a real group kill would also need `detached: true`), but the consequence should be stated in the plan: after a hard/inactivity timeout the promise rejects while orphaned codex descendants keep running and burning API credit. The acceptance bullet \"not a hang\" is still met for the caller; the resource leak is not.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "underspecified",
+          "detail": "Robustness item 6 (\"pin the model\" — the codex default is server-driven) is demoted from a non-negotiable to an open question and left unresolved, so the plan ships with the runtime following whatever OpenAI's remote catalog says. The repo-convention argument for not pinning is sound (`CLI_DEFAULT` in `apps/web/src/lib/agents/model-options.ts`, and `CodexCli.modelArgs()` omitting `--model`), so make that the decision in the plan rather than an open question — otherwise the item quietly goes unaddressed with no record of why.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "missing-step",
+          "detail": "`CodexCli.structured` passes neither `hardTimeoutMs` nor `inactivityTimeoutMs` to `runCodexProcess` (`packages/core/src/llm/codex-cli.ts:389-393`), so `resetInactivity()` returns immediately and only the 600s default hard timer bounds the reviewer/repair round — the plan's context claim that \"both watchdogs exist\" is true for `agent()` only. Bounded, so not a hang, but with step 4's retry the worst case for a single reviewer call becomes ~20 minutes. Worth arming the inactivity timer on the structured path while that file is open.",
+          "blocking": false,
+          "unverified": false
+        }
+      ]
+    }
+  },
+  "composite": 0.45765386787125917,
+  "weights": {
+    "groundedness": 0.15,
+    "critic": 0.3,
+    "convergence": 0.25,
+    "clarity": 0.3
+  },
+  "runtime": "claude-cli",
+  "model": "opus",
+  "graphify": false,
+  "timings": {
+    "planMs": 283981,
+    "extraPlansMs": 279658,
+    "scoringMs": 253086,
+    "totalMs": 816725
+  },
+  "errors": [],
+  "collectedAt": "2026-08-05T10:03:40.858Z"
+}

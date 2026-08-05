@@ -1,0 +1,182 @@
+{
+  "version": 1,
+  "id": "todos-polish",
+  "repo": "cicababba/todos",
+  "provenance": "authored:#314 calibration (deliberately vague control)",
+  "issueKey": "CAL-4",
+  "issueTitle": "make the UI less ugly",
+  "issueUrl": "https://example.invalid/todos/cal-4",
+  "plan": {
+    "summary": "Restyle the web app so it reads as a finished product instead of a raw prototype: introduce a design-token based stylesheet (light/dark), restructure App.tsx markup into a card layout with a real header, styled composer, list rows with hover/focus states, an illustrated-feeling empty state, and a footer showing remaining/completed counts plus all/active/done filter tabs. The filtering/counting logic lives in a new pure helper module in apps/web so it can be unit-tested with the existing node-environment Vitest setup; no API, store, or shared-validation changes.",
+    "fileCount": 5,
+    "stepCount": 6,
+    "estimatedSize": "m",
+    "openQuestions": []
+  },
+  "signals": {
+    "convergence": {
+      "score": 0.650952380952381,
+      "planCount": 3,
+      "fileJaccard": 0.45396825396825397,
+      "sizeAgreement": 1,
+      "stepCountAgreement": 0.8571428571428572,
+      "divergent": false,
+      "sharedFiles": [
+        "apps/web/index.html",
+        "apps/web/src/App.tsx",
+        "apps/web/src/styles.css"
+      ],
+      "disputedFiles": [
+        "apps/web/src/api.ts",
+        "apps/web/src/summary.test.ts",
+        "apps/web/src/summary.ts",
+        "apps/web/src/todoView.test.ts",
+        "apps/web/src/todoView.ts",
+        "packages/shared/src/index.test.ts"
+      ]
+    },
+    "groundedness": {
+      "score": 1,
+      "coverage": 1,
+      "filesChecked": 3,
+      "filesFound": 3,
+      "symbolsChecked": 2,
+      "symbolsFound": 2,
+      "missingFiles": [],
+      "missingSymbols": [],
+      "newFiles": [
+        "apps/web/src/todoView.test.ts",
+        "apps/web/src/todoView.ts"
+      ],
+      "createdSymbols": [
+        "TODO_FILTERS",
+        "TodoFilter",
+        "countTodos",
+        "filterTodos"
+      ]
+    },
+    "clarity": {
+      "score": 0,
+      "criteria": "vague",
+      "ambiguities": [
+        {
+          "detail": "What visual style/aesthetic direction to adopt (card shell, header, composer layout) — the issue only says 'a real product' and defers to judgement",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "The specific colour palette, typography, spacing scale, and whether to express them as design tokens",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether dark mode / prefers-color-scheme support is in scope at all",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether new functionality (all/active/done filter tabs, remaining/completed counts) should be added, versus styling only the existing feature set",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether responsive/mobile viewport support is required and at what breakpoint or max width (plan picked min(34rem, 100% - 2rem))",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Which interactive states must be handled (hover, focus-visible ring, disabled submit on empty title, delete affordance visibility) and whether the delete control may be hover-revealed",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether existing accessibility affordances (aria-labels 'new todo' / 'delete {title}') and existing tests must be preserved unchanged",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether a styling framework/CSS-in-JS should be introduced or plain CSS in the existing styles.css extended",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether new logic needs test coverage and where such tests live (node-environment Vitest in apps/web)",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether empty and error states need bespoke designs, including a separate 'filter matched nothing' message",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Scope boundary: whether API, store, or shared-validation packages may be touched",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        }
+      ],
+      "openQuestions": [],
+      "rationale": "The issue is pure taste — 'less ugly', 'use your judgement' — with no checkable outcome, so every concrete commitment in the plan (tokens, dark mode, filter tabs, counts, mobile width) is an invention the plan silently made rather than something the issue specified or the repo settles."
+    },
+    "critic": {
+      "score": 0.6,
+      "verdict": "concerns",
+      "objections": [
+        {
+          "kind": "risk",
+          "detail": "The plan asserts \"Existing behaviour is preserved\" but Step 3 adds `disabled={title.trim().length === 0}` to the submit button. Today (App.tsx:52-59) an empty/whitespace-only submit does fire a POST, the API rejects it via parseTitle (packages/shared/src/index.ts:48-51), and the UI shows \"title must not be empty\" in the `.error` paragraph. Disabling the button also kills implicit form submission via Enter in the input, since the form's only submit button is disabled. That is a deliberate behaviour change hidden inside a styling step, and it silently removes the one error path a user can trigger without stopping the API. Either state it as an intended change (and drop it from the \"behaviour preserved\" acceptance criterion) or keep the button enabled and style the error.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "The filter feature introduces a state trap the plan never resolves: `filter` persists across mutations, so creating a todo while the \"done\" tab is selected renders the new (active) todo invisible — the user types, hits add, and the list shows \"nothing matches the current filter\" instead of their item. Same for toggling a done item back to active while on \"done\". The plan should specify a rule (e.g. reset `filter` to \"all\" in the create success path, or keep the counts line prominent enough that the mismatch is legible). Note also that Step 3 says to hide the footer when `counts.total === 0` while leaving `filter` at whatever it was — so the tab strip disappears with a non-\"all\" filter still latched, and reappears on the next create in exactly that broken state.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "acceptance-gap",
+          "detail": "Acceptance criterion \"usable on a narrow (mobile) viewport without horizontal scrolling\" is claimed to be addressed solely by `width: min(34rem, 100% - 2rem)` on `.card`. That does not cover the actual overflow source: `.todo` is a flex row containing a `<span>` title that can be up to TITLE_MAX_LENGTH = 200 characters (packages/shared/src/index.ts:17), and a flex item's default `min-width: auto` means a long unbroken title will push the delete button out and force horizontal scroll regardless of card width. The CSS step must specify `min-width: 0` on the flexible child plus `overflow-wrap: anywhere` (or equivalent) on the title, otherwise this criterion fails for a realistic input.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "underspecified",
+          "detail": "Steps and risks contradict each other on the delete affordance. Step 4 specifies `.todo__delete` \"hidden-ish by default (low opacity) and revealed on row hover/`:focus-within`\", while the risk list says \"the `:focus-within`/always-visible-on-touch handling in the CSS step must not be skipped\" — but no touch handling is actually specified anywhere in the step. On a phone there is no hover, so the delete button stays at low opacity permanently. Name the concrete rule (`@media (hover: none) { .todo__delete { opacity: 1 } }`) in the step rather than leaving it as a risk-list aspiration; it is the difference between a working and a near-invisible destructive control.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "wrong-approach",
+          "detail": "The filter tabs and counts are new user-visible behaviour bolted onto an issue that asks for visual polish. CLAUDE.md's definition of done requires \"New or changed behavior is covered by a test in the same package\", and the plan's own out-of-scope list rules out jsdom/@testing-library — so the only part that can be tested is the pure helper, while the parts that can actually break (tab click wiring, `aria-pressed` state, the two distinct empty states, footer hide-on-zero) ship untested by construction. The helper module then exists mostly to manufacture testability for logic that is four lines of `.filter()`. Dropping the filter tabs would satisfy the issue, remove the state trap above, and remove the coverage gap; if they stay, the plan should say plainly that the wiring is manually verified only.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "Step 4 keeps `color-scheme: light dark` (styles.css:2) while defining explicit surface tokens with a `@media (prefers-color-scheme: dark)` override. These two mechanisms must stay in lockstep: `color-scheme` drives UA-rendered chrome (checkbox default rendering, scrollbars, autofill background on the composer input), and if the token palette is not a strict mirror of the OS scheme — e.g. a \"subtle gradient\" light background that stays light-ish under dark tokens — you get a dark scrollbar and dark autofill on a light card. The plan lists dark-mode contrast as a risk but only prescribes eyeballing text/borders; the manual check should explicitly include autofilled input and scrollbar appearance in both schemes.",
+          "blocking": false,
+          "unverified": false
+        }
+      ]
+    }
+  },
+  "composite": 0.4927380952380952,
+  "weights": {
+    "groundedness": 0.15,
+    "critic": 0.3,
+    "convergence": 0.25,
+    "clarity": 0.3
+  },
+  "runtime": "claude-cli",
+  "model": "opus",
+  "graphify": false,
+  "timings": {
+    "planMs": 114154,
+    "extraPlansMs": 155203,
+    "scoringMs": 108325,
+    "totalMs": 377682
+  },
+  "errors": [],
+  "collectedAt": "2026-08-05T10:19:46.481Z"
+}

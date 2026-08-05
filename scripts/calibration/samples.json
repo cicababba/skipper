@@ -119,10 +119,10 @@
       "provenance": "jira:TODOS/ISSUE-1 (dogfooding run behind #313, surgical)",
       "issue": {
         "key": "ISSUE-1",
-        "title": "mostrare quanti todo restano",
+        "title": "Show a count of remaining todos",
         "url": "https://cicababba.atlassian.net/browse/ISSUE-1",
         "labels": [],
-        "body": "TODO: paste the Jira issue body before running"
+        "body": "Under the todo list, show how many todos are still to do.\n\nAcceptance criteria:\n\n- With 3 todos, 1 of them done, the UI shows \"2 left\".\n- With exactly 1 remaining it reads \"1 left\", not \"1 lefts\".\n- With no todos at all the counter is not rendered — the existing \"nothing here yet\" message stays as it is.\n- The count updates immediately when a todo is toggled, added or deleted.\n- Frontend only: no API or shared-package change is needed."
       }
     },
     {
@@ -133,10 +133,10 @@
       "provenance": "jira:TODOS/ISSUE-2 (dogfooding run behind #313, vague)",
       "issue": {
         "key": "ISSUE-2",
-        "title": "todo priority",
+        "title": "Support priorities on todos",
         "url": "https://cicababba.atlassian.net/browse/ISSUE-2",
         "labels": [],
-        "body": "TODO: paste the Jira issue body before running"
+        "body": "Todos should support priorities, so the important ones stand out.\n\nAcceptance criteria:\n\n- A todo has a priority.\n- The UI shows it and lets you change it.\n- Existing todos keep working."
       }
     },
     {

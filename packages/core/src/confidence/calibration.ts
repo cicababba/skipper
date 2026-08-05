@@ -1,12 +1,16 @@
-import type {
-  ClaritySignal,
-  ConfidenceWeights,
-  ConvergenceSignal,
-  CriticObjection,
-  CriticSignal,
-  CriticVerdict,
-  GroundednessSignal,
-  IssuePlan,
+import {
+  resolveRepoOrchestratorSettings,
+  type AgentRuntimeId,
+  type ClaritySignal,
+  type ConfidenceWeights,
+  type ConvergenceSignal,
+  type CriticObjection,
+  type CriticSignal,
+  type CriticVerdict,
+  type GroundednessSignal,
+  type IssuePlan,
+  type OrchestratorSettings,
+  type RepoIntakeSettings,
 } from "@skipper/shared";
 import { deriveClarityScore, type ClarityJudgment } from "./clarity";
 import { deriveCriticScore } from "./critic";
@@ -483,4 +487,127 @@ function renderSample(row: CalibrationRow): string[] {
 
 function num(n: number | undefined): string {
   return n === undefined ? "—" : n.toFixed(3);
+}
+
+// Planner-pair resolution (#314). A calibration is only valid for the pair the
+// app actually plans with, so the harness must never guess a model: it mirrors
+// the app's own ladder here rather than defaulting to llm.claudeModel.
+
+export type PlannerPairRung =
+  | "repo plannerAgent"
+  | "global plannerAgent"
+  | "global defaultAgent"
+  | "claude-cli floor on llm.claudeModel"
+  | "command-line override";
+
+export interface PlannerPair {
+  runtime: AgentRuntimeId;
+  model: string;
+  rung: PlannerPairRung;
+}
+
+export interface PlannerPairInputs {
+  /** manifest.settings — the global orchestrator settings bag. */
+  settings: OrchestratorSettings;
+  /** manifest.repoSettings, keyed by repoKey ("owner/name"). */
+  repoSettings: Record<string, RepoIntakeSettings>;
+  /** llm.claudeModel, merged over DEFAULT_LLM_SETTINGS the way the app merges it. */
+  claudeModel: string;
+}
+
+/** The planner pair for one repo, down the same ladder resolveAgent walks. */
+export function resolvePlannerPair(repo: string, inputs: PlannerPairInputs): PlannerPair {
+  const repoSettings = inputs.repoSettings[repo];
+  const resolved = resolveRepoOrchestratorSettings(repoSettings, inputs.settings, inputs.claudeModel);
+  return {
+    runtime: resolved.plannerRuntime,
+    model: resolved.plannerModel,
+    rung: plannerRung(repoSettings, inputs.settings),
+  };
+}
+
+function plannerRung(
+  repo: RepoIntakeSettings | undefined,
+  global: OrchestratorSettings,
+): PlannerPairRung {
+  if (repo?.plannerAgent) return "repo plannerAgent";
+  if (global.plannerAgent) return "global plannerAgent";
+  if (global.defaultAgent) return "global defaultAgent";
+  return "claude-cli floor on llm.claudeModel";
+}
+
+/**
+ * A --runtime/--model override sits above the ladder as one atomic pair: an
+ * overridden runtime with no model of its own takes the same floor resolveAgent
+ * applies, so "codex-cli + a Claude alias" stays unreachable here too.
+ */
+export function overridePlannerPair(
+  resolved: PlannerPair,
+  override: { runtime?: AgentRuntimeId; model?: string },
+  claudeModel: string,
+): PlannerPair {
+  if (override.runtime === undefined && override.model === undefined) return resolved;
+  const runtime = override.runtime ?? resolved.runtime;
+  const model =
+    override.model?.trim() ||
+    (override.runtime ? (runtime === "claude-cli" ? claudeModel : "") : resolved.model);
+  return { runtime, model, rung: "command-line override" };
+}
+
+export interface PlannerPairGroup extends PlannerPair {
+  /** Corpus repos that resolved to this pair through this rung, first seen first. */
+  repos: string[];
+}
+
+export interface PlannerPairSummary {
+  groups: PlannerPairGroup[];
+  /** More than one distinct (runtime, model) across the corpus — not calibratable. */
+  mixed: boolean;
+}
+
+export function summarizePlannerPairs(
+  entries: Array<{ repo: string; pair: PlannerPair }>,
+): PlannerPairSummary {
+  const groups = new Map<string, PlannerPairGroup>();
+  for (const { repo, pair } of entries) {
+    const key = `${pair.runtime} ${pair.model} ${pair.rung}`;
+    const group = groups.get(key) ?? { ...pair, repos: [] };
+    if (!group.repos.includes(repo)) group.repos.push(repo);
+    groups.set(key, group);
+  }
+  const distinct = new Set(entries.map((e) => `${e.pair.runtime} ${e.pair.model}`));
+  return { groups: [...groups.values()], mixed: distinct.size > 1 };
+}
+
+export interface PlannerPairSources {
+  /** settings.json the claudeModel came from; absent = none found, built-in default. */
+  settingsFile?: string;
+  claudeModel: string;
+  /** orchestrator-manifest.json the ladder was read from; absent = none found. */
+  manifestFile?: string;
+}
+
+/** Printed before the first agent run — dry runs included, so the pair that is
+ *  about to be paid for is visible first. */
+export function renderPlannerPairBanner(
+  summary: PlannerPairSummary,
+  sources: PlannerPairSources,
+): string {
+  const lines = [
+    `planner pair — resolved the way the app resolves it:`,
+    `  llm.claudeModel: ${sources.claudeModel || "(unset)"} — ${sources.settingsFile ?? "no settings.json found, using the built-in default"}`,
+    `  ladder: ${sources.manifestFile ?? "no orchestrator-manifest.json found, using default settings"}`,
+  ];
+  for (const g of summary.groups) {
+    lines.push(
+      `  ${g.runtime} / ${g.model || "(CLI default)"} — ${g.rung} — ${g.repos.join(", ")}`,
+    );
+  }
+  if (summary.mixed) {
+    lines.push(
+      ``,
+      `!! MIXED PAIRS: this corpus resolves to more than one (runtime, model). A calibration is only valid for the planner it was measured on — collect one corpus per pair, or pin one with --runtime/--model.`,
+    );
+  }
+  return lines.join("\n");
 }

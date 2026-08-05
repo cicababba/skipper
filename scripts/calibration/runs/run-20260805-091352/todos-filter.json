@@ -1,0 +1,158 @@
+{
+  "version": 1,
+  "id": "todos-filter",
+  "repo": "cicababba/todos",
+  "provenance": "authored:#314 calibration (mid-quality)",
+  "issueKey": "CAL-2",
+  "issueTitle": "filter the list by status",
+  "issueUrl": "https://example.invalid/todos/cal-2",
+  "plan": {
+    "summary": "Add client-side status filtering (all/open/done) to the web app: extract pure filter helpers into a new `apps/web/src/filter.ts` module (typed, unit-tested with Vitest), wire a filter toolbar and derived visible list into `App.tsx`, give the empty state a filter-aware message, and add minimal styles. No API, store, or shared-type changes.",
+    "fileCount": 4,
+    "stepCount": 4,
+    "estimatedSize": "s",
+    "openQuestions": []
+  },
+  "signals": {
+    "convergence": {
+      "score": 1,
+      "planCount": 3,
+      "fileJaccard": 1,
+      "sizeAgreement": 1,
+      "stepCountAgreement": 1,
+      "divergent": false,
+      "sharedFiles": [
+        "apps/web/src/App.tsx",
+        "apps/web/src/filter.test.ts",
+        "apps/web/src/filter.ts",
+        "apps/web/src/styles.css"
+      ],
+      "disputedFiles": []
+    },
+    "groundedness": {
+      "score": 1,
+      "coverage": 1,
+      "filesChecked": 2,
+      "filesFound": 2,
+      "symbolsChecked": 6,
+      "symbolsFound": 6,
+      "missingFiles": [],
+      "missingSymbols": [],
+      "newFiles": [
+        "apps/web/src/filter.test.ts",
+        "apps/web/src/filter.ts"
+      ],
+      "createdSymbols": [
+        "TODO_FILTERS",
+        "TodoFilter",
+        "emptyMessage",
+        "filterTodos"
+      ]
+    },
+    "clarity": {
+      "score": 0,
+      "criteria": "partial",
+      "ambiguities": [
+        {
+          "detail": "Exact wording of the filter-active empty-state message(s) — the issue only says it 'must say something else'; the plan silently invents per-filter copy via emptyMessage(filter)",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether the empty-state message is one generic 'no matches' string or distinct copy per filter",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "UI control shape for the filter selector (button toolbar vs. select vs. tabs/links) and its placement on the page",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Visible labels for the three filters ('all'/'open'/'done' as literal labels vs. capitalized or alternative wording)",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether the active filter is indicated visually (selected/pressed styling) and how",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether the filter persists across reloads (URL query param, localStorage) or resets to 'all' each mount",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "What 'still works' means when adding a todo under the 'done' filter — whether the new (open) todo is hidden, or the filter auto-switches / the item is briefly surfaced",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether counts per filter are shown alongside the controls",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Where filtering logic lives (new module vs. inline in App.tsx) and whether it needs its own unit test file",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether toggling a todo's status while a filter is active should immediately remove it from view",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Accessibility semantics for the control group (radiogroup, aria-pressed, tablist)",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        }
+      ],
+      "openQuestions": [],
+      "rationale": "The behavioural outcomes (three filters, default all, no refetch, add-while-filtered) are objectively checkable, but the empty-state requirement is specified only negatively ('must say something else') and all presentation choices are left to taste, which the plan resolved silently without raising any questions."
+    },
+    "critic": {
+      "score": 0.6,
+      "verdict": "concerns",
+      "objections": [
+        {
+          "kind": "acceptance-gap",
+          "detail": "The only tests are for pure helpers; none of the actual changed behaviour is covered. CLAUDE.md:45 requires \"New or changed behavior is covered by a test in the same package\", and the behaviour this issue asks for lives entirely in App.tsx: mapping over `visible` instead of `todos` (App.tsx:65), and `{visible.length === 0 && !error && <p className=\"empty\">{emptyMessage(filter)}</p>}` (App.tsx:78). `filter.test.ts` would pass in full even if App.tsx still mapped over `todos` and still hardcoded \"nothing here yet\" — i.e. every acceptance criterion could regress with a green suite. The plan then puts the only remedy (jsdom/@testing-library, or widening vitest.config.ts:5 beyond `apps/**/*.test.ts`) in outOfScope rather than raising it as an open question. I verified apps/web/package.json has no jsdom/@testing-library and the root include glob is `.ts`-only, so the constraint is real — but the plan should either surface the trade-off explicitly for the user or propose the small config change, not silently declare the DoD satisfied in its `acceptance` block (\"New behaviour is covered by a test in the same package (CLAUDE.md definition of done)\" is an overclaim: the wiring is not).",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "underspecified",
+          "detail": "AC \"Adding a todo while a filter is active still works\" is resolved silently and the weakest case is never checked. With `done` selected, `onSubmit` appends an open todo (App.tsx:29) that is immediately filtered out: the input clears and nothing appears — no confirmation, no count, nothing. The plan's own risks entry admits this (\"expected behaviour\"), but the acceptance mapping just says \"onSubmit is unchanged\", and the manualChecks only exercise the easy path (\"With `open` selected, add a new todo and confirm it appears\"). Whether add-under-`done` should auto-switch to `all`, show a transient hint, or genuinely do nothing visible is a product decision the issue does not settle; it should be an openQuestion (the plan ships with `openQuestions: []`) or at minimum a manual check that pins the chosen behaviour.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "Risk 3 (\"apps/web has no local vitest devDependency ... if pnpm test fails to resolve either, run pnpm install\") is a non-issue and misdirects debugging effort. apps/api/package.json has no vitest devDependency either, yet apps/api/src/routes.test.ts and store.test.ts already import from \"vitest\" and are covered by `pnpm -r typecheck` — the exact same resolution path (walk up to the root node_modules) that apps/web/src/filter.test.ts would use. The `@todos/shared` half is even less of a concern: the plan specifies `import type { Todo }`, which `verbatimModuleSyntax` (tsconfig.base.json:10) erases entirely, so nothing needs to resolve at runtime. Harmless, but it dresses a settled precedent up as an unknown.",
+          "blocking": false,
+          "unverified": false
+        }
+      ]
+    }
+  },
+  "composite": 0.58,
+  "weights": {
+    "groundedness": 0.15,
+    "critic": 0.3,
+    "convergence": 0.25,
+    "clarity": 0.3
+  },
+  "runtime": "claude-cli",
+  "model": "opus",
+  "graphify": false,
+  "timings": {
+    "planMs": 89990,
+    "extraPlansMs": 86765,
+    "scoringMs": 116388,
+    "totalMs": 293143
+  },
+  "errors": [],
+  "collectedAt": "2026-08-05T10:13:28.667Z"
+}
