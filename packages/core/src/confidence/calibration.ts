@@ -13,6 +13,7 @@ import {
   type RepoIntakeSettings,
 } from "@skipper/shared";
 import { deriveClarityScore, type ClarityJudgment } from "./clarity";
+import { deriveConvergenceScore } from "./convergence";
 import { deriveCriticScore } from "./critic";
 
 // Threshold-calibration corpus (#314). The harness that collects it never calls
@@ -97,6 +98,7 @@ export interface ReplayOptions {
   /** Alternate clarity curve (#315 tries one without touching the shipped one). */
   deriveClarity?: (judgment: ClarityJudgment) => number;
   deriveCritic?: (verdict: CriticVerdict, objections: CriticObjection[]) => number;
+  deriveConvergence?: (parts: { fileJaccard: number; stepCountAgreement: number }) => number;
 }
 
 export interface ReplayResult {
@@ -106,10 +108,10 @@ export interface ReplayResult {
 }
 
 /**
- * Re-derive the judged signals from their raw judgments, so a curve change is
- * picked up without re-running any agent. Groundedness and convergence keep
- * their stored scores — their derivations are deterministic over repo facts the
- * sample no longer carries.
+ * Re-derive the signals from what the sample stored under them, so a weight or
+ * curve change is picked up without re-running any agent. Groundedness keeps its
+ * stored score — its derivation is deterministic over repo facts the sample no
+ * longer carries.
  */
 export function replayScores(sample: CalibrationSample, opts?: ReplayOptions): ReplayResult {
   const scores: CalibrationScores = {};
@@ -117,7 +119,16 @@ export function replayScores(sample: CalibrationSample, opts?: ReplayOptions): R
 
   const { groundedness, convergence, clarity, critic } = sample.signals;
   if (groundedness) scores.groundedness = groundedness.score;
-  if (convergence) scores.convergence = convergence.score;
+
+  if (convergence) {
+    const parts = convergencePartsOf(convergence);
+    if (parts) {
+      scores.convergence = (opts?.deriveConvergence ?? deriveConvergenceScore)(parts);
+    } else {
+      scores.convergence = convergence.score;
+      fallbacks.push("convergence");
+    }
+  }
 
   if (clarity) {
     const judgment = clarityJudgmentOf(clarity);
@@ -139,6 +150,14 @@ export function replayScores(sample: CalibrationSample, opts?: ReplayOptions): R
   }
 
   return { scores, fallbacks };
+}
+
+function convergencePartsOf(
+  signal: ConvergenceSignal,
+): { fileJaccard: number; stepCountAgreement: number } | undefined {
+  const { fileJaccard, stepCountAgreement } = signal as Partial<ConvergenceSignal>;
+  if (typeof fileJaccard !== "number" || typeof stepCountAgreement !== "number") return undefined;
+  return { fileJaccard, stepCountAgreement };
 }
 
 function clarityJudgmentOf(signal: ClaritySignal): ClarityJudgment | undefined {

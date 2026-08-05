@@ -179,6 +179,7 @@ export {
   computeConfidence,
   scoreGroundedness,
   scoreConvergence,
+  deriveConvergenceScore,
   scoreClarity,
   buildClarityPrompt,
   deriveClarityScore,

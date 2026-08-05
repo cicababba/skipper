@@ -3,6 +3,7 @@ import {
   DEFAULT_ORCHESTRATOR_SETTINGS,
   type ClaritySignal,
   type ConfidenceWeights,
+  type ConvergenceSignal,
   type CriticSignal,
   type OrchestratorSettings,
 } from "@skipper/shared";
@@ -75,7 +76,7 @@ function sample(over: Partial<CalibrationSample> = {}): CalibrationSample {
         newFiles: [],
       },
       convergence: {
-        score: 0.9,
+        score: 0.86,
         planCount: 3,
         fileJaccard: 0.9,
         sizeAgreement: 1,
@@ -112,7 +113,8 @@ describe("replayScores", () => {
   it("reproduces the stored scores when the derivations are unchanged", () => {
     const { scores, fallbacks } = replayScores(sample());
     expect(scores.groundedness).toBe(1);
-    expect(scores.convergence).toBe(0.9);
+    // 0.6 * fileJaccard + 0.4 * stepCountAgreement (#320)
+    expect(scores.convergence).toBeCloseTo(0.86, 10);
     // verifiable 1.0 decayed by one flagged ambiguity, no repo-knowledge question
     expect(scores.clarity).toBeCloseTo(Math.exp(-0.05 / 3), 10);
     expect(scores.critic).toBeCloseTo(0.94, 10);
@@ -123,11 +125,13 @@ describe("replayScores", () => {
     const stale = sample({
       signals: {
         ...sample().signals,
+        convergence: { ...sample().signals.convergence!, score: 0.11 },
         clarity: { ...CLARITY, score: 0.11 },
         critic: { ...CRITIC, score: 0.11 },
       },
     });
     const { scores, fallbacks } = replayScores(stale);
+    expect(scores.convergence).toBeCloseTo(0.86, 10);
     expect(scores.clarity).toBeCloseTo(Math.exp(-0.05 / 3), 10);
     expect(scores.critic).toBeCloseTo(0.94, 10);
     expect(fallbacks).toEqual([]);
@@ -137,9 +141,28 @@ describe("replayScores", () => {
     const { scores } = replayScores(sample(), {
       deriveClarity: (j) => (j.criteria === "verifiable" ? 0.42 : 0),
       deriveCritic: (verdict) => (verdict === "concerns" ? 0.33 : 0),
+      deriveConvergence: (parts) => (parts.fileJaccard === 0.9 ? 0.21 : 0),
     });
     expect(scores.clarity).toBe(0.42);
     expect(scores.critic).toBe(0.33);
+    expect(scores.convergence).toBe(0.21);
+  });
+
+  it("falls back to the stored convergence score when its components are absent, and flags it", () => {
+    const legacy = sample({
+      signals: {
+        convergence: {
+          score: 0.55,
+          planCount: 3,
+          divergent: false,
+          sharedFiles: [],
+          disputedFiles: [],
+        } as unknown as ConvergenceSignal,
+      },
+    });
+    const { scores, fallbacks } = replayScores(legacy);
+    expect(scores.convergence).toBe(0.55);
+    expect(fallbacks).toEqual(["convergence"]);
   });
 
   it("falls back to the stored score when the raw judgment is absent, and flags it", () => {
@@ -236,8 +259,9 @@ describe("compositeOf", () => {
   });
 });
 
-/** Convergence carries the composite: it is weighted, and replayScores reuses its
- *  stored score verbatim, so one signal pins the row's composite exactly. */
+/** Convergence carries the composite: it is the only weighted signal here, so it
+ *  pins the row's composite exactly. replayScores re-derives it from its
+ *  components (#320), so both components carry the wanted value — 0.6c + 0.4c = c. */
 function rowsFrom(entries: { id: string; composite: number; label: CalibrationLabel }[]) {
   const samples = entries.map((e) =>
     sample({
@@ -246,9 +270,9 @@ function rowsFrom(entries: { id: string; composite: number; label: CalibrationLa
         convergence: {
           score: e.composite,
           planCount: 3,
-          fileJaccard: 1,
+          fileJaccard: e.composite,
           sizeAgreement: 1,
-          stepCountAgreement: 1,
+          stepCountAgreement: e.composite,
           divergent: false,
           sharedFiles: [],
           disputedFiles: [],
