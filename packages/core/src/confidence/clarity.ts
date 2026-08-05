@@ -13,12 +13,17 @@ const MAX_BODY_CHARS = 12_000;
 
 const CRITERIA_BASE: Record<"verifiable" | "partial" | "vague", number> = {
   verifiable: 1.0,
-  partial: 0.75,
-  vague: 0.5,
+  partial: 0.85,
+  vague: 0.2,
 };
-const SILENT_PENALTY = 0.15;
-const FLAGGED_PENALTY = 0.05;
-const REPO_QUESTION_PENALTY = 0.1;
+/** Decay per unresolved ambiguity (#315). Light on purpose: the count tracks
+ *  how much an issue covers, not how badly it is written. */
+const AMBIGUITY_DECAY = 0.05;
+/** Weights inside the decay exponent, keeping the 0.15 / 0.05 / 0.10 ratios the
+ *  linear penalties had: raising the hand must still cost a third of deciding
+ *  in silence. */
+const FLAGGED_WEIGHT = 1 / 3;
+const REPO_QUESTION_WEIGHT = 2 / 3;
 
 export const ClarityJudgmentSchema = z.object({
   criteria: z.enum(["verifiable", "partial", "vague"]),
@@ -54,18 +59,22 @@ export class ClarityError extends Error {
  * Score derived here, never model-emitted — keeps it reproducible. A flagged
  * ambiguity costs a third of a silent one: raising the hand must raise the
  * score, not lower it as the old openQuestionCount penalty did.
+ *
+ * The count decays the base instead of being subtracted from it (#315): the
+ * linear penalty sank below zero on half of the calibration corpus, so the
+ * clamp flattened a curated issue and a one-line "make it less ugly" onto the
+ * same 0.00. The criteria scale is not linear either — "vague" is the signature
+ * of an issue that cannot be planned at all, while "partial" is an ordinary
+ * one, so the drop from partial to vague is far larger than from verifiable to
+ * partial.
  */
 export function deriveClarityScore(judgment: ClarityJudgment): number {
   const unresolved = judgment.ambiguities.filter((a) => !a.resolvableFromRepo);
   const silent = unresolved.filter((a) => !a.flaggedByPlan).length;
   const flagged = unresolved.length - silent;
   const repoQuestions = judgment.openQuestions.filter((q) => q.kind === "repo-knowledge").length;
-  return clamp01(
-    CRITERIA_BASE[judgment.criteria] -
-      SILENT_PENALTY * silent -
-      FLAGGED_PENALTY * flagged -
-      REPO_QUESTION_PENALTY * repoQuestions,
-  );
+  const charged = silent + FLAGGED_WEIGHT * flagged + REPO_QUESTION_WEIGHT * repoQuestions;
+  return CRITERIA_BASE[judgment.criteria] * Math.exp(-AMBIGUITY_DECAY * charged);
 }
 
 export function buildClarityPrompt(issue: PlanIssueInput, plan: IssuePlan): string {
@@ -134,8 +143,4 @@ export async function scoreClarity(
     openQuestions: judgment.openQuestions,
     rationale: judgment.rationale,
   };
-}
-
-function clamp01(n: number): number {
-  return Math.min(1, Math.max(0, n));
 }

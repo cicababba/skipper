@@ -161,18 +161,18 @@ function fakeRuntime(reply: unknown): {
 }
 
 describe("scoreClarity — the two dogfooding issues (#309)", () => {
-  it("separates the surgical issue from the vague one by 0.60", async () => {
+  it("separates the surgical issue from the vague one by 0.65", async () => {
     const { llm: llm1 } = fakeLLM(JUDGMENT_1);
     const { llm: llm2 } = fakeLLM(JUDGMENT_2);
     const s1 = await scoreClarity(ISSUE_1, PLAN_1, llm1);
     const s2 = await scoreClarity(ISSUE_2, PLAN_2, llm2);
 
-    // 0.75 (partial) − 0.15 (one silent unresolved ambiguity); the second
+    // 0.85 (partial) decayed by one silent unresolved ambiguity; the second
     // ambiguity is resolvable from the repo, so it costs nothing.
-    expect(s1.score).toBeCloseTo(0.6);
-    // 0.5 (vague) − 5 × 0.15, clamped.
-    expect(s2.score).toBe(0);
-    expect(s1.score - s2.score).toBeCloseTo(0.6);
+    expect(s1.score).toBeCloseTo(0.8085, 4);
+    // 0.2 (vague) decayed by five silent ambiguities — low, never zero.
+    expect(s2.score).toBeCloseTo(0.1558, 4);
+    expect(s1.score - s2.score).toBeCloseTo(0.6528, 4);
   });
 
   it("carries the judgment through to the signal", async () => {
@@ -215,14 +215,15 @@ describe("scoreClarity — the two dogfooding issues (#309)", () => {
 describe("deriveClarityScore", () => {
   it.each([
     ["verifiable", 1],
-    ["partial", 0.75],
-    ["vague", 0.5],
+    ["partial", 0.85],
+    ["vague", 0.2],
   ] as const)("bases the score on criteria %s", (criteria, expected) => {
     expect(deriveClarityScore(judgment({ criteria }))).toBeCloseTo(expected);
   });
 
   // The inverted incentive #309 exists to kill: the old term subtracted 0.1 per
-  // open question, so raising the hand LOWERED the score. Now it costs a third.
+  // open question, so raising the hand LOWERED the score. It still costs a
+  // third of a silent decision, now as a weight inside the decay exponent.
   it("charges a silent ambiguity three times what a flagged one costs", () => {
     const detail = "which priority levels exist";
     const silent = deriveClarityScore(
@@ -237,12 +238,12 @@ describe("deriveClarityScore", () => {
         ambiguities: [{ detail, resolvableFromRepo: false, flaggedByPlan: true }],
       }),
     );
-    expect(silent).toBeCloseTo(0.35);
-    expect(flagged).toBeCloseTo(0.45);
+    expect(silent).toBeCloseTo(0.1902, 4);
+    expect(flagged).toBeCloseTo(0.1967, 4);
     expect(flagged).toBeGreaterThan(silent);
   });
 
-  it("pins the per-ambiguity arithmetic away from the clamp", () => {
+  it("pins the per-ambiguity exponential arithmetic", () => {
     const score = deriveClarityScore(
       judgment({
         criteria: "vague",
@@ -252,7 +253,8 @@ describe("deriveClarityScore", () => {
         ],
       }),
     );
-    expect(score).toBeCloseTo(0.2);
+    expect(score).toBeCloseTo(0.2 * Math.exp(-0.1), 10);
+    expect(score).toBeCloseTo(0.181, 3);
   });
 
   it("charges nothing for an ambiguity the repo settles", () => {
@@ -265,10 +267,10 @@ describe("deriveClarityScore", () => {
         ],
       }),
     );
-    expect(score).toBeCloseTo(0.75);
+    expect(score).toBeCloseTo(0.85);
   });
 
-  it("charges 0.10 per repo-knowledge question and nothing for issue ambiguity", () => {
+  it("charges two thirds per repo-knowledge question and nothing for issue ambiguity", () => {
     const repoKnowledge = deriveClarityScore(
       judgment({
         openQuestions: [
@@ -285,15 +287,16 @@ describe("deriveClarityScore", () => {
         ],
       }),
     );
-    expect(repoKnowledge).toBeCloseTo(0.8);
+    expect(repoKnowledge).toBeCloseTo(Math.exp(-0.05 * (4 / 3)), 10);
+    expect(repoKnowledge).toBeCloseTo(0.9355, 4);
     expect(issueAmbiguity).toBeCloseTo(1);
   });
 
-  it("clamps at 1 when nothing is charged", () => {
+  it("reaches 1 when nothing is charged", () => {
     expect(deriveClarityScore(judgment())).toBe(1);
   });
 
-  it("clamps at 0 when the penalties exceed the base", () => {
+  it("never reaches 0, however many ambiguities pile up", () => {
     const score = deriveClarityScore(
       judgment({
         criteria: "vague",
@@ -305,7 +308,30 @@ describe("deriveClarityScore", () => {
         openQuestions: [{ question: "q", kind: "repo-knowledge" }],
       }),
     );
-    expect(score).toBe(0);
+    expect(score).toBeGreaterThan(0);
+    expect(score).toBeCloseTo(0.1507, 4);
+  });
+
+  // #315: on the calibration corpus these two both read 0.000, so a curated
+  // issue and an unplannable one were indistinguishable at the bottom.
+  it("keeps a lightly and a heavily ambiguous vague issue apart at the bottom", () => {
+    const vagueWith = (count: number): number =>
+      deriveClarityScore(
+        judgment({
+          criteria: "vague",
+          ambiguities: Array.from({ length: count }, (_, i) => ({
+            detail: `a${i}`,
+            resolvableFromRepo: false,
+            flaggedByPlan: false,
+          })),
+        }),
+      );
+    const five = vagueWith(5);
+    const fifteen = vagueWith(15);
+    expect(five).toBeCloseTo(0.1558, 4);
+    expect(fifteen).toBeCloseTo(0.0945, 4);
+    expect(five).toBeGreaterThan(fifteen);
+    expect(fifteen).toBeGreaterThan(0);
   });
 });
 
