@@ -72,7 +72,7 @@ function report(composite: number, divergent?: boolean): ConfidenceReport {
   return {
     version: 1,
     composite,
-    weights: { groundedness: 1, convergence: 0, critic: 0, clarity: 0 },
+    weights: { convergence: 0, critic: 1, clarity: 0 },
     signals: divergent === undefined
       ? {}
       : {

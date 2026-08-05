@@ -42,7 +42,7 @@ function makeReport(composite: number, empty = false): ConfidenceReport {
   return {
     version: 1,
     composite,
-    weights: { groundedness: 0.5, convergence: 0, critic: 0.4, clarity: 0.1 },
+    weights: { convergence: 0, critic: 0.9, clarity: 0.1 },
     signals: empty
       ? {}
       : { critic: { score: composite, verdict: "approve", objections: [] } },

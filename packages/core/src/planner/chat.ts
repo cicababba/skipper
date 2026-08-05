@@ -132,7 +132,6 @@ export function renderConfidenceBlock(report: ConfidenceReport): string {
   const w = report.weights;
   const s = report.signals;
   const weightParts: string[] = [];
-  if (s.groundedness) weightParts.push(`groundedness ${n2(w.groundedness)}`);
   if (s.convergence) weightParts.push(`convergence ${n2(w.convergence)}`);
   if (s.critic) weightParts.push(`critic ${n2(w.critic)}`);
   if (s.clarity) weightParts.push(`clarity ${n2(w.clarity)}`);

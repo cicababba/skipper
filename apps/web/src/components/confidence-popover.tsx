@@ -279,9 +279,8 @@ export function ReportBody({ report }: { report: ConfidenceReport }) {
       <div className="pt-2 border-t border-border space-y-1">
         <p className="text-[10px] uppercase tracking-wide text-muted/60">{p.weights}</p>
         <p className="text-muted">
-          {p.groundedness} {pct(report.weights.groundedness)} · {p.convergence}{" "}
-          {pct(report.weights.convergence)} · {p.critic} {pct(report.weights.critic)} · {p.clarity}{" "}
-          {pct(report.weights.clarity)}
+          {p.convergence} {pct(report.weights.convergence)} · {p.critic}{" "}
+          {pct(report.weights.critic)} · {p.clarity} {pct(report.weights.clarity)}
         </p>
         {report.errors.length > 0 && (
           <>

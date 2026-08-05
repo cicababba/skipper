@@ -21,7 +21,6 @@ import { DEFAULT_CONFIDENCE_THRESHOLDS, resolveGate } from "./gate";
 import { assertRepoDir, GROUNDEDNESS_VETO, scoreGroundedness } from "./groundedness";
 
 export const DEFAULT_CONFIDENCE_WEIGHTS: ConfidenceWeights = {
-  groundedness: 0.15,
   critic: 0.3,
   convergence: 0.25,
   clarity: 0.3,
@@ -88,13 +87,17 @@ export function reachableBand(
   return { min: raw / (other + wc), max: (raw + wc) / (other + wc) };
 }
 
+const WEIGHTED_SIGNALS = Object.keys(DEFAULT_CONFIDENCE_WEIGHTS) as (keyof ConfidenceWeights)[];
+
+/**
+ * The measured signals and the weighted ones are not the same set (#321):
+ * report.signals still carries groundedness, which has no weight. Iterating the
+ * weight keys — not the signal keys — is what keeps the composite a number.
+ */
 function presentSignals(
   signals: ConfidenceReport["signals"],
 ): [keyof ConfidenceWeights, { score: number }][] {
-  return Object.entries(signals).filter(([, s]) => s !== undefined) as [
-    keyof ConfidenceWeights,
-    { score: number },
-  ][];
+  return WEIGHTED_SIGNALS.filter((k) => signals[k] !== undefined).map((k) => [k, signals[k]!]);
 }
 
 /**
@@ -118,7 +121,7 @@ export async function computeConfidence(
   const report: ConfidenceReport = {
     version: 1,
     composite: 0,
-    weights: { groundedness: 0, convergence: 0, critic: 0, clarity: 0 },
+    weights: { convergence: 0, critic: 0, clarity: 0 },
     signals: {},
     errors: [],
     computedAt: new Date().toISOString(),

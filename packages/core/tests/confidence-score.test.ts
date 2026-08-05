@@ -87,18 +87,38 @@ function failingLLM(which: "critic" | "clarity", detail: string): LLMProviderInt
   } as unknown as LLMProviderInterface;
 }
 
-// #309 recalibration: groundedness drops to a low-weight guard backed by a veto,
-// clarity rises to carry the semantic judgment it now makes.
+// #321: groundedness carries no weight at all — it was constant at 1.000 across
+// the calibration corpus, so its only job is the veto. The three weighted signals
+// keep their raw values and renormalize over 0.85.
 describe("DEFAULT_CONFIDENCE_WEIGHTS", () => {
-  it("splits 0.15/0.30/0.25/0.30 and sums to 1", () => {
+  it("weights only critic, convergence and clarity", () => {
     expect(DEFAULT_CONFIDENCE_WEIGHTS).toEqual({
-      groundedness: 0.15,
       critic: 0.3,
       convergence: 0.25,
       clarity: 0.3,
     });
-    const { groundedness, critic, convergence, clarity } = DEFAULT_CONFIDENCE_WEIGHTS;
-    expect(groundedness + critic + convergence + clarity).toBeCloseTo(1);
+    expect("groundedness" in DEFAULT_CONFIDENCE_WEIGHTS).toBe(false);
+  });
+
+  // The measured signals and the weighted ones are different sets: a composite
+  // built by walking report.signals would multiply by an absent weight and go NaN.
+  it("keeps the composite finite with groundedness measured but unweighted", async () => {
+    const generatePlan = vi.fn(async () => plan());
+    const report = await computeConfidence({
+      plan: plan(),
+      issue: ISSUE,
+      repoPath: repo,
+      llm: fakeLLM(APPROVE),
+      extraPlanRuns: 2,
+      deps: { generatePlan },
+    });
+
+    expect(report.signals.groundedness?.score).toBeCloseTo(1);
+    expect("groundedness" in report.weights).toBe(false);
+    expect(Number.isFinite(report.composite)).toBe(true);
+    const w = report.weights;
+    expect(w.critic + w.convergence + w.clarity).toBeCloseTo(1);
+    expect(Object.values(w).every((v) => Number.isFinite(v))).toBe(true);
   });
 });
 
@@ -120,7 +140,7 @@ describe("computeConfidence", () => {
     expect(report.signals.clarity).toBeDefined();
     expect(report.errors).toEqual([]);
     const w = report.weights;
-    expect(w.groundedness + w.convergence + w.critic + w.clarity).toBeCloseTo(1);
+    expect(w.convergence + w.critic + w.clarity).toBeCloseTo(1);
     expect(report.composite).toBeGreaterThan(0.9);
   });
 
@@ -140,8 +160,8 @@ describe("computeConfidence", () => {
     expect(report.errors).toEqual(["convergence: 2/2 extra plan runs failed"]);
     expect(report.weights.convergence).toBe(0);
     const w = report.weights;
-    expect(w.groundedness + w.critic + w.clarity).toBeCloseTo(1);
-    expect(w.groundedness).toBeGreaterThan(DEFAULT_CONFIDENCE_WEIGHTS.groundedness);
+    expect(w.critic + w.clarity).toBeCloseTo(1);
+    expect(w.critic).toBeGreaterThan(DEFAULT_CONFIDENCE_WEIGHTS.critic);
   });
 
   it("captures a critic failure in errors and scores the rest", async () => {
@@ -202,7 +222,7 @@ describe("computeConfidence", () => {
     expect(report.errors).toEqual(["clarity: no cli"]);
     expect(report.signals.critic).toBeDefined();
     expect(report.weights.clarity).toBe(0);
-    expect(report.weights.groundedness + report.weights.critic).toBeCloseTo(1);
+    expect(report.weights.critic).toBeCloseTo(1);
   });
 
   it("skips convergence entirely when extraPlanRuns is 0", async () => {
@@ -247,7 +267,7 @@ describe("reachableBand", () => {
       critic: { score: 1 },
       clarity: { score: 1 },
     } as ConfidenceReport["signals"]);
-    expect(band.min).toBeCloseTo(0.75); // convergence = 0
+    expect(band.min).toBeCloseTo(0.6 / 0.85); // convergence = 0
     expect(band.max).toBeCloseTo(1); // convergence = 1
   });
 
@@ -264,8 +284,8 @@ describe("reachableBand", () => {
       clarity: { score: 0.4 },
     } as ConfidenceReport["signals"];
     const band = reachableBand(signals);
-    const raw = 0.15 * 0.8 + 0.3 * 0.6 + 0.3 * 0.4;
-    const renormalized = raw / (0.15 + 0.3 + 0.3);
+    const raw = 0.3 * 0.6 + 0.3 * 0.4;
+    const renormalized = raw / (0.3 + 0.3);
     expect(renormalized).toBeGreaterThanOrEqual(band.min);
     expect(renormalized).toBeLessThanOrEqual(band.max);
   });
@@ -290,7 +310,7 @@ describe("computeConfidence — adaptive convergence (#50)", () => {
     expect(report.convergenceSkipped?.detail).toContain("queued");
     expect(report.weights.convergence).toBe(0);
     const w = report.weights;
-    expect(w.groundedness + w.critic + w.clarity).toBeCloseTo(1);
+    expect(w.critic + w.clarity).toBeCloseTo(1);
   });
 
   it("skips when the plan is decisively bad, without paying for more plans", async () => {
@@ -299,8 +319,8 @@ describe("computeConfidence — adaptive convergence (#50)", () => {
     const generatePlan = vi.fn(async () => plan());
     const report = await computeConfidence({
       plan: plan({
-        // Coverage 0.525: one of four files missing and the symbol absent — bad
-        // enough to pin the gate, just above the veto.
+        // Coverage 0.525: one of four files missing and the symbol absent — just
+        // above the veto, and unweighted since #321, so only the veto reads it.
         files: [
           { path: "src/poller.ts", reason: "r" },
           { path: "src/backoff.ts", reason: "r" },
@@ -314,6 +334,10 @@ describe("computeConfidence — adaptive convergence (#50)", () => {
       repoPath: repo,
       llm: fakeLLM({ verdict: "reject", objections: [] }, VAGUE),
       extraPlanRuns: 2,
+      // A rejected, vague plan reaches at most 0.43 once the three weighted
+      // signals renormalize over 0.85 (#321), so the default 0.4 floor no longer
+      // pins it. The floor moves in #314; the skip logic under test is the same.
+      thresholds: { high: 0.85, low: 0.5 },
       deps: { generatePlan },
     });
     expect(generatePlan).not.toHaveBeenCalled();
@@ -323,8 +347,8 @@ describe("computeConfidence — adaptive convergence (#50)", () => {
   });
 
   it("still pays for the runs under default thresholds, where the high band is reachable", async () => {
-    // Groundedness+critic+clarity carry 0.75 total, so perfect cheap signals
-    // bottom out at 0.75 — below the 0.85 gate. Convergence can still decide.
+    // Critic+clarity carry 0.6 of the 0.85 total, so perfect cheap signals bottom
+    // out at 0.71 — below the 0.85 gate. Convergence can still decide.
     const generatePlan = vi.fn(async () => plan());
     const report = await computeConfidence({
       plan: plan(),
@@ -353,7 +377,7 @@ describe("computeConfidence — adaptive convergence (#50)", () => {
       repoPath: repo,
       llm: fakeLLM(APPROVE),
       extraPlanRuns: 2,
-      // Default thresholds: the [0.75, 1] band straddles high, so auto would pay.
+      // Default thresholds: the [0.71, 1] band straddles high, so auto would pay.
       autoCoding,
       deps: { generatePlan },
     });
@@ -370,7 +394,7 @@ describe("computeConfidence — adaptive convergence (#50)", () => {
       repoPath: repo,
       llm: fakeLLM(APPROVE),
       extraPlanRuns: 2,
-      // Band [0.75, 1] straddles low, so needs-input is still reachable — and the
+      // Band [0.71, 1] straddles low, so needs-input is still reachable — and the
       // floor outranks the mode.
       thresholds: { high: 0.99, low: 0.8 },
       autoCoding: "on",

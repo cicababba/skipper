@@ -77,8 +77,7 @@ describe("computeConfidence skipConvergence (#164)", () => {
 
     // Weights renormalize over the present signals; convergence carries none.
     expect(report.weights.convergence).toBe(0);
-    const total =
-      report.weights.groundedness + report.weights.critic + report.weights.clarity;
+    const total = report.weights.critic + report.weights.clarity;
     expect(total).toBeCloseTo(1, 10);
   });
 
