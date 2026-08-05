@@ -1,0 +1,228 @@
+{
+  "version": 1,
+  "id": "skipper-263",
+  "repo": "cicababba/skipper",
+  "provenance": "github:cicababba/skipper#263",
+  "issueKey": "263",
+  "issueTitle": "core,desktop:feat: dual planner + merger — two plans from shared findings synthesized into one with convergence report",
+  "issueUrl": "https://github.com/cicababba/skipper/issues/263",
+  "plan": {
+    "summary": "Add a dual-planner + merger stage to the planning pipeline: two independent `generatePlan` runs over identical input (issue + optional aggregated findings) executed in parallel, then a tool-less structured merger call that emits the single canonical plan, a convergence score and a divergence list, plus a deterministic Jaccard sanity check computed in code. The desktop planner driver branches on a new global `multiAgentPlanning` setting (default off, today's flow bit-identical); the merged plan flows into the existing plan-store/confidence/gate path unchanged, with the merge report persisted alongside it for the next sub-issue (#264).",
+    "fileCount": 17,
+    "stepCount": 8,
+    "estimatedSize": "l",
+    "openQuestions": []
+  },
+  "signals": {
+    "convergence": {
+      "score": 0.7817770092226614,
+      "planCount": 3,
+      "fileJaccard": 0.6675450153711023,
+      "sizeAgreement": 1,
+      "stepCountAgreement": 0.875,
+      "divergent": false,
+      "sharedFiles": [
+        "apps/desktop/src/planner.test.ts",
+        "apps/desktop/src/planner.ts",
+        "packages/core/src/confidence/convergence.ts",
+        "packages/core/src/index.ts",
+        "packages/core/src/planner/dual.ts",
+        "packages/core/src/planner/generate.ts",
+        "packages/core/src/planner/index.ts",
+        "packages/core/src/planner/merge.ts",
+        "packages/core/src/planner/schema.ts",
+        "packages/core/tests/planner-dual.test.ts",
+        "packages/core/tests/planner-merge.test.ts",
+        "packages/shared/src/orchestrator.ts",
+        "packages/shared/src/plan.ts"
+      ],
+      "disputedFiles": [
+        "apps/desktop/src/plan-store.ts",
+        "apps/desktop/src/settings-validators.ts",
+        "packages/core/src/confidence/index.ts",
+        "packages/core/src/confidence/score.ts",
+        "packages/core/src/orchestrator/manifest.ts",
+        "packages/core/src/planner/prompt.ts",
+        "packages/core/src/runtime/structured.ts",
+        "packages/core/tests/confidence-convergence.test.ts",
+        "packages/core/tests/orchestrator-manifest.test.ts",
+        "packages/core/tests/planner-generate.test.ts",
+        "packages/core/tests/planner-prompt.test.ts"
+      ]
+    },
+    "groundedness": {
+      "score": 1,
+      "coverage": 1,
+      "filesChecked": 16,
+      "filesFound": 16,
+      "symbolsChecked": 23,
+      "symbolsFound": 23,
+      "missingFiles": [],
+      "missingSymbols": [],
+      "newFiles": [
+        "packages/core/src/planner/dual.ts",
+        "packages/core/src/planner/merge.ts",
+        "packages/core/tests/planner-dual.test.ts",
+        "packages/core/tests/planner-merge.test.ts"
+      ],
+      "createdSymbols": [
+        "DualPlanResult",
+        "GenerateDualPlanOptions",
+        "MergeError",
+        "MergePlansOptions",
+        "PlanDivergence",
+        "PlanDivergenceSchema",
+        "PlanMergeJudgment",
+        "PlanMergeJudgmentSchema",
+        "PlanMergeReport",
+        "buildMergePrompt",
+        "generateDualPlan",
+        "mergePlans",
+        "planFileJaccard",
+        "renderFindingsBlock"
+      ]
+    },
+    "clarity": {
+      "score": 0.15000000000000002,
+      "criteria": "partial",
+      "ambiguities": [
+        {
+          "detail": "Failure/degradation semantics when one planner run fails, both fail, or the merger call throws — the issue says nothing; the plan invents rules (one fulfilled → use it, merger throw → plan A, zero → rethrow).",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Scale and meaning of the `convergence` score (0–1 vs 0–100, and what it measures) is unspecified.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Shape of `divergences[]` entries (free text vs structured fields like topic/planA/planB/severity).",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Where the merge report (convergence, divergences, Jaccard) is persisted — alongside the StoredPlan envelope, separate store, or discarded — the issue only says 'stored alongside'.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "How 'touched-file sets' are extracted from a plan for the Jaccard computation (which plan field, path normalization, empty-set edge case → Jaccard of two empty sets).",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Default value and naming of the `Multi-agent planning` toggle setting (plan chose `multiAgentPlanning`, default off) and whether it is global or per-run.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether findings are required or optional input when the explorer fan-out produced none (plan made findings optional).",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Which model/runtime the merger uses — the issue specifies the strong-model slot only for the planner role, not the merger.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether the two planner runs should be truly identical prompts (temperature/seed/sampling variation) so their outputs can meaningfully diverge.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Cost/latency handling: whether the two runs share a concurrency budget or token cap with the explorer fan-out.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        }
+      ],
+      "openQuestions": [],
+      "rationale": "The issue names concrete, checkable artifacts (two parallel planner runs, tool-less structured merger with plan/convergence/divergences, code-computed Jaccard, toggle, both-branch driver tests), but leaves scoring semantics, divergence shape, persistence location and all failure behaviour to the implementer — which the plan silently decided without flagging anything."
+    },
+    "critic": {
+      "score": 0.6,
+      "verdict": "concerns",
+      "objections": [
+        {
+          "kind": "risk",
+          "detail": "Step 5 says \"if the merger throws, degrade to planner A's plan with `report` undefined rather than failing the whole run\" — an unconditional catch. The merger is handed `opts.signal`, so an abort during the merge surfaces as a thrown AgentAbortError and would be swallowed, and the run would keep going (tripwire, scoring) on a cancelled lifecycle. This directly contradicts the plan's own risk #6 (\"Aborts during ... the merger must propagate as AgentAbortError\") and the #159 rule the driver's outer `catch (err) { if (err instanceof AgentAbortError || controller.signal.aborted) return; }` at apps/desktop/src/planner.ts:462-465 depends on. The `if (!live()) return` at planner.ts:421 bounds the damage to wasted work rather than a zombie write, which is why this is not blocking — but the merger catch must rethrow AgentAbortError (and re-check `opts.signal.aborted`), and planner-dual.test.ts should assert it.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "wrong-approach",
+          "detail": "Step 6 proposes emitting a second `{ kind: \"status\", phase: \"agent-start\", detail: \"multi-agent planning — 2 planners\" }` before the dual call. The driver already emits `agent-start` at apps/desktop/src/planner.ts:349, and `agent-start` is the planning stream's `resetPhase` — apps/desktop/src/event-stream.test.ts:84-97 asserts it wipes the replay buffer, and apps/desktop/src/plan-chat.test.ts:209 explicitly guards against a stray one. A second emit would discard the `worktree` and `graphify` status events already buffered for that run, i.e. the toggle-on path loses console history the toggle-off path keeps. Use a different phase/detail or move the existing emit, don't add a second `agent-start`.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "underspecified",
+          "detail": "The context claim \"settings are stubbed via `getSettings: () => ({ ...DEFAULT_ORCHESTRATOR_SETTINGS, ...settings })` — that is the seam for testing both toggle branches\" is wrong. In apps/desktop/src/planner.test.ts:378 the harness is `getSettings: () => ({ ...DEFAULT_ORCHESTRATOR_SETTINGS })` with no overrides parameter at all (makeRunHarness's options are item/prepareWorktree/providerName/extraItems, line 311-318), and its `askStructured` unconditionally throws (line 342-344) so critic/clarity degrade. Step 8's toggle-on test therefore needs real harness surgery: a `settings?: Partial<OrchestratorSettings>` option, an `askStructured` fake that distinguishes the merger call from computeConfidence's clarity/critic calls (they share the same provider), and `providerName: \"claude-cli\"` if the \"only planner A carries sessionId\" assertion is to be non-vacuous — the default `\"fake\"` name means no session is minted at all (planner.ts:316-318).",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "The merger's structured call carries no system prompt — `structuredCall` (packages/core/src/runtime/structured.ts:17-22) passes only prompt + schema + `tools: \"\"`, so PLANNER_SYSTEM_PROMPT never reaches it. That prompt is where the rules the groundedness signal actually grades live: files the plan creates must carry `status: \"new\"`, symbols a step creates go in `createdSymbols` and never in `symbols` (packages/core/src/planner/prompt.ts:94), plus the repo-conventions doc (#227) both planners get. Step 4's merge prompt only mentions \"the same no-invented-paths/symbols rule\". A merger that re-emits a created file without `status: \"new\"` or moves a created symbol into `symbols` produces a schema-valid plan that fails groundedness — and per packages/core/src/confidence/score.ts:152-153 a groundedness veto is decisive, so the toggle-on path can park items in needs-input that the single-planner path would have passed. The merge prompt must carry those structural rules verbatim (and `repoInstructions`).",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "The merger has no repair round. `generatePlan` goes through `validatePlanReply` (packages/core/src/planner/generate.ts:117-140), which exists precisely because a single structured reply of a full plan slips format often enough to warrant a cheap second round. The merger asks for strictly more in one tool-less turn (a whole plan plus convergence plus divergences) and, per step 5, a single `MergeError` silently discards planner B and the merge entirely — two agent runs paid for, plan A delivered. Reuse the repair round (or one retry) instead of a bare `safeParse` → throw.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "wrong-approach",
+          "detail": "Step 5 gives planner B no `sessionId` at all, citing the confidence extra runs. But the invariant those runs respect is that a claude-cli session id has one owner — not that a second run must be sessionless. The cost is concrete: `isSalvageableDeath` salvage (#194) is gated on `opts.sessionId` (generate.ts:172), so planner B cannot wrap up when it hits `plannerTimeBudgetMin` (default 15 min, planner.ts:385). Two planners racing in the same worktree makes a budget death *more* likely, and B is the run that cannot survive it — so the common failure is \"paid for two runs, degraded to A\". Minting B its own UUID (never persisted via setPlanSessionId, never streamed via onEvent) keeps single-ownership and keeps salvage. If sessionless is deliberate, say why in the plan; today it reads as an over-application of the confidence precedent.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "missing-step",
+          "detail": "Step 5 enumerates the options forwarded to both planners — \"issue, repoPath, runtime, llm, findings, repoInstructions, graphify, confinement, hardTimeoutMs, preexistingChanges\" — and omits `memory` and `maxTurns`. The current driver call passes `...(memory ? { memory } : {})` (planner.ts:396), i.e. the skipper-memory MCP the planner system prompt tells the agent to call before planning. If dual.ts builds its option objects from that enumeration rather than spreading `opts`, the toggle-on path silently loses memory retrieval for *both* planners — a behaviour regression versus the off path. Specify a spread of the shared options with only `sessionId`/`onEvent` differing.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "wrong-approach",
+          "detail": "`DualPlanResult.plans` is dead weight: the driver never reads it (step 6 destructures only `{ plan, report }`), and immediately after, `computeConfidence` spawns `settings.confidence.extraPlanRuns` *more* full planner runs to compute `scoreConvergence` (packages/core/src/confidence/score.ts:173-199). Toggle-on therefore costs 2 planners + merger + N extra planner runs on the same issue, and the convergence signal is computed against the *merged* plan (a synthesis of A and B) rather than the two real samples already in hand. Feeding planA/planB into `computeConfidence` as convergence samples is not the \"convergence feeds the band\" work deferred to #264 — it is avoiding paying twice for the same signal. At minimum the plan should say why it keeps `plans` in the return type if nothing consumes it.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "missing-step",
+          "detail": "`updatePlanBody` in apps/desktop/src/plan-store.ts:70-81 writes `{ ...stored, plan: <new>, editedAt, revisions: [...] }` — it spreads the whole envelope. So a `merge` report survives a chat-apply or inline edit (#165) and will describe a plan body that no longer exists, while `revisions[]` snapshots carry `confidence` but not `merge`. Since #264 is meant to consume `merge`, shipping it with no clear/snapshot rule bakes in a stale-report bug. Either drop `merge` on edit (like the semantics `confidence` gets via the revision snapshot) or document that it is generation-scoped and must be checked against `editedAt`.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "acceptance-gap",
+          "detail": "The issue's own out-of-scope list names only \"Convergence feeding the confidence band\" and \"UI for divergences\" — it does not exclude the `Multi-agent planning` control itself, yet the plan defers it (\"UI belongs to #264\"), leaving the feature reachable only by hand-editing `<userData>/settings.json` or a raw IPC write. There is precedent for hand-editable-only settings (`confidence.extraPlanRuns` is documented \"Hand-editable by design (#62)\" at packages/shared/src/orchestrator.ts:170-171 and has no web UI), so this is defensible — but it is a scope narrowing the issue text does not grant, and it should be an explicit, stated assumption rather than an assertion that the UI belongs to another issue.",
+          "blocking": false,
+          "unverified": false
+        }
+      ]
+    }
+  },
+  "composite": 0.5704442523056653,
+  "weights": {
+    "groundedness": 0.15,
+    "critic": 0.3,
+    "convergence": 0.25,
+    "clarity": 0.3
+  },
+  "runtime": "claude-cli",
+  "model": "opus",
+  "graphify": false,
+  "timings": {
+    "planMs": 278361,
+    "extraPlansMs": 306160,
+    "scoringMs": 293248,
+    "totalMs": 877769
+  },
+  "errors": [],
+  "collectedAt": "2026-08-05T09:45:02.321Z"
+}

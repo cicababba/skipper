@@ -3,10 +3,13 @@ import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  AGENT_RUNTIME_IDS,
   DEFAULT_EXTRA_PLAN_RUNS,
   DEFAULT_LLM_SETTINGS,
+  type AgentRuntimeId,
   type ConfidenceReport,
   type IssuePlan,
+  type LlmSettings,
 } from "@skipper/shared";
 import {
   DEFAULT_CONFIDENCE_WEIGHTS,
@@ -18,18 +21,25 @@ import {
   critiquePlan,
   findIncompleteSamples,
   generatePlan,
+  loadOrCreateOrchestratorManifest,
+  overridePlannerPair,
   planDigest,
   porcelainPaths,
   renderCalibrationReport,
   renderIncompleteWarning,
+  renderPlannerPairBanner,
+  resolvePlannerPair,
   scoreClarity,
   scoreConvergence,
   scoreGroundedness,
+  summarizePlannerPairs,
   type AgentRuntime,
   type CalibrationLabel,
   type CalibrationSample,
   type LLMProviderInterface,
   type PlanIssueInput,
+  type PlannerPair,
+  type PlannerPairSources,
   worktreeDirtyError,
 } from "@skipper/core";
 
@@ -66,7 +76,9 @@ interface Options {
   mode: "collect" | "analyze";
   only?: string[];
   concurrency: number;
-  model: string;
+  /** Absent = mirror the app's planner-pair resolution per sample repo. */
+  model?: string;
+  runtime?: AgentRuntimeId;
   runId?: string;
   keepWorktrees: boolean;
   dryRun: boolean;
@@ -76,11 +88,11 @@ function parseArgs(argv: string[]): Options {
   const opts: Options = {
     mode: "collect",
     concurrency: 2,
-    model: DEFAULT_LLM_SETTINGS.claudeModel,
     keepWorktrees: false,
     dryRun: false,
   };
-  const rest = [...argv];
+  // `pnpm calibrate -- --dry-run` forwards the separator verbatim.
+  const rest = argv.filter((a) => a !== "--");
   if (rest[0] === "collect" || rest[0] === "analyze") {
     opts.mode = rest.shift() as Options["mode"];
   }
@@ -96,6 +108,14 @@ function parseArgs(argv: string[]): Options {
       case "--model":
         opts.model = rest.shift() ?? DEFAULT_LLM_SETTINGS.claudeModel;
         break;
+      case "--runtime": {
+        const id = rest.shift() ?? "";
+        if (!AGENT_RUNTIME_IDS.includes(id as AgentRuntimeId)) {
+          throw new Error(`unknown runtime: ${id} (expected one of ${AGENT_RUNTIME_IDS.join(", ")})`);
+        }
+        opts.runtime = id as AgentRuntimeId;
+        break;
+      }
       case "--run":
         opts.runId = rest.shift();
         break;
@@ -170,6 +190,101 @@ function userDataDir(): string {
     return join(process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "Skipper");
   }
   return join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "Skipper");
+}
+
+/**
+ * Mirrors getLlmSettingsDir in apps/desktop/src/main.ts: the dev build reads
+ * <repo>/data/settings.json, the packaged one reads userData. The harness cannot
+ * know which build the user runs, so it prefers the dev file when it exists and
+ * prints whichever one it read.
+ */
+async function readClaudeModel(): Promise<{ claudeModel: string; settingsFile?: string }> {
+  const candidates = [
+    join(SCRIPTS_DIR, "..", "data", "settings.json"),
+    join(userDataDir(), "settings.json"),
+  ];
+  for (const file of candidates) {
+    try {
+      const saved = JSON.parse(await readFile(file, "utf-8")) as { llm?: Partial<LlmSettings> };
+      const merged: LlmSettings = { ...DEFAULT_LLM_SETTINGS, ...saved.llm };
+      return { claudeModel: merged.claudeModel, settingsFile: file };
+    } catch {
+      continue;
+    }
+  }
+  return { claudeModel: DEFAULT_LLM_SETTINGS.claudeModel };
+}
+
+interface PairResolution {
+  byRepo: Map<string, PlannerPair>;
+  claudeModel: string;
+  /** The pair banner, which shouts on its own when the corpus mixes pairs. */
+  banner: string;
+}
+
+interface Bundle {
+  llm: LLMProviderInterface;
+  runtime: AgentRuntime;
+  model: string;
+}
+
+/** Mirrors buildLlm in apps/desktop/src/llm-settings.ts: the completions provider
+ *  stays on claude-cli and must never see another vendor's model string. */
+function buildBundle(pair: PlannerPair, claudeModel: string): Bundle {
+  const llm = createProvider({
+    provider: "claude-cli",
+    model: pair.runtime === "claude-cli" ? pair.model : claudeModel,
+    maxTurns: BUNDLE_MAX_TURNS,
+  });
+  const runtime = createRuntime({
+    provider: "claude-cli",
+    model: pair.model,
+    maxTurns: BUNDLE_MAX_TURNS,
+    runtime: pair.runtime,
+  });
+  if (!runtime) throw new Error(`${pair.runtime} runtime unavailable`);
+  return { llm, runtime, model: pair.model };
+}
+
+/**
+ * The pair every plan run of this corpus will use. The manifest always lives in
+ * userData — the dev split applies to settings.json only.
+ */
+async function resolvePairs(entries: CorpusEntry[], opts: Options): Promise<PairResolution> {
+  const { claudeModel, settingsFile } = await readClaudeModel();
+  const manifestFile = join(userDataDir(), "orchestrator-manifest.json");
+  const manifest = await loadOrCreateOrchestratorManifest(manifestFile);
+  const sources: PlannerPairSources = {
+    claudeModel,
+    ...(settingsFile ? { settingsFile } : {}),
+    ...((await exists(manifestFile)) ? { manifestFile } : {}),
+  };
+
+  const byRepo = new Map<string, PlannerPair>();
+  for (const entry of entries) {
+    if (byRepo.has(entry.repo)) continue;
+    const resolved = resolvePlannerPair(entry.repo, {
+      settings: manifest.settings,
+      repoSettings: manifest.repoSettings,
+      claudeModel,
+    });
+    byRepo.set(
+      entry.repo,
+      overridePlannerPair(
+        resolved,
+        {
+          ...(opts.runtime ? { runtime: opts.runtime } : {}),
+          ...(opts.model !== undefined ? { model: opts.model } : {}),
+        },
+        claudeModel,
+      ),
+    );
+  }
+
+  const summary = summarizePlannerPairs(
+    entries.map((e) => ({ repo: e.repo, pair: byRepo.get(e.repo)! })),
+  );
+  return { byRepo, claudeModel, banner: renderPlannerPairBanner(summary, sources) };
 }
 
 async function readRepoInstructions(repoKey: string): Promise<string | undefined> {
@@ -354,8 +469,11 @@ async function collectSample(
 
 async function collect(opts: Options): Promise<void> {
   const entries = selectEntries(await loadCorpus(), opts.only);
+  const pairs = await resolvePairs(entries, opts);
+  console.log(pairs.banner);
+  console.log("");
   if (opts.dryRun) {
-    console.log(`${entries.length} sample(s) planned, model ${opts.model}:`);
+    console.log(`${entries.length} sample(s) planned:`);
     for (const e of entries) {
       const placeholder = (e.issue.body ?? "").trim().startsWith(PLACEHOLDER_PREFIX);
       console.log(
@@ -372,18 +490,15 @@ async function collect(opts: Options): Promise<void> {
   await mkdir(plansDir, { recursive: true });
   console.log(`run ${runId} → ${outDir}`);
 
-  const llm = createProvider({
-    provider: "claude-cli",
-    model: opts.model,
-    maxTurns: BUNDLE_MAX_TURNS,
-  });
-  const runtime = createRuntime({
-    provider: "claude-cli",
-    model: opts.model,
-    maxTurns: BUNDLE_MAX_TURNS,
-    runtime: "claude-cli",
-  });
-  if (!runtime) throw new Error("claude-cli runtime unavailable");
+  const bundles = new Map<string, Bundle>();
+  const bundleFor = (pair: PlannerPair): Bundle => {
+    const key = `${pair.runtime}:${pair.model}`;
+    const cached = bundles.get(key);
+    if (cached) return cached;
+    const bundle = buildBundle(pair, pairs.claudeModel);
+    bundles.set(key, bundle);
+    return bundle;
+  };
 
   const worktrees = new Map<string, { repoPath: string; path: string }>();
   const instructions = new Map<string, string | undefined>();
@@ -410,10 +525,11 @@ async function collect(opts: Options): Promise<void> {
       const worktree = worktrees.get(entry.repo)!.path;
       console.log(`start ${entry.id}`);
       try {
+        const bundle = bundleFor(pairs.byRepo.get(entry.repo)!);
         const { sample, plans } = await collectSample(entry, {
-          llm,
-          runtime,
-          model: opts.model,
+          llm: bundle.llm,
+          runtime: bundle.runtime,
+          model: bundle.model,
           worktree,
           ...(instructions.get(entry.repo) ? { repoInstructions: instructions.get(entry.repo)! } : {}),
         });

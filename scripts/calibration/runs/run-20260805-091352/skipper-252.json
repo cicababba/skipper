@@ -1,0 +1,224 @@
+{
+  "version": 1,
+  "id": "skipper-252",
+  "repo": "cicababba/skipper",
+  "provenance": "github:cicababba/skipper#252",
+  "issueKey": "252",
+  "issueTitle": "desktop,web:feat: surface multi-CLI runtime support — onboarding + installed-CLI detection",
+  "issueUrl": "https://github.com/cicababba/skipper/issues/252",
+  "plan": {
+    "summary": "Make Skipper's four agent CLIs (Claude Code, Codex, Copilot, Gemini) discoverable and self-diagnosing: upgrade the main-process installed-CLI probe to a cached `<cli> --version` spawn that can be refreshed when Settings opens, expose it over the existing `skipper:runtimes:status` IPC, stop filtering un-installed CLIs out of the runtime selects in favour of installed / not-found badges plus an install hint, and add an onboarding card that presents all four CLIs with Claude Code preselected and a link to the Runtimes settings.",
+    "fileCount": 19,
+    "stepCount": 11,
+    "estimatedSize": "m",
+    "openQuestions": []
+  },
+  "signals": {
+    "convergence": {
+      "score": 0.792030303030303,
+      "planCount": 3,
+      "fileJaccard": 0.6761111111111111,
+      "sizeAgreement": 1,
+      "stepCountAgreement": 0.9090909090909091,
+      "divergent": false,
+      "sharedFiles": [
+        "apps/desktop/src/preload.ts",
+        "apps/desktop/src/runtimes-ipc.test.ts",
+        "apps/desktop/src/runtimes-ipc.ts",
+        "apps/web/src/app/settings/page.tsx",
+        "apps/web/src/components/onboarding.tsx",
+        "apps/web/src/components/runtime-auth-hint.tsx",
+        "apps/web/src/components/runtime-select.test.ts",
+        "apps/web/src/components/runtime-select.tsx",
+        "apps/web/src/lib/agents/install-hints.test.ts",
+        "apps/web/src/lib/agents/install-hints.ts",
+        "apps/web/src/lib/agents/runtime-options.test.ts",
+        "apps/web/src/lib/agents/runtime-options.ts",
+        "apps/web/src/lib/i18n/settings.ts",
+        "apps/web/src/lib/i18n/wiki.ts",
+        "apps/web/src/lib/runtime-availability.ts",
+        "packages/shared/src/window-skipper.ts"
+      ],
+      "disputedFiles": [
+        "apps/desktop/src/main.ts",
+        "apps/web/src/app/repos/repo/settings/repo-model-controls.tsx",
+        "apps/web/src/components/agent-pair-select.tsx",
+        "apps/web/src/components/orchestration-section.tsx",
+        "apps/web/src/components/runtime-availability-card.test.ts",
+        "apps/web/src/components/runtime-availability-card.tsx",
+        "apps/web/src/components/runtime-catalog.test.ts",
+        "apps/web/src/components/runtime-catalog.tsx",
+        "apps/web/src/components/supported-runtimes-card.test.tsx",
+        "apps/web/src/components/supported-runtimes-card.tsx",
+        "apps/web/src/lib/onboarding-gate.tsx",
+        "apps/web/src/lib/runtime-availability.test.ts"
+      ]
+    },
+    "groundedness": {
+      "score": 1,
+      "coverage": 1,
+      "filesChecked": 17,
+      "filesFound": 17,
+      "symbolsChecked": 24,
+      "symbolsFound": 24,
+      "missingFiles": [],
+      "missingSymbols": [],
+      "newFiles": [
+        "apps/web/src/components/supported-runtimes-card.test.tsx",
+        "apps/web/src/components/supported-runtimes-card.tsx",
+        "apps/web/src/lib/agents/install-hints.test.ts",
+        "apps/web/src/lib/agents/install-hints.ts"
+      ],
+      "createdSymbols": [
+        "InstallHint",
+        "SupportedRuntimesCard",
+        "installHintFor",
+        "refreshRuntimeAvailability",
+        "runtimesStatus",
+        "subscribeRuntimeAvailability",
+        "useRuntimeAvailability"
+      ]
+    },
+    "clarity": {
+      "score": 0,
+      "criteria": "partial",
+      "ambiguities": [
+        {
+          "detail": "Where in onboarding the CLI card lives — a new dedicated step versus a card inside an existing step (the plan silently picks the existing `settings` step)",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether the onboarding card is purely informational or an actual selection control that writes the chosen runtime to settings ('preselected' implies selectable but is never pinned down)",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Cache lifetime/invalidation policy for the probe — TTL, per-session, or only invalidated by the settings-open refresh",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Probe timeout and failure semantics: how long to wait on `<cli> --version`, and whether timeout/non-zero exit maps to 'not found' or a distinct unknown/error state",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether the detected version string is surfaced in the UI or only a boolean installed/not-found",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "IPC channel name and payload shape, and whether an existing channel (`skipper:runtimes:status`) is extended with a `refresh` argument or a new one added",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Install hint text/command for each of the four runtimes — only the Gemini example is given",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "That the existing selects currently filter out un-installed runtimes and that this filtering must be removed (the issue says 'keep selects un-gated' but never states current filtering behaviour); also whether the existing auto-switch-away-from-missing-runtime effect should be deleted",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether the web target gets the same treatment as desktop, given probing requires a main process — issue is labelled both desktop and web but only describes a main-process probe",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Loading/indeterminate presentation while the probe is in flight (no badge, spinner, or optimistic 'installed')",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Badge visual treatment and placement within the option rows, and whether hints show inline per option or once below the select",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        }
+      ],
+      "openQuestions": [],
+      "rationale": "The two 'Done when' bullets are objectively checkable in outline, but the issue leaves the probe's caching/timeout/error semantics, the onboarding card's placement and whether it actually selects a runtime, and badge presentation to the implementer — all of which the plan decided silently, raising no questions."
+    },
+    "critic": {
+      "score": 0.39999999999999997,
+      "verdict": "concerns",
+      "objections": [
+        {
+          "kind": "risk",
+          "detail": "The probe stays SYNCHRONOUS on the Electron main thread while getting far more expensive. `apps/desktop/src/main.ts:445-447` wires `exec: (cmd) => execSync(cmd, { stdio: \"ignore\", windowsHide: true })` and `detectRuntimes` (runtimes-ipc.ts:43-50) loops all four binaries in-line. `command -v` is a shell builtin costing ~ms; `<cli> --version` spawns four Node-based CLIs. Step 2 adds a per-call `timeout` of \"a few seconds\" — worst case that is 4 × timeout of a fully frozen main process (no IPC, no PTY, no window events) on the very path step 9 triggers on every Settings open. The plan never converts the `exec` dep to an async promise-returning spawn, and that conversion is not a detail: it changes `RuntimesIpcDeps`, makes `detectRuntimes` async, changes the handler and rewrites every case in `runtimes-ipc.test.ts`. As specced, opening Settings can hang the app for seconds.",
+          "blocking": true,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "The onboarding \"link to the Runtimes settings\" cannot work as designed. `OnboardingGate` (apps/web/src/lib/onboarding-gate.tsx:39-45) renders `<OnboardingFlow>` as a sibling ON TOP of `children`, and OnboardingFlow's root is `fixed inset-0 z-[100] bg-black/85` (onboarding.tsx:96). A `Link href=\"/settings\"` inside `SupportedRuntimesCard` routes the app underneath the overlay, but the overlay stays until `onboardingCompleted` is written — the user clicks and sees nothing change. Step 8 gives no dismiss/finish-then-navigate handling, so acceptance criterion 1 (\"...and a link to the Runtimes settings\") is not actually met.",
+          "blocking": true,
+          "unverified": false
+        },
+        {
+          "kind": "acceptance-gap",
+          "detail": "The issue's second premise is as stale as the first one the plan caught, and the plan missed it: there is no \"Runtimes\" card in Settings → Orchestration. Grepping `apps/web/src` for `Runtimes` yields only the `noRuntimesInstalled` string; orchestration-section.tsx renders per-role `AgentPairRow`s and a floor note, nothing else. So \"the Runtimes settings show per-CLI availability\" has no home other than the select option labels, and the onboarding link points at `/settings` with no such section to land on. The plan even describes `supported-runtimes-card.tsx` as \"reused by onboarding\" but never mounts it in `settings/page.tsx` — mounting it there (near `DefaultAgentSection`) is the one change that would satisfy done-when #2 head-on and give the onboarding link a real target.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "wrong-approach",
+          "detail": "The install commands are already in the tree, so `install-hints.ts` creates a second source of truth: `packages/core/src/llm/claude-cli.ts:300` (`npm install -g @anthropic-ai/claude-code`), `codex-cli.ts:297` (`@openai/codex`), `copilot-cli.ts:308` (`@github/copilot`), `gemini-cli.ts:397` (`@google/gemini-cli`), each asserted by tests in `packages/core/tests/*-cli-agent.test.ts`. The plan's stated risk (\"the npm package names ... are not written anywhere in the repo ... double-check against each vendor's docs\") is simply wrong, and independently re-typing them in the web layer means the badge hint and the run-failure message can drift apart. Source them from one shared constant instead of retyping.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "missing-step",
+          "detail": "Copy that the plan explicitly keeps becomes false. `settings.orchestration.noRuntimesInstalled` reads \"No agent CLI found. Install ... and restart Skipper.\" in all four locales (settings.ts:211/477/743/1009, asserted verbatim in runtime-select.test.ts:77-79) — step 6 keeps it \"as an informational line\" while step 9's refresh-on-settings-open makes the restart advice wrong. Symmetrically, step 5 claims `missingRuntimes` is \"still used for copy\", but its only consumer is the `alsoSupports` line in runtime-auth-hint.tsx:24,35 which step 7 deletes; after that both `missingRuntimes` and `settings.llm.alsoSupports` (four locales) are dead. Neither the restart wording nor the dead key/export cleanup appears in any step.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "underspecified",
+          "detail": "Two existing test harnesses break in ways step 11 does not mention. (a) `runtimes-ipc.test.ts:28-31` derives the probed binary with `cmd.split(\" \").pop()`; under `claude --version` that returns `\"--version\"`, so every probe throws and every availability expectation flips to false — the helper, not just the expected strings, has to change. (b) `runtime-select.test.ts:9` mocks the module as `vi.mock(\"@/lib/runtime-availability\", () => ({ getRuntimeAvailability: vi.fn() }))`; switching RuntimeSelect to `useRuntimeAvailability()` (step 6) makes that factory incomplete and the component read `undefined` as a hook. Same for the new `supported-runtimes-card.test.tsx`, which the plan says to model on that mock.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "wrong-approach",
+          "detail": "Step 8 deletes the onboarding preselect effect (onboarding.tsx:46-52) whose comment states its purpose — \"onboarding must never dead-end on a missing CLI\". After deletion, a fresh user with only Codex installed saves `defaultAgent = { runtime: \"claude-cli\", model: \"sonnet\" }` and their first run parks in needs-input, which is exactly the outcome the issue says to avoid (\"instead of letting the first run park in needs-input\"). The issue's \"default (Claude Code) preselected\" is about the initial state, not about forbidding a fallback; keeping Claude when it is installed or unknown and switching only when it is provably absent satisfies both readings without the regression.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "other",
+          "detail": "The install hint is rendered by three different components in one view with no ownership rule: step 6 puts it under RuntimeSelect, step 7 puts it in RuntimeAuthHint, and step 8 puts it in SupportedRuntimesCard — all three sit inside the same onboarding `settings` card (onboarding.tsx:170-195 plus the new card), so a user who picks a missing CLI sees the same `npm install -g …` line three times. In Orchestration, RuntimeSelect returns a fragment, so its new hint line lands directly in AgentPairSelect's layout for each of the per-role rows. Decide one owner for the hint (the card, or the auth-hint block) and keep RuntimeSelect to the option badge.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "Swapping `command -v` for `<cli> --version` trades a pure existence check for a behavioural one: the badge now says \"not found\" for any installed CLI whose `--version` is unsupported, exits nonzero, prompts, or is slower than the new timeout — and the plan keeps the known-locations fallback only on win32, so POSIX has no safety net. A cheap `command -v` first with `--version` only as confirmation (or a fallback to `command -v` when `--version` throws) would keep false negatives off the badge. I did not verify each vendor CLI's `--version` behaviour, so treat this as a question.",
+          "blocking": false,
+          "unverified": true
+        }
+      ]
+    }
+  },
+  "composite": 0.4680075757575757,
+  "weights": {
+    "groundedness": 0.15,
+    "critic": 0.3,
+    "convergence": 0.25,
+    "clarity": 0.3
+  },
+  "runtime": "claude-cli",
+  "model": "opus",
+  "graphify": false,
+  "timings": {
+    "planMs": 255440,
+    "extraPlansMs": 319044,
+    "scoringMs": 220554,
+    "totalMs": 795038
+  },
+  "errors": [],
+  "collectedAt": "2026-08-05T09:50:04.021Z"
+}

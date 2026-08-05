@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "id": "todos-slow",
+  "repo": "cicababba/todos",
+  "provenance": "authored:#314 calibration (deliberately vague control)",
+  "issueKey": "CAL-3",
+  "issueTitle": "the list feels slow",
+  "issueUrl": "https://example.invalid/todos/cal-3",
+  "plan": {
+    "summary": "Fix the perceived sluggishness of the todo list by (a) applying toggle/delete changes optimistically in the UI and rolling back on API failure, and (b) cutting the O(n) re-render cost per interaction with a memoized list-item component and stable callbacks. The pure list-update logic moves into a testable module so it can be covered by a plain Vitest `.ts` test.",
+    "fileCount": 5,
+    "stepCount": 5,
+    "estimatedSize": "s",
+    "openQuestions": []
+  },
+  "signals": {
+    "convergence": {
+      "score": 0.6078571428571429,
+      "planCount": 3,
+      "fileJaccard": 0.3880952380952381,
+      "sizeAgreement": 1,
+      "stepCountAgreement": 0.8333333333333334,
+      "divergent": false,
+      "sharedFiles": [
+        "apps/web/src/App.tsx",
+        "apps/web/src/api.ts"
+      ],
+      "disputedFiles": [
+        "apps/web/package.json",
+        "apps/web/src/styles.css",
+        "apps/web/src/todos.test.ts",
+        "apps/web/src/todos.ts",
+        "apps/web/src/todosState.test.ts",
+        "apps/web/src/todosState.ts",
+        "package.json",
+        "vitest.config.ts"
+      ]
+    },
+    "groundedness": {
+      "score": 1,
+      "coverage": 1,
+      "filesChecked": 5,
+      "filesFound": 5,
+      "symbolsChecked": 6,
+      "symbolsFound": 6,
+      "missingFiles": [],
+      "missingSymbols": [],
+      "newFiles": [
+        "apps/web/src/todos.test.ts",
+        "apps/web/src/todos.ts"
+      ],
+      "createdSymbols": [
+        "TodoItem",
+        "removeTodo",
+        "replaceTodo",
+        "setTodoDone"
+      ]
+    },
+    "clarity": {
+      "score": 0,
+      "criteria": "vague",
+      "ambiguities": [
+        {
+          "detail": "What counts as 'better'/no longer sluggish — no latency target, todo count, or measurable performance threshold is given, so done-ness is judged by feel.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether the fix should be perceived latency (optimistic UI) or actual throughput (render cost, virtualization, pagination, server/query performance); the plan silently chose optimistic updates plus memoization.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether operations other than ticking off — delete, add, edit — are in scope; the issue only mentions ticking, but the plan extends optimistic behavior to delete.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Failure semantics for an optimistic update: whether to roll back, retry, or leave the change; the plan decided on rollback plus an error message.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "On failed delete, where the restored todo should appear (original index vs end of list); the plan decided original position.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "How errors are surfaced to the user — the plan assumes an 'existing error message' mechanism, which the issue never mentions.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether refactoring list-update logic into a separate testable module and adding tests is expected, and where such tests live.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether concurrent/in-flight toggles on the same or different todos need to be reconciled with server responses.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        }
+      ],
+      "openQuestions": [],
+      "rationale": "The issue states a subjective symptom ('feels sluggish', 'make it better') with no threshold, scope, or failure semantics, so done-ness is a judgment call; the plan invented all its concrete acceptance criteria and raised no questions about them."
+    },
+    "critic": {
+      "score": 0.5,
+      "verdict": "concerns",
+      "objections": [
+        {
+          "kind": "wrong-approach",
+          "detail": "Step 3 and Step 4 directly contradict each other on the delete rollback, and one of the two readings loses the user's data. Step 4 fixes the handler as `onDelete: (id: string) => void` wrapped in `useCallback` with an *empty* dependency list; Step 3 then says to restore the removed todo by capturing \"the todo and its index ... from the current `todos` array before the call\". Under empty deps that closure reads the mount-time `todos` — `[]` — so `findIndex` returns -1 and there is no `Todo` object in scope to re-insert at all (the handler only receives a primitive `id`). A failed DELETE would therefore drop the row permanently until reload, violating the acceptance criterion \"the todo reappears (in its original position) with an error message if the DELETE fails\". Adding `todos` to the dep array fixes the read but makes `onDelete` a new reference on every list change, which silently defeats the `memo` on every row — the plan's own risk #3. Only two paths actually work and the plan must name one: capture `todo`+index inside the functional `setTodos` updater (idempotent, so safe despite StrictMode double-invoking updaters — `main.tsx:10`), or widen the handler signature to `(todo: Todo)` and pass the object from `TodoItem`. Offering both options as interchangeable is what makes this blocking.",
+          "blocking": true,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "The success-path reconcile (`replaceTodo(prev, updated)` after `await updateTodo`) reintroduces exactly the staleness the optimistic update is meant to remove, and the plan specifies no in-flight tracking. Two rapid toggles on the same row produce two in-flight PATCHes; whichever resolves last wins, so a slow first response overwrites the newer optimistic value and the checkbox visibly flips back under the user's finger. For a `done` toggle the server response carries nothing the client doesn't already know — `store.update` (`apps/api/src/store.ts:46-56`) just merges the field back — so the reconcile buys no information, costs a second re-render of that row, and creates the race. Either drop the reconcile for toggles or guard it with a per-id request sequence/latest-wins check.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "`setTodoDone(prev, id, !done)` is not a rollback, it is a recomputation. It writes the negation of the value that was *attempted*, which equals the value the row actually had only if nothing else wrote that todo in between. With overlapping toggles, or a toggle whose reconcile landed first, a failure writes a state the user never had and the UI drifts from the server — the precise failure mode listed as risk #1 but not actually prevented. Capturing the previous `done` value (or the previous `Todo`) at the start of the action is strictly simpler than reasoning about when the identity holds, and it makes toggle and delete rollback use the same shape.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "wrong-approach",
+          "detail": "The memoization half of the plan is asserted, not measured. The verified cause of the reported symptom — \"ticking one off takes a moment before anything happens on screen\" — is entirely the `await updateTodo(...)` at `App.tsx:36`, which Step 3 alone fixes. The claim that per-row re-render is \"the second half of the slowness\" has no baseline behind it: each row is a plain `<li>` with a checkbox, a span and a button (`App.tsx:66-74`), and re-rendering a few hundred of those is a low-single-digit-millisecond job, well below the perceptual threshold. Worse, the prescribed verification (\"Record a React DevTools Profiler pass\") runs under `StrictMode` (`main.tsx:10`), which double-invokes renders in development, so the manual check measures an inflated dev-only cost and cannot confirm a real-world win. Recommend landing the optimistic update, measuring with the ~200-todo fixture the plan already describes, and treating `TodoItem`/`memo`/`useCallback` as conditional on that measurement — otherwise this is added indirection plus a new module boundary defended by nothing.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "acceptance-gap",
+          "detail": "Acceptance criterion 4 (\"Interacting with one todo no longer re-renders every other row\") has no automated verification and cannot get one under the plan's own constraints: `vitest.config.ts:5` includes only `.ts`, and jsdom/@testing-library are explicitly out of scope, so the pure helpers in `todos.test.ts` can assert array identity but can never observe a render count. CLAUDE.md:45 requires new or changed behavior to be covered by a test in the same package; the React changes (memo, stable callbacks, optimistic sequencing, rollback ordering) are the actual behavior change here and are covered only by a DevTools eyeball. The plan acknowledges this in risks but still lists the criterion as \"addressedBy Step 4\". If the memoization is kept, the honest options are to accept the gap explicitly in the PR description or to move the optimistic sequencing itself (not just the array transforms) into a testable pure reducer.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "underspecified",
+          "detail": "Step 1 specifies `setTodoDone` as \"maps and returns `{ ...t, done }` for the matching id, returning the same array identity when no id matches\" — but `Array.prototype.map` always allocates a new array, so the described implementation cannot satisfy the described contract. Step 2 then asserts that exact behavior (\"`setTodoDone` with an unknown id returns the input array unchanged\"), so an implementer following Step 1 literally writes a test that fails. It needs an explicit membership check before mapping. Same latent issue for `replaceTodo` when `updated.id` matches nothing.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "underspecified",
+          "detail": "Two smaller loose ends in Step 3. (a) \"Adjust or drop the `run` wrapper as needed\" sits next to \"keep `onSubmit` ... routed through the existing `run` helper\" — if `run` is dropped, the `onSubmit` instruction is unsatisfiable; pick one. (b) The optimistic delete interacts with `todos.length === 0 && !error` (`App.tsx:78`): deleting the last todo now flashes the \"nothing here yet\" empty state for the duration of the request, and on failure the row returns while `error` is set. Neither the plan nor the manual checks cover the last-todo-delete-fails path — the listed check only exercises the success path for the empty state.",
+          "blocking": false,
+          "unverified": false
+        }
+      ]
+    }
+  },
+  "composite": 0.4519642857142857,
+  "weights": {
+    "groundedness": 0.15,
+    "critic": 0.3,
+    "convergence": 0.25,
+    "clarity": 0.3
+  },
+  "runtime": "claude-cli",
+  "model": "opus",
+  "graphify": false,
+  "timings": {
+    "planMs": 90115,
+    "extraPlansMs": 143443,
+    "scoringMs": 189066,
+    "totalMs": 422624
+  },
+  "errors": [],
+  "collectedAt": "2026-08-05T10:17:47.596Z"
+}

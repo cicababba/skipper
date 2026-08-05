@@ -1,0 +1,216 @@
+{
+  "version": 1,
+  "id": "skipper-139",
+  "repo": "cicababba/skipper",
+  "provenance": "github:cicababba/skipper#139",
+  "issueKey": "139",
+  "issueTitle": "core,web:feat: created-by-me view — poll created stream, assign-to-me action",
+  "issueUrl": "https://github.com/cicababba/skipper/issues/139",
+  "plan": {
+    "summary": "Surface a reporter view (\"Created by me\"): issues the user authored but is not assigned to, harvested from the GitHub `filter=created` stream the poll already walks (today only its PRs are kept), carried as a separate `createdIssues` array through PollResult → the desktop poller's raw cache → OrchestratorAccountState, deliberately never fed to reconcile (so no admission, no WIP, no eager planning). Adds a new `assignIssue` IssueSource capability implemented for GitHub (POST /issues/{n}/assignees), a `skipper:orchestrator:assignIssueToMe` IPC that writes the assignee and then optimistically moves the issue from the created cache into the assigned cache + `reconcileFromCache()` so it enters the normal loop without waiting for the next poll, and a `/created` page plus a nav entry next to Drafts in the sidebar's WorkNav (whose comment already reserves the slot for #139).",
+    "fileCount": 26,
+    "stepCount": 11,
+    "estimatedSize": "l",
+    "openQuestions": []
+  },
+  "signals": {
+    "convergence": {
+      "score": 0.7622474747474747,
+      "planCount": 3,
+      "fileJaccard": 0.6264730639730639,
+      "sizeAgreement": 1,
+      "stepCountAgreement": 0.9090909090909091,
+      "divergent": false,
+      "sharedFiles": [
+        "apps/desktop/src/orchestrator.ts",
+        "apps/desktop/src/poll.ts",
+        "apps/desktop/src/preload.ts",
+        "apps/web/src/app/created/created-view.test.tsx",
+        "apps/web/src/app/created/created-view.tsx",
+        "apps/web/src/app/created/page.tsx",
+        "apps/web/src/components/sidebar.tsx",
+        "apps/web/src/lib/app-i18n.tsx",
+        "apps/web/src/lib/i18n/common.ts",
+        "apps/web/src/lib/i18n/created.ts",
+        "packages/core/src/adapters/github/assign.ts",
+        "packages/core/src/adapters/github/poll.ts",
+        "packages/core/src/adapters/github/source.ts",
+        "packages/core/src/adapters/types.ts",
+        "packages/core/tests/github-assign.test.ts",
+        "packages/core/tests/github-poll.test.ts",
+        "packages/shared/src/orchestrator.ts",
+        "packages/shared/src/window-skipper.ts"
+      ],
+      "disputedFiles": [
+        "apps/desktop/src/account-login.ts",
+        "apps/desktop/src/assign-ipc.test.ts",
+        "apps/desktop/src/assign-ipc.ts",
+        "apps/desktop/src/assign-issue-ipc.test.ts",
+        "apps/desktop/src/assign-issue-ipc.ts",
+        "apps/desktop/src/composer-ipc.test.ts",
+        "apps/desktop/src/composer-ipc.ts",
+        "apps/desktop/src/create-issue-ipc.ts",
+        "apps/desktop/src/poll.test.ts",
+        "apps/desktop/src/self-login.ts",
+        "apps/web/src/app/drafts/drafts-view.tsx",
+        "apps/web/src/lib/inbox/created.test.ts",
+        "apps/web/src/lib/inbox/created.ts",
+        "apps/web/src/lib/inbox/table.ts",
+        "apps/web/src/lib/orchestrator-context.tsx",
+        "packages/core/src/adapters/github/client.ts",
+        "packages/core/src/adapters/github/index.ts",
+        "packages/core/src/adapters/github/types.ts",
+        "packages/core/tests/adapters-registry.test.ts"
+      ]
+    },
+    "groundedness": {
+      "score": 1,
+      "coverage": 1,
+      "filesChecked": 15,
+      "filesFound": 15,
+      "symbolsChecked": 36,
+      "symbolsFound": 36,
+      "missingFiles": [],
+      "missingSymbols": [],
+      "newFiles": [
+        "apps/desktop/src/assign-issue-ipc.test.ts",
+        "apps/desktop/src/assign-issue-ipc.ts",
+        "apps/desktop/src/self-login.ts",
+        "apps/web/src/app/created/created-view.test.tsx",
+        "apps/web/src/app/created/created-view.tsx",
+        "apps/web/src/app/created/page.tsx",
+        "apps/web/src/lib/i18n/created.ts",
+        "apps/web/src/lib/inbox/created.test.ts",
+        "apps/web/src/lib/inbox/created.ts",
+        "packages/core/src/adapters/github/assign.ts",
+        "packages/core/tests/github-assign.test.ts"
+      ],
+      "createdSymbols": [
+        "AssignIssueIpcDeps",
+        "AssignIssueToMeResult",
+        "CreatedPage",
+        "CreatedRow",
+        "CreatedView",
+        "assignGitHubIssue",
+        "created",
+        "createdRows",
+        "deriveCreated",
+        "registerAssignIssueHandlers",
+        "resolveSelfLogin"
+      ]
+    },
+    "clarity": {
+      "score": 0.30000000000000004,
+      "criteria": "partial",
+      "ambiguities": [
+        {
+          "detail": "Manifest representation: the issue explicitly offers two alternatives (separate section vs `role: created` flag) without choosing; the plan silently picked a third path — a separate `createdIssues` array carried through PollResult/orchestrator state and never entering the manifest at all.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Exact filter for which created-stream issues appear: the issue says 'authored but not assigned to', but does not specify handling of issues assigned to someone else, closed issues, or issues already in the assigned stream. The plan decided non-PR payloads authored and not assigned to the user.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether the created list is filtered/paginated/sorted, and its ordering (recency, repo grouping). The issue only says 'flat list'.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Behavior for sources/adapters lacking an assignee-write capability (non-GitHub trackers). The plan invented an `assignIssue` IssueSource capability and a hide-the-action rule.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Error handling and rollback semantics when the assignee write fails or the optimistic manifest injection races the next poll. The plan chose inline error + immediate `reconcileFromCache()`.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "IPC/route/page naming and whether the nav entry shows a count badge. The plan chose `/created`, `skipper:orchestrator:assignIssueToMe`, and a muted count.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Localization scope — the issue never mentions translations; the plan committed to en/it/fr/es key parity.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether the created view refreshes on poll cadence only, and what happens to an issue that leaves the created set (unassigned elsewhere / closed) — no removal semantics specified.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Dependency on the drafts sub-issue in #130 for the 'new nav section' — whether this issue creates that section or assumes it exists.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        }
+      ],
+      "openQuestions": [],
+      "rationale": "The issue names a concrete data source, a hard exclusion (no admission/WIP/planning), and exactly one UI action — all checkable — but leaves the manifest shape as an explicit either/or and says nothing about ordering, capability gaps, failure handling, or removal semantics, all of which the plan settled silently without raising a single question."
+    },
+    "critic": {
+      "score": 0.39999999999999997,
+      "verdict": "concerns",
+      "objections": [
+        {
+          "kind": "missing-step",
+          "detail": "Step 5 makes `OrchestratorAccountState.createdIssues` and `IssueSourceCapabilities.assignIssue` **required** fields, but the `files` list only accounts for the default literal in `patchAccount`. Four existing typed construction sites are not listed and will fail type-check: `apps/web/src/lib/inbox/rail.test.ts:30-38` (`function account(...): OrchestratorAccountState { return { accountId, status, issues: [], pullRequests: [], ...overrides } }`), `apps/web/src/lib/inbox/transition-toasts.test.ts:60-70` (both the `OrchestratorAccountState` literal AND `const CAPABILITIES: Record<IssueSourceId, IssueSourceCapabilities>` with five `{ closeIssue, createIssue }` entries), `apps/web/src/components/orchestrator-toasts.test.tsx:66`, and `apps/desktop/src/poll-policy.test.ts:7`. `apps/web/tsconfig.json` includes `**/*.ts` / `**/*.tsx` and `apps/web/next.config.ts` sets no `typescript.ignoreBuildErrors`, so `next build` type-checks these files — `pnpm build` fails as planned. Either add these files to the plan or declare both new fields optional (`createdIssues?`, `assignIssue?`), which the plan's own risk note already says the renderer should read defensively anyway.",
+          "blocking": true,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "The plan's risk #4 correctly names GitHub's documented behaviour — `POST /issues/{n}/assignees` silently drops logins without push access and returns 200 with unchanged assignees — and states the handler \"should treat the mapped response as the truth\". But no step implements that. Step 7 calls `source.assignIssue(...)`, then `adoptCreatedIssue(accountId, updated)` + `reconcileFromCache()` unconditionally; nothing checks that `updated.assignees` actually contains the resolved login. On a silently-dropped write the issue is injected into the assigned cache and admitted into the manifest, the planner can eagerly plan it (`pokeDrivers` runs at the end of `reconcileFromCache`) — exactly the token burn #139 exists to prevent — and the next full walk closes it via `reconcileFullWalkAbsence` (packages/core/src/orchestrator/reconcile.ts:390-403) as \"no longer assigned or visible\", which is the precise failure `apps/desktop/src/create-issue-ipc.ts:14-21` warns about. Step 7 needs an explicit guard: if the mapped response does not list the login, return `{ ok: false, error }` and do not adopt.",
+          "blocking": true,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "`walkStream(\"created\")` walks the user's *entire* authored-issue set (per_page=100, all Link pages, every repo — followed or not), and `mapIssue` carries `body` (packages/core/src/adapters/github/map.ts:57). Today those payloads are discarded except for PRs; the plan keeps every one of them in a per-account map, publishes them into `OrchestratorAccountState.createdIssues`, and that snapshot is re-serialized over IPC on **every** `patchAccount`/`broadcast` (apps/desktop/src/poll.ts:99, orchestrator.ts:190-195). A prolific reporter with hundreds of open authored issues pays full issue bodies on every broadcast, and the sidebar `MutedBadge` shows a count over repos they never follow. Nothing in the plan caps the list, strips bodies, or scopes it to known/followed repos. Worth a cap or a body-strip in step 4.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "underspecified",
+          "detail": "Step 11 puts `<MutedBadge count={createdRows(state).length} />` inside `WorkNav`, but `WorkNav` (apps/web/src/components/sidebar.tsx:195-228) does not use `useOrchestrator()` today and the sibling `InboxNav` has to guard `if (!state) return null` (sidebar.tsx:252) because the context state is nullable before the first snapshot. `createdRows(null)` would throw and take out the whole nav shell on first paint. The step needs to say what the badge renders while `state` is null.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "wrong-approach",
+          "detail": "Issue #139 specifies the manifest carries the created items — \"separate section or `role: created` flag\" — and the plan discards both, keeping created issues in-memory only. The rationale (create-issue-ipc precedent, keeping `Object.values(manifest.items)` consumers clean) is strong and probably right, but it is a deliberate deviation from the written spec with a user-visible consequence: the view and its badge are empty after every restart until the first full walk completes, and there is no record that an issue was ever surfaced. The plan records this as a settled \"design decision\" with `openQuestions: []` rather than surfacing it for sign-off. At minimum it belongs in openQuestions.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "Step 4's prune rule (\"drop created entries whose id now exists in the assigned `items` map\") is asymmetric with how the assigned map ages: deltas never remove entries from `items`, only a full walk rebuilds it (apps/desktop/src/poll.ts:238-242). So an issue you authored and were *unassigned from* between full walks stays in the stale assigned map and is therefore suppressed from the created view for up to `FULL_WALK_EVERY_MS` (6h). The plan's risk #1 covers the opposite direction (assigned-but-still-shown) but not this one; a one-line note or a freshness check would close it.",
+          "blocking": false,
+          "unverified": false
+        }
+      ]
+    }
+  },
+  "composite": 0.5505618686868686,
+  "weights": {
+    "groundedness": 0.15,
+    "critic": 0.3,
+    "convergence": 0.25,
+    "clarity": 0.3
+  },
+  "runtime": "claude-cli",
+  "model": "opus",
+  "graphify": false,
+  "timings": {
+    "planMs": 332397,
+    "extraPlansMs": 328691,
+    "scoringMs": 330177,
+    "totalMs": 991265
+  },
+  "errors": [],
+  "collectedAt": "2026-08-05T09:30:24.361Z"
+}

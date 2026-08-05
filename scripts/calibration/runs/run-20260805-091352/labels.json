@@ -1,0 +1,16 @@
+{
+  "todos-issue-1": "approve-unread",
+  "todos-filter": "approve-unread",
+
+  "skipper-252": "wants-to-read",
+  "skipper-251": "wants-to-read",
+  "skipper-263": "wants-to-read",
+  "skipper-139": "wants-to-read",
+  "todos-issue-2": "wants-to-read",
+  "todos-due-date": "wants-to-read",
+  "skipper-141": "wants-to-read",
+  "skipper-67": "wants-to-read",
+
+  "todos-polish": "not-plannable",
+  "todos-slow": "not-plannable"
+}

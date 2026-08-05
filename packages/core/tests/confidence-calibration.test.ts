@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import type { ClaritySignal, ConfidenceWeights, CriticSignal } from "@skipper/shared";
+import {
+  DEFAULT_ORCHESTRATOR_SETTINGS,
+  type ClaritySignal,
+  type ConfidenceWeights,
+  type CriticSignal,
+  type OrchestratorSettings,
+} from "@skipper/shared";
 import {
   DEFAULT_CONFIDENCE_WEIGHTS,
   buildCalibrationRows,
@@ -10,12 +16,17 @@ import {
   porcelainPaths,
   renderCalibrationReport,
   renderIncompleteWarning,
+  overridePlannerPair,
+  renderPlannerPairBanner,
   replayScores,
+  resolvePlannerPair,
+  summarizePlannerPairs,
   sweepThresholds,
   worktreeDirtyError,
   type CalibrationLabel,
   type CalibrationMeta,
   type CalibrationSample,
+  type PlannerPair,
 } from "../src/confidence";
 import type { IssuePlan } from "@skipper/shared";
 import type { LLMProviderInterface } from "../src/llm/provider";
@@ -401,5 +412,189 @@ describe("renderCalibrationReport", () => {
     const md = renderCalibrationReport(rows, META);
     expect(md).toContain("VETO (groundedness): 2 cited files are absent");
     expect(md).toContain("Excluded (groundedness veto): v");
+  });
+});
+
+describe("resolvePlannerPair", () => {
+  const settings = (over: Partial<OrchestratorSettings> = {}): OrchestratorSettings => ({
+    ...DEFAULT_ORCHESTRATOR_SETTINGS,
+    ...over,
+  });
+
+  it("falls back to the claude-cli floor on llm.claudeModel", () => {
+    const pair = resolvePlannerPair("cicababba/skipper", {
+      settings: settings(),
+      repoSettings: {},
+      claudeModel: "opus",
+    });
+    expect(pair).toEqual({
+      runtime: "claude-cli",
+      model: "opus",
+      rung: "claude-cli floor on llm.claudeModel",
+    });
+  });
+
+  it("takes the global default pair when no planner pair is set", () => {
+    const pair = resolvePlannerPair("cicababba/skipper", {
+      settings: settings({ defaultAgent: { runtime: "codex-cli", model: "gpt-5" } }),
+      repoSettings: {},
+      claudeModel: "opus",
+    });
+    expect(pair).toEqual({ runtime: "codex-cli", model: "gpt-5", rung: "global defaultAgent" });
+  });
+
+  it("prefers the global planner pair over the global default", () => {
+    const pair = resolvePlannerPair("cicababba/skipper", {
+      settings: settings({
+        plannerAgent: { runtime: "claude-cli", model: "sonnet" },
+        defaultAgent: { runtime: "codex-cli", model: "gpt-5" },
+      }),
+      repoSettings: {},
+      claudeModel: "opus",
+    });
+    expect(pair).toEqual({ runtime: "claude-cli", model: "sonnet", rung: "global plannerAgent" });
+  });
+
+  it("prefers the repo planner pair, whole, over every global rung", () => {
+    const pair = resolvePlannerPair("cicababba/todos", {
+      settings: settings({ plannerAgent: { runtime: "codex-cli", model: "gpt-5" } }),
+      repoSettings: { "cicababba/todos": { plannerAgent: { runtime: "gemini-cli" } } },
+      claudeModel: "opus",
+    });
+    expect(pair).toEqual({ runtime: "gemini-cli", model: "", rung: "repo plannerAgent" });
+  });
+
+  it("resolves a claude pair without a model of its own to llm.claudeModel", () => {
+    const pair = resolvePlannerPair("cicababba/todos", {
+      settings: settings({ plannerAgent: { runtime: "claude-cli" } }),
+      repoSettings: {},
+      claudeModel: "opus",
+    });
+    expect(pair.model).toBe("opus");
+  });
+});
+
+describe("summarizePlannerPairs", () => {
+  const floor = (model: string): PlannerPair => ({
+    runtime: "claude-cli",
+    model,
+    rung: "claude-cli floor on llm.claudeModel",
+  });
+
+  it("groups repos that share a pair and reports a single-pair corpus", () => {
+    const summary = summarizePlannerPairs([
+      { repo: "a/one", pair: floor("opus") },
+      { repo: "a/two", pair: floor("opus") },
+      { repo: "a/one", pair: floor("opus") },
+    ]);
+    expect(summary.mixed).toBe(false);
+    expect(summary.groups).toEqual([
+      { runtime: "claude-cli", model: "opus", rung: "claude-cli floor on llm.claudeModel", repos: ["a/one", "a/two"] },
+    ]);
+  });
+
+  it("flags a corpus whose samples resolve to different pairs", () => {
+    const summary = summarizePlannerPairs([
+      { repo: "a/one", pair: floor("opus") },
+      { repo: "a/two", pair: floor("sonnet") },
+    ]);
+    expect(summary.mixed).toBe(true);
+    expect(summary.groups).toHaveLength(2);
+  });
+
+  it("keeps two rungs apart even when they land on the same pair", () => {
+    const summary = summarizePlannerPairs([
+      { repo: "a/one", pair: floor("opus") },
+      { repo: "a/two", pair: { runtime: "claude-cli", model: "opus", rung: "repo plannerAgent" } },
+    ]);
+    expect(summary.mixed).toBe(false);
+    expect(summary.groups).toHaveLength(2);
+  });
+});
+
+describe("renderPlannerPairBanner", () => {
+  const summary = summarizePlannerPairs([
+    {
+      repo: "cicababba/skipper",
+      pair: { runtime: "claude-cli", model: "opus", rung: "claude-cli floor on llm.claudeModel" },
+    },
+  ]);
+
+  it("names the pair, the settings file and the ladder rung it came from", () => {
+    const banner = renderPlannerPairBanner(summary, {
+      claudeModel: "opus",
+      settingsFile: "/repo/data/settings.json",
+      manifestFile: "/userData/orchestrator-manifest.json",
+    });
+    expect(banner).toContain("llm.claudeModel: opus — /repo/data/settings.json");
+    expect(banner).toContain("/userData/orchestrator-manifest.json");
+    expect(banner).toContain(
+      "claude-cli / opus — claude-cli floor on llm.claudeModel — cicababba/skipper",
+    );
+    expect(banner).not.toContain("MIXED PAIRS");
+  });
+
+  it("says which file was missing instead of implying one was read", () => {
+    const banner = renderPlannerPairBanner(summary, { claudeModel: "sonnet" });
+    expect(banner).toContain("no settings.json found");
+    expect(banner).toContain("no orchestrator-manifest.json found");
+  });
+
+  it("shows an empty model as the CLI's own default", () => {
+    const gemini = summarizePlannerPairs([
+      { repo: "a/one", pair: { runtime: "gemini-cli", model: "", rung: "repo plannerAgent" } },
+    ]);
+    expect(renderPlannerPairBanner(gemini, { claudeModel: "opus" })).toContain(
+      "gemini-cli / (CLI default)",
+    );
+  });
+
+  it("shouts when the corpus mixes pairs", () => {
+    const mixed = summarizePlannerPairs([
+      { repo: "a/one", pair: { runtime: "claude-cli", model: "opus", rung: "repo plannerAgent" } },
+      { repo: "a/two", pair: { runtime: "claude-cli", model: "sonnet", rung: "repo plannerAgent" } },
+    ]);
+    expect(renderPlannerPairBanner(mixed, { claudeModel: "opus" })).toContain("MIXED PAIRS");
+  });
+});
+
+describe("overridePlannerPair", () => {
+  const resolved: PlannerPair = {
+    runtime: "claude-cli",
+    model: "opus",
+    rung: "claude-cli floor on llm.claudeModel",
+  };
+
+  it("keeps the resolved pair when nothing is overridden", () => {
+    expect(overridePlannerPair(resolved, {}, "opus")).toBe(resolved);
+  });
+
+  it("swaps only the model, keeping the resolved runtime", () => {
+    expect(overridePlannerPair(resolved, { model: "sonnet" }, "opus")).toEqual({
+      runtime: "claude-cli",
+      model: "sonnet",
+      rung: "command-line override",
+    });
+  });
+
+  it("drops the claude model when the runtime is overridden alone", () => {
+    expect(overridePlannerPair(resolved, { runtime: "codex-cli" }, "opus")).toEqual({
+      runtime: "codex-cli",
+      model: "",
+      rung: "command-line override",
+    });
+  });
+
+  it("takes the claude floor when claude-cli is the overridden runtime", () => {
+    const gemini: PlannerPair = { runtime: "gemini-cli", model: "", rung: "repo plannerAgent" };
+    expect(overridePlannerPair(gemini, { runtime: "claude-cli" }, "opus").model).toBe("opus");
+  });
+
+  it("takes both when both are given", () => {
+    expect(overridePlannerPair(resolved, { runtime: "codex-cli", model: "gpt-5" }, "opus")).toEqual({
+      runtime: "codex-cli",
+      model: "gpt-5",
+      rung: "command-line override",
+    });
   });
 });

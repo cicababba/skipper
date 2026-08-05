@@ -221,6 +221,10 @@ export {
   missingSignals,
   findIncompleteSamples,
   renderIncompleteWarning,
+  resolvePlannerPair,
+  overridePlannerPair,
+  summarizePlannerPairs,
+  renderPlannerPairBanner,
 } from "./confidence";
 export type {
   CalibrationLabel,
@@ -232,6 +236,12 @@ export type {
   CalibrationScores,
   CalibrationSignalKey,
   CalibrationTimings,
+  PlannerPair,
+  PlannerPairGroup,
+  PlannerPairInputs,
+  PlannerPairRung,
+  PlannerPairSources,
+  PlannerPairSummary,
   ReplayOptions,
   ReplayResult,
   SweepOptions,

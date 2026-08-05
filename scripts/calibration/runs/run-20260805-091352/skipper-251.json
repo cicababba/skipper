@@ -1,0 +1,191 @@
+{
+  "version": 1,
+  "id": "skipper-251",
+  "repo": "cicababba/skipper",
+  "provenance": "github:cicababba/skipper#251",
+  "issueKey": "251",
+  "issueTitle": "core:test: live E2E verification of the Gemini CLI runtime adapter",
+  "issueUrl": "https://github.com/cicababba/skipper/issues/251",
+  "plan": {
+    "summary": "Verify the docs-derived Gemini CLI adapter (#243) against the real `gemini` binary: build a small, repeatable live-check harness (mirroring the existing `scripts/calibrate-confidence.ts` bundling pattern), drive a real coding run through `GeminiCliRuntime`/`runGeminiCodingAgent`, tick off every assumption in the issue checklist (stream field names, delta-vs-content duplication, MCP FQN prefix, flags, `.gemini/settings.json` lifecycle, resume, ENOENT parking), then land whatever one-line fixes the live run disproves and replace the \"DOCS-ONLY FIXTURES\" test data with a captured, redacted real stream.",
+    "fileCount": 15,
+    "stepCount": 10,
+    "estimatedSize": "m",
+    "openQuestions": []
+  },
+  "signals": {
+    "convergence": {
+      "score": 0.6772248803827752,
+      "planCount": 3,
+      "fileJaccard": 0.4870414673046252,
+      "sizeAgreement": 1,
+      "stepCountAgreement": 0.9,
+      "divergent": false,
+      "sharedFiles": [
+        "package.json",
+        "packages/core/src/coder/gemini-run.ts",
+        "packages/core/src/llm/gemini-cli.ts",
+        "packages/core/src/llm/gemini-stream.ts",
+        "packages/core/src/runtime/gemini-cli-runtime.ts",
+        "packages/core/tests/gemini-cli-agent.test.ts",
+        "packages/core/tests/gemini-run.test.ts",
+        "packages/core/tests/gemini-stream.test.ts",
+        "scripts/build-calibrate.mjs"
+      ],
+      "disputedFiles": [
+        "apps/desktop/src/coder.ts",
+        "apps/desktop/src/orchestrator.ts",
+        "apps/desktop/src/runtimes-ipc.ts",
+        "apps/web/src/app/inbox/item/memories-card.tsx",
+        "docs/SETUP.md",
+        "docs/gemini-cli-verification.md",
+        "packages/core/src/index.ts",
+        "packages/core/src/llm/index.ts",
+        "packages/core/src/llm/memory-mcp.ts",
+        "packages/core/tests/fixtures/gemini-live-capture.jsonl",
+        "packages/core/tests/runtime.test.ts",
+        "scripts/build-gemini-live-check.mjs",
+        "scripts/build-gemini-live.mjs",
+        "scripts/build-gemini-probe.mjs",
+        "scripts/calibrate-confidence.ts",
+        "scripts/gemini-live-check.ts",
+        "scripts/gemini-live-probe.ts"
+      ]
+    },
+    "groundedness": {
+      "score": 1,
+      "coverage": 1,
+      "filesChecked": 14,
+      "filesFound": 14,
+      "symbolsChecked": 19,
+      "symbolsFound": 19,
+      "missingFiles": [],
+      "missingSymbols": [],
+      "newFiles": [
+        "packages/core/tests/fixtures/gemini-live-capture.jsonl",
+        "scripts/build-gemini-live.mjs",
+        "scripts/gemini-live-check.ts"
+      ],
+      "createdSymbols": [
+        "captureRawStream",
+        "main",
+        "runAdapterCoding",
+        "summarizeShapes"
+      ]
+    },
+    "clarity": {
+      "score": 0.4,
+      "criteria": "verifiable",
+      "ambiguities": [
+        {
+          "detail": "Which repo counts as a 'Gemini-selected repo' and what the actual coding task/prompt for the live run should be — the issue names no fixture repo or scenario",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Auth method to use (Google login vs GEMINI_API_KEY) and how credentials are supplied/kept out of the repo",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether verification evidence must be durably recorded (captured/redacted stream fixtures, pinned CLI version, new regression tests) or whether manual observation and ticking the checklist suffices — the plan commits to replacing the DOCS-ONLY fixtures and adding a pinned test, which the issue never asks for",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether a reusable harness/script should be built (plan invents one mirroring scripts/calibrate-confidence.ts) versus ad-hoc manual runs",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Which Gemini CLI version to verify against — the adapter was derived from v0.52.0 docs, but the issue's npm install pulls latest, leaving version pinning/reporting undefined",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "How far to go if an assumption is disproven beyond the anticipated 'one-line fix' (e.g. a structural stream-shape mismatch) — issue only excludes capability-matrix changes unless a fact is disproven",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether an MCP server must be configured for the live run to observe a real mcp_<server>_<tool> name, and which one",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "How to simulate 'CLI missing' for the ENOENT negative check once the CLI is installed globally (PATH manipulation vs config override)",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        }
+      ],
+      "openQuestions": [],
+      "rationale": "The issue is a well-scoped checklist of concrete, observable assertions against a real binary with explicit out-of-scope items, so done-ness is objectively checkable; the open decisions are mostly setup details (test repo, auth mode, evidence artifacts, version pinning) that the plan silently settled without flagging."
+    },
+    "critic": {
+      "score": 0.6,
+      "verdict": "concerns",
+      "objections": [
+        {
+          "kind": "wrong-approach",
+          "detail": "Step 3's `capture` mode hand-rebuilds the coding argv (`resolveGemini()` + `geminiBaseArgs()` + `--approval-mode=yolo` + `geminiSessionArgs(...)` + `buildGeminiProjectSettings(cwd).args`) instead of using the seam that already exists: `runGeminiCodingAgent(opts, spawnImpl)` takes an injectable spawn (packages/core/src/coder/gemini-run.ts:41, and the existing tests already exercise it that way). A hand-assembled command that drifts from gemini-run.ts:46-53 would verify a command Skipper never runs — the exact class of error this issue exists to eliminate. A tee'ing `spawnImpl` wrapper yields the raw NDJSON *and* the true argv in a single run, and collapses Step 2's five new barrel exports to at most one (`runGeminiCodingAgent`; `GeminiCliRuntime` is already exported from packages/core/src/index.ts:35), which also retires the plan's own \"widens the public surface\" risk.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "acceptance-gap",
+          "detail": "Step 5's acceptance (\"the memories-used card populates for the run\") cannot be satisfied by the action it prescribes (\"prompt the agent to search memory\"). apps/desktop/src/orchestrator.ts:250-263 populates the card only from a tool-use whose `tool` ends in `__get_memory` AND carries a non-empty `detail` (the record id); search_memory calls are explicitly console-only (\"search_memory queries surface only in the live console\"). So the check requires a repo whose memory store already holds at least one record, a real desktop run (the harness cannot populate the card), and a prompt that pushes the agent from search to a full fetch. The plan also never says to build the `skipper.bundle.cjs` that `memoryServerConfig` requires (packages/core/src/llm/memory-mcp.ts:10-15) or to seed a record — without both, an empty card is ambiguous between \"FQN translation broken\" and \"nothing to fetch\", and the checklist item cannot honestly be ticked either way.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "underspecified",
+          "detail": "Step 5 enumerates the failure modes as \"double underscore, dotted, or a server name that got mangled\", all of which land in the `mcp_` branch at gemini-stream.ts:62-71. It omits the likeliest alternative: gemini exposing MCP tools under their bare names (`search_memory` / `get_memory`) or a non-`mcp_` scheme. That falls through `normalizeTool` to the `default` branch (gemini-stream.ts:91-93), emits tool `get_memory`, and silently fails the orchestrator's `endsWith(\"__get_memory\")` test — a fix that lives outside the branch the plan points at and may need a server-name-aware mapping. Naming this outcome matters so it is not recorded as \"prefix assumption holds, card just stayed empty\".",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "other",
+          "detail": "The delta analysis in context item 2 is half wrong: \"the fix is to ignore `content` on any line that also carried a `delta`\" is already the behavior — `messageText` is `firstString(obj.delta, obj.content)` (gemini-stream.ts:98-100), so delta already wins on a line carrying both. Only the parenthetical (reset `pendingText` when a cumulative `content` arrives) is an actual change, and an implementer following the first formulation would ship a no-op and mark the assumption verified. The plan also does not enumerate the shape that hurts most: a stream emitting *only* cumulative `content` lines with no `delta` field, which the accumulator concatenates snapshot-on-snapshot (gemini-stream.ts:210-216) — while \"replace on any content-only line\" would silently drop text for a stream of non-cumulative `content` fragments. Step 4 should state which observation implies which of the three fixes.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "missing-step",
+          "detail": "The plan lists \"committing raw, unredacted live captures\" as out of scope and as a risk, but no step adds the ignore entry. `.gitignore` covers `scripts/dist/` and `scripts/calibration/runs/*/plans/` only — `scripts/gemini-live/` (the plan's own tee target) would appear in `git status` and is one `git add -A` away from committing prompts, absolute paths and repo content. Add the ignore entry in the same step that creates the harness.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "underspecified",
+          "detail": "The ENOENT check in Step 8 (\"run with a PATH lacking it, after `invalidateResolvedGemini()` has a chance to re-resolve\") misreads the resolver: on non-win32 `resolveGemini()` unconditionally returns `{ file: \"gemini\", argsPrefix: [] }` (gemini-cli.ts:45-49), so invalidation re-resolves to the identical value and the check is purely about spawn-time PATH. A subshell PATH edit also cannot affect a already-running Skipper — detectRuntimes and every spawn use the main process' PATH, fixed at app launch (apps/desktop/src/runtimes-ipc.ts:5-7). To exercise the desktop coder's park message you must rename the binary or relaunch the app under the stripped PATH; state which.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "underspecified",
+          "detail": "`packages/core/tests/fixtures/` does not exist today (verified: no files match), and Step 9 does not say how `gemini-live-capture.jsonl` is consumed — provenance-only artifact (in which case it is dead weight in the test tree, and the banner comment alone would do) or an actual test input (in which case the parse/assert wiring, and how redaction interacts with the assertions, needs specifying). Note also that `pnpm format:check` globs `{ts,tsx,js,jsx,json,md,yaml}`, so a `.jsonl` is unformatted/unchecked by the repo's own tooling.",
+          "blocking": false,
+          "unverified": false
+        }
+      ]
+    }
+  },
+  "composite": 0.6193062200956938,
+  "weights": {
+    "groundedness": 0.15,
+    "critic": 0.3,
+    "convergence": 0.25,
+    "clarity": 0.3
+  },
+  "runtime": "claude-cli",
+  "model": "opus",
+  "graphify": false,
+  "timings": {
+    "planMs": 249545,
+    "extraPlansMs": 297646,
+    "scoringMs": 261250,
+    "totalMs": 808441
+  },
+  "errors": [],
+  "collectedAt": "2026-08-05T09:58:30.868Z"
+}

@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "id": "todos-issue-1",
+  "repo": "cicababba/todos",
+  "provenance": "jira:TODOS/ISSUE-1 (dogfooding run behind #313, surgical)",
+  "issueKey": "ISSUE-1",
+  "issueTitle": "Show a count of remaining todos",
+  "issueUrl": "https://cicababba.atlassian.net/browse/ISSUE-1",
+  "plan": {
+    "summary": "Add a \"N left\" counter under the todo list in `apps/web/src/App.tsx`, derived from the existing `todos` state (so it updates on add/toggle/delete with no extra state), with the count/label logic extracted to a new pure module `apps/web/src/remaining.ts` and covered by a plain `.ts` Vitest test that fits the repo's existing test setup.",
+    "fileCount": 4,
+    "stepCount": 4,
+    "estimatedSize": "xs",
+    "openQuestions": []
+  },
+  "signals": {
+    "convergence": {
+      "score": 0.6671428571428571,
+      "planCount": 3,
+      "fileJaccard": 0.44523809523809527,
+      "sizeAgreement": 1,
+      "stepCountAgreement": 1,
+      "divergent": false,
+      "sharedFiles": [
+        "apps/web/src/App.tsx",
+        "apps/web/src/styles.css"
+      ],
+      "disputedFiles": [
+        "apps/web/src/remaining.test.ts",
+        "apps/web/src/remaining.ts",
+        "apps/web/src/todos.test.ts",
+        "apps/web/src/todos.ts",
+        "packages/shared/src/index.ts",
+        "vitest.config.ts"
+      ]
+    },
+    "groundedness": {
+      "score": 1,
+      "coverage": 1,
+      "filesChecked": 2,
+      "filesFound": 2,
+      "symbolsChecked": 2,
+      "symbolsFound": 2,
+      "missingFiles": [],
+      "missingSymbols": [],
+      "newFiles": [
+        "apps/web/src/remaining.test.ts",
+        "apps/web/src/remaining.ts"
+      ],
+      "createdSymbols": [
+        "countRemaining",
+        "remainingLabel"
+      ]
+    },
+    "clarity": {
+      "score": 0.85,
+      "criteria": "verifiable",
+      "ambiguities": [
+        {
+          "detail": "Whether the counter counts not-done todos only (issue's example implies it, but the exact definition of \"remaining\" vs. total is inferred from one worked example)",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Exact placement and markup/styling of the counter element (which tag, class, position relative to the list container)",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether the counter should render when todos exist but all are done (i.e. \"0 left\" shown vs. hidden) — the issue only specifies the no-todos-at-all case",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether the logic lives inline in App.tsx or is extracted into a separate module (the plan invents `apps/web/src/remaining.ts`)",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether tests are expected, and at what level (pure unit test of the label function vs. component/DOM test of the rendered UI)",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        }
+      ],
+      "openQuestions": [],
+      "rationale": "The issue gives concrete, example-driven, externally checkable outcomes for count, pluralization, empty state, and reactivity; the remaining open points are minor presentation/structure choices plus the unstated all-done \"0 left\" case, which the plan silently decided."
+    },
+    "critic": {
+      "score": 0.6,
+      "verdict": "concerns",
+      "objections": [
+        {
+          "kind": "acceptance-gap",
+          "detail": "The only piece of logic that can actually regress is untested. `countRemaining` (a `.filter().length`) and `remainingLabel` (a template string) are trivially correct; the interesting rule — \"with no todos at all the counter is not rendered\" — lives as a bare `todos.length > 0` guard inside JSX with no test at all, and the repo has no DOM test setup to catch it (verified: root `vitest.config.ts:5` includes only `apps/**/*.test.ts` / `packages/**/*.test.ts`, and `apps/web` has no jsdom/@testing-library dep). CLAUDE.md:45 requires \"New or changed behavior is covered by a test in the same package\", and the plan's test covers the arithmetic while the acceptance criterion goes uncovered. Collapsing the two exports into one `remainingLabel(todos: readonly Todo[]): string | null` that returns `null` for an empty array would put the empty-list criterion under unit test, shrink App.tsx to `{remainingLabel(todos)}`... plus a truthiness guard, and drop a redundant export — better fit for the repo's \"keep it small\" instruction (CLAUDE.md:7-8) than a two-function module.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "underspecified",
+          "detail": "Step 2 tells the implementer to write a fixture factory annotated `: Todo` but never says how `Todo` is imported in the test file; the `import type` requirement is called out only for `remaining.ts` (step 1 and the risks list). `apps/web/tsconfig.json:8` includes `src`, so `remaining.test.ts` is type-checked, and `tsconfig.base.json:10` sets `verbatimModuleSyntax` — a plain `import { Todo } from \"@todos/shared\"` there makes `pnpm typecheck` fail. Spell out `import type { Todo } from \"@todos/shared\";` in step 2 as well.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "other",
+          "detail": "Step 4 says to give `.remaining` \"the same muted treatment\" as `.empty` and then specifies a different value: `.empty` is `opacity: 0.5` (verified, `apps/web/src/styles.css:92-94`), the plan writes `opacity: 0.6`. Trivial, but if the intent is consistency, use 0.5.",
+          "blocking": false,
+          "unverified": false
+        }
+      ]
+    }
+  },
+  "composite": 0.7517857142857143,
+  "weights": {
+    "groundedness": 0.15,
+    "critic": 0.3,
+    "convergence": 0.25,
+    "clarity": 0.3
+  },
+  "runtime": "claude-cli",
+  "model": "opus",
+  "graphify": false,
+  "timings": {
+    "planMs": 115428,
+    "extraPlansMs": 66563,
+    "scoringMs": 86699,
+    "totalMs": 268690
+  },
+  "errors": [],
+  "collectedAt": "2026-08-05T10:02:59.693Z"
+}

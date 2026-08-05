@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "id": "todos-due-date",
+  "repo": "cicababba/todos",
+  "provenance": "authored:#314 calibration (mid-quality)",
+  "issueKey": "CAL-1",
+  "issueTitle": "add a due date to todos",
+  "issueUrl": "https://example.invalid/todos/cal-1",
+  "plan": {
+    "summary": "Add an optional `dueDate` (date-only `YYYY-MM-DD` string) to todos: extend the shared `Todo`/input types and add `parseDueDate` + an `isOverdue` helper in `packages/shared`, teach the in-memory store to set/change/clear the field, and update the React UI so the add form can set a due date, each row can change it, the date renders next to the title, and past-due rows get an `overdue` class. Routes stay thin and keep mapping validation failures to `400 { error }`.",
+    "fileCount": 8,
+    "stepCount": 8,
+    "estimatedSize": "m",
+    "openQuestions": []
+  },
+  "signals": {
+    "convergence": {
+      "score": 0.9033333333333333,
+      "planCount": 3,
+      "fileJaccard": 0.8666666666666667,
+      "sizeAgreement": 1,
+      "stepCountAgreement": 0.8888888888888888,
+      "divergent": false,
+      "sharedFiles": [
+        "apps/api/src/routes.test.ts",
+        "apps/api/src/routes.ts",
+        "apps/api/src/store.test.ts",
+        "apps/api/src/store.ts",
+        "apps/web/src/App.tsx",
+        "apps/web/src/styles.css",
+        "packages/shared/src/index.test.ts",
+        "packages/shared/src/index.ts"
+      ],
+      "disputedFiles": [
+        "README.md",
+        "apps/web/src/api.ts"
+      ]
+    },
+    "groundedness": {
+      "score": 1,
+      "coverage": 1,
+      "filesChecked": 10,
+      "filesFound": 10,
+      "symbolsChecked": 15,
+      "symbolsFound": 15,
+      "missingFiles": [],
+      "missingSymbols": [],
+      "newFiles": [],
+      "createdSymbols": [
+        "isOverdue",
+        "onDueDateChange",
+        "parseDueDate"
+      ]
+    },
+    "clarity": {
+      "score": 0,
+      "criteria": "partial",
+      "ambiguities": [
+        {
+          "detail": "Storage/wire format of the due date: date-only `YYYY-MM-DD` string vs full ISO timestamp vs epoch number — the issue never says; the plan silently picked a date-only string.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "How a due date is cleared once set (e.g. PATCH with `null`, empty string, or omitting the key) and whether the field is omitted or stored as null when absent — the plan decided `\"\"` → `null` and omit-the-key on its own.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "What counts as \"past due\": whether a todo due today is overdue, whether comparison is date-only or timestamp-based, which timezone is used, and whether completed todos can still be overdue.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "What \"stand out\" means visually — the issue gives no styling requirement; the plan chose an `overdue` CSS class with inline text styling.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether the due date in the row is rendered as static text or as an editable control — the issue says \"shows the due date next to the title\" and separately \"change it later from the row\"; the plan merged both into a single per-row date input.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Display format of the date in the row (raw `YYYY-MM-DD` vs localized/humanized).",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether \"past due\" affects ordering/sorting of the list, or only appearance.",
+          "resolvableFromRepo": false,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Which validation rules make a due date \"bad\" (malformed string, impossible calendar date, dates in the past) and the exact `error` message text.",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        },
+        {
+          "detail": "Whether the due date is editable on create only via the add form or also settable on todos created before the change (migration of existing stored todos).",
+          "resolvableFromRepo": true,
+          "flaggedByPlan": false
+        }
+      ],
+      "openQuestions": [],
+      "rationale": "The issue names concrete, checkable outcomes (optional field, add-form input, row editing, row display, 400 { error }, validation in packages/shared) but leaves the date representation, clearing semantics, overdue definition, and \"stand out\" styling to taste, all of which the plan resolved silently without raising a single question."
+    },
+    "critic": {
+      "score": 0.5,
+      "verdict": "concerns",
+      "objections": [
+        {
+          "kind": "risk",
+          "detail": "Step 1's date-realness check crashes on exactly the inputs it is meant to reject. `const d = new Date(`${value}T00:00:00.000Z`); d.toISOString().slice(0,10) === value` has no Invalid-Date guard: for `\"2026-13-01\"` (and `\"2026-02-30\"`, which V8 also parses to Invalid Date) the regex passes, `d` is Invalid Date, and `Date.prototype.toISOString` throws `RangeError: Invalid time value`. Concrete consequences: (a) step 2's prescribed test `parseCreateTodoInput({ title: \"x\", dueDate: \"2026-02-30\" }) → ok: false` throws instead of returning, so `pnpm test` fails; (b) in the API the throw escapes `parseCreateTodoInput` inside the Fastify handler (apps/api/src/routes.ts:9), producing a 500, which directly violates the issue's requirement that bad input return `400 { error }` — the exact case listed in the plan's own manual check (`curl` with `2026-02-30` expecting 400). The step must specify `if (Number.isNaN(d.getTime())) return { ok: false, error: ... }` before the round-trip comparison.",
+          "blocking": true,
+          "unverified": false
+        },
+        {
+          "kind": "underspecified",
+          "detail": "Create and update disagree on `null`. Step 1 says `parseCreateTodoInput` should omit the field when `dueDate` is `undefined` **or** `null`, while `parseUpdateTodoInput` treats `null` as a meaningful \"clear\" signal. So `POST { title, dueDate: null }` is silently accepted as \"no due date\" even though `CreateTodoInput.dueDate` is typed `string | undefined` — a value the type says is invalid passes validation. Either type it `string | null | undefined` on create or reject `null` there with the existing `\"dueDate must be a string\"` message; the plan should pick one and state it, since step 5's route tests will encode the choice.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "underspecified",
+          "detail": "Step 6 says to render the row's date input \"next to the title span\", but the title span lives inside the `<label>` that wraps the toggle checkbox (apps/web/src/App.tsx:67-70). Putting a second labelable control inside that label makes the label's labeled control ambiguous to read and is a needless a11y smell (the click-forwarding itself is safe — labels don't forward activation to interactive descendants). The step should say explicitly that the date input goes after the closing `</label>`, before the delete button, so the existing `li { justify-content: space-between }` layout (styles.css:56-63) stays predictable.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "Using a bare `<input type=\"date\">` as the row control with `onChange → PATCH` means editing an existing date fires a spurious clear. Browsers report `value === \"\"` while a date input is in a partially-filled state, so changing 2026-03-01 to 2026-04-01 emits `\"\"` (→ `PATCH { dueDate: null }`) before the complete value (→ `PATCH { dueDate: \"2026-04-01\" }`). The end state is correct but the plan should acknowledge the extra round-trip, or commit on `blur`. Also note the row cannot distinguish \"user is mid-edit\" from \"user cleared it\", which is the mechanism behind the flicker a reviewer will see in the manual check.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "risk",
+          "detail": "`new Date().toLocaleDateString(\"en-CA\")` is the right instinct (avoid UTC) but depends on ICU locale data yielding ISO ordering; a deterministic `${y}-${String(m+1).padStart(2,\"0\")}-${String(d).padStart(2,\"0\")}` from `getFullYear/getMonth/getDate` gives the same answer with no locale-data assumption, and it is the value the lexicographic comparison in `isOverdue` depends on. Separately, \"compute today once per render\" means a tab left open across midnight keeps yesterday's boundary until the next state change — acceptable here, but worth stating rather than leaving as an accident.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "acceptance-gap",
+          "detail": "CLAUDE.md:45 requires \"New or changed behavior is covered by a test in the same package,\" and steps 6-7 add real behavior to `apps/web` (form field, per-row clear-vs-set mapping of `\"\"`→`null`, overdue class composition) with zero tests in that package. The plan's reasoning is sound — vitest.config.ts:5 collects only `*.test.ts` and apps/web/package.json has no testing-library/jsdom — and there is no precedent for web tests in the repo, so this is consistent rather than negligent. But `isOverdue` being pure and tested does not cover the `\"\" → null` mapping or the class-composition expression, which are the two places this feature is most likely to break. Say so plainly in the PR rather than implying the criterion is met.",
+          "blocking": false,
+          "unverified": false
+        },
+        {
+          "kind": "other",
+          "detail": "Minor: every dateless row will render an empty date picker showing the browser's `mm/dd/yyyy` placeholder, which contradicts the plan's own manual check that \"the dateless row looks unchanged\" and adds visual noise to what the issue calls out as the common case (\"most todos will not have one\"). Step 7's `li .due` styling partly mitigates this, but the plan should decide deliberately: either accept the placeholder or render a text span when `dueDate` is absent and reveal the input on interaction.",
+          "blocking": false,
+          "unverified": false
+        }
+      ]
+    }
+  },
+  "composite": 0.5258333333333334,
+  "weights": {
+    "groundedness": 0.15,
+    "critic": 0.3,
+    "convergence": 0.25,
+    "clarity": 0.3
+  },
+  "runtime": "claude-cli",
+  "model": "opus",
+  "graphify": false,
+  "timings": {
+    "planMs": 124535,
+    "extraPlansMs": 122783,
+    "scoringMs": 176561,
+    "totalMs": 423879
+  },
+  "errors": [],
+  "collectedAt": "2026-08-05T10:10:44.852Z"
+}
