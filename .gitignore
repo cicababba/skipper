@@ -17,6 +17,12 @@ apps/desktop/build/cli-runtime/
 # Desktop packaging: staged uv binaries (prepare-uv.mjs)
 apps/desktop/build/uv/
 
+# Confidence calibration harness (#314): the esbuild bundle and the full plan
+# bodies stay local; the per-sample signal JSON, labels.json and report.md are
+# the committable corpus.
+scripts/dist/
+scripts/calibration/runs/*/plans/
+
 # Runtime data
 data/raw/*
 data/wiki/*

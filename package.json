@@ -15,6 +15,7 @@
     "desktop:package": "pnpm desktop:build && pnpm --filter @skipper/desktop package",
     "desktop:package:mac": "pnpm desktop:build && pnpm --filter @skipper/desktop package:mac",
     "desktop:package:win": "pnpm desktop:build && pnpm --filter @skipper/desktop package:win",
+    "calibrate": "node scripts/build-calibrate.mjs && node scripts/dist/calibrate-confidence.cjs",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yaml}\""
   },

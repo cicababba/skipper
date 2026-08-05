@@ -159,6 +159,37 @@ describe("computeConfidence", () => {
     expect(report.composite).toBeGreaterThan(0);
   });
 
+  // #314: a degraded critic still scores, so it never reaches the per-signal
+  // catch — computeConfidence must record the degradation itself.
+  it("records a tool-less critic degradation in errors while still scoring it", async () => {
+    const llm = fakeLLM(APPROVE);
+    const structured = vi.fn(async (_p: string, schema: Record<string, unknown>) => {
+      if (isClaritySchema(schema)) return CLEAR;
+      if (structured.mock.calls.filter((c) => !isClaritySchema(c[1])).length === 1) {
+        const err = new Error("agent hit the max-turns limit after 21 turns");
+        (err as Error & { subtype: string }).subtype = "error_max_turns";
+        throw err;
+      }
+      return APPROVE;
+    });
+    const runtime = { id: "claude-cli", structured } as unknown as never;
+
+    const report = await computeConfidence({
+      plan: plan(),
+      issue: ISSUE,
+      repoPath: repo,
+      llm,
+      runtime,
+      extraPlanRuns: 0,
+    });
+
+    expect(report.signals.critic).toBeDefined();
+    expect(report.signals.critic!.score).toBe(1);
+    expect(report.errors).toHaveLength(1);
+    expect(report.errors[0]).toContain("critic: repo-inspecting critic degraded to tool-less");
+    expect(report.weights.critic).toBeGreaterThan(0);
+  });
+
   it("captures a clarity failure in errors and renormalizes over the rest (#309)", async () => {
     const report = await computeConfidence({
       plan: plan(),
