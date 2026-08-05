@@ -1,5 +1,5 @@
 export { scoreGroundedness, GROUNDEDNESS_VETO } from "./groundedness";
-export { scoreConvergence, DIVERGENCE_THRESHOLD } from "./convergence";
+export { scoreConvergence, deriveConvergenceScore, DIVERGENCE_THRESHOLD } from "./convergence";
 export {
   scoreClarity,
   buildClarityPrompt,
