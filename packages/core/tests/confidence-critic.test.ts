@@ -57,20 +57,20 @@ describe("runCritic / critiquePlan", () => {
     expect(s.verdict).toBe("approve");
   });
 
-  it("derives 0.6 from concerns and keeps objections", async () => {
+  it("charges one verified objection against concerns and keeps objections", async () => {
     const { llm } = fakeLLM({ verdict: "concerns", objections: [objection(false)] });
     const s = await critiquePlan(PLAN, ISSUE, llm);
-    expect(s.score).toBeCloseTo(0.6);
+    expect(s.score).toBeCloseTo(0.94);
     expect(s.objections).toHaveLength(1);
   });
 
-  it("penalizes blocking objections and floors at 0", async () => {
+  it("penalizes blocking objections and floors at 0.2", async () => {
     const { llm } = fakeLLM({
       verdict: "reject",
       objections: [objection(true), objection(true), objection(true)],
     });
     const s = await critiquePlan(PLAN, ISSUE, llm);
-    expect(s.score).toBe(0);
+    expect(s.score).toBeCloseTo(0.2);
     expect(s.verdict).toBe("reject");
   });
 
@@ -329,7 +329,7 @@ describe("runCritic continuity (#205)", () => {
     expect(prompt).toContain("P2. [underspecified] (unverified) P-two detail");
     // The continuity schema inherits `unverified` via .extend — it survives the parse.
     expect(signal.objections[0]).toMatchObject({ status: "persisting", unverified: true });
-    expect(signal.score).toBeCloseTo(0.85);
+    expect(signal.score).toBeCloseTo(0.98);
   });
 
   it("renders both markers on a prior that is blocking and unverified", async () => {
@@ -347,9 +347,10 @@ describe("runCritic continuity (#205)", () => {
   });
 });
 
-// #308: an objection the critic admits it could not check is an open question,
-// not a demonstrated defect. Same objection count, different score.
-describe("critic score: unverified objections (#308)", () => {
+// #319: the objections carry the scale, not the verdict. A plan with three
+// cosmetic notes and one with ten substantive defects must not read the same.
+// The provenance split of #308 survives as the lightest of the three penalties.
+describe("critic score: objections carry the scale (#319)", () => {
   const obj = (over: Partial<CriticObjection> = {}): CriticObjection => ({
     kind: "risk",
     detail: "pnpm typecheck may not exist in the root package.json",
@@ -357,46 +358,62 @@ describe("critic score: unverified objections (#308)", () => {
     ...over,
   });
 
+  const objections = (count: number, over: Partial<CriticObjection> = {}): CriticObjection[] =>
+    Array.from({ length: count }, () => obj(over));
+
   const scoreFor = async (verdict: string, objections: CriticObjection[]): Promise<number> => {
     const { llm } = fakeLLM({ verdict, objections });
     return (await critiquePlan(PLAN, ISSUE, llm)).score;
   };
 
-  it("rebates concerns to 0.85 when every objection is unverified", async () => {
-    await expect(
-      scoreFor("concerns", [obj({ unverified: true }), obj({ unverified: true })]),
-    ).resolves.toBeCloseTo(0.85);
+  it("reads 1.0 with no objections, whichever of the two clean verdicts came back", async () => {
+    await expect(scoreFor("approve", [])).resolves.toBe(1);
+    await expect(scoreFor("concerns", [])).resolves.toBe(1);
   });
 
-  // The assertion the issue asks for: identical count, different provenance.
-  it("stays at 0.6 for the same objection count when one is demonstrated", async () => {
-    await expect(
-      scoreFor("concerns", [obj({ unverified: true }), obj({ unverified: false })]),
-    ).resolves.toBeCloseTo(0.6);
+  // The assertion the issue asks for: the signal is a scale over the count.
+  it("falls monotonically with the number of verified objections", async () => {
+    await expect(scoreFor("concerns", objections(3))).resolves.toBeCloseTo(0.82);
+    await expect(scoreFor("concerns", objections(5))).resolves.toBeCloseTo(0.7);
+    await expect(scoreFor("concerns", objections(10))).resolves.toBeCloseTo(0.4);
+  });
+
+  it("charges an unverified objection less than a demonstrated one", async () => {
+    await expect(scoreFor("concerns", objections(3, { unverified: true }))).resolves.toBeCloseTo(
+      0.94,
+    );
+    await expect(scoreFor("concerns", objections(3))).resolves.toBeCloseTo(0.82);
   });
 
   it("treats an absent unverified field as demonstrated (already-persisted reports)", async () => {
-    await expect(scoreFor("concerns", [obj(), obj()])).resolves.toBeCloseTo(0.6);
-    await expect(scoreFor("concerns", [obj({ unverified: true }), obj()])).resolves.toBeCloseTo(0.6);
+    await expect(scoreFor("concerns", [obj(), obj()])).resolves.toBeCloseTo(0.88);
+    await expect(scoreFor("concerns", [obj({ unverified: true }), obj()])).resolves.toBeCloseTo(
+      0.92,
+    );
   });
 
-  it("keeps the full blocking penalty on an unverified blocking objection", async () => {
+  it("makes one blocking objection weigh more than three verified ones", async () => {
+    await expect(scoreFor("concerns", [obj({ blocking: true })])).resolves.toBeCloseTo(0.8);
+    await expect(scoreFor("concerns", objections(3))).resolves.toBeCloseTo(0.82);
+  });
+
+  it("charges the blocking penalty on an objection that is also unverified", async () => {
     await expect(
       scoreFor("concerns", [obj({ blocking: true, unverified: true })]),
-    ).resolves.toBeCloseTo(0.5);
+    ).resolves.toBeCloseTo(0.8);
     await expect(
       scoreFor("concerns", [obj({ blocking: true, unverified: true }), obj({ unverified: true })]),
-    ).resolves.toBeCloseTo(0.5);
+    ).resolves.toBeCloseTo(0.78);
   });
 
-  it("leaves approve and reject untouched however the objections are flagged", async () => {
-    await expect(scoreFor("approve", [])).resolves.toBe(1);
-    await expect(scoreFor("approve", [obj({ unverified: true })])).resolves.toBeCloseTo(1);
+  it("floors the scale at 0.2 however many objections pile up", async () => {
+    await expect(scoreFor("concerns", objections(20))).resolves.toBeCloseTo(0.2);
+    await expect(scoreFor("concerns", objections(50, { blocking: true }))).resolves.toBeCloseTo(0.2);
+  });
+
+  it("caps reject at the floor even with nothing to charge it for", async () => {
+    await expect(scoreFor("reject", [])).resolves.toBeCloseTo(0.2);
     await expect(scoreFor("reject", [obj({ unverified: true })])).resolves.toBeCloseTo(0.2);
-  });
-
-  it("does not rebate concerns with zero objections", async () => {
-    await expect(scoreFor("concerns", [])).resolves.toBeCloseTo(0.6);
   });
 
   it("carries the flag through to the signal", async () => {
@@ -505,7 +522,7 @@ describe("tool-less degradation on a salvageable death (#314)", () => {
     });
 
     expect(s.verdict).toBe("concerns");
-    expect(s.score).toBeCloseTo(0.6);
+    expect(s.score).toBeCloseTo(0.94);
     expect(structured).toHaveBeenCalledTimes(2);
 
     // The retry drops the tools, the cwd and the budget — and the prompt stops

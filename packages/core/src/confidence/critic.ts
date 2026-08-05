@@ -88,27 +88,36 @@ export class CriticError extends Error {
   }
 }
 
-const VERDICT_SCORE: Record<CriticVerdict, number> = {
-  approve: 1.0,
-  concerns: 0.6,
-  reject: 0.2,
-};
-const BLOCKING_PENALTY = 0.1;
-/** "concerns" made entirely of objections the critic admits it could not check
- *  is an open question, not a demonstrated defect (#308). */
-const UNVERIFIED_CONCERNS_SCORE = 0.85;
+/** Per-objection penalties (#319). The score scales with how much there is to
+ *  read before queueing the plan, not with a verdict that is "concerns" on
+ *  every real plan. `blocking` wins over `unverified` when both are set. */
+const OBJECTION_PENALTY = { blocking: 0.2, verified: 0.06, unverified: 0.02 };
+/** Worst readable plan reads like the old `reject` — the scale stops here. */
+const CRITIC_FLOOR = 0.2;
 
-/** Score derived here, never model-emitted — keeps it reproducible. */
+/**
+ * Score derived here, never model-emitted — keeps it reproducible.
+ *
+ * The objections carry the whole scale (#319): counting the verdict made three
+ * minor notes and ten substantive defects read identically, because an
+ * adversarial critic returns "concerns" on every real plan. The verdict only
+ * caps a "reject". `unverified` is the lightest penalty rather than the #308
+ * rebate: since #312 gave the critic repo tools, an all-unverified "concerns"
+ * is unreachable in practice.
+ */
 export function deriveCriticScore(verdict: CriticVerdict, objections: CriticObjection[]): number {
-  const blocking = objections.filter((o) => o.blocking).length;
-  const base =
-    verdict === "concerns" &&
-    blocking === 0 &&
-    objections.length > 0 &&
-    objections.every((o) => o.unverified === true)
-      ? UNVERIFIED_CONCERNS_SCORE
-      : VERDICT_SCORE[verdict];
-  return Math.max(0, base - blocking * BLOCKING_PENALTY);
+  const penalty = objections.reduce(
+    (sum, o) =>
+      sum +
+      (o.blocking
+        ? OBJECTION_PENALTY.blocking
+        : o.unverified
+          ? OBJECTION_PENALTY.unverified
+          : OBJECTION_PENALTY.verified),
+    0,
+  );
+  const score = Math.max(CRITIC_FLOOR, 1 - penalty);
+  return verdict === "reject" ? Math.min(score, CRITIC_FLOOR) : score;
 }
 
 const BASE_VERDICT_INSTRUCTION = `Raise an objection ONLY for real, defensible problems; mark it blocking only when shipping as-is would be wrong. Verdict: "approve" if you failed to demolish it, "concerns" for non-blocking problems, "reject" if it is fundamentally flawed.
