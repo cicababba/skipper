@@ -9,10 +9,12 @@ import {
 import { mappingHost } from "@skipper/shared";
 import type {
   Account,
+  CodeHostId,
   Issue,
   OrchestratorAccountState,
   PullRequest,
   SourceRef,
+  TrackedItem,
   UnmappedProject,
 } from "@skipper/shared";
 import type { InboxCursorFile } from "./inbox-cursor-store";
@@ -33,6 +35,8 @@ export interface PollerDeps {
   getAccounts: () => Account[];
   /** Token for the account with this key (Account.key), refreshed if needed. */
   getToken: (accountKey: string, forceRefresh?: boolean) => Promise<string | null>;
+  /** The connected account that authenticates a code host for an item. */
+  codeHostAccountFor: (codeHost: CodeHostId, preferKey?: string) => Account | undefined;
   loadCursors: () => Promise<InboxCursorFile>;
   saveCursors: (c: InboxCursorFile) => Promise<void>;
   ensureManifest: () => Promise<OrchestratorManifest>;
@@ -76,6 +80,11 @@ function byUpdatedAtDesc(a: { updatedAt: string }, b: { updatedAt: string }): nu
  */
 export function makePoller(deps: PollerDeps): Poller {
   const now = (): number => (deps.now ? deps.now() : Date.now());
+
+  // An item's PRs arrive under the account that authenticates its code host, which
+  // on a cross-platform repo isn't its tracker account (#328).
+  const codeHostAccountIdFor = (i: TrackedItem): string =>
+    deps.codeHostAccountFor(i.codeHost, i.accountId)?.key ?? i.accountId;
 
   let status: "idle" | "polling" = "idle";
   let accountsState: Record<string, OrchestratorAccountState> = {};
@@ -218,7 +227,7 @@ export function makePoller(deps: PollerDeps): Poller {
       const deepHydrate = Object.values(m.items)
         .filter(
           (i) =>
-            i.accountId === accountId &&
+            codeHostAccountIdFor(i) === accountId &&
             i.pr &&
             (i.state === "pr-open" || i.state === "in-review" || i.state === "changes-requested"),
         )
@@ -280,6 +289,7 @@ export function makePoller(deps: PollerDeps): Poller {
           issues: resolvedIssues,
           pullRequests: result.pullRequests,
           dependencies,
+          codeHostAccountId: codeHostAccountIdFor,
         },
         admissionPolicy(m),
       );
@@ -368,7 +378,13 @@ export function makePoller(deps: PollerDeps): Poller {
       const outcome = reconcile(
         m,
         accountId,
-        { mode: "delta", issues: resolvedIssues, pullRequests, dependencies },
+        {
+          mode: "delta",
+          issues: resolvedIssues,
+          pullRequests,
+          dependencies,
+          codeHostAccountId: codeHostAccountIdFor,
+        },
         admissionPolicy(m),
       );
       cancelPlanningRunsFor(outcome);

@@ -452,6 +452,173 @@ describe("reconcile — pull requests", () => {
   });
 });
 
+// Cross-platform repo: issues on Jira, code on GitHub. The item carries the Jira
+// accountId, its PRs arrive under the GitHub account's poll — so PR scoping follows
+// codeHostAccountId, while issues and dependencies stay tracker-scoped.
+describe("reconcile — cross-platform PR scoping (#328)", () => {
+  const TRACKER = "jira:acme";
+  const CODE_HOST = "github:1";
+  const OTHER_CODE_HOST = "github:2";
+
+  function jiraTracked(
+    n: number,
+    state: LifecycleState,
+    extra: Partial<TrackedItem> = {},
+  ): TrackedItem {
+    return tracked(n, state, {
+      id: `jira:ISSUE-${n}`,
+      source: "jira",
+      sourceRef: { project: "PROJ", key: `ISSUE-${n}` },
+      accountId: TRACKER,
+      key: `ISSUE-${n}`,
+      ...extra,
+    });
+  }
+
+  const onCodeHost = { codeHostAccountId: () => CODE_HOST };
+
+  it("merges a Jira-tracked item whose PR arrives under the GitHub account", () => {
+    const m = manifest();
+    m.items["jira:ISSUE-3"] = jiraTracked(3, "pr-open", {
+      pr: { id: "github:pr-7", number: 7, url: "u" },
+    });
+    const outcome = reconcile(
+      m,
+      CODE_HOST,
+      poll({ pullRequests: [pull(7, { state: "closed", merged: true })], ...onCodeHost }),
+      openPolicy,
+    );
+    expect(m.items["jira:ISSUE-3"].state).toBe("merged");
+    expect(outcome.transitions[0]).toMatchObject({ to: "merged", reason: "PR merged" });
+  });
+
+  it("leaves the item stranded when no resolver maps it to the polled code host", () => {
+    const m = manifest();
+    m.items["jira:ISSUE-3"] = jiraTracked(3, "pr-open", {
+      pr: { id: "github:pr-7", number: 7, url: "u" },
+    });
+    const outcome = reconcile(
+      m,
+      CODE_HOST,
+      poll({ pullRequests: [pull(7, { state: "closed", merged: true })] }),
+      openPolicy,
+    );
+    expect(m.items["jira:ISSUE-3"].state).toBe("pr-open");
+    expect(outcome.transitions).toEqual([]);
+  });
+
+  it("drives the non-merge transitions across accounts too (pr-open → in-review → changes-requested)", () => {
+    const m = manifest();
+    m.items["jira:ISSUE-3"] = jiraTracked(3, "pr-open", {
+      pr: { id: "github:pr-7", number: 7, url: "u" },
+    });
+    const outcome = reconcile(
+      m,
+      CODE_HOST,
+      poll({ pullRequests: [pull(7, { reviewDecision: "changes-requested" })], ...onCodeHost }),
+      openPolicy,
+    );
+    expect(outcome.transitions.map((t) => t.to)).toEqual(["in-review", "changes-requested"]);
+    expect(m.items["jira:ISSUE-3"].state).toBe("changes-requested");
+  });
+
+  it("keeps the scope: a PR under one GitHub account never touches an item bound to another", () => {
+    const m = manifest();
+    m.items["jira:ISSUE-3"] = jiraTracked(3, "pr-open", {
+      pr: { id: "github:pr-7", number: 7, url: "u" },
+    });
+    reconcile(
+      m,
+      CODE_HOST,
+      poll({
+        pullRequests: [pull(7, { state: "closed", merged: true })],
+        codeHostAccountId: () => OTHER_CODE_HOST,
+      }),
+      openPolicy,
+    );
+    expect(m.items["jira:ISSUE-3"].state).toBe("pr-open");
+  });
+
+  // The dependency sweep stays tracker-scoped, so the release lands one poll later:
+  // the prerequisite merges during the GitHub poll, the dependent frees on the Jira one.
+  it("releases the dependent on the next tracker poll after the code-host poll merges its prerequisite", () => {
+    const m = manifest();
+    m.items["jira:ISSUE-3"] = jiraTracked(3, "pr-open", {
+      pr: { id: "github:pr-7", number: 7, url: "u" },
+    });
+    m.items["jira:ISSUE-4"] = {
+      ...jiraTracked(4, "blocked", {
+        blockedBy: [{ project: "PROJ", key: "ISSUE-3" }],
+        resumeTo: "triage",
+      }),
+      transitions: [
+        {
+          at: "2026-07-01T00:00:00.000Z",
+          from: null,
+          to: "triage",
+          actor: "reconcile",
+          reason: "admitted",
+        },
+        {
+          at: "2026-07-01T00:00:00.000Z",
+          from: "triage",
+          to: "blocked",
+          actor: "reconcile",
+          reason: "blocked by #ISSUE-3",
+        },
+      ],
+    } as TrackedItem;
+
+    reconcile(
+      m,
+      CODE_HOST,
+      poll({ pullRequests: [pull(7, { state: "closed", merged: true })], ...onCodeHost }),
+      openPolicy,
+    );
+    expect(m.items["jira:ISSUE-3"].state).toBe("merged");
+    expect(m.items["jira:ISSUE-4"].state).toBe("blocked");
+
+    reconcile(m, TRACKER, poll({ ...onCodeHost }), openPolicy);
+    expect(m.items["jira:ISSUE-4"].state).toBe("triage");
+    expect(m.items["jira:ISSUE-4"].transitions.at(-1)?.reason).toBe("prerequisites merged/closed");
+  });
+
+  it("regression: with no resolver, the same-account path merges and other accounts stay ignored", () => {
+    const m = manifest();
+    m.items["github:42"] = tracked(42, "in-review", {
+      pr: { id: "github:pr-7", number: 7, url: "u" },
+    });
+    m.items["jira:ISSUE-3"] = jiraTracked(3, "pr-open", {
+      pr: { id: "github:pr-7", number: 7, url: "u" },
+    });
+    reconcile(
+      m,
+      ACCOUNT,
+      poll({ pullRequests: [pull(7, { state: "closed", merged: true })] }),
+      openPolicy,
+    );
+    expect(m.items["github:42"].state).toBe("merged");
+    expect(m.items["jira:ISSUE-3"].state).toBe("pr-open");
+  });
+
+  it("regression: a resolver mapping each item to its own account changes nothing", () => {
+    const m = manifest();
+    m.items["github:42"] = tracked(42, "in-review", {
+      pr: { id: "github:pr-7", number: 7, url: "u" },
+    });
+    reconcile(
+      m,
+      ACCOUNT,
+      poll({
+        pullRequests: [pull(7, { state: "closed", merged: true })],
+        codeHostAccountId: (i) => i.accountId,
+      }),
+      openPolicy,
+    );
+    expect(m.items["github:42"].state).toBe("merged");
+  });
+});
+
 describe("reconcile — CI re-entry", () => {
   const SHA = "abc123";
 
