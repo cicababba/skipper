@@ -8,6 +8,7 @@ import { useT } from "@/lib/app-i18n";
 import { buildReviewChangelog, hasReviewChangelog, type ReviewChangelogEntry } from "@/lib/inbox/review-changelog";
 import { EventConsole } from "@/components/event-console";
 import { CoderReportCard } from "./report-card";
+import { BaseAdvanceBanner } from "./base-advance-banner";
 import { useItemId } from "./use-item-id";
 
 function ObjectionRow({ o }: { o: CriticObjection }) {
@@ -170,6 +171,8 @@ export function ReviewDetailView() {
 
   return (
     <div className="min-h-full p-6 space-y-4 max-w-3xl mx-auto">
+      <BaseAdvanceBanner item={item} />
+
       {!live && (
         <div className="flex items-center gap-2 rounded-lg border border-warning/25 bg-warning-bg text-warning px-3 py-2 text-sm">
           <AlertTriangle size={14} className="shrink-0" />

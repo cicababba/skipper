@@ -244,10 +244,45 @@ describe("linkRepo", () => {
     expect(h.order).toEqual(["seed", "reconcile"]);
   });
 
-  it("does not consult git when no base branch is given", async () => {
+  // Without a base branch there is no branch check to run, so the only git call
+  // left is the #329 base-sha stamp.
+  it("consults git only to stamp the base sha when no base branch is given", async () => {
     const h = setup();
     await handlerOf(h.handlers, CHANNEL)(null, "acme", "widgets", "/repo");
-    expect(runGitMock).not.toHaveBeenCalled();
+    expect(runGitMock).toHaveBeenCalledTimes(1);
+    expect(runGitMock).toHaveBeenCalledWith("/repo", ["rev-parse", "origin/main"]);
+  });
+
+  it("stamps the observed base sha so the first merge already has a left side", async () => {
+    const h = setup();
+    runGitMock.mockResolvedValue({ code: 0, stdout: "sha-base\n", stderr: "" });
+    await handlerOf(h.handlers, CHANNEL)(null, "acme", "widgets", "/repo");
+    expect(h.links.repos["acme/widgets"].baseSha).toBe("sha-base");
+    expect(h.saveLinks).toHaveBeenCalledTimes(1);
+  });
+
+  it("stamps the sha of the base-branch override, not of origin/HEAD", async () => {
+    const h = setup();
+    runGitMock.mockResolvedValue({ code: 0, stdout: "sha-release\n", stderr: "" });
+    await handlerOf(h.handlers, CHANNEL)(null, "acme", "widgets", "/repo", "release");
+    expect(resolveBaseRefMock).toHaveBeenCalledWith("/repo", "release");
+    expect(h.links.repos["acme/widgets"].baseSha).toBe("sha-release");
+  });
+
+  it("links without a base sha when the base ref cannot be resolved", async () => {
+    const h = setup();
+    resolveBaseRefMock.mockRejectedValue(new Error("cannot resolve the default branch of origin"));
+    const res = await handlerOf(h.handlers, CHANNEL)(null, "acme", "widgets", "/repo");
+    expect(res).toEqual({ ok: true, localPath: "/repo" });
+    expect(h.links.repos["acme/widgets"]).not.toHaveProperty("baseSha");
+  });
+
+  it("links without a base sha when rev-parse fails", async () => {
+    const h = setup();
+    runGitMock.mockResolvedValue({ code: 128, stdout: "", stderr: "bad revision" });
+    const res = await handlerOf(h.handlers, CHANNEL)(null, "acme", "widgets", "/repo");
+    expect(res).toEqual({ ok: true, localPath: "/repo" });
+    expect(h.links.repos["acme/widgets"]).not.toHaveProperty("baseSha");
   });
 
   it("returns the detect error when the local path is not the right repo", async () => {
@@ -291,6 +326,26 @@ describe("cloneRepo", () => {
     expect(res).toEqual({ ok: false, error: "branch 'release' not found on origin" });
     expect(fetchOriginMock).not.toHaveBeenCalled();
     expect(h.saveLinks).not.toHaveBeenCalled();
+  });
+
+  // The clone itself populates every ref, so the stamp reads the fresh checkout
+  // without any fetch of its own.
+  it("stamps the observed base sha of the fresh clone", async () => {
+    const h = setup();
+    runGitMock.mockResolvedValue({ code: 0, stdout: "sha-base\n", stderr: "" });
+    await handlerOf(h.handlers, CHANNEL)(null, "acme", "widgets", "/clones");
+    expect(resolveBaseRefMock).toHaveBeenCalledWith("/clones/widgets", undefined);
+    expect(runGitMock).toHaveBeenCalledWith("/clones/widgets", ["rev-parse", "origin/main"]);
+    expect(h.links.repos["acme/widgets"].baseSha).toBe("sha-base");
+    expect(fetchOriginMock).not.toHaveBeenCalled();
+  });
+
+  it("clones without a base sha when rev-parse fails", async () => {
+    const h = setup();
+    runGitMock.mockResolvedValue({ code: 128, stdout: "", stderr: "bad revision" });
+    const res = await handlerOf(h.handlers, CHANNEL)(null, "acme", "widgets", "/clones");
+    expect(res).toEqual({ ok: true, localPath: "/clones/widgets" });
+    expect(h.links.repos["acme/widgets"]).not.toHaveProperty("baseSha");
   });
 });
 

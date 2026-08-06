@@ -16,6 +16,7 @@ import {
 } from "@/lib/inbox/plan-edit";
 import { presentDirtyFiles } from "@/lib/inbox/worktree";
 import { CleanWorktreeDialog } from "@/components/clean-worktree-dialog";
+import { BaseAdvanceBanner } from "./base-advance-banner";
 import { PlanDocument } from "./plan-document";
 import { DecisionRail, type GateAction } from "./decision-rail";
 import { useItemChat } from "./item-chat";
@@ -233,6 +234,12 @@ export function PlanDetailView() {
 
   return (
     <div className="min-h-full p-6">
+      {item.baseAdvance && (
+        <div className="mb-4">
+          <BaseAdvanceBanner item={item} />
+        </div>
+      )}
+
       {saveError && (
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-danger/25 bg-danger-bg text-danger px-3 py-2 text-sm">
           <span className="flex-1 break-all">

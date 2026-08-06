@@ -64,6 +64,9 @@ export function applyTransition(
     state: to,
     updatedAt: at,
     resumeTo: parked ? opts.resumeTo : undefined,
+    // The base-advance notice (#329) describes the item as it stood; whatever the
+    // transition is, it is now a statement about the past.
+    baseAdvance: undefined,
     transitions: [...item.transitions, { at, from: item.state, to, actor, reason }],
   };
 }

@@ -388,6 +388,9 @@ export {
   remapProjectItems,
   resolveProjectRepos,
   compareQueueCandidates,
+  planCitedPaths,
+  overlappingPaths,
+  newGroundednessMisses,
 } from "./orchestrator";
 export type {
   OrchestratorManifest,

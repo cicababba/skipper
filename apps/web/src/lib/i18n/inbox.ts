@@ -136,6 +136,21 @@ const en = {
     badge: "repo changed",
     tooltip: "This project now maps to a different repo, but this item is pinned to the old one.",
   },
+  baseAdvance: {
+    badge: "base moved",
+    tooltip: "Another PR merged on this repo after this plan was written.",
+    title: "The base moved under this plan",
+    merged: (keys: string) => `Merged in the meantime: ${keys}`,
+    reasons: {
+      overlap: "The merge changed files this plan cites — check the plan still holds.",
+      "in-flight": "Work is already in flight here, so nothing was replanned automatically.",
+      "edited-plan": "This plan was edited by hand, so it is never replanned automatically.",
+    },
+    overlap: "Plan-cited files the merge also changed:",
+    misses: "Citations that no longer resolve on the new base:",
+    replan: "Replan on the new base",
+    replanReason: "base advanced — replanning on the new base",
+  },
   intake: {
     paused: "New issues paused",
     queued: "parked",
@@ -737,6 +752,21 @@ const it: typeof en = {
   staleRepo: {
     badge: "repo cambiato",
     tooltip: "Questo progetto ora è associato a un altro repo, ma questo item resta legato al vecchio.",
+  },
+  baseAdvance: {
+    badge: "base avanzata",
+    tooltip: "Un'altra PR è stata mergiata su questo repo dopo la scrittura di questo piano.",
+    title: "La base è avanzata sotto questo piano",
+    merged: (keys: string) => `Mergiate nel frattempo: ${keys}`,
+    reasons: {
+      overlap: "Il merge ha cambiato file citati dal piano — verifica che il piano regga ancora.",
+      "in-flight": "C'è già lavoro in volo qui, quindi non è stato ripianificato nulla in automatico.",
+      "edited-plan": "Questo piano è stato modificato a mano, quindi non viene mai ripianificato in automatico.",
+    },
+    overlap: "File citati dal piano che il merge ha cambiato:",
+    misses: "Citazioni che non risolvono più sulla nuova base:",
+    replan: "Ripianifica sulla nuova base",
+    replanReason: "base avanzata — ripianificazione sulla nuova base",
   },
   intake: {
     paused: "Nuove issue in pausa",
@@ -1342,6 +1372,21 @@ const fr: typeof en = {
   staleRepo: {
     badge: "dépôt changé",
     tooltip: "Ce projet pointe désormais vers un autre dépôt, mais cet item reste lié à l'ancien.",
+  },
+  baseAdvance: {
+    badge: "base avancée",
+    tooltip: "Une autre PR a été fusionnée sur ce dépôt après l'écriture de ce plan.",
+    title: "La base a avancé sous ce plan",
+    merged: (keys: string) => `Fusionnées entre-temps : ${keys}`,
+    reasons: {
+      overlap: "La fusion a changé des fichiers cités par le plan — vérifiez que le plan tient toujours.",
+      "in-flight": "Du travail est déjà en cours ici, donc rien n'a été replanifié automatiquement.",
+      "edited-plan": "Ce plan a été édité à la main, il n'est donc jamais replanifié automatiquement.",
+    },
+    overlap: "Fichiers cités par le plan que la fusion a aussi changés :",
+    misses: "Citations qui ne résolvent plus sur la nouvelle base :",
+    replan: "Replanifier sur la nouvelle base",
+    replanReason: "base avancée — replanification sur la nouvelle base",
   },
   intake: {
     paused: "Nouvelles issues en pause",
@@ -1949,6 +1994,21 @@ const es: typeof en = {
   staleRepo: {
     badge: "repo cambiado",
     tooltip: "Este proyecto ahora apunta a otro repo, pero este item sigue vinculado al anterior.",
+  },
+  baseAdvance: {
+    badge: "base avanzada",
+    tooltip: "Otra PR se fusionó en este repo después de escribir este plan.",
+    title: "La base avanzó bajo este plan",
+    merged: (keys: string) => `Fusionadas mientras tanto: ${keys}`,
+    reasons: {
+      overlap: "La fusión cambió archivos que el plan cita — comprueba que el plan siga siendo válido.",
+      "in-flight": "Ya hay trabajo en curso aquí, así que no se replanificó nada automáticamente.",
+      "edited-plan": "Este plan se editó a mano, así que nunca se replanifica automáticamente.",
+    },
+    overlap: "Archivos citados por el plan que la fusión también cambió:",
+    misses: "Citas que ya no resuelven en la nueva base:",
+    replan: "Replanificar sobre la nueva base",
+    replanReason: "base avanzada — replanificación sobre la nueva base",
   },
   intake: {
     paused: "Nuevas issues en pausa",

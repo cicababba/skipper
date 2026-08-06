@@ -346,6 +346,23 @@ export function resolveRepoOrchestratorSettings(
   };
 }
 
+/**
+ * The base advanced under an in-flight item (#329): another tracked PR on the
+ * same repo merged, and the item's plan was written against the pre-merge tree.
+ * Set only where an auto-replan is not the right answer; any transition retires
+ * it (applyTransition clears it).
+ */
+export interface BaseAdvanceNotice {
+  at: string; // ISO 8601
+  /** Display keys of the items whose merge advanced the base. */
+  mergedKeys: string[];
+  /** Plan-cited paths the merge also touched. */
+  overlapFiles: string[];
+  /** Citations that stopped resolving on the new base. */
+  newMisses?: { files: string[]; symbols: string[] };
+  reason: "overlap" | "in-flight" | "edited-plan";
+}
+
 /** An issue tracked through the lifecycle. Mirrors source metadata + orchestrator overlay. */
 export interface TrackedItem {
   /** Same id as the inbox Issue, e.g. "github:1234567890". */
@@ -411,6 +428,8 @@ export interface TrackedItem {
   /** Set when the item's project was remapped to a different repo but the item
    *  wasn't auto-migratable (#120); cleared when its repo matches the mapping again. */
   staleRepo?: boolean;
+  /** The base moved under this item's plan (#329). Cleared by any transition. */
+  baseAdvance?: BaseAdvanceNotice;
 }
 
 /** One memory a run consulted, with the user's local 👍/👎 (#46). */

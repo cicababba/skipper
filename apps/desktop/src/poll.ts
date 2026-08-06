@@ -48,6 +48,9 @@ export interface PollerDeps {
   /** Abort a live planning run reconcile moved out of "planning" (#307). */
   cancelPlanningRun: (itemId: string) => void;
   sweepStaleness: () => void;
+  /** React to the merges this pass observed — the base moved under every other
+   *  in-flight item on those repos (#329). */
+  reactToMerges: (mergedItemIds: string[]) => void;
   now?: () => number;
 }
 
@@ -202,6 +205,14 @@ export function makePoller(deps: PollerDeps): Poller {
     }
   }
 
+  /** Items reconcile just flipped to merged — the #329 trigger. */
+  function mergedIn(outcome: ReconcileOutcome): string[] {
+    return outcome.transitions.filter((t) => t.to === "merged").map((t) => t.itemId);
+  }
+
+  // Merges observed across the accounts of one pollNow pass, fired on its tail.
+  const mergedThisPoll: string[] = [];
+
   async function pollAccount(account: Account, ignoreBackoff: boolean): Promise<void> {
     if (!cursors) return;
     const source = issueSourceForAuthProvider(account.provider);
@@ -297,6 +308,7 @@ export function makePoller(deps: PollerDeps): Poller {
         console.warn(`[orchestrator] conflict on ${conflict.itemId}: ${conflict.detail}`);
       }
       cancelPlanningRunsFor(outcome);
+      mergedThisPoll.push(...mergedIn(outcome));
       await deps.saveManifest(m);
 
       (cursors.platforms[source.id] ??= {})[accountId] = result.cursor;
@@ -355,6 +367,10 @@ export function makePoller(deps: PollerDeps): Poller {
       deps.broadcast();
       deps.pokeDrivers();
       deps.sweepStaleness();
+      if (mergedThisPoll.length > 0) {
+        const merged = mergedThisPoll.splice(0, mergedThisPoll.length);
+        deps.reactToMerges(merged);
+      }
     }
   }
 
@@ -368,6 +384,7 @@ export function makePoller(deps: PollerDeps): Poller {
     const m = await deps.ensureManifest();
     await deps.ensureRepoLinks();
     let changed = false;
+    const merged: string[] = [];
     for (const accountId of items.keys()) {
       const account = deps.getAccounts().find((a) => a.key === accountId);
       const source = account ? issueSourceForAuthProvider(account.provider) : undefined;
@@ -388,6 +405,7 @@ export function makePoller(deps: PollerDeps): Poller {
         admissionPolicy(m),
       );
       cancelPlanningRunsFor(outcome);
+      merged.push(...mergedIn(outcome));
       // Evidence can land without a transition (a dep on an untracked ref writes
       // blockedBy and parks nothing) — that write must be persisted too.
       if (
@@ -403,6 +421,7 @@ export function makePoller(deps: PollerDeps): Poller {
     }
     deps.broadcast();
     deps.pokeDrivers();
+    if (merged.length > 0) deps.reactToMerges(merged);
   }
 
   return {

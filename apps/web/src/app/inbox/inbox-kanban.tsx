@@ -13,6 +13,7 @@ import { BlockedByBadges } from "./blocked-by";
 import { CiBadge } from "./ci-badge";
 import { ItemActions } from "./item-actions";
 import { StaleRepoBadge } from "./stale-repo-badge";
+import { BaseAdvanceBadge } from "./base-advance-badge";
 
 function openExternal(url: string) {
   void window.skipper?.openExternal(url);
@@ -40,6 +41,7 @@ function KanbanCard({ item, showState }: { item: TrackedItem; showState: boolean
       <div className="flex items-center gap-1.5 text-[11px] text-muted min-w-0">
         <span className="truncate">{repoKey(item.repo)}</span>
         <StaleRepoBadge item={item} />
+        <BaseAdvanceBadge item={item} />
       </div>
       <div className="flex items-center gap-1.5 flex-wrap">
         {showState && <StateBadge item={item} />}

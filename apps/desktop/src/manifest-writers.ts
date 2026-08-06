@@ -5,6 +5,7 @@ import {
   latestPlanningTransitionAt,
   type AgentReview,
   type AgentRuntimeId,
+  type BaseAdvanceNotice,
   type ConfidenceReport,
   type LifecycleState,
   type PrReviewComment,
@@ -274,6 +275,17 @@ export function makeManifestWriters(d: ManifestWriterDeps) {
     d.broadcast();
   }
 
+  /** Stamps the base-advance notice (#329) without a transition — the item stays
+   *  where it is, the banner/badge explain that the base moved under its plan. */
+  async function setBaseAdvance(itemId: string, notice: BaseAdvanceNotice): Promise<void> {
+    const m = await d.ensureManifest();
+    const item = m.items[itemId];
+    if (!item) return;
+    m.items[itemId] = { ...item, baseAdvance: notice, updatedAt: new Date().toISOString() };
+    await d.saveManifest(m);
+    d.broadcast();
+  }
+
   /** Records the critic round's Claude session id without a transition (#111). On
    *  round 1 (no review yet) it seeds a stub review the reviewer/UI already handle;
    *  completeReview replaces it wholesale. The chained-round check reads only
@@ -374,6 +386,7 @@ export function makeManifestWriters(d: ManifestWriterDeps) {
     setPlanSessionId,
     setPlanRescoring,
     completeRescore,
+    setBaseAdvance,
     setReviewSessionId,
     requestTransition,
   };
