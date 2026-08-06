@@ -112,6 +112,7 @@ interface SetupOptions {
   results?: PollResult[];
   pollThrows?: unknown;
   fetchDependencies?: (issue: Issue) => Promise<SourceRef[]>;
+  codeHostAccountFor?: PollerDeps["codeHostAccountFor"];
   now?: () => number;
 }
 
@@ -167,6 +168,7 @@ function setup(opts: SetupOptions = {}): Harness {
   const deps: PollerDeps = {
     getAccounts: () => opts.accounts ?? [account],
     getToken: async () => "tok",
+    codeHostAccountFor: opts.codeHostAccountFor ?? (() => undefined),
     loadCursors: async () => cursors,
     saveCursors,
     ensureManifest: async () => m,
@@ -489,6 +491,46 @@ describe("makePoller — dependency fetching (#85)", () => {
   });
 });
 
+describe("makePoller — deep hydration scoping (#328)", () => {
+  const jiraAccount: Account = { provider: "jira", key: "jira:acme", id: "9", name: "acme" };
+
+  // Issues on Jira, code on GitHub: the item's PR only ever shows up in the GitHub
+  // account's poll, so that is the poll that has to hydrate it.
+  function crossPlatform(): OrchestratorManifest {
+    return manifest({
+      items: {
+        "jira:ISSUE-3": tracked("jira:ISSUE-3", "ISSUE-3", "pr-open", {
+          source: "jira",
+          sourceRef: { project: "PROJ", key: "ISSUE-3" },
+          accountId: jiraAccount.key,
+          codeHost: "github",
+          pr: { id: "github:pr-7", number: 7, url: "u" },
+        }),
+      },
+    });
+  }
+
+  it("hydrates a Jira item's PR under its code-host account, not under its tracker account", async () => {
+    const h = setup({
+      manifest: crossPlatform(),
+      accounts: [account, jiraAccount],
+      codeHostAccountFor: () => account,
+      results: [{ mode: "delta", issues: [], pullRequests: [], cursor: "c1" }],
+    });
+
+    await h.poller.pollNow();
+
+    expect(h.poll.mock.calls[0]![0]).toMatchObject({
+      accountId: "github:1",
+      deepHydrate: [{ owner: "acme", name: "widgets", number: 7 }],
+    });
+    expect(h.poll.mock.calls[1]![0]).toMatchObject({
+      accountId: "jira:acme",
+      deepHydrate: [],
+    });
+  });
+});
+
 describe("makePoller — sign-out pruning", () => {
   it("prunes account state, cache, unmapped projects and cursors in one save", async () => {
     const cursors: InboxCursorFile = {
@@ -508,6 +550,7 @@ describe("makePoller — sign-out pruning", () => {
     const poller = makePoller({
       getAccounts: () => accounts,
       getToken: async () => "tok",
+      codeHostAccountFor: () => undefined,
       loadCursors: async () => cursors,
       saveCursors,
       ensureManifest: async () => m,

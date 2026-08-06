@@ -147,6 +147,7 @@ const SOURCE_CAPABILITIES = Object.fromEntries(
 const poller = makePoller({
   getAccounts: () => issueAccounts(),
   getToken: (key, force) => deps!.getToken(key, force),
+  codeHostAccountFor,
   loadCursors: () => loadCursors(deps!.cursorFilePath),
   saveCursors: (c) => saveCursors(deps!.cursorFilePath, c),
   ensureManifest,

@@ -48,6 +48,10 @@ export interface ReconcilePoll {
    *  authoritative snapshot (empty array clears); an absent key means no fresh
    *  evidence — the stored blockedBy stands. */
   dependencies?: Record<string, SourceRef[]>;
+  /** Account key that authenticates the item's code host — the account under which
+   *  its PRs arrive (#328). Absent/undefined for an item means its own accountId
+   *  (single-platform: tracker and code host are the same account). */
+  codeHostAccountId?: (item: TrackedItem) => string | undefined;
 }
 
 const PRE_CODING_STATES: readonly LifecycleState[] = ["triage", "planning", "plan-gate", "queued"];
@@ -143,7 +147,7 @@ export function reconcile(
     }
   }
 
-  reconcilePulls(manifest, accountId, poll.pullRequests, outcome, transition);
+  reconcilePulls(manifest, accountId, poll, outcome, transition);
 
   if (poll.mode === "full") {
     reconcileFullWalkAbsence(manifest, accountId, poll, outcome, transition);
@@ -216,7 +220,8 @@ function reconcileDependencies(
   //    may be tracked under another account of the same tracker).
   const index = dependencyIndex(Object.values(manifest.items));
 
-  // 3. Sweep this account's items.
+  // 3. Sweep this account's items. Tracker-scoped on purpose (#328): dependencies
+  //    are issue evidence, they arrive with the tracker's poll, not the code host's.
   for (const item of Object.values(manifest.items)) {
     if (item.accountId !== accountId) continue;
     const blocking = unmetDependencies(item, index);
@@ -255,16 +260,23 @@ type TransitionFn = (
   resumeTo?: LifecycleState,
 ) => void;
 
+/**
+ * PRs are scoped on the item's *code-host* account, not its tracker account (#328):
+ * on a cross-platform repo (Jira issues, GitHub code) the PR arrives under the
+ * GitHub account while the item carries the Jira accountId.
+ */
 function reconcilePulls(
   manifest: OrchestratorManifest,
   accountId: string,
-  pullRequests: PullRequest[],
+  poll: ReconcilePoll,
   outcome: ReconcileOutcome,
   transition: TransitionFn,
 ): void {
-  const items = Object.values(manifest.items).filter((i) => i.accountId === accountId);
+  const items = Object.values(manifest.items).filter(
+    (i) => (poll.codeHostAccountId?.(i) ?? i.accountId) === accountId,
+  );
 
-  for (const pr of pullRequests) {
+  for (const pr of poll.pullRequests) {
     // Match by repo + number: the list streams carry the issue-record id while
     // POST /pulls returns the pull-record id, so ids never line up across sources.
     let item = items.find(
@@ -387,6 +399,8 @@ function reconcileCi(
 // from it was closed or unassigned — indistinguishable from here. Pre-coding
 // items close quietly (the reopen path recovers them); in-flight items hold
 // worktrees/PRs, so they keep their state and surface a conflict for a human.
+// Tracker-scoped on purpose (#328): only the tracker's own walk can testify
+// about the absence of its issues.
 function reconcileFullWalkAbsence(
   manifest: OrchestratorManifest,
   accountId: string,
