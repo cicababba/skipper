@@ -129,6 +129,7 @@ interface Harness {
   pokeDrivers: ReturnType<typeof vi.fn>;
   cancelPlanningRun: ReturnType<typeof vi.fn>;
   sweepStaleness: ReturnType<typeof vi.fn>;
+  reactToMerges: ReturnType<typeof vi.fn>;
 }
 
 function setup(opts: SetupOptions = {}): Harness {
@@ -165,6 +166,7 @@ function setup(opts: SetupOptions = {}): Harness {
   const pokeDrivers = vi.fn();
   const cancelPlanningRun = vi.fn();
   const sweepStaleness = vi.fn();
+  const reactToMerges = vi.fn();
   const deps: PollerDeps = {
     getAccounts: () => opts.accounts ?? [account],
     getToken: async () => "tok",
@@ -178,6 +180,7 @@ function setup(opts: SetupOptions = {}): Harness {
     pokeDrivers,
     cancelPlanningRun,
     sweepStaleness,
+    reactToMerges,
     ...(opts.now ? { now: opts.now } : {}),
   };
   return {
@@ -193,6 +196,7 @@ function setup(opts: SetupOptions = {}): Harness {
     pokeDrivers,
     cancelPlanningRun,
     sweepStaleness,
+    reactToMerges,
   };
 }
 
@@ -560,6 +564,7 @@ describe("makePoller — sign-out pruning", () => {
       pokeDrivers: () => {},
       cancelPlanningRun: () => {},
       sweepStaleness: () => {},
+      reactToMerges: () => {},
     });
 
     await poller.pollNow();

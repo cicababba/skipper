@@ -17,3 +17,4 @@ export {
   type RemapProjectItemsResult,
 } from "./reconcile";
 export { resolveProjectRepos, type ResolveProjectReposResult } from "./resolve-projects";
+export { planCitedPaths, overlappingPaths, newGroundednessMisses } from "./plan-relevance";

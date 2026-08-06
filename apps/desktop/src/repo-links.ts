@@ -16,6 +16,9 @@ export interface RepoLink {
   linkedAt: string; // ISO 8601
   /** Overrides origin/HEAD as the coding base branch (#9). Hand-edited for now; UI later. */
   baseBranch?: string;
+  /** Last base sha Skipper observed on this repo (#329) — the left side of the
+   *  diff that says what a merge changed. Absent = no textual evidence yet. */
+  baseSha?: string;
 }
 
 export interface RepoLinksFile {

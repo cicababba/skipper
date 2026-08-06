@@ -63,6 +63,24 @@ export interface ReposIpcDeps {
   getDefaultModel: () => string | undefined;
 }
 
+async function revParseOrNull(repoPath: string, ref: string): Promise<string | null> {
+  const r = await runGit(repoPath, ["rev-parse", ref]).catch(() => null);
+  return r && r.code === 0 ? r.stdout.trim() || null : null;
+}
+
+/**
+ * The base sha as Skipper sees the clone right now (#329). Stamped when a repo is
+ * linked so the very first merge on it already has a left side to diff from;
+ * best-effort, an unresolvable base just leaves baseSha absent.
+ */
+async function observedBaseSha(
+  localPath: string,
+  baseBranch?: string,
+): Promise<string | undefined> {
+  const ref = await resolveBaseRef(localPath, baseBranch).catch(() => null);
+  return (ref ? await revParseOrNull(localPath, ref) : null) ?? undefined;
+}
+
 export function registerReposHandlers(deps: ReposIpcDeps): void {
   deps.ipcMain.handle(
     "skipper:orchestrator:setRepoSettings",
@@ -144,10 +162,12 @@ export function registerReposHandlers(deps: ReposIpcDeps): void {
           }
         }
         const links = await deps.ensureRepoLinks();
+        const baseSha = await observedBaseSha(localPath, trimmed);
         links.repos[repoKey({ owner, name })] = {
           localPath,
           linkedAt: new Date().toISOString(),
           ...(trimmed ? { baseBranch: trimmed } : {}),
+          ...(baseSha ? { baseSha } : {}),
         };
         await deps.saveLinks(links);
         // Linking is a stronger act of intent than ticking the follow box (#15) —
@@ -199,10 +219,12 @@ export function registerReposHandlers(deps: ReposIpcDeps): void {
           }
         }
         const links = await deps.ensureRepoLinks();
+        const baseSha = await observedBaseSha(localPath, trimmed);
         links.repos[repoKey({ owner, name })] = {
           localPath,
           linkedAt: new Date().toISOString(),
           ...(trimmed ? { baseBranch: trimmed } : {}),
+          ...(baseSha ? { baseSha } : {}),
         };
         await deps.saveLinks(links);
         // Linking is a stronger act of intent than ticking the follow box (#15) —
@@ -321,6 +343,13 @@ export function registerReposHandlers(deps: ReposIpcDeps): void {
         // Persist first so any planning that starts now already cuts from the new base.
         if (newBase) link.baseBranch = newBase;
         else delete link.baseBranch;
+        // Restamp the observed base sha (#329) so a base *switch* is never diffed
+        // as a base *advance*; unresolvable = no textual evidence next round.
+        if (changed) {
+          const sha = newEff ? await revParseOrNull(link.localPath, newEff) : null;
+          if (sha) link.baseSha = sha;
+          else delete link.baseSha;
+        }
         await deps.saveLinks(links);
         if (!changed) return { ok: true as const };
 

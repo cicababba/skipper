@@ -74,6 +74,7 @@ import { initReviewer, pokeReviewer } from "./reviewer";
 import { initShepherd, pokeShepherd } from "./shepherd";
 import { initDistiller, distillForRecord } from "./distiller";
 import { initStalenessSweep, sweepStaleness } from "./memory-staleness";
+import { initBaseAdvance, reactToMerges } from "./base-advance";
 import {
   captureWorktreeDiff,
   discardWorktree,
@@ -162,6 +163,7 @@ const poller = makePoller({
   },
   cancelPlanningRun,
   sweepStaleness: () => void sweepStaleness(),
+  reactToMerges: (ids) => void reactToMerges(ids),
 });
 
 function snapshot(): OrchestratorState {
@@ -519,6 +521,7 @@ const {
   setPlanSessionId,
   setPlanRescoring,
   completeRescore,
+  setBaseAdvance,
   setReviewSessionId,
 } = writers;
 export const requestTransition = writers.requestTransition;
@@ -946,6 +949,17 @@ export function initOrchestrator(
   initDistiller({
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getLlmSettings: () => readLlmSettings(orchestratorDeps.dataDir),
+  });
+
+  initBaseAdvance({
+    plansDir: orchestratorDeps.plansDir,
+    worktreesDir: orchestratorDeps.worktreesDir,
+    getItems: async () => Object.values((await ensureManifest()).items),
+    getRepoLinks: ensureRepoLinks,
+    saveRepoLinks: (links) => saveRepoLinks(orchestratorDeps.repoLinksFilePath, links),
+    withRepoGitLock,
+    requestTransition,
+    setBaseAdvance,
   });
 
   initStalenessSweep({
