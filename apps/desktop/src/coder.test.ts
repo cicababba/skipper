@@ -244,6 +244,25 @@ describe("coder driver", () => {
     expect(opts.resumeSessionId).toBeUndefined();
   });
 
+  it("asks for a base refresh, so a reused worktree codes on the fresh base", async () => {
+    const asked: ({ refreshBase?: boolean } | undefined)[] = [];
+    const h = makeHarness();
+    h.deps.prepareWorktree = async (item, opts) => {
+      asked.push(opts);
+      return {
+        path: `/wt/${item.repo.name}/issue-${item.number}`,
+        branch: `feature/issue-${item.number}`,
+      };
+    };
+    initCoder(h.deps, runtimeOf(okRunner()));
+    h.items.set("github:1", makeItem(1, "queued"));
+
+    pokeCoder();
+    await settle();
+
+    expect(asked).toEqual([{ refreshBase: true }]);
+  });
+
   // #125: with no per-role or global override, the resolved coderModel floors to the
   // llm.claudeModel default ("sonnet"), which is what the runner's direct-model path uses.
   it("hands the runner the default model when nothing overrides coderModel", async () => {

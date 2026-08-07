@@ -90,8 +90,12 @@ export interface CoderDeps {
     itemId: string,
     worktree: { path: string; branch: string; sessionId?: string; sessionRuntime?: AgentRuntimeId },
   ) => Promise<void>;
-  /** Fetch + resolve base + ensure worktree; composed in orchestrator.ts. */
-  prepareWorktree: (item: TrackedItem) => Promise<{ path: string; branch: string }>;
+  /** Fetch + resolve base + ensure worktree; composed in orchestrator.ts.
+   *  `refreshBase` resets a reused worktree that holds no work of its own. */
+  prepareWorktree: (
+    item: TrackedItem,
+    opts?: { refreshBase?: boolean },
+  ) => Promise<{ path: string; branch: string }>;
   getSettings: () => OrchestratorSettings;
   /** Per-repo intake priority (#15) — feeds the queue ordering. */
   getRepoPriority: (repo: RepoRef) => RepoPriority;
@@ -279,7 +283,7 @@ async function run(itemId: string, repoKey: string): Promise<void> {
     deps.emitEvent(itemId, { kind: "status", phase: "fetching" });
     let worktree: { path: string; branch: string };
     try {
-      worktree = await deps.prepareWorktree(item);
+      worktree = await deps.prepareWorktree(item, { refreshBase: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       await fail(itemId, "needs-input", `worktree setup failed: ${message.slice(0, 500)}`, "queued");

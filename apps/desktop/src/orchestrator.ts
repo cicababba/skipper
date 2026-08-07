@@ -448,8 +448,8 @@ const withRepoGitLock = makeRepoGitLock();
 
 /**
  * Sets up the worktree that every phase (plan → coding → review) shares (#110):
- * fetch origin, resolve the base ref, ensure the branch's worktree. Coding
- * passes `refreshBase` so a reused, possibly-stale worktree resets to the fresh
+ * fetch origin, resolve the base ref, ensure the branch's worktree. The callers
+ * pass `refreshBase` so a reused, possibly-stale worktree resets to the fresh
  * base when it has no work of its own. Serialized per repo.
  */
 function prepareWorktreeFor(
@@ -747,7 +747,7 @@ export function initOrchestrator(
       readReadyInstructions(orchestratorDeps.repoInstructionsDir, repoKey(repo)),
     requestTransition,
     completePlan,
-    prepareWorktree: (item) => prepareWorktreeFor(item),
+    prepareWorktree: (item, opts) => prepareWorktreeFor(item, opts ?? {}),
     setWorktree,
     setPlanSessionId,
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
@@ -877,7 +877,7 @@ export function initOrchestrator(
     requestTransition,
     completeCoding,
     setWorktree,
-    prepareWorktree: (item) => prepareWorktreeFor(item, { refreshBase: true }),
+    prepareWorktree: (item, opts) => prepareWorktreeFor(item, opts ?? {}),
     getSettings: () => manifest?.settings ?? DEFAULT_ORCHESTRATOR_SETTINGS,
     getRepoPriority: (repo) => repoOrch(repo).priority,
     getRepoWipLimit: (repo) => repoOrch(repo).wipLimit,

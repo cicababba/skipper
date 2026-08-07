@@ -408,6 +408,21 @@ describe("planner worktree at planning (#110)", () => {
     expect(h.transitions).toEqual([]); // no needs-input
   });
 
+  it("asks for a base refresh, so a replan reads the fresh base and not the tree it was cut from", async () => {
+    const asked: ({ refreshBase?: boolean } | undefined)[] = [];
+    const h = makeRunHarness({
+      item: makeItem("planning"),
+      prepareWorktree: async (_item, opts) => {
+        asked.push(opts);
+        return { path: "/wt/issue-1", branch: "feature/issue-1" };
+      },
+    });
+    initPlanner(h.deps, h.provider as never);
+    pokePlanner();
+    await h.done;
+    expect(asked).toEqual([{ refreshBase: true }]);
+  });
+
   it("hands generatePlan the planner time budget, so the agent runs on time not turns (#194)", async () => {
     const h = makeRunHarness({
       item: makeItem("planning"),

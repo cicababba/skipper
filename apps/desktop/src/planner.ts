@@ -72,8 +72,12 @@ export interface PlannerDeps {
     confidence?: ConfidenceReport,
     expectedPlanningAt?: string,
   ) => Promise<void>;
-  /** Sets up the shared worktree so planning runs where coding will (#110). */
-  prepareWorktree: (item: TrackedItem) => Promise<{ path: string; branch: string }>;
+  /** Sets up the shared worktree so planning runs where coding will (#110).
+   *  `refreshBase` resets a reused worktree that holds no work of its own. */
+  prepareWorktree: (
+    item: TrackedItem,
+    opts?: { refreshBase?: boolean },
+  ) => Promise<{ path: string; branch: string }>;
   /** Persists the worktree record without a transition (#110). */
   setWorktree: (itemId: string, worktree: { path: string; branch: string }) => Promise<void>;
   /** Records the plan run's Claude session id + the runtime that minted it (#111/#238). */
@@ -276,7 +280,7 @@ async function run(itemId: string): Promise<void> {
     let inWorktree = false;
     deps.emitEvent(itemId, { kind: "status", phase: "fetching" });
     try {
-      const wt = await deps.prepareWorktree(item);
+      const wt = await deps.prepareWorktree(item, { refreshBase: true });
       cwd = wt.path;
       inWorktree = true;
       deps.emitEvent(itemId, { kind: "status", phase: "worktree", detail: wt.path });
