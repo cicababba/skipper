@@ -52,7 +52,7 @@ describe("orchestrator manifest", () => {
       settings: {
         intakePaused: false,
         autoPlanPaused: false,
-        confidence: { high: 0.85, low: 0.4, extraPlanRuns: 2 },
+        confidence: { high: 0.74, low: 0.49, extraPlanRuns: 2 },
         coderTimeBudgetMin: 60,
         plannerTimeBudgetMin: 15,
         autoCoding: "auto",

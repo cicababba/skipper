@@ -109,7 +109,15 @@ export interface ConfidenceThresholds {
   low: number;
 }
 
-export const DEFAULT_CONFIDENCE_THRESHOLDS: ConfidenceThresholds = { high: 0.85, low: 0.4 };
+/**
+ * Calibrated on run `run-20260805-091352` (#314): 12 real plans over
+ * cicababba/skipper and cicababba/todos, planner pair claude-cli / opus.
+ * `high` separates approve-unread from wants-to-read anywhere in (0.686, 0.795];
+ * `low` separates plannable from not-plannable anywhere in (0.457, 0.518].
+ * Both values sit mid-window. A calibration holds only for the pair it was
+ * measured on.
+ */
+export const DEFAULT_CONFIDENCE_THRESHOLDS: ConfidenceThresholds = { high: 0.74, low: 0.49 };
 
 /** Extra plan runs sampled for the convergence signal (#8). Needs 2+ to compare. */
 export const DEFAULT_EXTRA_PLAN_RUNS = 2;
