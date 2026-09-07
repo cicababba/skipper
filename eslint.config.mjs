@@ -17,9 +17,11 @@ export default [
     },
     rules: {
       ...tseslint.configs.recommended.rules,
+      // A binding destructured into a rest sibling exists precisely to be dropped
+      // (manifest-writers.ts, poll.ts): flagging it would be flagging the omission.
       "@typescript-eslint/no-unused-vars": [
         "warn",
-        { argsIgnorePattern: "^_" },
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", ignoreRestSiblings: true },
       ],
       "@typescript-eslint/no-explicit-any": "warn",
     },
