@@ -394,6 +394,7 @@ export interface CalibrationMeta {
   model: string;
   graphify: boolean;
   weights: ConfidenceWeights;
+  code?: { sha: string; dirty: boolean };
   generatedAt: string;
 }
 
@@ -409,6 +410,7 @@ export function renderCalibrationReport(rows: CalibrationRow[], meta: Calibratio
     `- Runtime / model: ${meta.runtime} / ${meta.model || "(CLI default)"}`,
     `- Graphify attached: ${meta.graphify ? "yes" : "no"}`,
     `- Weights: critic ${w.critic}, convergence ${w.convergence}, clarity ${w.clarity}`,
+    ...(meta.code ? [`- Code: ${meta.code.sha}${meta.code.dirty ? " (dirty)" : ""}`] : []),
     `- Generated: ${meta.generatedAt}`,
     ``,
     `A calibration is only valid for the planner it was measured on.`,

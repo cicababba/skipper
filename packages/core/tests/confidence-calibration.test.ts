@@ -423,6 +423,9 @@ describe("renderIncompleteWarning", () => {
 });
 
 describe("renderCalibrationReport", () => {
+  const WEIGHTS_LINE = "- Weights: critic 0.3, convergence 0.25, clarity 0.3";
+  const GENERATED_LINE = "- Generated: 2026-08-04T10:00:00.000Z";
+
   it("renders a one-row corpus", () => {
     const rows = buildCalibrationRows([sample()], { s1: "approve-unread" }, DEFAULT_CONFIDENCE_WEIGHTS);
     const md = renderCalibrationReport(rows, META);
@@ -447,6 +450,36 @@ describe("renderCalibrationReport", () => {
     const md = renderCalibrationReport(rows, META);
     expect(md).toContain("VETO (groundedness): 2 cited files are absent");
     expect(md).toContain("Excluded (groundedness veto): v");
+  });
+
+  it("reports the code the numbers came out of, alongside the rest of the provenance", () => {
+    const rows = buildCalibrationRows([sample()], { s1: "approve-unread" }, DEFAULT_CONFIDENCE_WEIGHTS);
+    const meta: CalibrationMeta = { ...META, code: { sha: "aacad62", dirty: false } };
+    const lines = renderCalibrationReport(rows, meta).split("\n");
+    const at = lines.indexOf(WEIGHTS_LINE);
+    expect(lines.slice(at, at + 3)).toEqual([WEIGHTS_LINE, "- Code: aacad62", GENERATED_LINE]);
+  });
+
+  it("marks a report rendered from an uncommitted tree", () => {
+    const rows = buildCalibrationRows([sample()], { s1: "approve-unread" }, DEFAULT_CONFIDENCE_WEIGHTS);
+    const meta: CalibrationMeta = { ...META, code: { sha: "aacad62", dirty: true } };
+    const lines = renderCalibrationReport(rows, meta).split("\n");
+    const at = lines.indexOf(WEIGHTS_LINE);
+    expect(lines.slice(at, at + 3)).toEqual([
+      WEIGHTS_LINE,
+      "- Code: aacad62 (dirty)",
+      GENERATED_LINE,
+    ]);
+  });
+
+  it("leaves the header untouched when no code is given", () => {
+    const rows = buildCalibrationRows([sample()], { s1: "approve-unread" }, DEFAULT_CONFIDENCE_WEIGHTS);
+    const md = renderCalibrationReport(rows, META);
+    const lines = md.split("\n");
+    const at = lines.indexOf(WEIGHTS_LINE);
+    expect(lines.slice(at, at + 2)).toEqual([WEIGHTS_LINE, GENERATED_LINE]);
+    expect(md).not.toContain("- Code:");
+    expect(md).not.toContain("undefined");
   });
 });
 

@@ -12,6 +12,7 @@
     "dereference-workspace-deps": "node build/dereference-workspace-deps.mjs",
     "build:ts": "pnpm ensure-oauth-config && pnpm ensure-update-config && tsc -p tsconfig.json && pnpm bundle-updater && pnpm bundle-orchestrator",
     "build": "pnpm build:ts",
+    "lint": "eslint src build",
     "test": "vitest run --passWithNoTests",
     "dev": "pnpm build:ts && SKIPPER_DEV=1 electron .",
     "start": "electron .",

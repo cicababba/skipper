@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
-    "lint": "turbo lint",
+    "lint": "turbo lint && eslint scripts",
     "test": "turbo test",
     "desktop:dev": "pnpm --filter @skipper/desktop dev",
     "desktop:build": "pnpm --filter \"@skipper/web...\" --filter @skipper/sync --filter @skipper/cli build && pnpm desktop:prepare-cli-runtime && pnpm desktop:prepare-uv && pnpm --filter @skipper/desktop build",
