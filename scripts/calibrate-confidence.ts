@@ -48,6 +48,14 @@ import {
 // change can be replayed offline. Deliberately does not call computeConfidence —
 // see the note atop packages/core/src/confidence/calibration.ts.
 
+// Injected by scripts/build-calibrate.mjs, so the line describes the code that is
+// actually inside this bundle: a stale bundle run by hand reports its own old sha
+// instead of silently borrowing today's.
+declare const __CALIBRATE_CODE_SHA__: string;
+declare const __CALIBRATE_CODE_DIRTY__: boolean;
+
+const CODE_PROVENANCE = { sha: __CALIBRATE_CODE_SHA__, dirty: __CALIBRATE_CODE_DIRTY__ };
+
 const SCRIPTS_DIR = join(__dirname, "..");
 const CALIBRATION_DIR = join(SCRIPTS_DIR, "calibration");
 const RUNS_DIR = join(CALIBRATION_DIR, "runs");
@@ -592,6 +600,7 @@ async function analyze(opts: Options): Promise<void> {
     model: first.model,
     graphify: first.graphify,
     weights: DEFAULT_CONFIDENCE_WEIGHTS,
+    code: CODE_PROVENANCE,
     generatedAt: new Date().toISOString(),
   });
   const reportPath = join(outDir, "report.md");
@@ -605,6 +614,7 @@ async function analyze(opts: Options): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  console.log(`[calibrate] code ${CODE_PROVENANCE.sha}${CODE_PROVENANCE.dirty ? " (dirty)" : ""}`);
   const opts = parseArgs(process.argv.slice(2));
   if (opts.mode === "analyze") await analyze(opts);
   else await collect(opts);
